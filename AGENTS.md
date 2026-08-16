@@ -28,6 +28,21 @@ PoC Go SDK for model-to-model communication. Module:
 - `CLAUDE.md` — thin adapter; imports this file only.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
+## Trigger words
+
+The user's vocabulary is a contract. These words have fixed meanings:
+
+- **review** — always an adversarial deep review, never a skim. Run
+  `make verify`, `go test -race ./...`, and a short fuzz pass. Then
+  dispatch the `reviewer` agent against the code and, when plans or
+  gates changed, a hostile audit of the gates too. Hunt confirmed bugs
+  only: every finding needs a reproduction, a severity, a file:line,
+  and a minimal fix. Cover gate integrity, doc truth, and plan drift.
+  Consolidate into one report. Fix nothing during the review; report
+  first.
+- **audit** — same as review, plus the semgrep, hook, and lock
+  evasion probes: prove each gate can still catch a planted violation.
+
 ## Orchestrator role
 
 The agent the user talks to is the orchestrator. It drives everything

@@ -149,6 +149,9 @@ func (r *Room) Accepts(m envelope.Message) error {
 	if m.Room != r.id {
 		return fmt.Errorf("%w: %q", ErrWrongRoom, m.Room)
 	}
+	if err := m.Validate(); err != nil {
+		return err
+	}
 	if m.Signer == "" {
 		return ErrUnsigned
 	}

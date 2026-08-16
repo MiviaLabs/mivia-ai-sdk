@@ -128,6 +128,10 @@ func TestGroupLifecycle(t *testing.T) {
 	}
 }
 
+// errInvalidMessage marks a table case whose Accepts error comes from
+// envelope.Message.Validate, which has no sentinel error to compare against.
+var errInvalidMessage = errors.New("invalid message")
+
 // TestAdmissionFailures gates messages that must not enter a room.
 func TestAdmissionFailures(t *testing.T) {
 	founder := newAgent(t, "founder")
@@ -162,10 +166,27 @@ func TestAdmissionFailures(t *testing.T) {
 			m.To = []string{eve.id}
 			return alice.post(t, m)
 		}()},
+		"invalid payload, validly signed": {errInvalidMessage, func() envelope.Message {
+			m := baseMessage(r.ID())
+			m.ID = "x6"
+			m.Payload = ""
+			signed, err := envelope.Sign(alice.key, m)
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			return signed
+		}()},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := r.Accepts(tc.m); !errors.Is(err, tc.err) {
+			err := r.Accepts(tc.m)
+			if tc.err == errInvalidMessage {
+				if err == nil {
+					t.Fatalf("err = nil, want a validation error")
+				}
+				return
+			}
+			if !errors.Is(err, tc.err) {
 				t.Fatalf("err = %v, want %v", err, tc.err)
 			}
 		})

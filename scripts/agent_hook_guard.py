@@ -2,18 +2,142 @@
 """PreToolUse guard for agent hooks. Reads the hook event JSON from
 stdin and exits 2 (block) with a reason on stderr when the call is a
 forbidden action:
-- Bash: Git hook bypass flags or skip env vars.
-- Write/Edit: manual edits to generated api/*.txt locks (use make api-update).
+- Bash: Git hook bypass flags, skip env vars, core.hooksPath overrides,
+  or direct writes to api/*.txt and .semgrepignore.
+- Write/Edit/MultiEdit/NotebookEdit: manual edits to generated api/*.txt
+  locks (use make api-update) or the pinned .semgrepignore.
+The guard is best-effort against careless agents. It is not a security
+boundary; a determined actor can bypass it. No CI exists in this repo,
+so gates on the committed tree stay aspirational until CI exists.
 Any other call exits 0 (allow)."""
 import json
+import os
 import re
+import shlex
 import sys
+from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
+# Hook bypass and skip env vars. The commit -n flag matches at
+# end-of-string; operands, option clusters, and global options may sit
+# anywhere between git and the n-bearing flag. Message values are
+# stripped before this pattern runs, so message text cannot match.
 BYPASS = re.compile(
-    r"--no-verify|\bgit\s+commit\s+(-[a-zA-Z]*n[a-zA-Z]*\s)|"
+    r"--no-verify|"
+    r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*commit\s+"
+    r"(?:\S+\s+)*(-[a-zA-Z]*n[a-zA-Z]*)(?:\s|$)|"
     r"\b(HUSKY\s*=\s*0|HUSKY_SKIP_HOOKS|SKIP_GIT_HOOKS|LEFTHOOK\s*=\s*0)\b"
 )
+# core.hooksPath overrides; the one sanctioned command is exempted first.
+HOOKS_PATH = re.compile(
+    r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*"
+    r"(?:-c\s+\S*core\.hooksPath|config\s+(?:-\S+(?:\s+\S+)?\s+)*core\.hooksPath)"
+)
+# A write-target token may carry a parenthesized span such as a command
+# substitution; the span stays whole so spaces inside it are captured.
+# The base class excludes parens so the span group must consume them.
+TOKEN = r"[^\s\"';|&()]+(?:\([^)]*\)[^\s\"';|&()]*)*"
+# Write operators and the path token each one targets. The token is
+# resolved with the same path logic as the file-tool checks.
+REDIRECT = re.compile(r">>?\s*[\"']?(" + TOKEN + ")")
+TEE = re.compile(r"\btee\s+(?:-\S+\s+)*[\"']?(" + TOKEN + ")")
+SED_TARGET = re.compile(
+    r"\bsed\s+-i\S*[^\n|;&>]*?[\"']?(" + TOKEN.replace("|&()", "|&>()") + r")\s*(?:[|;&()>]|$)"
+)
 API_LOCK = re.compile(r"(^|/)api/[^/]+\.txt$")
+
+FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+SUBST = re.compile(r"\$\([^)]*\)")
+BACKTICK = re.compile(r"`[^`]*`")
+
+
+def normalize(cmd: str) -> str:
+    """Strip shell quotes and backslashes; collapse whitespace."""
+    cmd = cmd.replace("\\", "")
+    cmd = re.sub(r"['\"`]", "", cmd)
+    return re.sub(r"\s+", " ", cmd).strip()
+
+
+def bypass_text(cmd: str) -> str:
+    """Return the command with commit message values removed, so message
+    text cannot match the bypass pattern. Falls back to the normalized
+    command when shlex cannot tokenize the input."""
+    try:
+        toks = shlex.split(cmd)
+    except ValueError:
+        return normalize(cmd)
+    kept = []
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t == "--":
+            break  # operands after -- are paths, not flags
+        if t in ("-m", "--message"):
+            i += 2  # the value is the message; skip it
+            continue
+        if t.startswith("--message="):
+            i += 1
+            continue
+        if (
+            len(t) > 1
+            and t.startswith("-")
+            and not t.startswith("--")
+            and t[1:].isalpha()
+            and t.endswith("m")
+            and "n" not in t
+        ):
+            i += 2  # a combined cluster like -am: the value follows
+            continue
+        kept.append(t)
+        i += 1
+    return normalize(" ".join(kept))
+
+
+def clean_token(tok: str) -> str:
+    """Drop command-substitution spans from a write target token."""
+    tok = SUBST.sub("", tok)
+    return BACKTICK.sub("", tok)
+
+
+def write_targets(cmd: str) -> list[str]:
+    """Return the path tokens that redirects, tee, and sed -i target."""
+    out = list(REDIRECT.findall(cmd))
+    out.extend(TEE.findall(cmd))
+    out.extend(SED_TARGET.findall(cmd))
+    return out
+
+
+def target_paths(path: str) -> list[str]:
+    """Return the normpath, repo-relative, and realpath forms of path."""
+    if not path:
+        return []
+    out = [os.path.normpath(path)]
+    if path.startswith("/"):
+        out.append(path.lstrip("/"))
+    try:
+        rel = os.path.normpath(os.path.relpath(path, ROOT))
+        out.append(rel)
+    except (OSError, ValueError):
+        pass
+    if os.path.exists(path):
+        rp = os.path.realpath(path)
+        out.append(rp)
+        try:
+            out.append(os.path.normpath(os.path.relpath(rp, ROOT)))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
+def locked_target(path: str) -> str:
+    """Return "api", "semgrepignore", or "" for a target path."""
+    for cand in target_paths(path):
+        if API_LOCK.search(cand):
+            return "api"
+        if cand == ".semgrepignore" or cand == str(ROOT / ".semgrepignore"):
+            return "semgrepignore"
+    return ""
 
 
 def main() -> int:
@@ -26,13 +150,40 @@ def main() -> int:
 
     if tool == "Bash":
         cmd = data.get("command", "")
-        if BYPASS.search(cmd):
-            print("blocked: Git hook bypass is forbidden; fix the gate failure instead", file=sys.stderr)
+        norm = normalize(cmd)
+        if HOOKS_PATH.search(norm) and norm != "git config core.hooksPath .githooks":
+            print(
+                "blocked: core.hooksPath overrides are forbidden; use `make install-hooks`",
+                file=sys.stderr,
+            )
             return 2
-    if tool in ("Write", "Edit"):
-        path = data.get("file_path", "")
-        if API_LOCK.search(path):
-            print("blocked: api/ locks are generated; run `make api-update` and commit the diff", file=sys.stderr)
+        if BYPASS.search(bypass_text(cmd)):
+            print(
+                "blocked: Git hook bypass is forbidden; fix the gate failure instead",
+                file=sys.stderr,
+            )
+            return 2
+        for target in write_targets(norm):
+            if locked_target(clean_token(target)):
+                print(
+                    "blocked: api/ locks and .semgrepignore are generated; run `make api-update` and commit the diff",
+                    file=sys.stderr,
+                )
+                return 2
+    if tool in FILE_TOOLS:
+        path = data.get("file_path") or data.get("path") or data.get("notebook_path") or ""
+        locked = locked_target(path)
+        if locked == "api":
+            print(
+                "blocked: api/ locks are generated; run `make api-update` and commit the diff",
+                file=sys.stderr,
+            )
+            return 2
+        if locked == "semgrepignore":
+            print(
+                "blocked: .semgrepignore is pinned by scripts/check_semgrepignore.py; change the gate deliberately",
+                file=sys.stderr,
+            )
             return 2
     return 0
 

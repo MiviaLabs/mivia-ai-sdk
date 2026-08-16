@@ -134,9 +134,11 @@ envelope/            message envelope — one package per concern
   testdata/vectors/  conformance vectors pinning the wire contract
 room/                standing groups: roster, roles, message admission
 docs/                design documents
-scripts/             check_docs.py (doc gate), check_structure.py (size gate)
-.githooks/           pre-commit runs make verify
-Makefile             make verify, make bench, make install-hooks
+scripts/             gates: docs, structure, deps, plan, api, semgrep
+.semgrepignore       Semgrep ignore list; test files are scanned again
+.githooks/           pre-commit runs make verify-fast on the staged snapshot
+Makefile             make verify, make verify-fast, make bench, make api-update,
+                     make install-hooks
 AGENTS.md            contribution rules for AI and human agents
 ```
 
@@ -145,9 +147,13 @@ Root holds no Go code. New concerns get new subpackages.
 ## Development
 
 ```bash
-make install-hooks   # once per clone
-make verify          # fmt + vet + test + doc gate + structure gate
+make install-hooks   # once per clone; sets core.hooksPath to .githooks
+make verify-fast     # fast tier: fmt, vet, test, gates, semgrep scan
+make verify          # full tier: verify-fast, coverage floor, semgrep probes
 ```
+
+The pre-commit hook runs `make verify-fast` on the staged snapshot.
+It never runs the full suite twice.
 
 Contribution rules (comment style, layout, limits, no dependencies)
 live in [AGENTS.md](AGENTS.md).

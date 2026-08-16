@@ -14,17 +14,25 @@ PoC Go SDK for model-to-model communication. Module:
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.
 - `docs/` — design documents. `docs/protocol-design.md` is the rationale.
 - `scripts/` — gates: check_docs, check_structure, check_deps,
-  check_plan, check_api, api_surface (Go).
+  check_plan, check_prose, check_api, check_gomod,
+  check_semgrepignore, check_semgrep_probes, api_surface (Go).
 - `semgrep/sdk-standards.yml` — pattern rules: no panic/exit in
   packages, stdlib-only imports, no string literals where constants
   exist (enums, hash prefix), wire bytes only via Encode, signing only
-  via Sign, no hardcoded secrets, no suppression annotations.
-- `.githooks/pre-commit` — runs `make verify`.
+  via Sign, no hardcoded secrets, no suppression annotations, no
+  unresolved-work markers. The Makefile D5 scan rejects suppression
+  markers in comments.
+- `.semgrepignore` — lists only `.git/`, so Semgrep scans test files.
+  scripts/check_semgrepignore.py pins its exact content.
+- `.githooks/pre-commit` — runs `make verify-fast` on the staged
+  snapshot; untracked files never enter the gate.
 - `.claude/agents/` — subagent roles: planner, plan-reviewer,
   builder, reviewer. `.claude/skills/delivery/` drives the loop.
 - `.claude/settings.json` — PreToolUse hooks wired to
-  `scripts/agent_hook_guard.py` (blocks hook bypass and manual edits
-  to generated `api/` locks).
+  `scripts/agent_hook_guard.py`. The guard blocks hook bypass,
+  core.hooksPath overrides, and manual edits to generated `api/`
+  locks and `.semgrepignore`. It covers Bash, Write, Edit, MultiEdit,
+  and NotebookEdit.
 - `CLAUDE.md` — thin adapter; imports this file only.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
@@ -77,7 +85,8 @@ any stage means stop and escalate to the user.
   "just", "seamless", "robust"). Gate: `scripts/check_prose.py`
   enforces sentence length in `docs/plans/`.
 - Run `make install-hooks` once per clone, `make verify` before you
-  report done: gofmt, vet, tests, doc gate, structure gate.
+  report done. `make verify` is the full gate: gofmt, vet, tests,
+  doc gate, structure gate, Semgrep scan, and probes.
 - Never bypass Git hooks (no `--no-verify`, no skip env vars).
 - The GitHub remote for this repo must be **private**. Never create a
   public remote or push to one.
@@ -120,8 +129,28 @@ follow reliably. Each has a gate behind it.
 - Do not land a package without `docs/plans/<pkg>.md` following
   `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
   Gate: `scripts/check_plan.py`.
-- Do not let total coverage fall below 85%. Gate: `make verify`
-  coverage floor.
+- Do not let coverage fall below 85%. The total and every package each
+  need the floor. Gate: `make verify` coverage block. Assertion-free
+  tests and deleted tests game the floor; review catches them.
+  Mutation testing is future work.
 - Do not weaken a gate, raise a limit, or widen an exclusion to make
   your change pass. Change the design instead, or convince the user
   and record the exception in the gate file itself.
+
+## Gate tiers
+
+Two tiers guard the tree. `make verify-fast` runs the fast local
+checks: gofmt, vet, tests, the python gates, the Semgrep scan, and the
+D5 nosemgrep scan. The pre-commit hook runs `make verify-fast` on the
+staged snapshot.
+
+`make verify` runs `verify-fast`, the coverage floor block, and the
+Semgrep probe suite. The probes prove every Semgrep rule fires on a
+violation and stays silent on clean code. The coverage block asserts
+the profile lists every package and that the total and each package
+reach 85.
+
+The hook guard and the pre-commit hook are best-effort against
+careless agents. They are not a security boundary. No CI exists in
+this repo, so gates on the committed tree stay aspirational until CI
+exists.

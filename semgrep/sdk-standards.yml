@@ -19,8 +19,10 @@ rules:
     pattern-either:
       - pattern: log.Fatal(...)
       - pattern: log.Fatalf(...)
+      - pattern: log.Fatalln(...)
       - pattern: log.Panic(...)
       - pattern: log.Panicf(...)
+      - pattern: log.Panicln(...)
       - pattern: os.Exit(...)
 
   - id: sdk.go.stdlib-only-imports
@@ -30,8 +32,8 @@ rules:
     paths:
       include: ["/**/*.go"]
     patterns:
-      - pattern-regex: '"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
-      - pattern-not-regex: '"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
+      - pattern-regex: '(?i)"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
+      - pattern-not-regex: '(?i)"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
 
   # --- Centralization: no string literals where constants exist ---
   - id: sdk.go.no-enum-string-literals
@@ -42,9 +44,12 @@ rules:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go", "/scripts/**"]
     pattern-either:
-      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\("'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\(\s*"'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\(\s*`'
       - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*"'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*`'
       - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role)\s*=\s*"'
+      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role)\s*=\s*`'
 
   - id: sdk.go.hash-prefix-centralized
     languages: [go]
@@ -54,8 +59,8 @@ rules:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go", "/scripts/**"]
     patterns:
-      - pattern-regex: '"sha256:"'
-      - pattern-not-regex: 'hashPrefix\s*=\s*"sha256:"'
+      - pattern-regex: '"sha256:"|`sha256:`|"sha256"\s*\+\s*":"'
+      - pattern-not-regex: 'hashPrefix\s*=\s*"sha256:"|hashPrefix\s*=\s*`sha256:`|hashPrefix\s*=\s*"sha256"\s*\+\s*":"'
 
   - id: sdk.go.marshal-via-encode
     languages: [go]
@@ -69,7 +74,10 @@ rules:
         - "/**/ack.go"
         - "/**/*_test.go"
         - "/scripts/**"
-    pattern: json.Marshal(...)
+    pattern-either:
+      - pattern: json.Marshal(...)
+      - pattern: json.MarshalIndent(...)
+      - pattern: json.NewEncoder(...).Encode(...)
 
   - id: sdk.go.sign-via-sign
     languages: [go]
@@ -81,7 +89,9 @@ rules:
         - "/**/sign.go"
         - "/**/*_test.go"
         - "/scripts/**"
-    pattern: ed25519.Sign(...)
+    pattern-either:
+      - pattern: ed25519.Sign(...)
+      - pattern-regex: '\.Sign\([^)]*\bcrypto\.Hash\s*\('
 
   # --- Security and hygiene ---
   - id: sdk.go.no-hardcoded-secrets
@@ -92,7 +102,8 @@ rules:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go"]
     pattern-either:
-      - pattern-regex: '(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password|passwd|client[_-]?secret)\s*[:=]\s*"[^"$\n]{8,}"'
+      - pattern-regex: '(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password|passwd|client[_-]?secret|token|secret)\s*(:=|=|:)\s*"[^"$\n]{8,}"'
+      - pattern-regex: '(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password|passwd|client[_-]?secret|token|secret)\s*(:=|=|:)\s*`[^`$\n]{8,}`'
       - pattern-regex: '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'
 
   - id: sdk.go.tests-no-time-sleep
@@ -110,12 +121,13 @@ rules:
     paths:
       include: ["/**"]
       exclude: ["/semgrep/**"]
-    pattern-regex: '\bnosemgrep\b'
+    pattern-regex: '(?i)^\s*nosemgrep\b'
 
   - id: sdk.generic.no-drift-markers
     languages: [generic]
     severity: ERROR
     message: Do not commit unresolved TODO/FIXME/HACK/XXX markers; finish the work or track it elsewhere.
     paths:
-      include: ["/**/*.go"]
-    pattern-regex: '(?i)\b(TODO|FIXME|HACK|XXX)\b'
+      include: ["/**"]
+      exclude: ["/semgrep/**"]
+    pattern-regex: '(?i)\b(TODO|FIXME|HACK|XXX)\b|(?i)\b(T\s+O\s+D\s+O|F\s+I\s+X\s+M\s+E|H\s+A\s+C\s+K|X\s+X\s+X)\b'

@@ -13,3 +13,9 @@ package room
   type Role string
   type Room struct {
 }
+  var ErrAlreadyMember
+  var ErrLastModerator
+  var ErrNotMember
+  var ErrNotModerator
+  var ErrUnsigned
+  var ErrWrongRoom

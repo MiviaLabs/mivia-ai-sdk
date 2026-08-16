@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
@@ -63,11 +64,44 @@ func packageDirs() ([]string, error) {
 
 // surface returns the sorted exported-symbol blocks of the package in
 // dir. A struct type is one multi-line block so its fields stay attached.
+// Files excluded by build constraints never enter the surface.
 func surface(dir string) ([]string, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, noTests, 0)
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
+	}
+	pkgs := make(map[string]*ast.Package)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		match, err := build.Default.MatchFile(dir, e.Name())
+		if err != nil {
+			return nil, err
+		}
+		if !match {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
+		if err != nil {
+			return nil, err
+		}
+		pkg := pkgs[f.Name.Name]
+		if pkg == nil {
+			pkg = &ast.Package{Name: f.Name.Name, Files: make(map[string]*ast.File)}
+			pkgs[f.Name.Name] = pkg
+		}
+		pkg.Files[e.Name()] = f
+	}
+	want := filepath.Base(dir)
+	if len(pkgs) != 1 {
+		return nil, fmt.Errorf("%s: holds %d packages; exactly one package named %q is required", dir, len(pkgs), want)
+	}
+	for name := range pkgs {
+		if name != want {
+			return nil, fmt.Errorf("%s: package %q does not match directory name %q", dir, name, want)
+		}
 	}
 	var blocks []string
 	for _, pkg := range pkgs {
@@ -80,8 +114,6 @@ func surface(dir string) ([]string, error) {
 	sort.Strings(blocks)
 	return blocks, nil
 }
-
-func noTests(f os.FileInfo) bool { return !strings.HasSuffix(f.Name(), "_test.go") }
 
 // appendDecl appends one exported declaration block, or none.
 func appendDecl(blocks []string, fset *token.FileSet, decl ast.Decl) []string {
@@ -98,17 +130,33 @@ func appendDecl(blocks []string, fset *token.FileSet, decl ast.Decl) []string {
 	return blocks
 }
 
-// appendSpec renders exported consts (with values) and types (with struct
-// fields, the wire surface).
+// appendSpec renders exported consts and vars (with or without values)
+// and types (with struct fields, the wire surface).
 func appendSpec(blocks []string, fset *token.FileSet, tok token.Token, spec ast.Spec) []string {
 	switch s := spec.(type) {
 	case *ast.ValueSpec:
-		if tok != token.CONST {
-			break
-		}
-		for i, name := range s.Names {
-			if name.IsExported() && i < len(s.Values) {
-				blocks = append(blocks, "const "+name.Name+" = "+expr(fset, s.Values[i]))
+		switch tok {
+		case token.CONST:
+			for i, name := range s.Names {
+				if !name.IsExported() {
+					continue
+				}
+				if i < len(s.Values) {
+					blocks = append(blocks, "const "+name.Name+" = "+expr(fset, s.Values[i]))
+				} else {
+					blocks = append(blocks, "const "+name.Name)
+				}
+			}
+		case token.VAR:
+			for _, name := range s.Names {
+				if !name.IsExported() {
+					continue
+				}
+				if s.Type != nil {
+					blocks = append(blocks, "var "+name.Name+" "+expr(fset, s.Type))
+				} else {
+					blocks = append(blocks, "var "+name.Name)
+				}
 			}
 		}
 	case *ast.TypeSpec:
@@ -123,20 +171,27 @@ func appendSpec(blocks []string, fset *token.FileSet, tok token.Token, spec ast.
 // typeBlock renders a type declaration; structs list exported fields with
 // tags because fields are the wire contract.
 func typeBlock(fset *token.FileSet, s *ast.TypeSpec) string {
+	name := "type " + s.Name.Name
+	if s.TypeParams != nil {
+		name += "[" + fieldList(fset, s.TypeParams) + "]"
+	}
+	if s.Assign.IsValid() {
+		return name + " = " + expr(fset, s.Type)
+	}
 	st, ok := s.Type.(*ast.StructType)
 	if !ok {
-		return "type " + s.Name.Name + " " + expr(fset, s.Type)
+		return name + " " + expr(fset, s.Type)
 	}
 	var b strings.Builder
-	b.WriteString("type " + s.Name.Name + " struct {\n")
+	b.WriteString(name + " struct {\n")
 	for _, f := range st.Fields.List {
-		for _, name := range f.Names {
-			if name.IsExported() {
-				tag := ""
-				if f.Tag != nil {
-					tag = " " + f.Tag.Value
-				}
-				b.WriteString("  " + name.Name + " " + expr(fset, f.Type) + tag + "\n")
+		if len(f.Names) == 0 {
+			b.WriteString("  " + expr(fset, f.Type) + tag(f) + "\n")
+			continue
+		}
+		for _, n := range f.Names {
+			if n.IsExported() {
+				b.WriteString("  " + n.Name + " " + expr(fset, f.Type) + tag(f) + "\n")
 			}
 		}
 	}
@@ -144,24 +199,29 @@ func typeBlock(fset *token.FileSet, s *ast.TypeSpec) string {
 	return b.String()
 }
 
-// funcLine renders an exported func or method signature.
+// tag renders a struct field tag, or the empty string.
+func tag(f *ast.Field) string {
+	if f.Tag != nil {
+		return " " + f.Tag.Value
+	}
+	return ""
+}
+
+// funcLine renders an exported func or method signature. The receiver
+// renders with its name; unexported receiver types stay in the surface.
 func funcLine(fset *token.FileSet, d *ast.FuncDecl) string {
 	if !d.Name.IsExported() {
 		return ""
 	}
 	recv := ""
 	if d.Recv != nil {
-		rt := d.Recv.List[0].Type
-		if star, ok := rt.(*ast.StarExpr); ok {
-			rt = star.X
-		}
-		id, ok := rt.(*ast.Ident)
-		if !ok || !id.IsExported() {
-			return ""
-		}
 		recv = "(" + fieldList(fset, d.Recv) + ") "
 	}
-	sig := "func " + recv + d.Name.Name + "(" + fieldList(fset, d.Type.Params) + ")"
+	sig := "func " + recv + d.Name.Name
+	if d.Type.TypeParams != nil {
+		sig += "[" + fieldList(fset, d.Type.TypeParams) + "]"
+	}
+	sig += "(" + fieldList(fset, d.Type.Params) + ")"
 	if d.Type.Results != nil {
 		sig += " (" + fieldList(fset, d.Type.Results) + ")"
 	}

@@ -12,6 +12,10 @@ PoC Go SDK for model-to-model communication. Module:
 - `docs/` — design documents. `docs/protocol-design.md` is the rationale.
 - `scripts/check_docs.py` — doc-comment gate.
 - `scripts/check_structure.py` — file/function size gate.
+- `semgrep/sdk-standards.yml` — pattern rules: no panic/exit in
+  packages, stdlib-only imports, no string literals where constants
+  exist (enums, hash prefix), wire bytes only via Encode, signing only
+  via Sign, no hardcoded secrets, no nosemgrep suppression.
 - `.githooks/pre-commit` — runs `make verify`.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
@@ -33,6 +37,12 @@ PoC Go SDK for model-to-model communication. Module:
   the limits.
 - Invariants live in `Validate` methods, not in comments alone. If a
   comment states a rule, `Validate` must enforce it.
+- No string literals where constants exist: enum values (Intent,
+  Epistemic, AckStatus, Role), hash prefixes, wire serialization
+  (Encode), signing (Sign). Enforced by `semgrep/sdk-standards.yml`.
+  Tests may construct invalid values on purpose.
+- Do not suppress Semgrep findings with inline annotations; fix the
+  rule or the code.
 - Tests table-driven where the case set grows. Test the invariants that
   `Validate` claims to enforce.
 - The wire contract is pinned by conformance vectors in

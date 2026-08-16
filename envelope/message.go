@@ -14,6 +14,10 @@ import (
 // Unknown JSON fields are ignored for forward compatibility.
 const Version = "v1"
 
+// hashPrefix prefixes every content address (ContextRef, Hash, refs).
+// The only place the literal may appear; semgrep enforces this.
+const hashPrefix = "sha256:"
+
 // Intent classifies what a Message does. Validate enforces the set.
 type Intent string
 
@@ -75,7 +79,7 @@ type Message struct {
 // shared context blob. Refs are comparable: same content, same string.
 func ContextRef(content string) string {
 	sum := sha256.Sum256([]byte(content))
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return hashPrefix + hex.EncodeToString(sum[:])
 }
 
 // Hash returns the content address of m (sha256 of its canonical JSON).
@@ -83,7 +87,7 @@ func ContextRef(content string) string {
 func (m Message) Hash() string {
 	data, _ := json.Marshal(m) // struct field order is fixed; cannot fail
 	sum := sha256.Sum256(data)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return hashPrefix + hex.EncodeToString(sum[:])
 }
 
 // RequiresAck reports whether the receiver must send an Ack (ack.go) before
@@ -205,7 +209,7 @@ func Decode(data []byte) (Message, error) {
 
 // isHashRef reports whether ref is a canonical "sha256:<64 lowercase hex>".
 func isHashRef(ref string) bool {
-	hexPart, ok := strings.CutPrefix(ref, "sha256:")
+	hexPart, ok := strings.CutPrefix(ref, hashPrefix)
 	return ok && isLowerHex(hexPart, sha256.Size*2)
 }
 

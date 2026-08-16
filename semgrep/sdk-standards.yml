@@ -1,0 +1,115 @@
+rules:
+  # --- Package discipline ---
+  - id: sdk.go.no-panic-in-packages
+    languages: [go]
+    severity: ERROR
+    message: Packages return errors; panic is forbidden outside tests.
+    paths:
+      include: ["/envelope/**/*.go", "/room/**/*.go"]
+      exclude: ["/**/*_test.go"]
+    pattern: panic(...)
+
+  - id: sdk.go.no-process-exit-in-packages
+    languages: [go]
+    severity: ERROR
+    message: Packages must return errors instead of terminating the process.
+    paths:
+      include: ["/envelope/**/*.go", "/room/**/*.go"]
+      exclude: ["/**/*_test.go"]
+    pattern-either:
+      - pattern: log.Fatal(...)
+      - pattern: log.Fatalf(...)
+      - pattern: os.Exit(...)
+
+  - id: sdk.go.stdlib-only-imports
+    languages: [go]
+    severity: ERROR
+    message: Standard library plus this module only; third-party imports are forbidden (see AGENTS.md).
+    paths:
+      include: ["/**/*.go"]
+    patterns:
+      - pattern-regex: '"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
+      - pattern-not-regex: '"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
+
+  # --- Centralization: no string literals where constants exist ---
+  - id: sdk.go.no-enum-string-literals
+    languages: [go]
+    severity: ERROR
+    message: Use the declared Intent/Epistemic/AckStatus/Role constants; never construct enum values from string literals. Tests may construct invalid values on purpose.
+    paths:
+      include: ["/envelope/**/*.go", "/room/**/*.go"]
+      exclude: ["/**/*_test.go"]
+    pattern-either:
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\("'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*"'
+
+  - id: sdk.go.hash-prefix-centralized
+    languages: [go]
+    severity: ERROR
+    message: Use the hashPrefix const (envelope/message.go); the literal may appear in its definition only.
+    paths:
+      include: ["/envelope/**/*.go"]
+      exclude: ["/**/*_test.go"]
+    patterns:
+      - pattern-regex: '"sha256:"'
+      - pattern-not-regex: 'hashPrefix\s*=\s*"sha256:"'
+
+  - id: sdk.go.marshal-via-encode
+    languages: [go]
+    severity: ERROR
+    message: Wire bytes come from Message.Encode; canonical bytes for hashing/signing live in message.go and sign.go only.
+    paths:
+      include: ["/envelope/**/*.go", "/room/**/*.go"]
+      exclude:
+        - "/**/message.go"
+        - "/**/sign.go"
+        - "/**/*_test.go"
+    pattern: json.Marshal(...)
+
+  - id: sdk.go.sign-via-sign
+    languages: [go]
+    severity: ERROR
+    message: Use envelope.Sign; never call ed25519.Sign directly.
+    paths:
+      include: ["/**/*.go"]
+      exclude:
+        - "/**/sign.go"
+        - "/**/*_test.go"
+    pattern: ed25519.Sign(...)
+
+  # --- Security and hygiene ---
+  - id: sdk.go.no-hardcoded-secrets
+    languages: [go]
+    severity: ERROR
+    message: Do not hardcode secrets, API keys, tokens, or private keys.
+    paths:
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go"]
+    pattern-either:
+      - pattern-regex: '(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token|private[_-]?key|password|passwd|client[_-]?secret)\s*[:=]\s*"[^"$\n]{8,}"'
+      - pattern-regex: '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----'
+
+  - id: sdk.go.tests-no-time-sleep
+    languages: [go]
+    severity: ERROR
+    message: Tests use deterministic synchronization, not time.Sleep.
+    paths:
+      include: ["/**/*_test.go"]
+    pattern: time.Sleep(...)
+
+  - id: sdk.generic.no-semgrep-suppression
+    languages: [generic]
+    severity: ERROR
+    message: Do not suppress Semgrep findings; fix the rule or document an explicit policy exception.
+    paths:
+      include: ["/**"]
+      exclude: ["/semgrep/**"]
+    pattern-regex: '\bnosemgrep\b'
+
+  - id: sdk.generic.no-drift-markers
+    languages: [generic]
+    severity: ERROR
+    message: Do not commit unresolved TODO/FIXME/HACK/XXX markers; finish the work or track it elsewhere.
+    paths:
+      include: ["/envelope/**", "/room/**"]
+    pattern-regex: '(?i)\b(TODO|FIXME|HACK|XXX)\b'

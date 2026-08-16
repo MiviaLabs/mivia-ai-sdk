@@ -20,7 +20,21 @@ PoC Go SDK for model-to-model communication. Module:
   exist (enums, hash prefix), wire bytes only via Encode, signing only
   via Sign, no hardcoded secrets, no suppression annotations.
 - `.githooks/pre-commit` — runs `make verify`.
+- `.claude/agents/` — subagent roles: planner, plan-reviewer,
+  builder, reviewer. `.claude/skills/delivery/` drives the loop.
+- `.claude/settings.json` — PreToolUse hooks wired to
+  `scripts/agent_hook_guard.py` (blocks hook bypass and manual edits
+  to generated `api/` locks).
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
+
+## Subagent workflow
+
+Non-trivial changes (new package, API change, more than one file) go
+through the delivery loop in `.claude/skills/delivery/SKILL.md`:
+planner → plan-reviewer (hostile, before code) → builder → reviewer
+(adversarial, after code) → verify → commit. Never skip a review
+stage. Never let an agent grade its own work. Three failed rounds at
+any stage means stop and escalate to the user.
 
 ## Rules
 

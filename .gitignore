@@ -1,3 +1,4 @@
 vendor/
 *.test
 *.out
+.claude/settings.local.json

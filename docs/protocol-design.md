@@ -71,7 +71,9 @@ payload:
 {
   "version": "v1",
   "id": "msg-1",
+  "room": "platform-team",
   "thread_id": "task-42",
+  "to": ["agent-b", "agent-c"],
   "in_reply_to": "msg-0",
   "intent": "assert | query | request | challenge | retract | escalate",
   "epistemic": "verified | inferred | assumed | untrusted-input",
@@ -111,6 +113,14 @@ Decision by decision:
 - **Thread boundary.** `thread_id` groups one conversation or task.
   Required, because unnamed threads are how agents lose the plot over
   long exchanges (lost-in-conversation).
+- **Addressing: 1-to-1, multicast, rooms.** `signer` is the sender.
+  `to` lists recipients: one entry is 1-to-1, several entries are
+  multicast, empty is broadcast to the room. `room` names a standing
+  group; threads live inside rooms. Membership itself (who may join,
+  who is in) is managed out of band — the envelope carries the
+  address, not the roster. This matches the governance paper's
+  finding that membership is a separate layer; we provide the hook,
+  not the policy.
 - **Tamper-evident audit.** `prev_hash` links each message to the
   `Hash()` of the previous message in the thread. Reordering,
   deletion, or insertion breaks the chain and is detectable. Cheap:
@@ -166,12 +176,28 @@ reconstruction error is measured after one hop, not after ten.
 Flow in code (three states: `pending | confirmed | corrected`):
 
 ```go
-ack, _ := protocol.NewAck(msg, "You want X, not Y.") // pending; built by receiver
-ack = ack.Confirm()                                   // sender accepts
-ack = ack.Correct("Y is out of scope; only X.")       // or sender fixes
+ack, _ := envelope.NewAck(msg, "agent-b", "You want X, not Y.") // pending; built by receiver
+ack = ack.Confirm()                                              // sender accepts
+ack = ack.Correct("Y is out of scope; only X.")                  // or sender fixes
 ```
 
 Only a `confirmed` ack means the receiver may act.
+
+In a group, each recipient sends its own ack and `from` tells them
+apart. A request to a room is not actionable until every addressed
+recipient has a confirmed ack — that rule belongs to the caller, not
+the envelope.
+
+## Group threads and the hash chain
+
+`prev_hash` forms a linear chain, which assumes one writer appends to
+a thread at a time. Two parties taking turns satisfy this. A busy room
+does not: two agents can both append to the same parent, and the chain
+forks. For this PoC the rule is: a thread has serialized appends,
+enforced by whoever owns the transport (last-hash-wins locking, a
+sequencer, or a thread owner). A multi-parent DAG (`prev_hash` as a
+list, git-style) is the known upgrade path if a use case needs
+concurrent writers.
 
 ## Deliberately omitted
 

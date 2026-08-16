@@ -17,25 +17,31 @@ const (
 
 // Ack is a semantic acknowledgment. Flow: receiver builds it with NewAck
 // (pending), sender resolves it with Confirm or Correct. Only a confirmed
-// Ack means the receiver may act.
+// Ack means the receiver may act. In a group thread each recipient sends
+// its own Ack; From tells them apart.
 type Ack struct {
 	MessageID   string    `json:"message_id"` // ID of the acknowledged Message
+	From        string    `json:"from"`       // identity of the acking receiver; required
 	Restatement string    `json:"restatement"`
 	Status      AckStatus `json:"status"`
 	Correction  string    `json:"correction,omitempty"` // required when Status is AckCorrected
 }
 
-// NewAck builds a pending Ack for msg from the receiver's restatement.
-// The sender, not the receiver, sets the final Status; see Confirm, Correct.
-func NewAck(msg Message, restatement string) (Ack, error) {
+// NewAck builds a pending Ack from receiver identity `from` for msg. The
+// sender, not the receiver, sets the final Status; see Confirm, Correct.
+func NewAck(msg Message, from, restatement string) (Ack, error) {
 	if msg.ID == "" {
 		return Ack{}, errors.New("message id is required")
+	}
+	if strings.TrimSpace(from) == "" {
+		return Ack{}, errors.New("from is required")
 	}
 	if strings.TrimSpace(restatement) == "" {
 		return Ack{}, errors.New("restatement is required")
 	}
 	return Ack{
 		MessageID:   msg.ID,
+		From:        from,
 		Restatement: restatement,
 		Status:      AckPending,
 	}, nil
@@ -59,6 +65,9 @@ func (a Ack) Correct(correction string) Ack {
 func (a Ack) Validate() error {
 	if a.MessageID == "" {
 		return errors.New("message id is required")
+	}
+	if strings.TrimSpace(a.From) == "" {
+		return errors.New("from is required")
 	}
 	if strings.TrimSpace(a.Restatement) == "" {
 		return errors.New("restatement is required")

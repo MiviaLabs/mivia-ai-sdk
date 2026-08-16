@@ -76,7 +76,7 @@ func main() {
 		panic(err) // forged or tampered
 	}
 	if got.RequiresAck() {
-		ack, err := envelope.NewAck(got, "You want a 5-bullet summary of config loading.")
+		ack, err := envelope.NewAck(got, "agent-b", "You want a 5-bullet summary of config loading.")
 		if err != nil {
 			panic(err)
 		}
@@ -97,6 +97,10 @@ func main() {
 - **Confidence** — self-reported certainty, 0.0 to 1.0.
 - **Thread** — `thread_id` groups one conversation or task. Required;
   unnamed threads are how agents lose the plot.
+- **Addressing** — `room` names a standing group (membership managed
+  out of band), `to` lists recipients: one entry is 1-to-1, several is
+  multicast, empty is broadcast to the room. `signer` is the sender.
+  Group acks are attributed: every `Ack` carries `from`.
 - **Context refs** — shared context addressed by canonical content hash
   (`sha256:` + 64 lowercase hex), not re-sent.
 - **Audit chain** — `prev_hash` links each message to `Hash()` of the

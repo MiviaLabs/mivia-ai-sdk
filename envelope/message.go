@@ -52,19 +52,21 @@ type Provenance struct {
 type Message struct {
 	Version     string     `json:"version"`               // must equal Version
 	ID          string     `json:"id"`                    // unique within ThreadID
+	Room        string     `json:"room,omitempty"`        // standing group; ThreadID lives inside it. Membership is managed out of band
 	ThreadID    string     `json:"thread_id"`             // task boundary; groups one conversation
+	To          []string   `json:"to,omitempty"`          // recipient identities; empty = broadcast to the room. One entry = 1-to-1
 	InReplyTo   string     `json:"in_reply_to,omitempty"` // target message ID; required for IntentRetract
 	Intent      Intent     `json:"intent"`
 	Epistemic   Epistemic  `json:"epistemic"`
 	Confidence  float64    `json:"confidence"`             // self-reported, [0, 1]
 	ContextRefs []string   `json:"context_refs,omitempty"` // content addresses; build with ContextRef
-	PrevHash    string     `json:"prev_hash,omitempty"`    // Hash of the previous message in the thread; tamper-evident chain
+	PrevHash    string     `json:"prev_hash,omitempty"`    // Hash of the previous message in the thread; single-writer per thread, see design doc
 	Provenance  Provenance `json:"provenance"`
 	MaxHops     int        `json:"max_hops,omitempty"`     // relay cap; 0 = no cap. Drift control, see design doc
 	CostBudget  int        `json:"cost_budget,omitempty"`  // max tokens the reply may cost; 0 = no cap
 	AckRequired bool       `json:"ack_required,omitempty"` // force an Ack; see RequiresAck
 	Payload     string     `json:"payload"`                // natural-language content
-	Signer      string     `json:"signer,omitempty"`       // hex ed25519 public key; set by Sign
+	Signer      string     `json:"signer,omitempty"`       // hex ed25519 public key; set by Sign. Also the sender identity
 	Signature   string     `json:"signature,omitempty"`    // hex ed25519 signature; set by Sign, checked by VerifySignature
 }
 
@@ -99,6 +101,16 @@ func (m Message) Validate() error {
 	}
 	if m.ThreadID == "" {
 		return errors.New("thread_id is required")
+	}
+	seen := make(map[string]bool, len(m.To))
+	for _, to := range m.To {
+		if strings.TrimSpace(to) == "" {
+			return errors.New("to entries must be non-empty")
+		}
+		if seen[to] {
+			return fmt.Errorf("duplicate recipient %q", to)
+		}
+		seen[to] = true
 	}
 	if m.InReplyTo == m.ID {
 		return errors.New("in_reply_to must not equal id")

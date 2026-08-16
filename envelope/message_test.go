@@ -196,11 +196,32 @@ func TestDecodeRejectsInvalid(t *testing.T) {
 	}
 }
 
+func TestGroupAddressing(t *testing.T) {
+	m := validMessage()
+	m.Room = "platform-team"
+	m.To = []string{"agent-a", "agent-b"}
+	if err := m.Validate(); err != nil {
+		t.Fatalf("group message rejected: %v", err)
+	}
+
+	dup := m
+	dup.To = []string{"agent-a", "agent-a"}
+	if err := dup.Validate(); err == nil {
+		t.Fatal("duplicate recipients must fail")
+	}
+
+	empty := m
+	empty.To = []string{"  "}
+	if err := empty.Validate(); err == nil {
+		t.Fatal("empty recipient must fail")
+	}
+}
+
 func TestAckFlow(t *testing.T) {
 	m := validMessage()
 	m.Intent = IntentRequest
 
-	ack, err := NewAck(m, "You want the report by Friday.")
+	ack, err := NewAck(m, "agent-b", "You want the report by Friday.")
 	if err != nil {
 		t.Fatalf("new ack: %v", err)
 	}
@@ -231,8 +252,11 @@ func TestAckFlow(t *testing.T) {
 	}
 }
 
-func TestNewAckRequiresRestatement(t *testing.T) {
-	if _, err := NewAck(validMessage(), "  "); err == nil {
+func TestNewAckRequiresFromAndRestatement(t *testing.T) {
+	if _, err := NewAck(validMessage(), "", "restatement"); err == nil {
+		t.Fatal("empty from must fail")
+	}
+	if _, err := NewAck(validMessage(), "agent-b", "  "); err == nil {
 		t.Fatal("empty restatement must fail")
 	}
 }

@@ -1,0 +1,15 @@
+package room
+  const RoleMember = "member"
+  const RoleModerator = "moderator"
+  func (r *Room) Accepts(m envelope.Message) (error)
+  func (r *Room) Admit(id, by string) (error)
+  func (r *Room) ID() (string)
+  func (r *Room) IsMember(id string) (bool)
+  func (r *Room) Leave(id string) (error)
+  func (r *Room) Members() ([]string)
+  func (r *Room) Promote(id, by string) (error)
+  func (r *Room) Remove(id, by string) (error)
+  func New(id, founder string) (*Room, error)
+  type Role string
+  type Room struct {
+}

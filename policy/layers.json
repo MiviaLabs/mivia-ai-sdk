@@ -1,0 +1,7 @@
+{
+  "comment": "Dependency direction policy. A package may import only the listed internal packages. Adding a package requires a row here first - the plan gate (docs/plans/) says why the package exists.",
+  "allowed_imports": {
+    "envelope": [],
+    "room": ["envelope"]
+  }
+}

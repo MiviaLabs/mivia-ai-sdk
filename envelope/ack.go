@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -85,4 +86,25 @@ func (a Ack) Validate() error {
 		return fmt.Errorf("status %q is not valid", a.Status)
 	}
 	return nil
+}
+
+// Encode validates, then serializes the ack to JSON. Wire counterpart of
+// Message.Encode (message.go).
+func (a Ack) Encode() ([]byte, error) {
+	if err := a.Validate(); err != nil {
+		return nil, err
+	}
+	return json.Marshal(a)
+}
+
+// DecodeAck parses JSON, then validates. Unknown fields are ignored.
+func DecodeAck(data []byte) (Ack, error) {
+	var a Ack
+	if err := json.Unmarshal(data, &a); err != nil {
+		return Ack{}, fmt.Errorf("decode ack: %w", err)
+	}
+	if err := a.Validate(); err != nil {
+		return Ack{}, err
+	}
+	return a, nil
 }

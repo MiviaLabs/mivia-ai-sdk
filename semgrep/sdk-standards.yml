@@ -3,10 +3,10 @@ rules:
   - id: sdk.go.no-panic-in-packages
     languages: [go]
     severity: ERROR
-    message: Packages return errors; panic is forbidden outside tests.
+    message: Packages return errors; panic is forbidden outside tests and scripts.
     paths:
-      include: ["/envelope/**/*.go", "/room/**/*.go"]
-      exclude: ["/**/*_test.go"]
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go", "/scripts/**"]
     pattern: panic(...)
 
   - id: sdk.go.no-process-exit-in-packages
@@ -14,11 +14,13 @@ rules:
     severity: ERROR
     message: Packages must return errors instead of terminating the process.
     paths:
-      include: ["/envelope/**/*.go", "/room/**/*.go"]
-      exclude: ["/**/*_test.go"]
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go", "/scripts/**"]
     pattern-either:
       - pattern: log.Fatal(...)
       - pattern: log.Fatalf(...)
+      - pattern: log.Panic(...)
+      - pattern: log.Panicf(...)
       - pattern: os.Exit(...)
 
   - id: sdk.go.stdlib-only-imports
@@ -37,19 +39,20 @@ rules:
     severity: ERROR
     message: Use the declared Intent/Epistemic/AckStatus/Role constants; never construct enum values from string literals. Tests may construct invalid values on purpose.
     paths:
-      include: ["/envelope/**/*.go", "/room/**/*.go"]
-      exclude: ["/**/*_test.go"]
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go", "/scripts/**"]
     pattern-either:
       - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\("'
       - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*"'
+      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role)\s*=\s*"'
 
   - id: sdk.go.hash-prefix-centralized
     languages: [go]
     severity: ERROR
     message: Use the hashPrefix const (envelope/message.go); the literal may appear in its definition only.
     paths:
-      include: ["/envelope/**/*.go"]
-      exclude: ["/**/*_test.go"]
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go", "/scripts/**"]
     patterns:
       - pattern-regex: '"sha256:"'
       - pattern-not-regex: 'hashPrefix\s*=\s*"sha256:"'
@@ -59,11 +62,13 @@ rules:
     severity: ERROR
     message: Wire bytes come from Message.Encode; canonical bytes for hashing/signing live in message.go and sign.go only.
     paths:
-      include: ["/envelope/**/*.go", "/room/**/*.go"]
+      include: ["/**/*.go"]
       exclude:
         - "/**/message.go"
         - "/**/sign.go"
+        - "/**/ack.go"
         - "/**/*_test.go"
+        - "/scripts/**"
     pattern: json.Marshal(...)
 
   - id: sdk.go.sign-via-sign
@@ -75,6 +80,7 @@ rules:
       exclude:
         - "/**/sign.go"
         - "/**/*_test.go"
+        - "/scripts/**"
     pattern: ed25519.Sign(...)
 
   # --- Security and hygiene ---
@@ -111,5 +117,5 @@ rules:
     severity: ERROR
     message: Do not commit unresolved TODO/FIXME/HACK/XXX markers; finish the work or track it elsewhere.
     paths:
-      include: ["/envelope/**", "/room/**"]
+      include: ["/**/*.go"]
     pattern-regex: '(?i)\b(TODO|FIXME|HACK|XXX)\b'

@@ -142,15 +142,18 @@ func (r *Room) Members() []string {
 	return out
 }
 
-// Accepts gates an envelope message: it must name this room, be signed,
-// and its signer must be a member. Recipients in To who are not members
-// are rejected, so a sender cannot address ghosts.
+// Accepts gates an envelope message: it must name this room, carry a
+// valid signature from a roster member, and address only members.
+// Accepts verifies the signature itself; a caller does not need to.
 func (r *Room) Accepts(m envelope.Message) error {
 	if m.Room != r.id {
 		return fmt.Errorf("%w: %q", ErrWrongRoom, m.Room)
 	}
 	if m.Signer == "" {
 		return ErrUnsigned
+	}
+	if err := m.VerifySignature(); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnsigned, err)
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()

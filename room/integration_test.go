@@ -149,6 +149,13 @@ func TestAdmissionFailures(t *testing.T) {
 		"outsider cannot post": {room.ErrNotMember, func() envelope.Message { m := baseMessage(r.ID()); m.ID = "x1"; return eve.post(t, m) }()},
 		"unsigned cannot post": {room.ErrUnsigned, func() envelope.Message { m := baseMessage(r.ID()); m.ID = "x2"; return m }()},
 		"wrong room":           {room.ErrWrongRoom, func() envelope.Message { m := baseMessage("other-room"); m.ID = "x3"; return alice.post(t, m) }()},
+		"forged signature": {room.ErrUnsigned, func() envelope.Message {
+			m := baseMessage(r.ID())
+			m.ID = "x5"
+			m = alice.post(t, m)
+			m.Payload = "Forged claim." // breaks the signature
+			return m
+		}()},
 		"ghost recipient": {room.ErrNotMember, func() envelope.Message {
 			m := baseMessage(r.ID())
 			m.ID = "x4"

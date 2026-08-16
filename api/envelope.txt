@@ -1,0 +1,65 @@
+package envelope
+  const AckConfirmed = "confirmed"
+  const AckCorrected = "corrected"
+  const AckPending = "pending"
+  const EpistemicAssumed = "assumed"
+  const EpistemicInferred = "inferred"
+  const EpistemicUntrustedInput = "untrusted-input"
+  const EpistemicVerified = "verified"
+  const IntentAssert = "assert"
+  const IntentChallenge = "challenge"
+  const IntentEscalate = "escalate"
+  const IntentQuery = "query"
+  const IntentRequest = "request"
+  const IntentRetract = "retract"
+  const Version = "v1"
+  func (a Ack) Confirm() (Ack)
+  func (a Ack) Correct(correction string) (Ack)
+  func (a Ack) Encode() ([]byte, error)
+  func (a Ack) Validate() (error)
+  func (m Message) Encode() ([]byte, error)
+  func (m Message) Hash() (string)
+  func (m Message) RequiresAck() (bool)
+  func (m Message) Validate() (error)
+  func (m Message) VerifySignature() (error)
+  func ContextRef(content string) (string)
+  func Decode(data []byte) (Message, error)
+  func DecodeAck(data []byte) (Ack, error)
+  func NewAck(msg Message, from, restatement string) (Ack, error)
+  func Sign(key ed25519.PrivateKey, m Message) (Message, error)
+  func VerifyThread(msgs []Message) (error)
+  type Ack struct {
+  MessageID string `json:"message_id"`
+  From string `json:"from"`
+  Restatement string `json:"restatement"`
+  Status AckStatus `json:"status"`
+  Correction string `json:"correction,omitempty"`
+}
+  type AckStatus string
+  type Epistemic string
+  type Intent string
+  type Message struct {
+  Version string `json:"version"`
+  ID string `json:"id"`
+  Room string `json:"room,omitempty"`
+  ThreadID string `json:"thread_id"`
+  To []string `json:"to,omitempty"`
+  InReplyTo string `json:"in_reply_to,omitempty"`
+  Intent Intent `json:"intent"`
+  Epistemic Epistemic `json:"epistemic"`
+  Confidence float64 `json:"confidence"`
+  ContextRefs []string `json:"context_refs,omitempty"`
+  PrevHash string `json:"prev_hash,omitempty"`
+  Provenance Provenance `json:"provenance"`
+  MaxHops int `json:"max_hops,omitempty"`
+  CostBudget int `json:"cost_budget,omitempty"`
+  AckRequired bool `json:"ack_required,omitempty"`
+  Payload string `json:"payload"`
+  Signer string `json:"signer,omitempty"`
+  Signature string `json:"signature,omitempty"`
+}
+  type Provenance struct {
+  Source string `json:"source"`
+  Chain []string `json:"chain,omitempty"`
+  Evidence []string `json:"evidence,omitempty"`
+}

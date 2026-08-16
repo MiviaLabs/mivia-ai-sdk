@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Gate: plan prose follows the writing standard (AGENTS.md). Checks
-sentence length in docs/plans/*.md: one idea per sentence, at most 25
+"""Gate: doc prose follows the writing standard (AGENTS.md). Checks
+sentence length in docs/**/*.md: one idea per sentence, at most 25
 words. Code fences, headings, and list lines are exempt."""
 import re
 import sys
@@ -30,7 +30,7 @@ def check_file(path: Path, rel: Path) -> list[str]:
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     violations = []
-    for path in sorted((root / "docs" / "plans").glob("*.md")):
+    for path in sorted((root / "docs").rglob("*.md")):
         violations.extend(check_file(path, path.relative_to(root)))
     if violations:
         print("\n".join(violations))

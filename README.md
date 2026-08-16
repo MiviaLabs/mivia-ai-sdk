@@ -21,7 +21,8 @@ the payload. They are in the missing metadata:
 
 This SDK wraps the payload in an envelope that fixes those points.
 See [docs/protocol-design.md](docs/protocol-design.md) for the full
-rationale and the research behind it.
+rationale and the research behind it. Start at
+[docs/README.md](docs/README.md) for the index and the reading order.
 
 ## Install
 
@@ -133,7 +134,7 @@ envelope/            message envelope — one package per concern
   thread.go          VerifyThread, the hash-chain check for an ordered thread
   testdata/vectors/  conformance vectors pinning the wire contract
 room/                standing groups: roster, roles, message admission
-docs/                design documents
+docs/                index + architecture + package docs + examples
 scripts/             gates: docs, structure, deps, plan, api, semgrep
 .semgrepignore       Semgrep ignore list; test files are scanned again
 .githooks/           pre-commit runs make verify-fast on the staged snapshot

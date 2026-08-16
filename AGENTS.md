@@ -12,7 +12,9 @@ PoC Go SDK for model-to-model communication. Module:
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.
-- `docs/` — design documents. `docs/protocol-design.md` is the rationale.
+- `docs/` — README.md is the index; architecture.md the module map;
+  packages/ the package references; examples/ the walkthroughs;
+  plans/ the change contracts; protocol-design.md the wire rationale.
 - `scripts/` — gates: check_docs, check_structure, check_deps,
   check_plan, check_prose, check_api, check_gomod,
   check_semgrepignore, check_semgrep_probes, check_labels,

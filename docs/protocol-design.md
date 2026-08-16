@@ -1,5 +1,22 @@
 # Protocol design
 
+**What this document is:** the wire-protocol rationale. It explains
+why the message envelope is shaped this way.
+
+Contents:
+
+- [Problem statement](#problem-statement)
+- [What the research says](#what-the-research-says)
+- [Rejected alternatives](#rejected-alternatives)
+- [Design: structured envelope, natural-language payload](#design-structured-envelope-natural-language-payload)
+- [Enforced invariants](#enforced-invariants)
+- [Semantic acknowledgment](#semantic-acknowledgment)
+- [Group threads and the hash chain](#group-threads-and-the-hash-chain)
+- [Deliberately omitted](#deliberately-omitted)
+- [Known limits](#known-limits)
+- [Validation plan](#validation-plan)
+- [References](#references)
+
 This document records the design decisions of the model-to-model
 message protocol that this SDK implements. Schema version: **v1**.
 

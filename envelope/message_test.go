@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"math"
 	"testing"
 )
 
@@ -33,6 +34,11 @@ func TestValidateRejectsBadFields(t *testing.T) {
 			m.Intent = IntentRetract
 			m.InReplyTo = ""
 		},
+		"challenge no target": func(m *Message) {
+			m.Intent = IntentChallenge
+			m.InReplyTo = ""
+		},
+		"confidence NaN": func(m *Message) { m.Confidence = math.NaN() },
 		"verified no source": func(m *Message) {
 			m.Epistemic = EpistemicVerified
 			m.Provenance = Provenance{Evidence: []string{ContextRef("e")}}
@@ -249,6 +255,12 @@ func TestAckFlow(t *testing.T) {
 	bad := ack.Correct("")
 	if err := bad.Validate(); err == nil {
 		t.Fatal("corrected ack without correction must fail validation")
+	}
+
+	stray := ack
+	stray.Correction = "unsolicited"
+	if err := stray.Validate(); err == nil {
+		t.Fatal("pending ack with a correction must fail validation")
 	}
 }
 

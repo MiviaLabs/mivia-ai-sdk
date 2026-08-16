@@ -5,9 +5,10 @@ PoC Go SDK for model-to-model communication. Module:
 
 ## Layout
 
-- `envelope/` — the message envelope (Message, Ack, Sign). One package
-  per concern; new concerns get new subpackages, never root-level Go
-  files.
+- `envelope/` — the message envelope (Message, Ack, Sign,
+  VerifyThread). One package per concern; new concerns get new
+  subpackages, never root-level Go files.
+- `room/` — standing groups: membership roster, roles, admission.
 - `docs/` — design documents. `docs/protocol-design.md` is the rationale.
 - `scripts/check_docs.py` — doc-comment gate.
 - `scripts/check_structure.py` — file/function size gate.

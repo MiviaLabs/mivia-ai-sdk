@@ -97,10 +97,13 @@ func main() {
 - **Confidence** — self-reported certainty, 0.0 to 1.0.
 - **Thread** — `thread_id` groups one conversation or task. Required;
   unnamed threads are how agents lose the plot.
-- **Addressing** — `room` names a standing group (membership managed
-  out of band), `to` lists recipients: one entry is 1-to-1, several is
-  multicast, empty is broadcast to the room. `signer` is the sender.
-  Group acks are attributed: every `Ack` carries `from`.
+- **Addressing** — `room` names a standing group, `to` lists
+  recipients: one entry is 1-to-1, several is multicast, empty is
+  broadcast to the room. `signer` is the sender.
+- **Membership** — the `room` package holds the roster: moderator-gated
+  `Admit`/`Remove`/`Promote`, `Leave`, and `Room.Accepts` which admits
+  a message only when signer and recipients are members. Group acks
+  are attributed: every `Ack` carries `from`.
 - **Context refs** — shared context addressed by canonical content hash
   (`sha256:` + 64 lowercase hex), not re-sent.
 - **Audit chain** — `prev_hash` links each message to `Hash()` of the
@@ -127,11 +130,13 @@ envelope/            message envelope — one package per concern
   message.go         Message, Intent, Epistemic, validation, Encode/Decode
   ack.go             Ack, the semantic-ack flow
   sign.go            ed25519 Sign / VerifySignature
+  thread.go          VerifyThread, the hash-chain check for an ordered thread
   testdata/vectors/  conformance vectors pinning the wire contract
+room/                standing groups: roster, roles, message admission
 docs/                design documents
 scripts/             check_docs.py (doc gate), check_structure.py (size gate)
 .githooks/           pre-commit runs make verify
-Makefile             make verify, make install-hooks
+Makefile             make verify, make bench, make install-hooks
 AGENTS.md            contribution rules for AI and human agents
 ```
 

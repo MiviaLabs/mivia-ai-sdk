@@ -116,11 +116,11 @@ Decision by decision:
 - **Addressing: 1-to-1, multicast, rooms.** `signer` is the sender.
   `to` lists recipients: one entry is 1-to-1, several entries are
   multicast, empty is broadcast to the room. `room` names a standing
-  group; threads live inside rooms. Membership itself (who may join,
-  who is in) is managed out of band — the envelope carries the
-  address, not the roster. This matches the governance paper's
-  finding that membership is a separate layer; we provide the hook,
-  not the policy.
+  group; threads live inside rooms. Membership is implemented in the
+  `room` package: a moderator-gated roster with roles, and
+  `Room.Accepts` gates a message on signer and recipient membership.
+  The envelope carries the address; the room package carries the
+  roster.
 - **Tamper-evident audit.** `prev_hash` links each message to the
   `Hash()` of the previous message in the thread. Reordering,
   deletion, or insertion breaks the chain and is detectable. Cheap:

@@ -74,6 +74,9 @@ func (a Ack) Validate() error {
 	}
 	switch a.Status {
 	case AckPending, AckConfirmed:
+		if a.Correction != "" {
+			return fmt.Errorf("correction requires status %q", AckCorrected)
+		}
 	case AckCorrected:
 		if strings.TrimSpace(a.Correction) == "" {
 			return errors.New("correction is required when status is corrected")

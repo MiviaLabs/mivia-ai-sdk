@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -116,10 +117,10 @@ func (m Message) Validate() error {
 		return errors.New("in_reply_to must not equal id")
 	}
 	switch m.Intent {
-	case IntentAssert, IntentQuery, IntentRequest, IntentEscalate, IntentChallenge:
-	case IntentRetract:
+	case IntentAssert, IntentQuery, IntentRequest, IntentEscalate:
+	case IntentChallenge, IntentRetract:
 		if m.InReplyTo == "" {
-			return errors.New("retract requires in_reply_to")
+			return fmt.Errorf("%s requires in_reply_to", m.Intent)
 		}
 	default:
 		return fmt.Errorf("intent %q is not valid", m.Intent)
@@ -136,7 +137,7 @@ func (m Message) Validate() error {
 	default:
 		return fmt.Errorf("epistemic %q is not valid", m.Epistemic)
 	}
-	if m.Confidence < 0 || m.Confidence > 1 {
+	if math.IsNaN(m.Confidence) || m.Confidence < 0 || m.Confidence > 1 {
 		return fmt.Errorf("confidence %f is outside [0, 1]", m.Confidence)
 	}
 	for _, ref := range m.ContextRefs {
@@ -209,10 +210,16 @@ func isHashRef(ref string) bool {
 }
 
 // isLowerHex reports whether s is exactly n lowercase hex chars.
+// It scans instead of allocating like strings.ToLower would.
 func isLowerHex(s string, n int) bool {
-	if len(s) != n || s != strings.ToLower(s) {
+	if len(s) != n {
 		return false
 	}
-	_, err := hex.DecodeString(s)
-	return err == nil
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

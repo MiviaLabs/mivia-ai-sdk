@@ -5,5 +5,8 @@ verify:
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py
 
+bench:
+	go test -run=NONE -bench=. -benchmem ./...
+
 install-hooks:
 	git config core.hooksPath .githooks

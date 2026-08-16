@@ -10,7 +10,7 @@ verify:
 	python3 scripts/check_plan.py
 	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
-	semgrep scan --config semgrep/ --error --metrics=off --quiet .
+	semgrep scan --config semgrep/ --error --metrics=off --quiet -j 1 .
 	@pkgs=$$(go list ./... | grep -v /scripts); \
 	go test -coverprofile=cover.out $$pkgs >/dev/null 2>&1; \
 	total=$$(go tool cover -func=cover.out | awk '/^total:/ {gsub("%","",$$3); print $$3}'); \

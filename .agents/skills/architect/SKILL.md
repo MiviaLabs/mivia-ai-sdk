@@ -122,8 +122,17 @@ Report one verdict per lens. Each verdict is one of these:
 Then give the summary. The summary is the total architecture health.
 It is one of the same three words. State it first.
 
-For every finding, give a file:line, the severity (low, medium, high),
-and a minimal fix. A finding with no fix is not a finding.
+Every finding ends with a solution. A finding with no solution is not a
+finding. The solution is one of two kinds.
+
+- One clear fix. Name the concrete change and the file:line it touches.
+  The fix is a single step the builder can take.
+- Options A, B, C. Use this when the direction is a decision, not a
+  fact. Mark the recommended option. Say why in one sentence. This
+  matches the AGENTS.md orchestrator rule for choices.
+
+For every finding, give a file:line and the severity (low, medium,
+high). Then give the solution in the chosen form.
 
 ## Output structure
 
@@ -131,14 +140,41 @@ Write the report in this order. Keep it checkable, not long.
 
 1. The one-word verdict for each lens and for the total.
 2. Evidence: the gate results you collected.
-3. Findings: each with file:line, severity, and minimal fix.
+3. Findings: each with file:line, severity, and a solution. End every
+   finding with either a recommended fix or options A/B/C.
 4. Pattern map: which patterns are present and where.
-5. Recommendation: the smallest change that works.
+5. Recommendation: the smallest change that works. Pick one option when
+   the finding offered choices.
+
+Examples of the two solution forms:
+
+```text
+Finding 3 (medium): VerifyThread assumes one writer per thread.
+  room/envelope-go: a second writer forks the chain and the thread
+  fails. This is a known, documented limit, not a bug.
+  Options:
+    A. Keep the limit. Document it as deliberate (Recommended).
+       Reason: no current caller needs concurrent writers.
+    B. Move to a multi-parent DAG. More work, speculative today.
+    C. Enforce serialization at the transport layer now.
+```
+
+```text
+Finding 1 (low): Acks are not cryptographically signed.
+  envelope/ack.go: a forged Ack can claim a wrong `from`.
+  Fix: sign the ack bytes like Message, or document that attribution
+  is out of band. Add a conformance vector for the signed ack.
+```
+
+A recommendation is not optional. The report ends with a named path
+forward, even when that path is "do nothing, keep the documented
+limit".
 
 ## Constraints
 
 - Never change code during the assessment. Report first.
-- A finding needs a reproduction and a fix. Guesses are not findings.
+- A finding needs a reproduction and a solution. Guesses are not
+  findings. A finding with no named fix or option set is incomplete.
 - Follow the STE writing standard: one idea per sentence, at most 25
   words, no filler words.
 - No audit-finding labels. A label is a letter A through G followed by

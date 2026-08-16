@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -190,5 +192,59 @@ func TestAdmissionFailures(t *testing.T) {
 				t.Fatalf("err = %v, want %v", err, tc.err)
 			}
 		})
+	}
+}
+
+// TestConcurrentRoster hammers the mutex-guarded roster: goroutines mix
+// Admit, Promote, Leave, Remove, and Accepts against one Room. Errors
+// are expected (ops race each other); the race detector is the oracle.
+// Synchronization is sync.WaitGroup only; never time.Sleep.
+func TestConcurrentRoster(t *testing.T) {
+	founder := newAgent(t, "founder")
+	poster := newAgent(t, "poster")
+
+	r, err := room.New("platform-team", founder.id)
+	if err != nil {
+		t.Fatalf("new room: %v", err)
+	}
+	if err := r.Admit(poster.id, founder.id); err != nil {
+		t.Fatalf("admit poster: %v", err)
+	}
+	msg := baseMessage(r.ID())
+	msg.ID = "stress"
+	msg = poster.post(t, msg)
+
+	const workers = 8
+	const opsPerWorker = 25
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < opsPerWorker; i++ {
+				id := fmt.Sprintf("agent-%d-%d", w, i)
+				switch i % 5 {
+				case 0:
+					r.Admit(id, founder.id)
+				case 1:
+					r.Promote(id, founder.id)
+				case 2:
+					r.Leave(id)
+				case 3:
+					r.Remove(id, founder.id)
+				case 4:
+					r.Accepts(msg)
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	// Founder and poster are never targeted above; both must survive.
+	if !r.IsMember(founder.id) {
+		t.Fatal("founder must stay a member")
+	}
+	if !r.IsMember(poster.id) {
+		t.Fatal("poster must stay a member")
 	}
 }

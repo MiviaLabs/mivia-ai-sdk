@@ -47,7 +47,10 @@ func (m Message) VerifySignature() error {
 	}
 	signed := m
 	signed.Signature = ""
-	data, _ := json.Marshal(signed) // same canonical form Sign used
+	data, err := json.Marshal(signed) // same canonical form Sign used
+	if err != nil {
+		return fmt.Errorf("marshal for verify: %w", err)
+	}
 	if !ed25519.Verify(pub, data, sig) {
 		return errors.New("signature does not match message content")
 	}

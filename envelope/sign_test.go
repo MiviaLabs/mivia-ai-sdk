@@ -2,6 +2,9 @@ package envelope
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
+	"errors"
+	"math"
 	"testing"
 )
 
@@ -35,6 +38,40 @@ func TestVerifyDetectsTampering(t *testing.T) {
 	m.Payload = "Forged claim."
 	if err := m.VerifySignature(); err == nil {
 		t.Fatal("tampered payload must fail verification")
+	}
+}
+
+func TestVerifyDetectsMetadataTampering(t *testing.T) {
+	cases := map[string]func(*Message){
+		"to":        func(m *Message) { m.To = []string{"agent-b"} },
+		"max hops":  func(m *Message) { m.MaxHops = 3 },
+		"epistemic": func(m *Message) { m.Epistemic = EpistemicAssumed },
+		"prev hash": func(m *Message) { m.PrevHash = ContextRef("forged parent") },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			m, err := Sign(testKey(t), validMessage())
+			if err != nil {
+				t.Fatalf("sign: %v", err)
+			}
+			mutate(&m)
+			if err := m.VerifySignature(); err == nil {
+				t.Fatal("tampered metadata must fail verification")
+			}
+		})
+	}
+}
+
+func TestVerifySignatureReturnsMarshalError(t *testing.T) {
+	m, err := Sign(testKey(t), validMessage())
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	// NaN fails json.Marshal; the error must surface, not verify over nil.
+	m.Confidence = math.NaN()
+	var marshalErr *json.UnsupportedValueError
+	if err := m.VerifySignature(); !errors.As(err, &marshalErr) {
+		t.Fatalf("err = %v, want the json marshal error", err)
 	}
 }
 

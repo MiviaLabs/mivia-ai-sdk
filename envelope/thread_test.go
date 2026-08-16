@@ -50,6 +50,10 @@ func TestVerifyThreadRejectsBadChains(t *testing.T) {
 			x.ID = "m3"
 			return x
 		}()},
+		"duplicate id": {m1, func() Message {
+			// Repeats m1's ID with a valid prev_hash link.
+			return chainMessage("m1", &m1)
+		}()},
 	}
 	for name, msgs := range cases {
 		t.Run(name, func(t *testing.T) {

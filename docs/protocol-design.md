@@ -124,7 +124,9 @@ Decision by decision:
 - **Tamper-evident audit.** `prev_hash` links each message to the
   `Hash()` of the previous message in the thread. Reordering,
   deletion, or insertion breaks the chain and is detectable. Cheap:
-  one hash per message.
+  one hash per message. `VerifyThread` also rejects a repeated message
+  ID: `id` stays unique within its `thread_id`, so a replayed or
+  duplicated message cannot enter the chain.
 - **Hop cap.** `max_hops` limits how many relays a message may pass
   through (checked against the provenance chain length). Semantic
   error accumulates per hop; unbounded relay is unbounded drift.
@@ -159,6 +161,9 @@ Decision by decision:
 - Every evidence ref is a canonical sha256 address.
 - `signer` and `signature` come as a pair, in canonical hex formats.
 - `payload` is non-empty.
+
+`VerifyThread` adds the thread-level rule: no `id` repeats within one
+thread.
 
 ## Semantic acknowledgment
 

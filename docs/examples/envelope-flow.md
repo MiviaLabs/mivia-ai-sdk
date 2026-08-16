@@ -1,10 +1,8 @@
 # Example: the envelope flow
 
-This walkthrough shows one message's life: create, sign, encode,
-decode, verify, and then tamper with a field value. The code is
-illustrative. It is a PoC sketch, not a buildable package. Runnable
-examples are future work; a runnable package would need a policy row,
-an API lock, and a plan.
+This walkthrough follows one message: create, sign, encode, decode,
+verify, then tamper. The code is illustrative. It is a PoC sketch, not
+a buildable package.
 
 ## The program
 
@@ -76,9 +74,8 @@ func main() {
 
 ## What the program shows
 
-The original message passes every step. After the payload changes,
-the message still encodes and decodes: the JSON stays valid. The
-signature covers the canonical JSON of every field except itself, so
-any value change fails verification. Structural tampering breaks the
-JSON and fails Decode instead; this example changes a value on
-purpose.
+The original message passes every step. After the payload changes, the
+JSON stays valid, so the message still encodes and decodes. The
+signature covers every field except itself; any value change fails
+verification. This example changes a value, not the structure; a
+structural change would break the JSON and fail Decode instead.

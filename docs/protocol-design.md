@@ -168,8 +168,9 @@ Decision by decision:
 - `version` equals the supported value.
 - `id` is set and differs from `in_reply_to`.
 - `thread_id` is set.
-- `retract` requires `in_reply_to`.
-- `verified` requires `provenance.source`.
+- `challenge` and `retract` require `in_reply_to`.
+- `verified` requires `provenance.source` and at least one evidence
+  ref.
 - `confidence` is inside [0, 1].
 - Context refs and `prev_hash` are canonical: `sha256:` plus 64
   lowercase hex chars. Canonical form keeps addresses comparable by

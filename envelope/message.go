@@ -60,7 +60,7 @@ type Message struct {
 	Room        string     `json:"room,omitempty"`        // standing group; ThreadID lives inside it. Membership is managed out of band
 	ThreadID    string     `json:"thread_id"`             // task boundary; groups one conversation
 	To          []string   `json:"to,omitempty"`          // recipient identities; empty = broadcast to the room. One entry = 1-to-1
-	InReplyTo   string     `json:"in_reply_to,omitempty"` // target message ID; required for IntentRetract
+	InReplyTo   string     `json:"in_reply_to,omitempty"` // target message ID; required for IntentChallenge and IntentRetract
 	Intent      Intent     `json:"intent"`
 	Epistemic   Epistemic  `json:"epistemic"`
 	Confidence  float64    `json:"confidence"`             // self-reported, [0, 1]

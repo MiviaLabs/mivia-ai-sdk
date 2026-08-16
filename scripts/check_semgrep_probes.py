@@ -2,7 +2,7 @@
 """Gate: every Semgrep rule fires on its violation and stays silent on
 its clean counterpart. The probe writes snippets to a temp dir, runs
 Semgrep once with the repo config, and asserts the expected rule IDs.
-The suppression probe runs the D5 grep command on a marker fixture."""
+The suppression probe runs the suppression grep command on a marker fixture."""
 import json
 import re
 import shutil
@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG = str(ROOT / "semgrep")
 GREP_PATTERN = "(//|#)\\s*nose" + "m" + "grep"
 
-# Marker words are built from fragments. The D5 grep and the drift scan
+# Marker words are built from fragments. The suppression grep and the drift scan
 # read this file; a literal marker here would trip the gate it guards.
 SUPPRESS = "nose" + "mgrep"
 D_MARK = "TO" + "DO"
@@ -170,13 +170,13 @@ def main() -> int:
             capture_output=True, text=True,
         )
         if grep.returncode != 0:
-            problems.append("D5 grep did not find the comment-form marker fixture")
+            problems.append("suppression grep did not find the comment-form marker fixture")
         grep_clean = subprocess.run(
             ["grep", "-riE", GREP_PATTERN, str(tmp / "d5clean")],
             capture_output=True, text=True,
         )
         if grep_clean.returncode == 0:
-            problems.append("D5 grep fired on a marker-free directory")
+            problems.append("suppression grep fired on a marker-free directory")
 
         if problems:
             print("\n".join(problems))

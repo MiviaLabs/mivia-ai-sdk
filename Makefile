@@ -17,6 +17,7 @@ verify-fast:
 	python3 scripts/check_api.py
 	python3 scripts/check_gomod.py
 	python3 scripts/check_semgrepignore.py
+	python3 scripts/check_labels.py
 	$(SEMGREP_SCAN)
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 

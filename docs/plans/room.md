@@ -19,7 +19,7 @@ IsMember/Members/ID/Accepts methods. Locked in `api/room.txt`.
 Imports only envelope (policy/layers.json). Accepts verifies
 signatures itself so callers cannot skip authentication. The lock
 gains the six sentinel `var` lines when api_surface learns vars;
-see gates.md (C1). No symbol change.
+see gates.md; the api_surface fixes changed no symbol.
 
 ## Tests
 

@@ -15,13 +15,14 @@ PoC Go SDK for model-to-model communication. Module:
 - `docs/` — design documents. `docs/protocol-design.md` is the rationale.
 - `scripts/` — gates: check_docs, check_structure, check_deps,
   check_plan, check_prose, check_api, check_gomod,
-  check_semgrepignore, check_semgrep_probes, api_surface (Go).
+  check_semgrepignore, check_semgrep_probes, check_labels,
+  api_surface (Go).
 - `semgrep/sdk-standards.yml` — pattern rules: no panic/exit in
   packages, stdlib-only imports, no string literals where constants
   exist (enums, hash prefix), wire bytes only via Encode, signing only
   via Sign, no hardcoded secrets, no suppression annotations, no
-  unresolved-work markers. The Makefile D5 scan rejects suppression
-  markers in comments.
+  unresolved-work markers. The Makefile suppression-marker scan rejects
+  suppression markers in comments.
 - `.semgrepignore` — lists only `.git/`, so Semgrep scans test files.
   scripts/check_semgrepignore.py pins its exact content.
 - `.githooks/pre-commit` — runs `make verify-fast` on the staged
@@ -107,6 +108,9 @@ any stage means stop and escalate to the user.
   Tests may construct invalid values on purpose.
 - Do not suppress Semgrep findings with inline annotations; fix the
   rule or the code.
+- No audit-finding labels in comments, docs, or plans. A label is a
+  letter A through G followed by a digit. Gate:
+  `scripts/check_labels.py`.
 - Tests table-driven where the case set grows. Test the invariants that
   `Validate` claims to enforce.
 - The wire contract is pinned by conformance vectors in
@@ -133,6 +137,9 @@ follow reliably. Each has a gate behind it.
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.
   Mutation testing is future work.
+- Do not write an audit-finding label in comments, docs, or plans: a
+  letter A through G followed by a digit. Gate:
+  `scripts/check_labels.py`.
 - Do not weaken a gate, raise a limit, or widen an exclusion to make
   your change pass. Change the design instead, or convince the user
   and record the exception in the gate file itself.
@@ -141,8 +148,8 @@ follow reliably. Each has a gate behind it.
 
 Two tiers guard the tree. `make verify-fast` runs the fast local
 checks: gofmt, vet, tests, the python gates, the Semgrep scan, and the
-D5 nosemgrep scan. The pre-commit hook runs `make verify-fast` on the
-staged snapshot.
+suppression-marker scan. The pre-commit hook runs `make verify-fast` on
+the staged snapshot.
 
 `make verify` runs `verify-fast`, the coverage floor block, and the
 Semgrep probe suite. The probes prove every Semgrep rule fires on a

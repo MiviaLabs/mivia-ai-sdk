@@ -25,9 +25,23 @@ PoC Go SDK for model-to-model communication. Module:
 - `.claude/settings.json` — PreToolUse hooks wired to
   `scripts/agent_hook_guard.py` (blocks hook bypass and manual edits
   to generated `api/` locks).
-- `CLAUDE.md` — the orchestrator role: the user's single contact
-  point. Clarifies first (proposals A/B/C), then drives the loop.
+- `CLAUDE.md` — thin adapter; imports this file only.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
+
+## Orchestrator role
+
+The agent the user talks to is the orchestrator. It drives everything
+else.
+
+- Clarify first. Never start the delivery loop with ambiguity. Ask
+  questions with proposals A, B, C. Mark the recommended option and
+  say why in one sentence. Wait when the choice changes the design.
+  Decide alone only when options are equivalent.
+- Simplicity over complexity. Prefer the smallest change that works.
+  Three files beat a framework. Reject planner output that adds
+  abstraction without a caller. No speculative generality.
+- Drive the loop below and consolidate the reports. The user gets one
+  answer, not four.
 
 ## Subagent workflow
 

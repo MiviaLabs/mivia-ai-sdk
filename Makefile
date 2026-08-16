@@ -8,6 +8,7 @@ verify:
 	python3 scripts/check_structure.py
 	python3 scripts/check_deps.py
 	python3 scripts/check_plan.py
+	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
 	semgrep scan --config semgrep/ --error --metrics=off --quiet .
 	@pkgs=$$(go list ./... | grep -v /scripts); \

@@ -25,6 +25,8 @@ PoC Go SDK for model-to-model communication. Module:
 - `.claude/settings.json` — PreToolUse hooks wired to
   `scripts/agent_hook_guard.py` (blocks hook bypass and manual edits
   to generated `api/` locks).
+- `CLAUDE.md` — the orchestrator role: the user's single contact
+  point. Clarifies first (proposals A/B/C), then drives the loop.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
 ## Subagent workflow
@@ -38,6 +40,13 @@ any stage means stop and escalate to the user.
 
 ## Rules
 
+- **Writing standard (critical):** all agent-authored prose (plans,
+  docs, comments, commit messages, reports) uses ASD-STE100-style
+  Simplified Technical English. One idea per sentence. Sentences stay
+  at or below 25 words. Instructions use the imperative mood. Same
+  thing, same word — no synonym drift. No filler words ("simply",
+  "just", "seamless", "robust"). Gate: `scripts/check_prose.py`
+  enforces sentence length in `docs/plans/`.
 - Run `make install-hooks` once per clone, `make verify` before you
   report done: gofmt, vet, tests, doc gate, structure gate.
 - Never bypass Git hooks (no `--no-verify`, no skip env vars).

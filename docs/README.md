@@ -15,7 +15,9 @@ Leave the research record for last.
 6. [examples/envelope-flow.md](examples/envelope-flow.md) — the envelope walkthrough.
 7. [examples/room-flow.md](examples/room-flow.md) — the room walkthrough.
 8. [plans/](plans/) — the change contracts; read them before code changes.
-9. [research-a2a.md](research-a2a.md) — the research record; read it last.
+9. [research-a2a.md](research-a2a.md) — the A2A research record; read it last.
+10. [research-agents.md](research-agents.md) — the building-block, agent, and A2A v1.0 assessment; read it last.
+11. [research-state-machine.md](research-state-machine.md) — the workflow state primitive assessment; read it last.
 
 ## Change contracts
 

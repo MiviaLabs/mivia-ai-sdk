@@ -3,6 +3,15 @@
 Date: 2026-08. Question: how should this SDK compose with the A2A
 protocol for delegation, and does A2A give us workflows?
 
+Update: A2A reached v1.0 in 2026-03. The facts below still hold for
+version negotiation, discovery, tasks, and streaming. The v1.0 part
+model changed: one Part type carries text, raw, url, or data. The old
+kind field and the separate part classes are gone. A future plan must
+embed the envelope in Part data, not in a DataPart. A2A v1.0 added
+contextId, which maps to our thread_id. The official Go SDK is
+a2aproject/a2a-go. See [research-agents.md](research-agents.md) for the
+full v1.0 assessment and the agent plan.
+
 ## What A2A provides
 
 Verified against the A2A specification and current analyses:

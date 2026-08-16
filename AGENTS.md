@@ -69,6 +69,26 @@ else.
 - Drive the loop below and consolidate the reports. The user gets one
   answer, not four.
 
+## Building blocks
+
+The SDK is a set of composable blocks, not a monolith. Every package
+decision follows this rule.
+
+- A package is a building block with one concern. A new concern gets a
+  new top-level package, never a root file.
+- Compose packages through their public API. Never copy a type into
+  another package to dodge an import. Use the exported type.
+- The import policy in `policy/layers.json` pins every edge. Direction
+  flows inward: leaf blocks first, the composition last. The deps gate
+  enforces it.
+- An agent is the composition layer. It wires blocks: a transport
+  adapter, a workflow runner, and the message plane. The agent imports
+  the blocks; a block never imports the agent.
+- Do not split a working package for purity alone. Split a package only
+  when a real consumer needs the concern by itself. Keep cohesion.
+- A block stays replaceable and testable on its own. Do not entangle it
+  with a caller. See docs/research-agents.md for the assessment.
+
 ## Subagent workflow
 
 Non-trivial changes (new package, API change, more than one file) go
@@ -132,6 +152,12 @@ follow reliably. Each has a gate behind it.
 - Do not import another package of this module unless
   `policy/layers.json` allows the edge. A new package must declare its
   allowed imports there first. Gate: `scripts/check_deps.py`.
+- Do not copy an exported type into another package to reuse it. Import
+  the source package; the import policy already allows the edge. A
+  copied type forks on the next change. Gate: review catches the copy.
+- Do not let a package see its own caller. Dependency direction flows
+  inward; the import policy declares each edge, so a cycle or a caller
+  import cannot compile. Gate: `scripts/check_deps.py`.
 - Do not land a package without `docs/plans/<pkg>.md` following
   `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
   Gate: `scripts/check_plan.py`.

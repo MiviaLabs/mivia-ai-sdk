@@ -1,0 +1,4 @@
+#!/bin/sh
+# Pre-commit gate for mivia-ai-sdk. Installed via `make install-hooks`
+# (sets core.hooksPath to .githooks). Never bypass with --no-verify.
+exec make verify

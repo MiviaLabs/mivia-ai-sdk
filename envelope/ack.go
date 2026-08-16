@@ -1,0 +1,76 @@
+package envelope
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// AckStatus is the state of an Ack. Validate enforces the set.
+type AckStatus string
+
+const (
+	AckPending   AckStatus = "pending"   // receiver sent the restatement; sender has not ruled
+	AckConfirmed AckStatus = "confirmed" // sender accepts the restatement
+	AckCorrected AckStatus = "corrected" // sender rejects the restatement; Correction required
+)
+
+// Ack is a semantic acknowledgment. Flow: receiver builds it with NewAck
+// (pending), sender resolves it with Confirm or Correct. Only a confirmed
+// Ack means the receiver may act.
+type Ack struct {
+	MessageID   string    `json:"message_id"` // ID of the acknowledged Message
+	Restatement string    `json:"restatement"`
+	Status      AckStatus `json:"status"`
+	Correction  string    `json:"correction,omitempty"` // required when Status is AckCorrected
+}
+
+// NewAck builds a pending Ack for msg from the receiver's restatement.
+// The sender, not the receiver, sets the final Status; see Confirm, Correct.
+func NewAck(msg Message, restatement string) (Ack, error) {
+	if msg.ID == "" {
+		return Ack{}, errors.New("message id is required")
+	}
+	if strings.TrimSpace(restatement) == "" {
+		return Ack{}, errors.New("restatement is required")
+	}
+	return Ack{
+		MessageID:   msg.ID,
+		Restatement: restatement,
+		Status:      AckPending,
+	}, nil
+}
+
+// Confirm accepts the restatement. Clears any earlier Correction.
+func (a Ack) Confirm() Ack {
+	a.Status = AckConfirmed
+	a.Correction = ""
+	return a
+}
+
+// Correct rejects the restatement and records the sender's fix.
+func (a Ack) Correct(correction string) Ack {
+	a.Status = AckCorrected
+	a.Correction = correction
+	return a
+}
+
+// Validate checks all Ack invariants.
+func (a Ack) Validate() error {
+	if a.MessageID == "" {
+		return errors.New("message id is required")
+	}
+	if strings.TrimSpace(a.Restatement) == "" {
+		return errors.New("restatement is required")
+	}
+	switch a.Status {
+	case AckPending, AckConfirmed:
+	case AckCorrected:
+		if strings.TrimSpace(a.Correction) == "" {
+			return errors.New("correction is required when status is corrected")
+		}
+	default:
+		return fmt.Errorf("status %q is not valid", a.Status)
+	}
+	return nil
+}

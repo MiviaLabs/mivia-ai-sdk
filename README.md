@@ -7,7 +7,7 @@ metadata. The other blocks add standing groups, a status model, a step
 graph, and an event bus.
 
 Status: **PoC**. The API can change at any time. The GitHub remote for
-this repo is private.
+this repo is private. Licensed under the [MIT License](LICENSE).
 
 ## Why
 

@@ -32,11 +32,14 @@ chaining lands later. The exported surface below mirrors
   Ready steps run in declaration order. A step named in no panel fires
   the `machine.Transition` row whose `To` matches the step's target
   status, then waits for `confirm` before the next step runs, exactly
-  as before panels existed. A step named in a panel runs as part of
-  that panel's wave: every member fires the one shared row that
-  matches the panel's common `To`, concurrently, in its own goroutine.
-  `Run` does not call `confirm` for a wave; the ack gate applies to
-  steps named in no panel only. `Run` returns the final
+  as before panels existed. A step named in a panel of one member
+  runs alone the same way, and `confirm` still gates it. A step named
+  in a panel of two or more members runs as part of that panel's
+  wave: every member fires the one shared row that matches the
+  panel's common `To`, concurrently, in its own goroutine. `Run` does
+  not call `confirm` for a wave of two or more members; the ack gate
+  applies to a step named in no panel, and to a one-member panel.
+  `Run` returns the final
   `machine.Status`, the final `machine.InOut` record, and an error.
 
 ## Invariants

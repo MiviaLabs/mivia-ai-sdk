@@ -10,19 +10,21 @@ import (
 )
 
 // Confirm gates a step's ack. Run calls it after Fire moves the
-// status, for a step named in no panel. Run does not call Confirm
-// for a step that runs as a panel wave member. A nil return means
-// the ack confirmed; the walk advances.
+// status, for a step named in no panel and for a one-member panel.
+// Run does not call Confirm for a step in a panel of two or more
+// members. A nil return means the ack confirmed; the walk advances.
 type Confirm func(ctx context.Context, step Step) error
 
 // Run walks the step graph in topological order. A step named in no
 // panel runs alone, in declaration order, as it did before panels
 // existed; Run calls confirm for that step. See Confirm. A step named
-// in a panel runs as part of that panel's wave, once every member of
-// the panel is ready; the wave fires every member's transition
-// concurrently through the one shared row every member's homogeneous
-// To selects. Run does not call confirm for any wave member. Run
-// keeps the current status and
+// in a panel of one member runs alone the same way, and Run calls
+// confirm for it too. A step named in a panel of two or more members
+// runs as part of that panel's wave, once every member is ready; the
+// wave fires every member's transition concurrently through the one
+// shared row every member's homogeneous To selects. Run does not call
+// confirm for a wave of two or more members. Run keeps the current
+// status and
 // one record through the walk; each wave reads the record and writes
 // the next. Run rejects a nil d, a nil m, and a nil confirm at entry,
 // before it dereferences d or m. It checks d first, then m, then

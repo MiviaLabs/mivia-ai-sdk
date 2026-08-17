@@ -4,9 +4,9 @@ This document maps the modules, the message flow, the gate system, and
 the invariants the architecture enforces. See
 [protocol-design.md](protocol-design.md) for the wire rationale. See
 [packages/envelope.md](packages/envelope.md),
-[packages/room.md](packages/room.md), and
-[packages/machine.md](packages/machine.md) for the exported API
-references.
+[packages/room.md](packages/room.md),
+[packages/machine.md](packages/machine.md), and
+[packages/flow.md](packages/flow.md) for the exported API references.
 
 ## Package map
 
@@ -20,9 +20,10 @@ references.
   Phase 3 ships the JSON wire form: `Encode`, `Decode`, `Registry`, and
   `NewRegistry`. See [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
-- `flow/` — the step graph. Phase 4 ships `Step`, `Panel`,
+- `flow/` — the step graph. It ships `Step`, `Panel`,
   `Definition`, `New`, and `Roots`. The runner, the scheduling, the
-  parallel waves, and the chaining own in later phases. See
+  parallel waves, and the chaining land later. See
+  [packages/flow.md](packages/flow.md) and
   [plans/flow.md](plans/flow.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.

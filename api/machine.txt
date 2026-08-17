@@ -1,0 +1,16 @@
+package machine
+  func (d *Definition) Validate() (error)
+  func New(initial Status, ts ...Transition) (*Definition, error)
+  type Definition struct {
+  Initial Status
+  Transitions []Transition
+}
+  type Guard func(ctx context.Context) (bool, error)
+  type Status string
+  type Transition struct {
+  From Status
+  To Status
+  Trigger Trigger
+  Guard Guard
+}
+  type Trigger string

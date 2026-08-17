@@ -22,10 +22,24 @@ verify-fast:
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 
 verify: verify-fast
-	@set -e; trap 'rm -f cover.out' EXIT; \
-	pkgs="$$(go list ./... | grep -v /scripts)"; \
-	go test -coverprofile=cover.out $$pkgs; \
-	for p in $$pkgs; do \
+	@set -e; trap 'rm -f cover.out cover_*.out' EXIT; \
+	src_pkgs="$$(go list ./... | grep -v /scripts | grep -v '_test$$')"; \
+	mod="$$(head -1 go.mod | awk '{print $$2}')"; \
+	rm -f cover.out; \
+	for p in $$src_pkgs; do \
+		pf="$$(echo $$p | tr '/' '_')"; \
+		rel="$${p#$$mod/}"; \
+		last="$$(basename $$rel)"; \
+		tp="$$rel/$${last}_test"; \
+		if [ -d "$$tp" ]; then \
+			go test -coverprofile=cover_$${pf}.out -coverpkg=$$p ./$$tp; \
+		else \
+			go test -coverprofile=cover_$${pf}.out $$p; \
+		fi; \
+	done; \
+	echo "mode: set" > cover.out; \
+	for f in cover_*.out; do grep -v "^mode:" "$$f" >> cover.out 2>/dev/null || true; done; \
+	for p in $$src_pkgs; do \
 		grep -q "^$$p/" cover.out || { echo "cover.out lacks a profile for package $$p"; exit 1; }; \
 	done; \
 	awk -v floor="$(COVERAGE_FLOOR)" '/^mode:/{next} {file=$$1; sub(/:[0-9].*$$/,"",file); sub(/\/[^\/]+$$/,"",file); tot[file]+=$$(NF-1); if ($$NF==0) unc[file]+=$$(NF-1)} END {ts=0; u=0; bad=0; for (p in tot) {ts+=tot[p]; u+=unc[p]; pct=100*(tot[p]-unc[p])/tot[p]; if (pct<floor) {printf "coverage %.1f%% for %s below the %d%% floor\n", pct, p, floor; bad=1}} t=100*(ts-u)/ts; if (t<floor) {printf "coverage %.1f%% below the %d%% floor\n", t, floor; bad=1} exit bad}' cover.out; \

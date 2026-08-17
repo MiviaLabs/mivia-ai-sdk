@@ -35,7 +35,8 @@ pattern. See docs/research-state-machine.md for the pattern sources.
 - `type Action func(Context) error` as an entry or exit action.
 - `type Guard func(ctx Context) (bool, error)` as a transition guard.
 - `type Transition struct { From, To Status; Trigger Trigger; Guard Guard; OnEntry Action; OnExit Action }`
-  as a table row.
+  as a table row. Phase 1 omits `OnEntry` and `OnExit`; the struct
+  grows in Phase 2.
 - `type Definition struct` holding the initial status and a list of
   transitions.
 - `New(initial Status, ts ...Transition) (*Definition, error)` to

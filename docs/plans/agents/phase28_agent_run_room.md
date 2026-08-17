@@ -34,6 +34,30 @@ Outside: a `Room` field or a `*room.Room` reference on `Agent`. A
 generic pre-sign decorator hook. Any change to `room.Room.Accepts` or
 to `envelope.Sign`. See the three rejected alternatives below.
 
+### Doc-comment updates in the same change
+
+`agent/run.go`'s `Run` doc comment (lines 31-63) and `confirmStep` doc
+comment (lines 99-104) are the machine-read API surface AGENTS.md
+requires. Both already document `hb`'s optional, nil-skips-the-call
+behavior from phase 26; this phase adds the matching sentence for
+`room` next to it, in the same two comments, so the surface stays
+accurate:
+
+- `Run`'s doc comment gains one sentence after its `hb` paragraph (the
+  paragraph starting "hb is an optional step-liveness heartbeat"),
+  stating that a non-empty `room` argument makes `confirmStep` stamp
+  it onto `Message.Room` before `a.id.Sign` runs, and that an empty
+  `room` reproduces today's zero-value behavior. Mirror the `hb`
+  paragraph's shape: state the nil/empty case first, then the non-nil/
+  non-empty case, matching how the existing `hb` paragraph orders its
+  two sentences.
+- `confirmStep`'s doc comment gains one clause next to its existing
+  `hb, when non-nil, beats hbID right before wait; a nil hb skips the
+  beat` sentence, stating that a non-empty `room` sets `msg.Room`
+  before `a.id.Sign`, and an empty `room` leaves `Message.Room` at the
+  zero value. Keep both sentences in the same comment, one per
+  parameter, matching the existing `hb` sentence's structure.
+
 ### Rejected: a `Room` field on `Agent` at `New` time
 
 Contradicts the design intent phase 26 already states in
@@ -107,9 +131,9 @@ how phase 26 changed `Run`. Every existing call site gains a trailing
 name yet:
 
 - `agent/agent_test/lifecycle_integration_test.go` — two call sites.
-- `agent/agent_test/run_bench_test.go` — two call sites.
+- `agent/agent_test/run_bench_test.go` — three call sites.
 - `agent/agent_test/run_integration_test.go` — two call sites.
-- `agent/agent_test/run_test.go` — thirteen call sites.
+- `agent/agent_test/run_test.go` — twelve call sites.
 - `agent/agent_test/run_panel_integration_test.go` — two call sites.
 - `agent/agent_test/liveness_test.go` and
   `agent/agent_test/liveness_integration_test.go` — every call site
@@ -149,10 +173,13 @@ phase 13 and phase 26 files:
   `wait`, call `rm.Accepts(msg)` on the signed message `Run` handed it
   and assert the call returns nil, proving a `Run`-built message, with
   `Room` set through the new parameter, is admitted by a real
-  `room.Room`. A second case reruns the same setup with `room` left
-  empty and asserts `Accepts` now returns a non-nil error, pinning the
-  gap this phase closes as a regression check, not only a new-behavior
-  check.
+  `room.Room`. `wait` still builds and confirms a real `envelope.Ack`
+  via `envelope.NewAck(...).Confirm()`, matching the existing
+  `confirmingWait` pattern in `agent/agent_test/run_test.go`, so `Run`
+  itself returns nil and reaches `EmitThreadVerified`. A second case
+  reruns the same setup with `room` left empty and asserts `Accepts`
+  now returns a non-nil error, pinning the gap this phase closes as a
+  regression check, not only a new-behavior check.
 - Every existing call site to `a.Run(...)` across `run_test.go`,
   `run_integration_test.go`, `run_panel_integration_test.go`,
   `run_bench_test.go`, `lifecycle_integration_test.go`,

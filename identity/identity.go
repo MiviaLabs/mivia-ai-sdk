@@ -28,7 +28,9 @@ type Identity struct {
 	PrivateKey ed25519.PrivateKey
 }
 
-// New generates a fresh key pair.
+// New generates a fresh key pair. The GenerateKey error path is
+// trusted but untested: it fires only when the OS entropy source
+// itself is broken, and no caller needs an injectable source today.
 func New() (*Identity, error) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {

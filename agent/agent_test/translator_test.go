@@ -243,8 +243,8 @@ func TestEmitThreadVerifiedSuccess(t *testing.T) {
 	if name != agent.ThreadVerifiedEvent {
 		t.Fatalf("event name = %q, want %q", name, agent.ThreadVerifiedEvent)
 	}
-	if !strings.Contains(data, "2") {
-		t.Fatalf("event data = %q, want it to contain the message count 2", data)
+	if data != "thread of 2 messages verified" {
+		t.Fatalf("event data = %q, want %q", data, "thread of 2 messages verified")
 	}
 }
 

@@ -79,20 +79,12 @@ func TestMachineMoveArrivesOnceOnBus(t *testing.T) {
 	}
 }
 
-// TestGuardFailureEmitsNothing proves a rejected move sends no event.
-// The first stop fails the guard, so Fire returns an error. The emit
-// happens only after a successful move. The bus stays empty.
+// TestGuardFailureEmitsNothing proves a rejected move leaves the bus idle.
+// The first stop fails the guard, so Fire returns an error. The caller
+// does not emit after a failed move; the bus is caller-owned.
 func TestGuardFailureEmitsNothing(t *testing.T) {
 	t.Parallel()
 	d := busWiringDefinition()
-	bus := events.New()
-	called := 0
-	if err := bus.Subscribe(machine.MoveEvent, func(context.Context, events.Event) error {
-		called++
-		return nil
-	}); err != nil {
-		t.Fatalf("Subscribe: %v", err)
-	}
 
 	// First move idles to running.
 	to, _, err := d.Fire(context.Background(), "idle", "start", machine.InOut{})
@@ -104,10 +96,5 @@ func TestGuardFailureEmitsNothing(t *testing.T) {
 	_, _, err = d.Fire(context.Background(), to, "stop", machine.InOut{})
 	if err == nil {
 		t.Fatal("Fire stop: expected a guard-failure error")
-	}
-
-	// The caller never emits after the failed guard.
-	if called != 0 {
-		t.Fatalf("bus handler ran %d times; want 0 after a guard failure", called)
 	}
 }

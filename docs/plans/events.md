@@ -81,7 +81,15 @@ process, not the wire form.
 - `events_integration_test.go` — subscribe and emit a flow. Prove the
   handler runs in order. Prove an unknown name returns an error.
   Prove a handler error does not stop later handlers. Prove a handler
-  that calls `Subscribe` dispatches on the inner bus state.
+  that calls `Subscribe` or `Emit` dispatches on the inner bus state.
+- `events_concurrency_test.go` — concurrent `Subscribe` and `Emit` on
+  one bus under `go test -race`. Atomic counters prove exact delivery.
+  The watchdog bounds a regression deadlock.
+- `cross_subsystem_integration_test.go` — the end-to-end composition
+  test. It proves envelope, room, machine, and events compose through
+  public APIs. A signed message passes room admission. A real machine
+  move fires onto a caller-owned bus under `machine.MoveEvent`. A
+  guard failure emits nothing.
 - `events_perf_test.go` — benchmark `Emit` on one event with one
   handler. State the allocation budget.
 

@@ -6,6 +6,13 @@ Phase 2 ships the move dispatch `Fire`, the input and output records,
 and the entry and exit actions. Phase 3 ships the JSON wire form and
 the name registry. The exported surface below mirrors `api/machine.txt`.
 
+## Constants
+
+- `MoveEvent` — the typed event name a caller emits after a successful
+  `Fire`. It is an `events.Name` constant; a caller uses it on both the
+  publish and subscribe side. It imports the events package for the
+  name type.
+
 ## Types
 
 - `Status` — a typed machine state. Values are strings.

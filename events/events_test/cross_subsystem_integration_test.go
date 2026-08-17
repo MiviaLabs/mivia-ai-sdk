@@ -150,9 +150,11 @@ func TestCrossSubsystemComposes(t *testing.T) {
 	}
 }
 
-// TestCrossSubsystemGuardFailureEmitsNothing proves a rejected move
-// publishes no event even when the envelope and room path is healthy.
-func TestCrossSubsystemGuardFailureEmitsNothing(t *testing.T) {
+// TestCrossSubsystemGuardFailure returns an error on a rejected move while
+// the envelope and room path is healthy. The caller never emits after a
+// failed Fire, so no event can reach the bus. The Fire error is the
+// contract; the bus is caller-owned.
+func TestCrossSubsystemGuardFailure(t *testing.T) {
 	founder := newE2EMember(t)
 	member := newE2EMember(t)
 
@@ -169,27 +171,19 @@ func TestCrossSubsystemGuardFailureEmitsNothing(t *testing.T) {
 	if err := r.Accepts(msg); err != nil {
 		t.Fatalf("room rejected a signed member message: %v", err)
 	}
+	if !r.IsMember(member.id) {
+		t.Fatal("member is not on the roster after admission")
+	}
 
 	d := e2eMachine()
-	bus := events.New()
-	called := 0
-	if err := bus.Subscribe(machine.MoveEvent, func(context.Context, events.Event) error {
-		called++
-		return nil
-	}); err != nil {
-		t.Fatalf("Subscribe: %v", err)
-	}
 	ctx := context.Background()
 	to, _, err := d.Fire(ctx, "idle", "start", machine.InOut{})
 	if err != nil {
 		t.Fatalf("Fire start: %v", err)
 	}
-	// The first stop fails the guard; a caller must not emit.
+	// The first stop fails the guard, so Fire returns an error.
 	_, _, err = d.Fire(ctx, to, "stop", machine.InOut{})
 	if err == nil {
 		t.Fatal("Fire stop: expected a guard-failure error")
-	}
-	if called != 0 {
-		t.Fatalf("bus handler ran %d times; want 0 after a guard failure", called)
 	}
 }

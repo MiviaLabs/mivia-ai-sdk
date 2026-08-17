@@ -56,7 +56,7 @@ func TestRunLinearThreeSteps(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	var order []string
-	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order))
+	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestRunDiamondTieBreak(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	var order []string
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order))
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestRunReadyBeforeDeclared(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	var order []string
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order))
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order), nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestRunGateFailureStopsRun(t *testing.T) {
 		confirmed = true
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -228,7 +228,7 @@ func TestRunUnconfirmedAckBlocksNext(t *testing.T) {
 		t.Fatalf("step %q fired after an unconfirmed ack", step.ID)
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

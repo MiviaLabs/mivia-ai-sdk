@@ -47,7 +47,7 @@ func TestRunChainedStepUsesChildFinalStatus(t *testing.T) {
 		t.Fatalf("parent New: %v", err)
 	}
 	m := singleTransitionMachine(t)
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRunChainedStepCallsConfirmForChildAndParent(t *testing.T) {
 		order = append(order, step.ID)
 		return nil
 	}
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestRunChainedStepNoParentTransition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -167,7 +167,7 @@ func TestRunChainedStepAmbiguousParentTransition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -202,7 +202,7 @@ func TestRunChainedStepReturnsChildFinalStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -235,7 +235,7 @@ func TestRunChainedStepReturnsChildErrorUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -269,7 +269,7 @@ func TestRunChainedStepParentConfirmErrorWrap(t *testing.T) {
 		}
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -305,7 +305,7 @@ func TestRunChainedStepInOneMemberPanelCallsConfirm(t *testing.T) {
 		confirmed = append(confirmed, step.ID)
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestRunNormalStepInOneMemberPanelCallsConfirm(t *testing.T) {
 		confirmed = append(confirmed, step.ID)
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -386,7 +386,7 @@ func TestRunChainedStepChildGetsFreshInOut(t *testing.T) {
 	}
 
 	in := machine.InOut{Input: "parent-input"}
-	status, out, err := flow.Run(context.Background(), d, m, in, noopConfirm)
+	status, out, err := flow.Run(context.Background(), d, m, in, noopConfirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

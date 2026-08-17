@@ -3,7 +3,7 @@
   "allowed_imports": {
     "envelope": [],
     "events": [],
-    "flow": ["machine"],
+    "flow": ["events", "machine"],
     "identity": ["envelope"],
     "machine": ["events"],
     "room": ["envelope"]

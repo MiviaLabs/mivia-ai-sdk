@@ -69,7 +69,7 @@ func TestRunOrderRule(t *testing.T) {
 		order = append(order, step.ID)
 		return nil
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRunTransitionPick(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
 	m := singleTransitionMachine(t)
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestRunNilConfirmRejected(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
 	m := singleTransitionMachine(t)
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, nil)
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -120,7 +120,7 @@ func TestRunNilConfirmRejected(t *testing.T) {
 func TestRunNilDRejected(t *testing.T) {
 	t.Parallel()
 	m := singleTransitionMachine(t)
-	status, _, err := flow.Run(context.Background(), nil, m, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), nil, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -137,7 +137,7 @@ func TestRunNilDRejected(t *testing.T) {
 func TestRunNilMRejected(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
-	status, _, err := flow.Run(context.Background(), d, nil, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), d, nil, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -153,7 +153,7 @@ func TestRunNilMRejected(t *testing.T) {
 // m are nil, and Run never panics.
 func TestRunNilDAndMTogether(t *testing.T) {
 	t.Parallel()
-	status, _, err := flow.Run(context.Background(), nil, nil, machine.InOut{}, noopConfirm)
+	status, _, err := flow.Run(context.Background(), nil, nil, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -174,7 +174,7 @@ func TestRunAmbiguityZeroMatches(t *testing.T) {
 		t.Fatalf("flow.New: %v", err)
 	}
 	m := singleTransitionMachine(t)
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -199,7 +199,7 @@ func TestRunAmbiguityZeroMatchesTerminalState(t *testing.T) {
 		t.Fatalf("flow.New: %v", err)
 	}
 	m := singleTransitionMachine(t)
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -224,7 +224,7 @@ func TestRunEmptyGraph(t *testing.T) {
 		t.Fatal("confirm ran on an empty step graph")
 		return nil
 	}
-	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{Input: "x"}, confirm)
+	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{Input: "x"}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestRunAmbiguityManyMatches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm)
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

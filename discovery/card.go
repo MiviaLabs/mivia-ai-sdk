@@ -38,8 +38,9 @@ func Parse(data []byte) (Card, error) {
 // TrimSpace. It rejects an empty Capabilities list. It applies
 // TrimSpace to each capability entry before the next two checks. It
 // rejects a capability entry that is blank after trim, including a
-// whitespace-only entry. It rejects a duplicate entry, compared
-// case-insensitive after trim.
+// whitespace-only entry. It rejects a duplicate entry, compared with
+// strings.EqualFold after trim: the same fold Match uses, so a
+// Validate pass guarantees Match never hides a second, equal entry.
 func (c Card) Validate() error {
 	if strings.TrimSpace(c.Name) == "" {
 		return errors.New("discovery: name is required")
@@ -47,17 +48,18 @@ func (c Card) Validate() error {
 	if len(c.Capabilities) == 0 {
 		return errors.New("discovery: capabilities must not be empty")
 	}
-	seen := make(map[string]bool, len(c.Capabilities))
+	seen := make([]string, 0, len(c.Capabilities))
 	for _, capability := range c.Capabilities {
 		trimmed := strings.TrimSpace(capability)
 		if trimmed == "" {
 			return errors.New("discovery: capability entry must not be blank")
 		}
-		key := strings.ToLower(trimmed)
-		if seen[key] {
-			return fmt.Errorf("discovery: duplicate capability %q", trimmed)
+		for _, prior := range seen {
+			if strings.EqualFold(trimmed, prior) {
+				return fmt.Errorf("discovery: duplicate capability %q", trimmed)
+			}
 		}
-		seen[key] = true
+		seen = append(seen, trimmed)
 	}
 	return nil
 }

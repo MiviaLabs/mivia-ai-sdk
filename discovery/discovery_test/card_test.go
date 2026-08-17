@@ -96,6 +96,7 @@ func TestCardValidate(t *testing.T) {
 		{name: "whitespace-only capability entry is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, wantErr: true, errSubstr: "capability entry must not be blank"},
 		{name: "duplicate capability differing only in case is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "duplicate capability"},
 		{name: "duplicate capability differing only in padding is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "duplicate capability"},
+		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "duplicate capability"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

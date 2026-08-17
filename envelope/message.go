@@ -84,10 +84,14 @@ func ContextRef(content string) string {
 
 // Hash returns the content address of m (sha256 of its canonical JSON).
 // Use it for PrevHash links and dedup. Hash does not validate m: run
-// Validate first. A NaN or Inf Confidence makes json.Marshal fail, and
-// Hash then returns the address of an empty buffer.
+// Validate first. A NaN or Inf Confidence makes json.Marshal fail; Hash
+// then falls back to a Go-syntax dump of m with the raw Confidence bits
+// mixed in, so distinct invalid messages still hash distinctly.
 func (m Message) Hash() string {
-	data, _ := json.Marshal(m) // fails only on NaN/Inf Confidence; see doc comment
+	data, err := json.Marshal(m) // fails only on NaN/Inf Confidence; see doc comment
+	if err != nil {
+		data = []byte(fmt.Sprintf("%#v:%x", m, math.Float64bits(m.Confidence)))
+	}
 	sum := sha256.Sum256(data)
 	return hashPrefix + hex.EncodeToString(sum[:])
 }

@@ -107,6 +107,17 @@ func TestVerifyRejectsMalformedSigner(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsWrongLengthHexSigner(t *testing.T) {
+	m, err := Sign(testKey(t), validMessage())
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	m.Signer = "aabb" // valid hex, but 2 bytes, not the 32-byte public key
+	if err := m.VerifySignature(); err == nil {
+		t.Fatal("wrong-length signer must fail verification")
+	}
+}
+
 func TestVerifyRejectsBadSignatureLength(t *testing.T) {
 	m, err := Sign(testKey(t), validMessage())
 	if err != nil {
@@ -115,6 +126,17 @@ func TestVerifyRejectsBadSignatureLength(t *testing.T) {
 	m.Signature = "aabb" // far short of a 64-byte signature
 	if err := m.VerifySignature(); err == nil {
 		t.Fatal("short signature must fail verification")
+	}
+}
+
+func TestVerifyRejectsUndecodableSignature(t *testing.T) {
+	m, err := Sign(testKey(t), validMessage())
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	m.Signature = "zz" // not hex; fails hex.DecodeString itself
+	if err := m.VerifySignature(); err == nil {
+		t.Fatal("undecodable signature must fail verification")
 	}
 }
 

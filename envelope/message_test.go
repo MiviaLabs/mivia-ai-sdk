@@ -157,6 +157,43 @@ func TestHashIsDeterministicAndValidatesAsPrevHash(t *testing.T) {
 	}
 }
 
+func TestHashDoesNotCollideOnMarshalFailure(t *testing.T) {
+	// Determinism: the marshal-failure fallback path must still be
+	// deterministic, same as the marshal-succeeds path.
+	m := validMessage()
+	m.Confidence = math.NaN()
+	if m.Hash() != m.Hash() {
+		t.Fatal("Hash must be deterministic on the marshal-failure fallback")
+	}
+
+	// Bit-pattern distinctness: two messages, identical fields, that
+	// differ only in their NaN bit pattern, must still hash distinctly.
+	bits := math.Float64bits(math.NaN())
+	second := math.Float64frombits(bits ^ 1)
+	if !math.IsNaN(second) {
+		t.Fatal("constructed value is not NaN; recipe is broken")
+	}
+	a := validMessage()
+	a.Confidence = math.NaN()
+	b := validMessage()
+	b.Confidence = second
+	if a.Hash() == b.Hash() {
+		t.Fatal("distinct NaN bit patterns must hash distinctly")
+	}
+
+	// Field-content distinctness: two messages that differ in ID and
+	// Payload, both with plain NaN Confidence, must hash distinctly.
+	c := validMessage()
+	c.Confidence = math.NaN()
+	d := validMessage()
+	d.ID = "msg-2"
+	d.Payload = "A different payload."
+	d.Confidence = math.NaN()
+	if c.Hash() == d.Hash() {
+		t.Fatal("messages with different content must hash distinctly")
+	}
+}
+
 func TestRequiresAck(t *testing.T) {
 	m := validMessage()
 	if m.RequiresAck() {
@@ -207,6 +244,9 @@ func TestDecodeIgnoresUnknownFields(t *testing.T) {
 func TestDecodeRejectsInvalid(t *testing.T) {
 	if _, err := Decode([]byte(`{"id":"x"}`)); err == nil {
 		t.Fatal("expected decode to reject invalid message")
+	}
+	if _, err := Decode([]byte("not json")); err == nil {
+		t.Fatal("expected decode to reject malformed JSON")
 	}
 }
 

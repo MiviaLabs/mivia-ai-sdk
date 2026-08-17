@@ -27,10 +27,21 @@ func (d Definition) Transitions() []Transition {
 // The returned slice is a fresh copy; mutating it cannot affect the definition.
 // Returns an empty slice when no transitions match.
 func (d Definition) AllowedTransitions(from Status) []Transition {
-	out := make([]Transition, 0)
+	// First pass: count the matching rows
+	count := 0
 	for _, t := range d.transitions {
 		if t.From == from {
-			out = append(out, t)
+			count++
+		}
+	}
+
+	// Allocate exactly one slice of that exact size
+	out := make([]Transition, count)
+	idx := 0
+	for _, t := range d.transitions {
+		if t.From == from {
+			out[idx] = t
+			idx++
 		}
 	}
 	return out
@@ -39,12 +50,21 @@ func (d Definition) AllowedTransitions(from Status) []Transition {
 // AllowedTriggers returns the distinct triggers available from from.
 // Returns an empty slice when no transitions match.
 func (d Definition) AllowedTriggers(from Status) []Trigger {
-	seen := make(map[Trigger]bool, 0)
-	out := make([]Trigger, 0)
+	// First pass: count the matching rows
+	count := 0
 	for _, t := range d.transitions {
-		if t.From == from && !seen[t.Trigger] {
-			seen[t.Trigger] = true
-			out = append(out, t.Trigger)
+		if t.From == from {
+			count++
+		}
+	}
+
+	// Allocate exactly one slice of that exact size
+	out := make([]Trigger, count)
+	idx := 0
+	for _, t := range d.transitions {
+		if t.From == from {
+			out[idx] = t.Trigger
+			idx++
 		}
 	}
 	return out

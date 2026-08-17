@@ -72,6 +72,10 @@ transition list, not reflection. A trigger that does not match returns
 an error. OnExit does not run when the guard fails. A nil Guard or a
 nil Action is checked, never invoked.
 
+Both row accessors allocate exactly one slice per call. The first
+pass counts matching rows; the second pass fills one slice of that
+exact size.
+
 Phase 18 leaves `machine`'s dispatch logic untouched. The move emit
 happens at the call site, not inside `Fire`. A caller reads the move
 from the `Fire` return value and emits onto a caller-owned bus. The

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -44,7 +45,7 @@ type Confirm func(ctx context.Context, step Step) error
 // caller contract, not a runtime check.
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
-	in machine.InOut, confirm Confirm,
+	in machine.InOut, confirm Confirm, bus *events.Bus,
 ) (machine.Status, machine.InOut, error) {
 	if d == nil {
 		return machine.Status(""), in, errorf("d must not be nil")
@@ -52,19 +53,19 @@ func Run(
 	if m == nil {
 		return machine.Status(""), in, errorf("m must not be nil")
 	}
-	if confirm == nil {
-		return m.Initial(), in, errorf("confirm must not be nil")
-	}
+		if confirm == nil {
+			return m.Initial(), in, errorf("confirm must not be nil")
+		}
 
-	cur := m.Initial()
-	rec := in
+		cur := m.Initial()
+		rec := in
 
-	if len(d.steps) == 0 {
-		return cur, rec, nil
-	}
-	if len(d.steps) == 1 {
-		return runSingleton(ctx, m, cur, rec, d.steps[0], confirm)
-	}
+		if len(d.steps) == 0 {
+			return cur, rec, nil
+		}
+		if len(d.steps) == 1 {
+			return runSingleton(ctx, m, cur, rec, d.steps[0], confirm, bus)
+		}
 
 	done := make(map[string]bool, len(d.steps))
 
@@ -81,33 +82,43 @@ func Run(
 			return cur, rec, errorf("no ready step; graph stalled")
 		}
 
-		if group == nil {
+			if group == nil {
+				var err error
+				cur, rec, err = runSingleton(ctx, m, cur, rec, next, confirm, bus)
+				if err != nil {
+					return cur, rec, err
+				}
+				done[next.ID] = true
+				continue
+			}
+
+			if len(group) == 1 {
+				var err error
+				cur, rec, err = runSingleton(ctx, m, cur, rec, group[0], confirm, bus)
+				if err != nil {
+					return cur, rec, err
+				}
+				done[group[0].ID] = true
+				continue
+			}
+
 			var err error
-			cur, rec, err = runSingleton(ctx, m, cur, rec, next, confirm)
+			cur, rec, err = runWave(ctx, m, cur, rec, group)
 			if err != nil {
 				return cur, rec, err
 			}
-			done[next.ID] = true
-			continue
-		}
 
-		if len(group) == 1 {
-			var err error
-			cur, rec, err = runSingleton(ctx, m, cur, rec, group[0], confirm)
-			if err != nil {
-				return cur, rec, err
+			// Emit event after successful wave execution 
+			if bus != nil {
+				for _, step := range group {
+					_ = bus.Emit(ctx, events.Event{
+						Name: StepCompletedEvent,
+						Data: fmt.Sprintf("step %s completed", step.ID),
+					})
+				}
 			}
-			done[group[0].ID] = true
-			continue
-		}
 
-		var err error
-		cur, rec, err = runWave(ctx, m, cur, rec, group)
-		if err != nil {
-			return cur, rec, err
-		}
-
-		markDone(done, group)
+			markDone(done, group)
 	}
 
 	return cur, rec, nil
@@ -118,38 +129,52 @@ func Run(
 // It returns the updated status and record, or an error.
 func runSingleton(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
-	rec machine.InOut, step Step, confirm Confirm,
+	rec machine.InOut, step Step, confirm Confirm, bus *events.Bus,
 ) (machine.Status, machine.InOut, error) {
-	if step.Sub != nil {
-		child, err := runChild(ctx, step.Sub, m, confirm)
-		if err != nil {
-			return cur, rec, err
+		if step.Sub != nil {
+			child, err := runChild(ctx, step.Sub, m, confirm)
+			if err != nil {
+				return cur, rec, err
+			}
+			cur, rec, err = fireFromChild(ctx, m, cur, rec, step, child)
+			if err != nil {
+				return cur, rec, err
+			}
+			if err := confirm(ctx, step); err != nil {
+				return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
+			}
+			// Emit event after successful confirmation for chained steps
+			if bus != nil {
+				_ = bus.Emit(ctx, events.Event{
+					Name: StepCompletedEvent,
+					Data: fmt.Sprintf("step %s completed", step.ID),
+				})
+			}
+			return cur, rec, nil
 		}
-		cur, rec, err = fireFromChild(ctx, m, cur, rec, step, child)
+
+		rows := m.AllowedTransitions(cur)
+		row, err := pickTransition(rows, machine.Status(step.To))
 		if err != nil {
-			return cur, rec, err
+			return cur, rec, errorf("step %q: %w", step.ID, err)
 		}
+
+		cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
+		if err != nil {
+			return cur, rec, errorf("step %q: %w", step.ID, err)
+		}
+
 		if err := confirm(ctx, step); err != nil {
 			return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
 		}
+		// Emit event after successful confirmation for singleton steps
+		if bus != nil {
+			_ = bus.Emit(ctx, events.Event{
+				Name: StepCompletedEvent,
+				Data: fmt.Sprintf("step %s completed", step.ID),
+			})
+		}
 		return cur, rec, nil
-	}
-
-	rows := m.AllowedTransitions(cur)
-	row, err := pickTransition(rows, machine.Status(step.To))
-	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
-	}
-
-	cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
-	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
-	}
-
-	if err := confirm(ctx, step); err != nil {
-		return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
-	}
-	return cur, rec, nil
 }
 
 // runChild runs a chained step's child workflow to completion. It
@@ -158,7 +183,7 @@ func runSingleton(
 func runChild(
 	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
 ) (machine.Status, error) {
-	childStatus, _, err := Run(ctx, child, m, machine.InOut{}, confirm)
+	childStatus, _, err := Run(ctx, child, m, machine.InOut{}, confirm, nil)
 	return childStatus, err
 }
 

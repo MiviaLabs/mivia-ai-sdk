@@ -12,8 +12,8 @@ import (
 // guardTrue is a test guard that always passes.
 func guardTrue(_ context.Context) (bool, error) { return true, nil }
 
-// validateCase holds one table-driven Validate case.
-type validateCase struct {
+// newCase holds one table-driven New case.
+type newCase struct {
 	name        string
 	initial     machine.Status
 	transitions []machine.Transition
@@ -21,8 +21,8 @@ type validateCase struct {
 	errSubstr   string
 }
 
-// rejectCases lists Validate cases that must return an error.
-var rejectCases = []validateCase{
+// rejectCases lists New cases that must return an error.
+var rejectCases = []newCase{
 	{
 		name:    "rejects self loop",
 		initial: "idle",
@@ -31,8 +31,6 @@ var rejectCases = []validateCase{
 		},
 		wantErr:   true,
 		errSubstr: "self loop",
-		// Red step: Validate returned nil for self-loop input.
-		// Assert added; test failed. Implementation added the check.
 	},
 	{
 		name:    "rejects From not in declared set",
@@ -43,10 +41,8 @@ var rejectCases = []validateCase{
 		},
 		wantErr:   true,
 		errSubstr: "not in the declared set",
-		// Red step: Validate returned nil for unreachable From.
-		// Assert added; test failed. Implementation added reachability check.
 		// An unreachable To implies an unreachable From, so the From
-		// check covers both. Validate rejects only the From.
+		// check covers both. New rejects only the From.
 	},
 	{
 		name:        "rejects empty transition list",
@@ -64,20 +60,17 @@ var rejectCases = []validateCase{
 		},
 		wantErr:   true,
 		errSubstr: "duplicate transition",
-		// Red step: Validate returned nil for duplicate From and Trigger.
-		// Assert added; test failed. Implementation added the check.
 	},
 }
 
-// acceptCases lists Validate cases that must return nil.
-var acceptCases = []validateCase{
+// acceptCases lists New cases that must return nil.
+var acceptCases = []newCase{
 	{
 		name:    "accepts nil Guard",
 		initial: "idle",
 		transitions: []machine.Transition{
 			{From: "idle", To: "running", Trigger: "start", Guard: nil},
 		},
-		// Red step: not applicable; nil Guard was always accepted.
 	},
 	{
 		name:    "accepts valid table with guard",
@@ -85,8 +78,6 @@ var acceptCases = []validateCase{
 		transitions: []machine.Transition{
 			{From: "idle", To: "running", Trigger: "start", Guard: guardTrue},
 		},
-		// Red step: Validate returned nil for valid table from the start.
-		// Implementation confirmed correct.
 	},
 	{
 		name:    "accepts valid table with multiple transitions",
@@ -98,14 +89,10 @@ var acceptCases = []validateCase{
 	},
 }
 
-// runValidateCase executes one Validate test case.
-func runValidateCase(t *testing.T, tt validateCase) {
+// runNewCase executes one New test case.
+func runNewCase(t *testing.T, tt newCase) {
 	t.Helper()
-	d := &machine.Definition{
-		Initial:     tt.initial,
-		Transitions: tt.transitions,
-	}
-	err := d.Validate()
+	d, err := machine.New(tt.initial, tt.transitions...)
 	if tt.wantErr {
 		if err == nil {
 			t.Fatal("expected error, got nil")
@@ -118,78 +105,46 @@ func runValidateCase(t *testing.T, tt validateCase) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-}
-
-func TestNew(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name        string
-		initial     machine.Status
-		transitions []machine.Transition
-		wantErr     bool
-		errSubstr   string
-	}{
-		{
-			name:      "rejects empty transition list",
-			initial:   "idle",
-			wantErr:   true,
-			errSubstr: "must not be empty",
-			// Red step: New with no transitions returned nil, nil.
-			// Assert added; test failed. Implementation added the check.
-		},
-		{
-			name:    "accepts valid transition list",
-			initial: "idle",
-			transitions: []machine.Transition{
-				{From: "idle", To: "running", Trigger: "start"},
-			},
-			// Red step: New returned nil, nil before Validate existed.
-			// Assert added; test failed on nil Definition.
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			d, err := machine.New(tt.initial, tt.transitions...)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				if !strings.Contains(err.Error(), tt.errSubstr) {
-					t.Fatalf("error %q should contain %q", err.Error(), tt.errSubstr)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if d == nil {
-				t.Fatal("expected non-nil Definition")
-			}
-		})
+	if d == nil {
+		t.Fatal("expected non-nil Definition")
 	}
 }
 
-func TestValidateRejects(t *testing.T) {
+func TestNewRejects(t *testing.T) {
 	t.Parallel()
 	for _, tt := range rejectCases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runValidateCase(t, tt)
+			runNewCase(t, tt)
 		})
 	}
 }
 
-func TestValidateAccepts(t *testing.T) {
+func TestNewAccepts(t *testing.T) {
 	t.Parallel()
 	for _, tt := range acceptCases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			runValidateCase(t, tt)
+			runNewCase(t, tt)
 		})
 	}
 }
 
+// TestValidateRejectsZeroValue proves a zero-value Definition fails Validate.
+// New returns early on an empty list, so this branch is reachable only here.
+func TestValidateRejectsZeroValue(t *testing.T) {
+	t.Parallel()
+	var d machine.Definition
+	err := d.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("error %q should contain %q", err.Error(), "must not be empty")
+	}
+}
+
+// TestDefinitionFields reads the state through the accessors.
 func TestDefinitionFields(t *testing.T) {
 	t.Parallel()
 	d, err := machine.New(
@@ -199,14 +154,53 @@ func TestDefinitionFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if d.Initial != "idle" {
-		t.Errorf("Initial = %q, want %q", d.Initial, "idle")
+	if d.Initial() != "idle" {
+		t.Errorf("Initial() = %q, want %q", d.Initial(), "idle")
 	}
-	if len(d.Transitions) != 1 {
-		t.Fatalf("len(Transitions) = %d, want 1", len(d.Transitions))
+	if len(d.Transitions()) != 1 {
+		t.Fatalf("len(Transitions()) = %d, want 1", len(d.Transitions()))
 	}
-	if d.Transitions[0].Trigger != "start" {
-		t.Errorf("Trigger = %q, want %q", d.Transitions[0].Trigger, "start")
+	if d.Transitions()[0].Trigger != "start" {
+		t.Errorf("Trigger = %q, want %q", d.Transitions()[0].Trigger, "start")
+	}
+}
+
+// TestNewCopiesInputSlice proves a caller write to the input slice after
+// New does not leak into the internal table.
+func TestNewCopiesInputSlice(t *testing.T) {
+	t.Parallel()
+	ts := []machine.Transition{
+		{From: "idle", To: "running", Trigger: "start"},
+	}
+	d, err := machine.New("idle", ts...)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ts[0].To = "evil"
+	got, _, err := d.Fire(context.Background(), "idle", "start", machine.InOut{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "running" {
+		t.Fatalf("Fire status = %q, want %q", got, "running")
+	}
+}
+
+// TestTransitionsReturnsCopy proves Transitions returns a fresh copy.
+func TestTransitionsReturnsCopy(t *testing.T) {
+	t.Parallel()
+	d, err := machine.New(
+		"idle",
+		machine.Transition{From: "idle", To: "running", Trigger: "start"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := d.Transitions()
+	got[0].To = "evil"
+	second := d.Transitions()
+	if second[0].To != "running" {
+		t.Fatalf("second Transitions read To = %q, want %q", second[0].To, "running")
 	}
 }
 

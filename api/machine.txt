@@ -1,11 +1,11 @@
 package machine
   func (d *Definition) Fire(ctx context.Context, from Status, trig Trigger, in InOut) (Status, InOut, error)
   func (d *Definition) Validate() (error)
+  func (d Definition) Initial() (Status)
+  func (d Definition) Transitions() ([]Transition)
   func New(initial Status, ts ...Transition) (*Definition, error)
   type Action func(ctx context.Context, rec *InOut) error
   type Definition struct {
-  Initial Status
-  Transitions []Transition
 }
   type Guard func(ctx context.Context) (bool, error)
   type InOut struct {

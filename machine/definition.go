@@ -6,11 +6,19 @@ import (
 )
 
 // Definition holds an initial status and a validated transition table.
-// It is immutable after New returns. A caller must not mutate its
-// exported fields after construction.
+// The fields are unexported; the type is immutable after New.
 type Definition struct {
-	Initial     Status
-	Transitions []Transition
+	initial     Status
+	transitions []Transition
+}
+
+// Initial returns the initial status of the definition.
+func (d Definition) Initial() Status { return d.initial }
+
+// Transitions returns a copy of the transition table.
+// The copy keeps the definition immutable; callers cannot mutate the internal table.
+func (d Definition) Transitions() []Transition {
+	return append([]Transition(nil), d.transitions...)
 }
 
 // New builds a Definition and validates the transition table.
@@ -20,7 +28,7 @@ func New(initial Status, ts ...Transition) (*Definition, error) {
 	if len(ts) == 0 {
 		return nil, fmt.Errorf("machine: transition list must not be empty")
 	}
-	d := &Definition{Initial: initial, Transitions: append([]Transition(nil), ts...)}
+	d := &Definition{initial: initial, transitions: append([]Transition(nil), ts...)}
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
@@ -31,10 +39,10 @@ func New(initial Status, ts ...Transition) (*Definition, error) {
 // It rejects self loops and transitions whose From is not
 // reachable from the initial status through the table.
 func (d *Definition) Validate() error {
-	if len(d.Transitions) == 0 {
+	if len(d.transitions) == 0 {
 		return fmt.Errorf("machine: transition list must not be empty")
 	}
-	for _, t := range d.Transitions {
+	for _, t := range d.transitions {
 		if t.From == t.To {
 			return fmt.Errorf(
 				"machine: self loop from %q to %q is not allowed",
@@ -42,17 +50,17 @@ func (d *Definition) Validate() error {
 			)
 		}
 	}
-	reachable := map[Status]bool{d.Initial: true}
+	reachable := map[Status]bool{d.initial: true}
 	for changed := true; changed; {
 		changed = false
-		for _, t := range d.Transitions {
+		for _, t := range d.transitions {
 			if reachable[t.From] && !reachable[t.To] {
 				reachable[t.To] = true
 				changed = true
 			}
 		}
 	}
-	for _, t := range d.Transitions {
+	for _, t := range d.transitions {
 		if !reachable[t.From] {
 			return fmt.Errorf(
 				"machine: transition from %q is not in the declared set",
@@ -60,13 +68,13 @@ func (d *Definition) Validate() error {
 			)
 		}
 	}
-	for i := range d.Transitions {
-		for j := i + 1; j < len(d.Transitions); j++ {
-			if d.Transitions[i].From == d.Transitions[j].From &&
-				d.Transitions[i].Trigger == d.Transitions[j].Trigger {
+	for i := range d.transitions {
+		for j := i + 1; j < len(d.transitions); j++ {
+			if d.transitions[i].From == d.transitions[j].From &&
+				d.transitions[i].Trigger == d.transitions[j].Trigger {
 				return fmt.Errorf(
 					"machine: duplicate transition from %q on %q",
-					d.Transitions[i].From, d.Transitions[i].Trigger,
+					d.transitions[i].From, d.transitions[i].Trigger,
 				)
 			}
 		}
@@ -84,9 +92,9 @@ func (d *Definition) Fire(
 	ctx context.Context, from Status, trig Trigger, in InOut,
 ) (Status, InOut, error) {
 	var row *Transition
-	for i := range d.Transitions {
-		if d.Transitions[i].From == from && d.Transitions[i].Trigger == trig {
-			row = &d.Transitions[i]
+	for i := range d.transitions {
+		if d.transitions[i].From == from && d.transitions[i].Trigger == trig {
+			row = &d.transitions[i]
 			break
 		}
 	}

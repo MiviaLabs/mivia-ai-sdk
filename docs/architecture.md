@@ -16,8 +16,9 @@ references.
   message admission.
 - `machine/` — the status model. Phases 1 and 2 ship `Status`,
   `Trigger`, `Guard`, `Action`, `Transition`, `InOut`, `Definition`,
-  `New`, `Validate`, and the `Fire` dispatch. The wire form lands in a
-  later phase. See [packages/machine.md](packages/machine.md) and
+  `New`, `Initial`, `Transitions`, `Validate`, and the `Fire` dispatch.
+  The wire form lands in a later phase. See
+  [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
 - `flow/` — a future package. It owns the step graph, panels, parallel
   execution, and chaining. It is planned in

@@ -18,12 +18,16 @@ The exported surface below mirrors `api/machine.txt`.
 - `Transition` — one row in the table. Fields: `from`, `to`, `trigger`,
   `guard`, `on exit`, and `on entry`.
 - `InOut` — the record a transition moves. Fields: `input` and `output`.
-- `Definition` — an initial status and the transition table.
+- `Definition` — an initial status and the transition table. The
+  fields are unexported. Callers read them through `Initial` and
+  `Transitions`.
 
 ## Functions and methods
 
 - `New(initial, transitions...)` — builds a `Definition` and validates
   the table.
+- `Definition.Initial()` — returns the initial status.
+- `Definition.Transitions()` — returns a copy of the transition table.
 - `Definition.Validate()` — checks the transition table.
 - `Definition.Fire(ctx, from, trigger, in)` — moves the record through
   the row and returns the target status and the output record.
@@ -43,7 +47,8 @@ The exported surface below mirrors `api/machine.txt`.
 - No two transitions share the same `from` and `trigger` pair. A
   duplicate makes dispatch ambiguous, so `Validate` rejects it.
 - `New` copies the input list. A `Definition` is immutable after `New`.
-  A caller must not mutate its fields.
+  The fields are unexported, so the invariant is enforced. `Transitions`
+  returns a copy of the table.
 - `Fire` returns an error on an unknown `from` status or trigger.
 - `Fire` runs the guard, then the exit action, then the entry action.
 - A failed guard blocks the move and skips the exit action.

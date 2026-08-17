@@ -27,21 +27,27 @@ exists yet. The phase lands the types and the table validation only.
 - `type Trigger string`
 - `type Guard func(ctx context.Context) (bool, error)`
 - `type Transition struct { From, To Status; Trigger Trigger; Guard Guard }`
-- `type Definition struct` holding the initial status and the list of
-  transitions.
+- `type Definition struct` with the unexported fields `initial Status`
+  and `transitions []Transition`. Callers read them through `Initial`
+  and `Transitions`.
+- `(d Definition).Initial() Status` reads the initial status.
+- `(d Definition).Transitions() []Transition` returns a copy of the
+  transition table.
 - `New(initial Status, ts ...Transition) (*Definition, error)`
 
 The `Transition` struct omits `OnEntry` and `OnExit` in this phase.
 Phase 2 adds them. The API lock updates with each phase.
 
-`Validate` rejects a transition whose `From` is not reachable from
-the initial status through the table. Reachability means the status
-equals the initial status or appears as a `To` in a reachable row.
-An unreachable `To` implies an unreachable `From`, so the `From`
-check covers both. It rejects a self loop where `From` equals `To`.
-It rejects two transitions with the same `From` and `Trigger`. Dispatch
-must be unambiguous, so a duplicate key is invalid. It accepts a nil
-`Guard`.
+`New` runs `Validate` on the table. An invalid table makes `New`
+return `(nil, err)`. The fields are unexported, so external code cannot
+construct an invalid `Definition`. `Validate` rejects a transition
+whose `From` is not reachable from the initial status through the
+table. Reachability means the status equals the initial status or
+appears as a `To` in a reachable row. An unreachable `To` implies an
+unreachable `From`, so the `From` check covers both. It rejects a self
+loop where `From` equals `To`. It rejects two transitions with the
+same `From` and `Trigger`. Dispatch must be unambiguous, so a
+duplicate key is invalid. It accepts a nil `Guard`.
 
 ## Tests
 
@@ -52,15 +58,13 @@ Test files live in `machine/machine_test/`:
   Then implement and watch them pass. Cases:
   - `New` rejects an empty transition list.
   - `New` accepts a valid transition list.
-- `Validate` rejects a self loop.
-- `Validate` rejects a `From` not reachable from the initial status.
-- `Validate` rejects duplicate `From` and `Trigger` pairs.
-- `Validate` accepts a nil Guard.
-- `Validate` accepts a valid table.
-- `status_integration_test.go` — merged into the TDD file.
-  Phase 1 imports no other package. No cross-boundary path exists.
-  See PHASES.md: "A phase may merge files only when a test kind has
-  no case yet."
+  - `New` rejects a self loop.
+  - `New` rejects a `From` not reachable from the initial status.
+  - `New` rejects duplicate `From` and `Trigger` pairs.
+  - `New` accepts a nil Guard.
+  - `New` accepts a valid table.
+- No `status_integration_test.go`. The status model has no
+  cross-package boundary. Phase 2 adds the first integration test.
 - `status_perf_test.go` — benchmark `Validate` on a table of ten
   transitions. The builder runs the benchmark against the empty
   implementation first and records the baseline in a comment. Target

@@ -3,6 +3,6 @@
 //
 // Map: status.go = Status; trigger.go = Trigger; transition.go =
 // Guard, Action, Transition; inout.go = InOut; definition.go =
-// Definition, New, Validate, Fire.
+// Definition, New, Validate, Fire, Initial, Transitions.
 // Rationale: ../docs/plans/machine.md. Contribution rules: ../AGENTS.md.
 package machine

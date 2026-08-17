@@ -12,10 +12,17 @@ the invariants the architecture enforces. See
   VerifyThread. One package per concern.
 - `room/` — standing groups. It holds the roster, the roles, and
   message admission.
-- `flow/` — a future package. It is planned in
+- `machine/` — a future package. It owns typed statuses, gates, inputs,
+  outputs, and entry and exit actions. It is planned in
+  [plans/machine.md](plans/machine.md); no code exists yet.
+- `flow/` — a future package. It owns the step graph, panels, parallel
+  execution, and chaining. It is planned in
   [plans/flow.md](plans/flow.md); no code exists yet.
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
+
+The machine and flow packages compose. Flow imports machine for each
+step's status transitions. The import edge lands when the code lands.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import

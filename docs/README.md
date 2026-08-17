@@ -29,7 +29,13 @@ change before the code lands.
 - [plans/TEMPLATE.md](plans/TEMPLATE.md) — the required plan skeleton.
 - [plans/envelope.md](plans/envelope.md) — the envelope package plan.
 - [plans/room.md](plans/room.md) — the room package plan.
-- [plans/flow.md](plans/flow.md) — the future flow package plan.
+- [plans/flow.md](plans/flow.md) — the future flow step-runner plan.
+- [plans/machine.md](plans/machine.md) — the future machine state plan.
+- [plans/phases/](plans/phases/) — the phased machine and flow build;
+  each phase has one small plan in that directory.
+- [plans/agents/](plans/agents/) — the phased agent-block build: the
+  PHASES framework plus one small plan per phase, each with its own
+  integration, tdd, and perf test files.
 - [plans/a2a.md](plans/a2a.md) — the future a2a package plan.
 - [plans/gates.md](plans/gates.md) — the gate-hardening plan.
 - [plans/labels.md](plans/labels.md) — the label-ban plan.

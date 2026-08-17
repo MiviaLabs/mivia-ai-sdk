@@ -32,7 +32,7 @@ change before the code lands.
 - [plans/room.md](plans/room.md) — the room package plan.
 - [plans/flow.md](plans/flow.md) — the future flow step-runner plan.
 - [plans/machine.md](plans/machine.md) — the machine state plan; Phases
-  1 and 2 ship.
+  1 through 3 ship.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
   integration, tdd, and perf test files.

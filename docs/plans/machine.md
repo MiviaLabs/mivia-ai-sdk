@@ -1,8 +1,8 @@
 # Plan: machine
 
-Status: future. No code yet. This plan sets the boundary before any
-builder starts. Rationale in docs/research-state-machine.md. The build
-phases live in docs/plans/agents/. See phases 1 through 3.
+Status: shipped through phases 1 through 3. Rationale in
+docs/research-state-machine.md. The build phases live in
+docs/plans/agents/. See phases 1 through 3.
 
 ## Goal
 

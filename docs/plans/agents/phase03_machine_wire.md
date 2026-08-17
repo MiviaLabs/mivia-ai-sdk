@@ -1,6 +1,6 @@
 # Phase 3: machine wire form
 
-Status: future. Builds on phase 2. This phase adds the wire form of a
+Status: done. Builds on phase 2. This phase adds the wire form of a
 definition. The definition stays serializable. Conformance vectors pin
 the form. See `docs/plans/agents/PHASES.md` for the contract.
 
@@ -32,7 +32,8 @@ registry makes encode the inverse of decode.
 A function does not serialize. The form stores a name for each guard
 and action. Guard names and action names are separate namespaces in
 the wire form. Decode rebinds each name through the matching Registry
-map. A missing name returns an error. A bound function reads the
+map. A missing name returns an error. A name that resolves to a nil
+function returns an error. A bound function reads the
 payload from `InOut.Input` and writes the result to `InOut.Output`.
 It never uses reflection to reach the record. Unknown fields are
 ignored on decode.

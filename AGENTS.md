@@ -1,6 +1,6 @@
 # Agent Instructions
 
-PoC Go SDK for model-to-model communication. Module:
+Go SDK for model-to-model communication. Module:
 `github.com/MiviaLabs/mivia-ai-sdk`.
 
 ## Layout

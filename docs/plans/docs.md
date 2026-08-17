@@ -89,7 +89,7 @@ the six sentinel errors. The invariants come from room.go.
 Each file is a prose walkthrough with one complete Go program in a
 code fence. The code is illustrative only. It is not buildable. Root
 Go code is forbidden. A runnable examples package would need a
-policy/layers.json row, an api/ lock, a plan, and PoC API churn;
+policy/layers.json row, an api/ lock, a plan, and API churn;
 record that as future work inside each file.
 
 envelope-flow.md shows: create, sign, encode, decode, verify, then
@@ -167,7 +167,7 @@ abbreviation traps such as "e.g.". STE forbids them anyway.
 
 - Runnable examples package: rejected. Root Go code is forbidden.
   A runnable package would need a policy row, an api/ lock, a plan,
-  and PoC API churn. Future work if the SDK gains an examples
+  and API churn. Future work if the SDK gains an examples
   convention.
 - Renaming docs/protocol-design.md: rejected. AGENTS.md, README.md,
   and the plans reference the name. The name is accurate.

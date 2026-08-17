@@ -216,7 +216,7 @@ the envelope.
 `prev_hash` forms a linear chain, which assumes one writer appends to
 a thread at a time. Two parties taking turns satisfy this. A busy room
 does not: two agents can both append to the same parent, and the chain
-forks. For this PoC the rule is: a thread has serialized appends,
+forks. The rule is: a thread has serialized appends,
 enforced by whoever owns the transport (last-hash-wins locking, a
 sequencer, or a thread owner). A multi-parent DAG (`prev_hash` as a
 list, git-style) is the known upgrade path if a use case needs
@@ -234,10 +234,10 @@ not the transport, registry, or session manager.
   `thread_id`.
 - **Voting and dissent preservation.** Governance-layer primitives.
   `challenge` and `escalate` cover the two-party case; multi-party
-  preference aggregation is out of scope for a PoC.
+  preference aggregation is out of scope.
 - **Identity registries / DID resolution (ANP).** Signatures prove a
   message came from the holder of a key. Mapping that key to a
-  organizational identity needs a registry decision this PoC does not
+  organizational identity needs a registry decision this SDK does not
   make.
 
 ## Known limits

@@ -6,8 +6,8 @@ natural-language payloads inside machine-checkable, authenticatable
 metadata. The other blocks add standing groups, a status model, a step
 graph, and an event bus.
 
-Status: **PoC**. The API can change at any time. The GitHub remote for
-this repo is private. Licensed under the [MIT License](LICENSE).
+The GitHub remote for this repo is private. Licensed under the
+[MIT License](LICENSE).
 
 ## Why
 
@@ -47,21 +47,20 @@ public API.
 
 ## Roadmap
 
-The build runs in twenty phases. Each phase is the smallest unit that
-ships. [docs/plans/agents/PHASES.md](docs/plans/agents/PHASES.md) is
-the framework. One small plan per phase lives in
+The build runs in incremental steps that ship as they complete.
+[docs/plans/agents/PHASES.md](docs/plans/agents/PHASES.md) is the
+framework. One small plan per step lives in
 [docs/plans/agents/](docs/plans/agents/).
 
-- Phases 1 to 7, foundation: the machine status model and wire form,
-  then the flow graph, runner, panels, and chaining. Phases 1 to 4
-  ship: the machine block and the flow graph.
-- Phases 8 to 11, transport and identity: identity key wrap, a2a
-  mapping, a2a client, discovery card. Future.
-- Phases 12 to 15, composition: agent definition, run loop, tools,
-  memory. Future.
-- Phase 16, system: the end-to-end two-agent exchange. Future.
-- Phases 17 to 20, reaction and delivery: the events bus and the block
-  emissions. Phases 17 and 18 ship: the bus and the machine emissions.
+- **Foundation**: the machine status model and wire form, then the flow
+  graph, runner, panels, and chaining. The machine block, the flow
+  graph, and the events bus ship.
+- **Transport and identity**: identity key wrap, a2a mapping, a2a
+  client, discovery card. Future.
+- **Composition**: agent definition, run loop, tools, memory. Future.
+- **System integration**: the end-to-end two-agent exchange. Future.
+- **Reactions**: the events bus and the block emissions. The bus and
+  the machine emissions ship.
 
 ## Install
 

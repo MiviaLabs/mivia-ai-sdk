@@ -14,11 +14,10 @@ references.
   VerifyThread. One package per concern.
 - `room/` — standing groups. It holds the roster, the roles, and
   message admission.
-- `machine/` — the status model. Phase 1 ships `Status`, `Trigger`,
-  `Guard`, `Transition`, `Definition`, `New`, and `Validate`. The move
-  dispatch `Fire`, the input and output records, the entry and exit
-  actions, and the wire form land in later phases. See
-  [packages/machine.md](packages/machine.md) and
+- `machine/` — the status model. Phases 1 and 2 ship `Status`,
+  `Trigger`, `Guard`, `Action`, `Transition`, `InOut`, `Definition`,
+  `New`, `Validate`, and the `Fire` dispatch. The wire form lands in a
+  later phase. See [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
 - `flow/` — a future package. It owns the step graph, panels, parallel
   execution, and chaining. It is planned in

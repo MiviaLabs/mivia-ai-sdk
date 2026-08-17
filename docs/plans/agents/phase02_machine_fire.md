@@ -1,6 +1,6 @@
 # Phase 2: machine fire dispatch
 
-Status: future. Builds on phase 1. This phase adds the `Fire` method
+Status: done. Builds on phase 1. This phase adds the `Fire` method
 and the record it moves. See `docs/plans/agents/PHASES.md` for the contract.
 
 ## Goal
@@ -19,7 +19,8 @@ list. Those belong to phase 3.
 
 - `type InOut struct { Input any; Output any }` holding the input
   record and the output record.
-- `type Action func(Context) error` as an entry or exit action.
+- `type Action func(ctx context.Context, rec *InOut) error` as an entry
+  or exit action. The action writes the output record through `rec`.
 - `(*Definition).Fire(ctx, from Status, trig Trigger, in InOut) (Status, InOut, error)`
 
 `Fire` returns an error on an unknown from status or trigger. A guard

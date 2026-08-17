@@ -1,6 +1,9 @@
 package machine
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // Definition holds an initial status and a validated transition table.
 type Definition struct {
@@ -55,4 +58,52 @@ func (d *Definition) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Fire moves a record from from through the row selected by trig.
+// It runs the guard, then OnExit, then OnEntry, in that order.
+// It returns the target status and the record in in.
+// An action writes the output record through the InOut it receives.
+// A nil Guard or a nil Action is checked, never invoked.
+// Fire does not run OnExit when the guard fails.
+func (d *Definition) Fire(
+	ctx context.Context, from Status, trig Trigger, in InOut,
+) (Status, InOut, error) {
+	var row *Transition
+	for i := range d.Transitions {
+		if d.Transitions[i].From == from && d.Transitions[i].Trigger == trig {
+			row = &d.Transitions[i]
+			break
+		}
+	}
+	if row == nil {
+		return from, in, fmt.Errorf(
+			"machine: no transition from %q on %q",
+			from, trig,
+		)
+	}
+	if row.Guard != nil {
+		ok, err := row.Guard(ctx)
+		if err != nil {
+			return from, in, err
+		}
+		if !ok {
+			return from, in, fmt.Errorf(
+				"machine: guard rejected move from %q on %q",
+				from, trig,
+			)
+		}
+	}
+	rec := in
+	if row.OnExit != nil {
+		if err := row.OnExit(ctx, &rec); err != nil {
+			return from, in, err
+		}
+	}
+	if row.OnEntry != nil {
+		if err := row.OnEntry(ctx, &rec); err != nil {
+			return from, in, err
+		}
+	}
+	return row.To, rec, nil
 }

@@ -1,6 +1,6 @@
 # Phase 1: machine status model
 
-Status: future. Builds the machine block. See
+Status: done. Builds the machine block. See
 `docs/plans/machine.md` for the boundary of the block. See
 `docs/plans/agents/PHASES.md` for the test contract. This phase owns the
 status types, the transition table, and the validation.

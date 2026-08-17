@@ -16,6 +16,8 @@ Go SDK for building AI agents. Module:
   a panel runs as part of that panel's wave, in a goroutine, once
   every member is ready. Chaining ships in phase 7.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
+- `heartbeat/` — liveness tracking: Monitor records a beat per id and
+  reports ids that have gone silent past a fixed timeout.
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.

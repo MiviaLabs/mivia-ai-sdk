@@ -63,6 +63,14 @@ references.
   `events.Bus`. `agent` imports both `envelope` and `events`; neither
   of those two packages imports the other or `agent`. See
   [plans/agent.md](plans/agent.md).
+- `heartbeat/` — a leaf primitive. It ships `Monitor`, `New`, `Beat`,
+  `Alive`, `Dead`, `Forget`, and the typed event name `MissedEvent`.
+  `Monitor` tracks liveness by time: it records the last beat per id
+  and reports which ids have gone silent past a fixed timeout. It has
+  no caller in this repo yet; it is a plausible future building block
+  for agent execution work, once that work is scoped, not yet named in
+  any phase contract. It imports `events` only, for the `MissedEvent`
+  constant. See [plans/heartbeat.md](plans/heartbeat.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

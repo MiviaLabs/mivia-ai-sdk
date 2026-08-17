@@ -6,6 +6,7 @@
     "envelope": [],
     "events": [],
     "flow": ["events", "machine"],
+    "heartbeat": ["events"],
     "identity": ["envelope"],
     "machine": ["events"],
     "room": ["envelope"]

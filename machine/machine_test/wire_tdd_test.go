@@ -39,7 +39,7 @@ type wireCase struct {
 	errSub  string
 }
 
-// decodeCases lists the Decode assertions for phase 3.
+// decodeCases lists the Decode assertions for the wire form.
 var decodeCases = []wireCase{
 	{
 		name:    "decodes named guard and action",
@@ -152,11 +152,11 @@ func TestDecodeBindsGuards(t *testing.T) {
 	if ts[0].OnEntry == nil {
 		t.Fatal("OnEntry is nil; Decode must bind the named action")
 	}
-	// Red step: Decode did not exist on the empty phase, so this case
-	// did not compile. Decode added; the binding cases passed.
+	// Red step: Decode did not exist on the empty implementation, so this
+	// case did not compile. Decode added; the binding cases passed.
 }
 
-// encodeCases lists the valid Encode byte assertions for phase 3.
+// encodeCases lists the valid Encode byte assertions for the wire form.
 var encodeCases = []struct {
 	name string
 	json string
@@ -189,8 +189,8 @@ func TestEncodeRoundTrip(t *testing.T) {
 			if string(got) != tt.json {
 				t.Fatalf("Encode = %s, want %s", got, tt.json)
 			}
-			// Red step: Encode did not exist on the empty phase, so this
-			// case did not compile. Encode added; the bytes matched.
+			// Red step: Encode did not exist on the empty implementation,
+			// so this case did not compile. Encode added; bytes matched.
 		})
 	}
 }
@@ -339,5 +339,5 @@ func TestNewRegistryEmpty(t *testing.T) {
 		t.Fatalf("len(Guards) = %d, want 0", len(reg.Guards))
 	}
 	// Red step: Registry and NewRegistry did not exist on the empty
-	// phase, so this case did not compile.
+	// implementation, so this case did not compile.
 }

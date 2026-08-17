@@ -82,7 +82,7 @@ func TestFireUnknownFrom(t *testing.T) {
 	if !strings.Contains(err.Error(), "no transition") {
 		t.Fatalf("error %q should mention no transition", err.Error())
 	}
-	// Red step: Fire did not exist on the empty phase.
+	// Red step: Fire did not exist on the empty implementation.
 	// The unknown-from path returned nil before the check was added.
 }
 

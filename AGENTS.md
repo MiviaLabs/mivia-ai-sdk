@@ -11,8 +11,10 @@ Go SDK for building AI agents. Module:
 - `room/` — standing groups: membership roster, roles, admission.
 - `machine/` — the status model: Status, Trigger, Guard, Transition,
   Fire, and the JSON wire form.
-- `flow/` — the step graph and the sequential runner: Step, Panel,
-  Definition, Run, Confirm. Parallel panels and chaining stay future.
+- `flow/` — the step graph, the sequential runner, and the parallel
+  panel waves: Step, Panel, Definition, Run, Confirm. A step named in
+  a panel runs as part of that panel's wave, in a goroutine, once
+  every member is ready. Chaining stays future.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.

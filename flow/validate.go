@@ -24,17 +24,99 @@ func validateSteps(steps []Step, ids map[string]int) error {
 	return nil
 }
 
-// validatePanels checks every panel entry. Every entry must name a
-// step ID that exists in the graph.
-func validatePanels(panels []Panel, ids map[string]int) error {
+// validatePanels checks every panel entry. Within one panel the check
+// order is fixed: every member's ID must resolve to a known step
+// first; no member ID may repeat second; every member's To must equal
+// the first member's To last. The homogeneity check keeps a wave's
+// resulting status well-defined: every member fires from one shared
+// cur and lands on one shared To, never several.
+func validatePanels(panels []Panel, steps []Step, ids map[string]int) error {
 	for i, p := range panels {
 		for _, id := range p {
 			if _, ok := ids[id]; !ok {
 				return errorf("panel %d names unknown step %q", i, id)
 			}
 		}
+		seen := map[string]bool{}
+		for _, id := range p {
+			if seen[id] {
+				return errorf("panel %d names step %q twice", i, id)
+			}
+			seen[id] = true
+		}
+		if err := validatePanelHomogeneity(i, p, steps, ids); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// validatePanelHomogeneity checks that every member of p shares the
+// first member's To. It runs only after every member of p resolves
+// to a known step; it reads a member's To through steps[ids[id]].
+func validatePanelHomogeneity(i int, p Panel, steps []Step, ids map[string]int) error {
+	if len(p) == 0 {
+		return nil
+	}
+	first := p[0]
+	firstTo := steps[ids[first]].To
+	for _, id := range p[1:] {
+		to := steps[ids[id]].To
+		if to != firstTo {
+			return errorf(
+				"panel %d: step %q and step %q disagree on To (%q vs %q)",
+				i, first, id, firstTo, to,
+			)
+		}
+	}
+	return nil
+}
+
+// validatePanelIndependence rejects a panel whose member's transitive
+// Needs closure reaches a fellow member of the same panel. It runs
+// after findRoots proves the step graph acyclic; walking a closure
+// needs an acyclic graph, so this check cannot loop forever.
+func validatePanelIndependence(steps []Step, panels []Panel, ids map[string]int) error {
+	needs := make(map[string][]string, len(steps))
+	for _, s := range steps {
+		needs[s.ID] = s.Needs
+	}
+	memo := map[string]map[string]bool{}
+	for i, p := range panels {
+		for _, id := range p {
+			anc := ancestorsOf(id, needs, memo)
+			for _, other := range p {
+				if other == id {
+					continue
+				}
+				if anc[other] {
+					return errorf(
+						"panel %d: step %q needs step %q, a member of the same panel",
+						i, id, other,
+					)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// ancestorsOf returns the transitive Needs closure of id: every step
+// id depends on, directly or through another dependency. It memoizes
+// each ID's closure so a shared dependency is walked once.
+func ancestorsOf(id string, needs map[string][]string, memo map[string]map[string]bool) map[string]bool {
+	if a, ok := memo[id]; ok {
+		return a
+	}
+	a := map[string]bool{}
+	for _, need := range needs[id] {
+		a[need] = true
+		for anc := range ancestorsOf(need, needs, memo) {
+			a[anc] = true
+		}
+	}
+	memo[id] = a
+	return a
 }
 
 // findRoots computes the root step IDs with Kahn's algorithm.

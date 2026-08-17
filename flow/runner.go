@@ -2,21 +2,40 @@ package flow
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
 // Confirm gates a step's ack. Run calls it after Fire moves the
-// status. A nil return means the ack confirmed; the walk advances.
+// status, for a step named in no panel. Run does not call Confirm
+// for a step that runs as a panel wave member. A nil return means
+// the ack confirmed; the walk advances.
 type Confirm func(ctx context.Context, step Step) error
 
-// Run walks the step graph in topological order. Ready steps run in
-// declaration order. Run keeps the current status and one record
-// through the walk; each step reads the record and writes the next.
-// Run rejects a nil d, a nil m, and a nil confirm at entry, before it
-// dereferences d or m. It checks d first, then m, then confirm, so a
-// nil m never panics inside a d-nil or m-nil check.
+// Run walks the step graph in topological order. A step named in no
+// panel runs alone, in declaration order, as it did before panels
+// existed; Run calls confirm for that step. See Confirm. A step named
+// in a panel runs as part of that panel's wave, once every member of
+// the panel is ready; the wave fires every member's transition
+// concurrently through the one shared row every member's homogeneous
+// To selects. Run does not call confirm for any wave member. Run
+// keeps the current status and
+// one record through the walk; each wave reads the record and writes
+// the next. Run rejects a nil d, a nil m, and a nil confirm at entry,
+// before it dereferences d or m. It checks d first, then m, then
+// confirm, so a nil m never panics inside a d-nil or m-nil check.
+//
+// A panel member's Input and Output must be either an immutable
+// value, or a value the caller has already cloned per step. Run
+// copies each member's InOut struct before it fires that member's
+// transition, but the copy is shallow: a map, a slice, or a pointer
+// an Input or Output field holds is not copied. Two panel members
+// that alias the same underlying data still race if either mutates it
+// in place. flow cannot deep-copy an arbitrary any value; this is a
+// caller contract, not a runtime check.
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	in machine.InOut, confirm Confirm,
@@ -36,55 +55,218 @@ func Run(
 	rec := in
 
 	for len(done) < len(d.steps) {
-		next, ok := nextReady(d.steps, done)
+		group, ok := nextReadyGroup(d.steps, d.panels, done)
 		if !ok {
-			// Unreachable when New accepted the graph: New already
-			// proves the graph acyclic and every Needs entry
-			// resolvable.
+			// Unreachable for a same-panel Needs cycle: validatePanelIndependence
+			// rejects that shape in New. Still reachable for a cross-panel
+			// scheduling deadlock: a member of one panel needs a member of
+			// another panel, and vice versa, with no cycle in the Needs graph and
+			// no single panel's closure violation. New does not validate
+			// cross-panel scheduling feasibility; a future phase may close this
+			// gap.
 			return cur, rec, errorf("no ready step; graph stalled")
 		}
 
-		rows := m.AllowedTransitions(cur)
-		row, err := pickTransition(rows, machine.Status(next.To))
+		if len(group) == 1 {
+			next := group[0]
+			rows := m.AllowedTransitions(cur)
+			row, err := pickTransition(rows, machine.Status(next.To))
+			if err != nil {
+				return cur, rec, errorf("step %q: %w", next.ID, err)
+			}
+
+			var fireErr error
+			cur, rec, fireErr = m.Fire(ctx, cur, row.Trigger, rec)
+			if fireErr != nil {
+				return cur, rec, errorf("step %q: %w", next.ID, fireErr)
+			}
+
+			if err := confirm(ctx, next); err != nil {
+				return cur, rec, errorf("step %q: ack not confirmed: %w", next.ID, err)
+			}
+
+			markDone(done, group)
+			continue
+		}
+
+		var err error
+		cur, rec, err = runWave(ctx, m, cur, rec, group)
 		if err != nil {
-			return cur, rec, errorf("step %q: %w", next.ID, err)
+			return cur, rec, err
 		}
 
-		cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
-		if err != nil {
-			return cur, rec, errorf("step %q: %w", next.ID, err)
-		}
-
-		if err := confirm(ctx, next); err != nil {
-			return cur, rec, errorf("step %q: ack not confirmed: %w", next.ID, err)
-		}
-
-		done[next.ID] = true
+		markDone(done, group)
 	}
 
 	return cur, rec, nil
 }
 
-// nextReady scans steps in declaration order for the first step whose
-// Needs are all in done and that is not itself in done. Returns false
-// when every step is already done.
-func nextReady(steps []Step, done map[string]bool) (Step, bool) {
+// nextReadyGroup scans steps in declaration order for the next ready
+// wave. A ready step named in no panel returns alone, as a
+// one-element singleton wave: the phase 5 path. A ready step named in
+// a panel returns with its whole panel, once every member of that
+// panel is ready. A partially-ready panel is skipped, not returned;
+// the scan keeps looking for another ready step so a partially-ready
+// panel never blocks the rest of the graph. Returns false when no
+// step is ready.
+func nextReadyGroup(steps []Step, panels []Panel, done map[string]bool) ([]Step, bool) {
 	for _, s := range steps {
 		if done[s.ID] {
 			continue
 		}
-		ready := true
-		for _, need := range s.Needs {
-			if !done[need] {
-				ready = false
-				break
-			}
+		if !needsMet(s.Needs, done) {
+			continue
 		}
-		if ready {
-			return s, true
+		p, found := panelFor(s.ID, panels)
+		if !found {
+			return []Step{s}, true
+		}
+		if panelReady(p, steps, done) {
+			return panelMembers(p, steps), true
 		}
 	}
-	return Step{}, false
+	return nil, false
+}
+
+// needsMet reports whether every entry of needs is already in done.
+func needsMet(needs []string, done map[string]bool) bool {
+	for _, need := range needs {
+		if !done[need] {
+			return false
+		}
+	}
+	return true
+}
+
+// panelFor returns the first panel in panels that names id, and
+// whether one was found.
+func panelFor(id string, panels []Panel) (Panel, bool) {
+	for _, p := range panels {
+		for _, member := range p {
+			if member == id {
+				return p, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// panelReady reports whether every member of p is ready: not already
+// done, and every entry of that member's Needs is in done.
+func panelReady(p Panel, steps []Step, done map[string]bool) bool {
+	for _, id := range p {
+		if done[id] {
+			return false
+		}
+		if !needsMet(stepByID(steps, id).Needs, done) {
+			return false
+		}
+	}
+	return true
+}
+
+// panelMembers resolves every ID in p to its Step, in p's declaration
+// order.
+func panelMembers(p Panel, steps []Step) []Step {
+	out := make([]Step, 0, len(p))
+	for _, id := range p {
+		out = append(out, stepByID(steps, id))
+	}
+	return out
+}
+
+// stepByID returns the step in steps whose ID equals id, or the zero
+// Step when no step matches. New already proves every panel entry
+// resolves to a known step, so the zero-value branch is unreachable
+// through nextReadyGroup.
+func stepByID(steps []Step, id string) Step {
+	for _, s := range steps {
+		if s.ID == id {
+			return s
+		}
+	}
+	return Step{}
+}
+
+// markDone marks every member of group done, in one pass. Run calls
+// it once per successful singleton and once per successful wave.
+func markDone(done map[string]bool, group []Step) {
+	for _, s := range group {
+		done[s.ID] = true
+	}
+}
+
+// waveResult carries one panel member's Fire outcome.
+type waveResult struct {
+	step Step
+	to   machine.Status
+	rec  machine.InOut
+	err  error
+}
+
+// runWave resolves the shared transition row once, before it spawns
+// any goroutine. validatePanels' homogeneity rule guarantees every
+// member of group shares one To, so pickTransition(rows, to) is a
+// pure function of (rows, to); it cannot fail for one member and
+// succeed for a sibling. A pickTransition failure fails the whole
+// group before any goroutine spawns: no member's Guard, OnExit, or
+// OnEntry runs. Every member then fires row.Trigger from its own
+// InOut copy, concurrently. A member Fire failure joins with its
+// siblings' failures through errors.Join; cur and rec stay at their
+// pre-wave values, and the caller must not mark any member done. On
+// success runWave returns the first group member's result, by
+// declaration order, looked up by ID after every goroutine finishes,
+// not by channel arrival order.
+func runWave(
+	ctx context.Context, m *machine.Definition, cur machine.Status,
+	rec machine.InOut, group []Step,
+) (machine.Status, machine.InOut, error) {
+	rows := m.AllowedTransitions(cur)
+	to := machine.Status(group[0].To)
+	row, err := pickTransition(rows, to)
+	if err != nil {
+		return cur, rec, errorf("panel: %w", err)
+	}
+
+	results := make(chan waveResult, len(group))
+	var wg sync.WaitGroup
+	for _, s := range group {
+		wg.Add(1)
+		go func(s Step) {
+			defer wg.Done()
+			recCopy := rec
+			to, out, err := m.Fire(ctx, cur, row.Trigger, recCopy)
+			if err != nil {
+				results <- waveResult{step: s, err: errorf("step %q: %w", s.ID, err)}
+				return
+			}
+			results <- waveResult{step: s, to: to, rec: out}
+		}(s)
+	}
+	wg.Wait()
+	close(results)
+
+	var errs []error
+	byID := make(map[string]waveResult, len(group))
+	for r := range results {
+		byID[r.step.ID] = r
+		if r.err != nil {
+			errs = append(errs, r.err)
+		}
+	}
+	if len(errs) > 0 {
+		return cur, rec, errors.Join(errs...)
+	}
+	first := firstByDeclaration(byID, group)
+	return first.to, first.rec, nil
+}
+
+// firstByDeclaration returns the group member listed first in group,
+// looked up in byID by ID. Declaration order, not map iteration order
+// or channel arrival order, decides which member's result runWave
+// forwards.
+func firstByDeclaration(byID map[string]waveResult, group []Step) waveResult {
+	return byID[group[0].ID]
 }
 
 // pickTransition filters rows to the one whose To equals to. Zero

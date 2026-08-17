@@ -12,10 +12,13 @@ type Definition struct {
 }
 
 // New builds a Definition and validates the step graph.
-// It rejects an empty ID, a duplicate ID, a missing dependency,
-// and a panel that names an unknown step. Kahn's algorithm rejects
-// a cycle. It deep-copies the input slices so later caller mutation
-// cannot change the built graph.
+// It rejects an empty ID, a duplicate ID, a missing dependency, a
+// panel that names an unknown step, a panel that names one step
+// twice, and a panel whose members disagree on To. Kahn's algorithm
+// rejects a cycle. After the graph is proven acyclic, New also
+// rejects a panel where one member's Needs closure reaches a fellow
+// member of the same panel. It deep-copies the input slices so later
+// caller mutation cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),
@@ -25,11 +28,14 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 	if err := validateSteps(d.steps, ids); err != nil {
 		return nil, err
 	}
-	if err := validatePanels(d.panels, ids); err != nil {
+	if err := validatePanels(d.panels, d.steps, ids); err != nil {
 		return nil, err
 	}
 	roots, err := findRoots(d.steps, ids)
 	if err != nil {
+		return nil, err
+	}
+	if err := validatePanelIndependence(d.steps, d.panels, ids); err != nil {
 		return nil, err
 	}
 	d.roots = roots

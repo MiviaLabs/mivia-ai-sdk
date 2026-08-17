@@ -1,11 +1,13 @@
 # Package reference: flow
 
 The flow package is the declarative workflow building block. It owns
-the step graph, the cycle check, and the sequential runner. A workflow
-is data, not code. The graph has steps and panels. `Run` walks the
-graph and moves a `machine.Definition` one step at a time. The panel
-scheduling and the chaining land later. The exported surface below
-mirrors `api/flow.txt`.
+the step graph, the cycle check, and the runner. A workflow is data,
+not code. The graph has steps and panels. `Run` walks the graph and
+moves a `machine.Definition` one step at a time. A step named in no
+panel runs alone; a step named in a panel runs as part of that
+panel's wave, in a goroutine, together with every other member. The
+chaining lands later. The exported surface below mirrors
+`api/flow.txt`.
 
 ## Types
 
@@ -27,11 +29,15 @@ mirrors `api/flow.txt`.
 - `Definition.Roots()` — returns the root step IDs in declaration
   order. A root is a step with no prerequisites.
 - `Run(ctx, d, m, in, confirm)` — walks `d` in topological order.
-  Ready steps run in declaration order. Each step fires the
-  `machine.Transition` row whose `To` matches the step's target
-  status, then waits for `confirm` before the next step runs. `Run`
-  returns the final `machine.Status`, the final `machine.InOut`
-  record, and an error.
+  Ready steps run in declaration order. A step named in no panel fires
+  the `machine.Transition` row whose `To` matches the step's target
+  status, then waits for `confirm` before the next step runs, exactly
+  as before panels existed. A step named in a panel runs as part of
+  that panel's wave: every member fires the one shared row that
+  matches the panel's common `To`, concurrently, in its own goroutine.
+  `Run` does not call `confirm` for a wave; the ack gate applies to
+  steps named in no panel only. `Run` returns the final
+  `machine.Status`, the final `machine.InOut` record, and an error.
 
 ## Invariants
 
@@ -43,8 +49,15 @@ mirrors `api/flow.txt`.
   step fails.
 - Every panel entry names an existing step. A panel entry for an
   unknown step fails.
+- No panel names one step ID twice. A repeated step ID fails.
+- Every member of a panel shares one `To`. A member whose `To` differs
+  from the panel's first member fails.
 - The step graph is acyclic. Kahn's algorithm detects a cycle before
   any step runs. A cycle fails.
+- No panel member's `Needs` closure reaches a fellow member of the
+  same panel, directly or through a chain of dependencies. This check
+  runs after the cycle check, since it needs an acyclic graph to walk
+  safely.
 - A step with no prerequisites is a root. `Roots` returns every root.
 - `New` copies the input slices. A `Definition` is immutable after
   `New`. The fields are unexported, so the invariant is enforced.
@@ -56,11 +69,43 @@ mirrors `api/flow.txt`.
   `d` first, then `m`, then `confirm`, so it never dereferences a nil
   pointer.
 - `Run` fails when zero or when more than one transition row targets
-  a step's status. Every failure names the failing step ID.
-- A guard rejection inside `machine.Fire` stops the run before the
-  step's ack.
-- A step without a nil-returning `confirm` call does not advance. The
-  next step never fires until the prior ack confirms.
+  a wave's shared status. Every failure names the failing step ID, or
+  wraps `panel:` for a wave-wide failure.
+- A guard rejection inside `machine.Fire` stops a singleton step
+  before its ack, or fails the whole wave before any member's ack.
+- A step named in no panel without a nil-returning `confirm` call does
+  not advance. The next step never fires until the prior ack confirms.
+- A wave that fails leaves the current status and the record at their
+  pre-wave values. No member of that wave is marked done.
+- `New` does not validate cross-panel scheduling feasibility. A member
+  of one panel that needs a member of another panel, with the reverse
+  true too, stalls `Run` at runtime with the same "no ready step"
+  error a `Needs` cycle would report, since neither panel's own
+  independence rule catches this shape.
+
+## Panel waves
+
+A wave fires every member of one panel through the same
+`machine.Transition` row: one `Guard`, one `OnExit`, one `OnEntry`,
+each called once per member, concurrently. Only each member's own
+`machine.InOut` copy differs by memory identity; the closures cannot
+see which member they run for, since `machine.Fire`'s signature
+carries no step identity. A panel member's `Guard`, `OnExit`, and
+`OnEntry` must be safe for concurrent invocation.
+
+`Run` copies the wave's incoming record before it fires each member's
+transition, but the copy is shallow. A map, a slice, or a pointer an
+`Input` or `Output` field holds is not copied. Two members that alias
+the same underlying data still race if either mutates it in place.
+`flow` cannot deep-copy an arbitrary `any` value; a panel member's
+`Input` and `Output` must be an immutable value, or a value the caller
+already cloned per step.
+
+A wave forwards one record: the output of the panel's first member, in
+declaration order, chosen after every member finishes. The other
+members' transitions still ran; only their records are discarded. A
+caller whose panel members need their outputs merged cannot rely on
+this package yet.
 
 ## Attaching work to a step
 
@@ -95,8 +140,12 @@ Two mechanisms exist by design. A third must not appear.
 - A nested `Definition` composes one workflow inside another.
 
 Do not add a third attachment field to `Step` for a new use case, such
-as a `Handler` or an `Executor` field. Route new work through an
+as a `Handler` or an `Executor` field. Send new work through an
 action closure instead.
+
+Phase 22 adds `Step.Route`. `Route` is scheduling, not work
+attachment. It selects which dependents run. It fires no transition
+and runs no step work. The two-mechanism rule stands.
 
 Options for phase 7, recorded here so the choice does not get lost:
 
@@ -115,16 +164,22 @@ This note mirrors the same text in
 ```go
 graph, err := flow.New([]flow.Step{
     {ID: "start"},
-    {ID: "left", Needs: []string{"start"}},
-    {ID: "right", Needs: []string{"start"}},
+    {ID: "left", Needs: []string{"start"}, To: "reviewed"},
+    {ID: "right", Needs: []string{"start"}, To: "reviewed"},
     {ID: "join", Needs: []string{"left", "right"}},
 }, []flow.Panel{{"left", "right"}})
 if err != nil {
-    // the graph has a missing step, a bad panel, or a cycle
+    // the graph has a missing step, a bad panel, a panel that
+    // disagrees on To, a panel that repeats a step, a panel whose
+    // members depend on each other, or a cycle
 }
 roots := graph.Roots()
 _ = roots
 ```
+
+`left` and `right` share one `To`, so `Run` schedules them as one
+wave once both are ready: their `Guard`, `OnExit`, and `OnEntry` fire
+concurrently through the one transition row targeting `"reviewed"`.
 
 `Run` walks a graph and a matching `machine.Definition` together:
 

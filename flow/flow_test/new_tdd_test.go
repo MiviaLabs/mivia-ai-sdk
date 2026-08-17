@@ -36,8 +36,8 @@ var newCases = []flowCase{
 	{
 		name: "accepts panels that name known steps",
 		steps: []flow.Step{
-			{ID: "a"},
-			{ID: "b", Needs: []string{"a"}},
+			{ID: "a", To: "done"},
+			{ID: "b", To: "done"},
 		},
 		panels:  []flow.Panel{{"a", "b"}},
 		wantErr: false,

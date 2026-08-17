@@ -1,14 +1,22 @@
 # Plan: flow
 
-Status: the step graph and the sequential runner ship. The
-panels and the chaining stay future. This plan expands the earlier
-step-list design into a step runner for v1. Rationale in
+Status: the step graph, the sequential runner, and the parallel panel
+waves ship. The chaining stays future. Three more phases are planned:
+step outcomes, branch routing, and failure routing. This plan expands
+the earlier step-list design into a step runner for v1. Rationale in
 docs/research-state-machine.md. The build phases live in
 docs/plans/agents/. See phases 4 through 7. Phase 4 owns the step graph
 and the cycle check. Phase 5 owns the sequential `Run` and the
 `Confirm` ack gate; see docs/plans/agents/phase05_flow_runner.md for
-its exact API and error contract. Phases 6 and 7 own the panels and
-the chaining.
+its exact API and error contract. Phase 6 owns the parallel panel
+waves; see docs/plans/agents/phase06_flow_panels.md for its exact API
+and error contract. Phase 7 owns the chaining. Phase 21 owns the
+per-step outcomes and the run `Report`; see
+docs/plans/agents/phase21_flow_outcomes.md. Phase 22 owns the
+admission rule, the skip semantics, and the branch step; see
+docs/plans/agents/phase22_flow_routing.md. Phase 23 owns the fallback
+path and the failure context; see
+docs/plans/agents/phase23_flow_fallback.md.
 
 ## Goal
 
@@ -25,6 +33,15 @@ status transitions. A panel is a group of independent steps that run
 together. A chained step runs a nested workflow as one step. The
 runner detects cycles with Kahn's algorithm before any step runs. The
 consumer is real; another system needs these capabilities now.
+
+Inside, from phases 21 through 23: step outcomes, an admission rule,
+branch routing, and failure routing. Every step ends in one terminal
+state: succeeded, failed, or skipped. A step declares which
+prerequisite outcomes admit it. A branch step picks its successors at
+run time from its declared dependents. A fallback step admits on a
+failed need and receives the failure context. The status walk
+advances only through executed steps. A skipped step never fires a
+transition.
 
 Outside: retries, compensation, scheduling, persistence, and history
 replay. A future version adds these only when that consumer asks.
@@ -49,13 +66,27 @@ pattern sources.
   definition and reject cycles with Kahn's algorithm.
 - `type Confirm func(ctx context.Context, step Step) error` as the ack
   gate a caller supplies. Phase 5 ships this shape.
-- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)`
-  to execute the graph and return the final status. Phase 5 ships the
-  sequential walk only: no panels, no chaining, no envelope import.
-  Later phases may add a panel-aware entry point without breaking this
-  signature.
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (Report, error)`
+  to execute the graph and return the run report. Phase 5 shipped the
+  sequential walk with a status and record return. Phase 6 added the
+  panel waves inside `Run`. Phase 21 changes the return to `Report`.
 - A chained step nests another Definition as one step. This lands in
   phase 7.
+- `type Outcome int` with `OutcomeSucceeded`, `OutcomeFailed`, and
+  `OutcomeSkipped` as the terminal states. This lands in phase 21.
+- `type Report struct` with `Status`, `Record`, `Outcome`, and
+  `Outcomes` accessors. This lands in phase 21. `Run` returns it in
+  place of the status and record pair.
+- `type Admission int` with `AdmissionOnFinished` as the zero-value
+  default, `AdmissionOnSucceeded`, and `AdmissionOnFailed`. `Step`
+  gains `When Admission`. The default admits a skipped or succeeded
+  need. These land in phases 22 and 23.
+- `type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error)`
+  as the branch step's routing function. `Step` gains `Route Route`.
+  This lands in phase 22.
+- `type Failure struct { Step string; Err error }` and
+  `FailureFrom(ctx)` as the failure context a fallback step reads.
+  These land in phase 23.
 
 The machine instance passes by pointer. The input and output records
 come from the machine package. Run may pass any in and out through the
@@ -72,24 +103,42 @@ Chaining is function composition. A step takes an input and returns an
 output. A chained step runs a nested Definition and returns its
 status. The parent reads the child result as one output.
 
+Routing stays in the runner, not in machine guards. A guard cannot
+skip a step or select a successor. Scheduling is the runner's concern.
+Failure routing uses admission over a failed need, not a separate
+fallback field. A fallback field would duplicate the Needs edge and
+can drift from it.
+
 The policy/layers.json row for flow grows in two steps. Phase 5 sets
 `"flow": ["machine"]`. Phase 7 widens it to `["envelope", "machine"]`
 when chaining needs the audit thread. The ack transport stays
 caller-owned in every phase. The runner enforces the gate; the caller
-provides the transport.
+provides the transport. Phases 21 through 23 add no import edge. The
+failure context travels through `context.Context`, which is stdlib.
 
 ## Tests
 
 Topological order on a diamond DAG. Cycle detection rejects a bad
 graph. Phase 5 covers the sequential case: linear order, the
 declaration-order tie-break, a gate failure, and an unconfirmed ack.
-A panel of independent steps runs in parallel; this lands in phase 6.
-Chaining runs a nested workflow and returns its status; this lands in
-phase 7. The audit thread verifies with VerifyThread after the run,
+A panel of independent steps runs in parallel; phase 6 covers a
+successful wave, a rejected member, and a cross-panel scheduling
+stall. Chaining runs a nested workflow and returns its status; this
+lands in phase 7. The audit thread verifies with VerifyThread after the run,
 once phase 7 lands.
+
+Phase 21 covers the report: outcomes per step, the failing step
+marked failed, and the immutable outcomes copy. Phase 22 covers
+routing: a branch keeps one alternative and skips the other, a strict
+join propagates the skip, and a panel with an unadmitted member skips
+whole. Phase 23 covers the fallback: a handled failure lets the run
+complete, the fallback reads the failure context, and an unhandled
+failure still aborts.
 
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
 rationale lives in docs/research-state-machine.md. `api/flow.txt`
-lands via make api-update.
+lands via make api-update. Phases 21 through 23 each extend
+`api/flow.txt` via make api-update in their own change. They leave
+`api/machine.txt` and `policy/layers.json` unchanged.

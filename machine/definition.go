@@ -7,9 +7,11 @@ import (
 
 // Definition holds an initial status and a validated transition table.
 // The fields are unexported; the type is immutable after New.
+// names carries the wire names Decode read; Encode reads them back.
 type Definition struct {
 	initial     Status
 	transitions []Transition
+	names       []transName
 }
 
 // Initial returns the initial status of the definition.

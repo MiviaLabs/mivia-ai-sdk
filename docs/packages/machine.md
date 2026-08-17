@@ -3,8 +3,8 @@
 The machine package is the state-machine building block. Phase 1 ships
 the status model: typed statuses, triggers, transitions, and guards.
 Phase 2 ships the move dispatch `Fire`, the input and output records,
-and the entry and exit actions. The wire form lands in a later phase.
-The exported surface below mirrors `api/machine.txt`.
+and the entry and exit actions. Phase 3 ships the JSON wire form and
+the name registry. The exported surface below mirrors `api/machine.txt`.
 
 ## Types
 
@@ -21,6 +21,9 @@ The exported surface below mirrors `api/machine.txt`.
 - `Definition` — an initial status and the transition table. The
   fields are unexported. Callers read them through `Initial` and
   `Transitions`.
+- `Registry` — the named guards and actions the wire form rebinds.
+  Fields: `Actions` and `Guards`. The two name sets are separate
+  namespaces.
 
 ## Functions and methods
 
@@ -31,6 +34,11 @@ The exported surface below mirrors `api/machine.txt`.
 - `Definition.Validate()` — checks the transition table.
 - `Definition.Fire(ctx, from, trigger, in)` — moves the record through
   the row and returns the target status and the output record.
+- `NewRegistry()` — builds an empty `Registry`.
+- `Definition.Encode(reg)` — serializes the definition to JSON. Each
+  bound name must resolve in `reg`.
+- `Decode(data, reg)` — parses JSON and rebinds each name through the
+  `Registry`. It returns a `Definition`.
 
 ## Invariants
 
@@ -59,8 +67,19 @@ The exported surface below mirrors `api/machine.txt`.
 
 ## Wire contract
 
-- No JSON wire form exists yet. A later phase adds it. The machine
-  stays data-driven and serializable by then.
+- `Encode(reg)` serializes a definition to JSON. Guard and action names
+  are pointers in the wire form. A nil pointer means the field is
+  absent. `omitempty` skips absent fields.
+- `Decode(data, reg)` parses JSON and rebinds each name through `reg`.
+  A name that is missing from the registry returns an error. An empty
+  name returns an error. Unknown fields are ignored.
+- A function does not serialize. The wire form stores a name for each
+  guard and action. `New` never records a name, so an anonymous
+  function cannot encode. Only a name that `Decode` read back can
+  encode.
+- Conformance vectors live in `machine/testdata/vectors/`. The prefix
+  `valid_` means the vector decodes. The prefix `invalid_decode_`
+  means the vector fails `Decode`.
 
 ## Usage
 

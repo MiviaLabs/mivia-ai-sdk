@@ -1,9 +1,12 @@
 package machine
+  func (d *Definition) Encode(reg Registry) ([]byte, error)
   func (d *Definition) Fire(ctx context.Context, from Status, trig Trigger, in InOut) (Status, InOut, error)
   func (d *Definition) Validate() (error)
   func (d Definition) Initial() (Status)
   func (d Definition) Transitions() ([]Transition)
+  func Decode(data []byte, reg Registry) (Definition, error)
   func New(initial Status, ts ...Transition) (*Definition, error)
+  func NewRegistry() (Registry)
   type Action func(ctx context.Context, rec *InOut) error
   type Definition struct {
 }
@@ -11,6 +14,10 @@ package machine
   type InOut struct {
   Input any
   Output any
+}
+  type Registry struct {
+  Actions map[string]Action
+  Guards map[string]Guard
 }
   type Status string
   type Transition struct {

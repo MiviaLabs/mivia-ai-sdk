@@ -83,13 +83,14 @@ rules:
   - id: sdk.go.marshal-via-encode
     languages: [go]
     severity: ERROR
-    message: Wire bytes come from Message.Encode; canonical bytes for hashing/signing live in message.go and sign.go only.
+    message: Wire bytes come from a package's Encode; canonical bytes for hashing/signing live in message.go and sign.go only.
     paths:
       include: ["/**/*.go"]
       exclude:
         - "/**/message.go"
         - "/**/sign.go"
         - "/**/ack.go"
+        - "/**/wire.go"
         - "/**/*_test.go"
         - "/scripts/**"
     pattern-either:

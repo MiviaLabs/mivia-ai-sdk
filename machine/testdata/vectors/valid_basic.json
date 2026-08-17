@@ -1,0 +1,1 @@
+{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","guard":"is_ready","on_entry":"mark_started"},{"from":"running","to":"done","trigger":"finish","on_exit":"mark_left"}]}

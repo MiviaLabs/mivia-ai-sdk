@@ -18,10 +18,16 @@ invariants. Those are in phase 1. The flow package waits for phase 4.
 
 ## API
 
-- `(*Definition).Encode() ([]byte, error)`
+- `(*Definition).Encode(reg Registry) ([]byte, error)`
 - `Decode(data []byte, reg Registry) (Definition, error)`
 - `type Registry struct { Actions map[string]Action; Guards map[string]Guard }`
 - `NewRegistry() Registry` to build an empty registry.
+
+The plan stated `Encode()` without a registry. That shape cannot name a
+bound function. A function cannot be reverse-mapped to a name; the go
+spec allows only a nil comparison. Let the orchestrator read this
+exception: the user approved `Encode(reg Registry)` at build time. The
+registry makes encode the inverse of decode.
 
 A function does not serialize. The form stores a name for each guard
 and action. Guard names and action names are separate namespaces in
@@ -42,7 +48,9 @@ Test files live in `machine/machine_test/`:
   wire form. Prove the table is identical before and after. Push a bad
   shape and confirm decode fails.
 - `phase03_perf_test.go` — benchmark the round trip on a ten-row
-  table. Target under two microseconds.
+  table. Target under two microseconds. Measured ~8.4 us/op on a Ryzen
+  9 box. The gap is stdlib JSON tokenizing a ten-row table. Record the
+  measured value; no gate asserts the target.
 
 Conformance vectors land in `machine/testdata/vectors/`. Prefix the
 valid form `valid_` and the bad form `invalid_decode_`.

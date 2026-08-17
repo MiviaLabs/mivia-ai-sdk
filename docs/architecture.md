@@ -17,8 +17,8 @@ references.
 - `machine/` — the status model. Phases 1 and 2 ship `Status`,
   `Trigger`, `Guard`, `Action`, `Transition`, `InOut`, `Definition`,
   `New`, `Initial`, `Transitions`, `Validate`, and the `Fire` dispatch.
-  The wire form lands in a later phase. See
-  [packages/machine.md](packages/machine.md) and
+  Phase 3 ships the JSON wire form: `Encode`, `Decode`, `Registry`, and
+  `NewRegistry`. See [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
 - `flow/` — a future package. It owns the step graph, panels, parallel
   execution, and chaining. It is planned in

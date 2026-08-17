@@ -1,0 +1,1 @@
+{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start"}]}

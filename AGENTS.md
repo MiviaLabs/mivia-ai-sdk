@@ -42,18 +42,10 @@ PoC Go SDK for model-to-model communication. Module:
 
 ## Trigger words
 
-The user's vocabulary is a contract. These words have fixed meanings:
-
-- **review** — always an adversarial deep review, never a skim. Run
-  `make verify`, `go test -race ./...`, and a short fuzz pass. Then
-  dispatch the `reviewer` agent against the code and, when plans or
-  gates changed, a hostile audit of the gates too. Hunt confirmed bugs
-  only: every finding needs a reproduction, a severity, a file:line,
-  and a minimal fix. Cover gate integrity, doc truth, and plan drift.
-  Consolidate into one report. Fix nothing during the review; report
-  first.
-- **audit** — same as review, plus the semgrep, hook, and lock
-  evasion probes: prove each gate can still catch a planted violation.
+The user's vocabulary is a contract. The `review` and `audit` triggers,
+formerly defined here, now live in the `review` skill at
+`.agents/skills/review/SKILL.md`. Invoke it for a deep review or a
+gate-audit pass.
 
 ## Orchestrator role
 

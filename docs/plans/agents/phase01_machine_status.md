@@ -39,7 +39,9 @@ the initial status through the table. Reachability means the status
 equals the initial status or appears as a `To` in a reachable row.
 An unreachable `To` implies an unreachable `From`, so the `From`
 check covers both. It rejects a self loop where `From` equals `To`.
-It accepts a nil `Guard`.
+It rejects two transitions with the same `From` and `Trigger`. Dispatch
+must be unambiguous, so a duplicate key is invalid. It accepts a nil
+`Guard`.
 
 ## Tests
 
@@ -52,6 +54,7 @@ Test files live in `machine/machine_test/`:
   - `New` accepts a valid transition list.
 - `Validate` rejects a self loop.
 - `Validate` rejects a `From` not reachable from the initial status.
+- `Validate` rejects duplicate `From` and `Trigger` pairs.
 - `Validate` accepts a nil Guard.
 - `Validate` accepts a valid table.
 - `status_integration_test.go` — merged into the TDD file.

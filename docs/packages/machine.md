@@ -40,6 +40,10 @@ The exported surface below mirrors `api/machine.txt`.
 - An unreachable `to` implies an unreachable `from`, so the `from`
   check covers both.
 - `New` and `Validate` accept a nil `Guard`.
+- No two transitions share the same `from` and `trigger` pair. A
+  duplicate makes dispatch ambiguous, so `Validate` rejects it.
+- `New` copies the input list. A `Definition` is immutable after `New`.
+  A caller must not mutate its fields.
 - `Fire` returns an error on an unknown `from` status or trigger.
 - `Fire` runs the guard, then the exit action, then the entry action.
 - A failed guard blocks the move and skips the exit action.

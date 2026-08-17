@@ -55,6 +55,18 @@ var rejectCases = []validateCase{
 		wantErr:     true,
 		errSubstr:   "must not be empty",
 	},
+	{
+		name:    "rejects dispatch ambiguity",
+		initial: "idle",
+		transitions: []machine.Transition{
+			{From: "idle", To: "a", Trigger: "go"},
+			{From: "idle", To: "b", Trigger: "go"},
+		},
+		wantErr:   true,
+		errSubstr: "duplicate transition",
+		// Red step: Validate returned nil for duplicate From and Trigger.
+		// Assert added; test failed. Implementation added the check.
+	},
 }
 
 // acceptCases lists Validate cases that must return nil.

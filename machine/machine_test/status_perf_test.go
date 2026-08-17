@@ -6,8 +6,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
-// buildTenTransitionTable creates ten identical transitions from the
-// initial status.
+// buildTenTransitionTable creates ten distinct valid transitions from
+// the initial status. Each row gets its own trigger so the table is
+// unambiguous.
 func buildTenTransitionTable() *machine.Definition {
 	initial := machine.Status("s0")
 	ts := make([]machine.Transition, 10)
@@ -15,7 +16,7 @@ func buildTenTransitionTable() *machine.Definition {
 		ts[i] = machine.Transition{
 			From:    machine.Status("s0"),
 			To:      machine.Status("s1"),
-			Trigger: machine.Trigger("t0"),
+			Trigger: machine.Trigger(string(rune('a' + i))),
 		}
 	}
 	d, err := machine.New(initial, ts...)
@@ -28,7 +29,7 @@ func buildTenTransitionTable() *machine.Definition {
 // BenchmarkValidateTen benchmarks Validate on a ten-transition table.
 // Target: under one microsecond.
 // Baseline (empty implementation): ~0 ns/op, 0 allocs.
-// Measured with implementation: ~320 ns/op, 0 B/op, 0 allocs/op.
+// Measured: ~435 ns/op, 0 B/op, 0 allocs/op after the ambiguity check.
 func BenchmarkValidateTen(b *testing.B) {
 	d := buildTenTransitionTable()
 	b.ResetTimer()

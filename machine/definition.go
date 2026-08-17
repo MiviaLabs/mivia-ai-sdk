@@ -6,18 +6,21 @@ import (
 )
 
 // Definition holds an initial status and a validated transition table.
+// It is immutable after New returns. A caller must not mutate its
+// exported fields after construction.
 type Definition struct {
 	Initial     Status
 	Transitions []Transition
 }
 
 // New builds a Definition and validates the transition table.
-// It rejects an empty transition list.
+// It rejects an empty transition list. It copies the input slice so
+// later caller mutation of ts cannot change the built table.
 func New(initial Status, ts ...Transition) (*Definition, error) {
 	if len(ts) == 0 {
 		return nil, fmt.Errorf("machine: transition list must not be empty")
 	}
-	d := &Definition{Initial: initial, Transitions: ts}
+	d := &Definition{Initial: initial, Transitions: append([]Transition(nil), ts...)}
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
@@ -55,6 +58,17 @@ func (d *Definition) Validate() error {
 				"machine: transition from %q is not in the declared set",
 				t.From,
 			)
+		}
+	}
+	for i := range d.Transitions {
+		for j := i + 1; j < len(d.Transitions); j++ {
+			if d.Transitions[i].From == d.Transitions[j].From &&
+				d.Transitions[i].Trigger == d.Transitions[j].Trigger {
+				return fmt.Errorf(
+					"machine: duplicate transition from %q on %q",
+					d.Transitions[i].From, d.Transitions[i].Trigger,
+				)
+			}
 		}
 	}
 	return nil

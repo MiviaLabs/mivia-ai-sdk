@@ -2,13 +2,15 @@
 // the nil-wait, nil-bus, and empty-threadID sentinels and their
 // check order, a confirmed one-step run, a corrected one-step run,
 // an escalated one-step run, a one-step run where wait returns a
-// plain error, and a zero-step plan.
+// plain error, a zero-step plan, and the three no-subscriber cases
+// for confirmStep's and Run's own EmitX calls.
 package agent_test
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
@@ -267,6 +269,77 @@ func TestRunOneStepWaitReturnsInvalidAckNoError(t *testing.T) {
 	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for an invalid ack")
+	}
+}
+
+// TestRunConfirmStepMessageDeliveredNoSubscriber proves confirmStep
+// surfaces EmitMessageDelivered's own bus error, unwrapped, when
+// nothing subscribes to MessageDeliveredEvent. wait must never run:
+// the delivered-event failure short-circuits confirmStep before the
+// ack round trip starts.
+func TestRunConfirmStepMessageDeliveredNoSubscriber(t *testing.T) {
+	a, m := oneStepFixture(t)
+	bus := events.New()
+	calls := 0
+	wait := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+		calls++
+		return envelope.Ack{}, nil
+	}
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus)
+	if err == nil {
+		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no MessageDeliveredEvent subscriber")
+	}
+	if !strings.Contains(err.Error(), "no subscriber") {
+		t.Fatalf("Run() error = %q, want it to contain %q", err.Error(), "no subscriber")
+	}
+	if calls != 0 {
+		t.Fatalf("wait called %d times, want 0: EmitMessageDelivered must fail before wait runs", calls)
+	}
+}
+
+// TestRunConfirmStepMessageAckedNoSubscriber proves confirmStep
+// surfaces EmitMessageAcked's own bus error, unwrapped, when a
+// validly-shaped, confirmed Ack has no subscriber for
+// MessageAckedEvent. This differs from
+// TestRunOneStepWaitReturnsInvalidAckNoError: that case fails inside
+// EmitMessageAcked's own Ack.Validate call, before bus.Emit ever
+// runs, so it leaves this bus.Emit failure path unexercised even
+// though both cases return a non-nil error from the same line.
+func TestRunConfirmStepMessageAckedNoSubscriber(t *testing.T) {
+	a, m := oneStepFixture(t)
+	bus := events.New()
+	if err := bus.Subscribe(agent.MessageDeliveredEvent, func(ctx context.Context, e events.Event) error { return nil }); err != nil {
+		t.Fatalf("Subscribe(MessageDeliveredEvent) unexpected error: %v", err)
+	}
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus)
+	if err == nil {
+		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no MessageAckedEvent subscriber")
+	}
+	if !strings.Contains(err.Error(), "no subscriber") {
+		t.Fatalf("Run() error = %q, want it to contain %q", err.Error(), "no subscriber")
+	}
+}
+
+// TestRunThreadVerifiedNoSubscriber proves Run surfaces
+// EmitThreadVerified's own bus error, unwrapped, when a one-step
+// run's message verifies as a thread but nothing subscribes to
+// ThreadVerifiedEvent. The step itself still completes: only the
+// closing EmitThreadVerified call fails.
+func TestRunThreadVerifiedNoSubscriber(t *testing.T) {
+	a, m := oneStepFixture(t)
+	bus := events.New()
+	noop := func(ctx context.Context, e events.Event) error { return nil }
+	for _, name := range []events.Name{agent.MessageDeliveredEvent, agent.MessageAckedEvent} {
+		if err := bus.Subscribe(name, noop); err != nil {
+			t.Fatalf("Subscribe(%q) unexpected error: %v", name, err)
+		}
+	}
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus)
+	if err == nil {
+		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no ThreadVerifiedEvent subscriber")
+	}
+	if !strings.Contains(err.Error(), "no subscriber") {
+		t.Fatalf("Run() error = %q, want it to contain %q", err.Error(), "no subscriber")
 	}
 }
 

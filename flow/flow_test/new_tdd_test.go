@@ -75,7 +75,15 @@ var newCases = []flowCase{
 		},
 		panels:  []flow.Panel{{"nope"}},
 		wantErr: true,
-		errSub:  "unknown step",
+		errSub:  "panel ",
+	},
+	{
+		name: "accepts a repeated dependency",
+		steps: []flow.Step{
+			{ID: "a"},
+			{ID: "b", Needs: []string{"a", "a"}},
+		},
+		wantErr: false,
 	},
 	{
 		name: "rejects a self cycle",
@@ -102,7 +110,7 @@ func TestNewTable(t *testing.T) {
 	for _, tt := range newCases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := flow.New(tt.steps, tt.panels)
+			d, err := flow.New(tt.steps, tt.panels)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")
@@ -114,6 +122,9 @@ func TestNewTable(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
+			}
+			if d == nil {
+				t.Fatal("New returned a nil definition on valid input")
 			}
 		})
 	}

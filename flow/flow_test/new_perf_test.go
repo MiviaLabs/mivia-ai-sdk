@@ -58,9 +58,9 @@ func TestNewAllocBudget(t *testing.T) {
 }
 
 // newAllocBudget states the allocation budget for New on one hundred
-// steps. Measured at 213 allocs/op after the deep-copy fix; the budget
-// holds headroom above that so a regression to quadratic allocation
-// still fails.
+// steps. Measured at 213 allocs/op; the budget holds headroom above
+// that so a real regression still fails. A per-step allocation added
+// to the hot path would push the count well past the budget.
 func newAllocBudget() int {
-	return 300
+	return 240
 }

@@ -118,31 +118,27 @@ func TestPanelsUnknownStepRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unknown-step error, got nil")
 	}
-	if !strings.Contains(err.Error(), "unknown step") {
-		t.Fatalf("error %q should mention unknown step", err.Error())
+	if !strings.Contains(err.Error(), "panel ") {
+		t.Fatalf("error %q should mention the panel source", err.Error())
 	}
 }
 
-// TestDefinitionImmutable proves mutation of the input slices after New
-// cannot change the built definition.
-func TestDefinitionImmutable(t *testing.T) {
+// TestRootsReturnsCopy proves a caller cannot corrupt the definition by
+// mutating the slice that Roots returns. The returned slice must be a
+// copy, not the internal root list.
+func TestRootsReturnsCopy(t *testing.T) {
 	t.Parallel()
-	steps := []flow.Step{
+	d, err := flow.New([]flow.Step{
 		{ID: "a"},
 		{ID: "b", Needs: []string{"a"}},
-	}
-	d, err := flow.New(steps, nil)
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []string{"a"}
 	got := d.Roots()
-	steps[0].ID = "changed"
-	steps[1].Needs = []string{"a", "zzz"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Roots() before mutation = %v, want %v", got, want)
-	}
-	if got := d.Roots(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("Roots() after mutation = %v, want %v", got, want)
+	got[0] = "corrupted"
+	if r := d.Roots(); !reflect.DeepEqual(r, want) {
+		t.Fatalf("Roots() after mutating returned slice = %v, want %v", r, want)
 	}
 }

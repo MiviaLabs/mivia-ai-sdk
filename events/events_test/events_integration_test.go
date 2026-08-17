@@ -118,3 +118,31 @@ func TestHandlerSubscribeDispatchesOnInnerState(t *testing.T) {
 		t.Fatalf("inner ran = %v, want %v", innerRan, want)
 	}
 }
+
+// TestHandlerEmitDispatchesOnInnerState proves a handler that calls
+// Emit sees the inner event on the bus, not a deadlock.
+func TestHandlerEmitDispatchesOnInnerState(t *testing.T) {
+	b := events.New()
+	var innerRan []string
+	if err := b.Subscribe("move", func(ctx context.Context, e events.Event) error {
+		return b.Emit(ctx, events.Event{Name: "inner", Data: e.Data})
+	}); err != nil {
+		t.Fatalf("Subscribe(move): %v", err)
+	}
+	if err := b.Subscribe("inner", func(context.Context, events.Event) error {
+		innerRan = append(innerRan, "inner")
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe(inner): %v", err)
+	}
+
+	// The move handler emits "inner". The inner handler runs during that
+	// call, because the handler runs unlocked and Emit takes a fresh lock.
+	if err := b.Emit(context.Background(), events.Event{Name: "move", Data: "x"}); err != nil {
+		t.Fatalf("Emit(move): %v", err)
+	}
+	want := []string{"inner"}
+	if !reflect.DeepEqual(innerRan, want) {
+		t.Fatalf("inner ran = %v, want %v", innerRan, want)
+	}
+}

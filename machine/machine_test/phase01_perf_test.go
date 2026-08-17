@@ -6,16 +6,15 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
-// buildTenTransitionTable creates a linear chain of ten transitions.
+// buildTenTransitionTable creates ten identical transitions from the
+// initial status.
 func buildTenTransitionTable() *machine.Definition {
 	initial := machine.Status("s0")
 	ts := make([]machine.Transition, 10)
 	for i := 0; i < 10; i++ {
-		from := machine.Status("s0") // all from initial for simplicity
-		to := machine.Status("s1")   // chain doesn't matter for perf
 		ts[i] = machine.Transition{
-			From:    from,
-			To:      to,
+			From:    machine.Status("s0"),
+			To:      machine.Status("s1"),
 			Trigger: machine.Trigger("t0"),
 		}
 	}
@@ -38,7 +37,19 @@ func BenchmarkValidateTen(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	// Allocation budget: AllocsPerRun should be at or below 3.
-	// One map allocation for reachable, one for the loop, plus
-	// possible string header allocations from map operations.
+}
+
+// TestValidateAllocBudget guards the allocation floor for Validate.
+// AllocsPerRun must stay at zero; a regression that allocates inside
+// the hot loop fails here.
+func TestValidateAllocBudget(t *testing.T) {
+	d := buildTenTransitionTable()
+	alloc := testing.AllocsPerRun(1000, func() {
+		if err := d.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if alloc != 0 {
+		t.Fatalf("Validate allocated %v times per call; budget is 0", alloc)
+	}
 }

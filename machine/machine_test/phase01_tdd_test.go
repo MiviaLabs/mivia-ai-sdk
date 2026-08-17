@@ -200,12 +200,15 @@ func TestDefinitionFields(t *testing.T) {
 
 func TestErrorsAreNotSentinel(t *testing.T) {
 	t.Parallel()
+	// A distinct sentinel that never equals the error New returns.
+	sentinel := errors.New("machine: transition list must not be empty")
 	_, err := machine.New("idle")
 	if err == nil {
 		t.Fatal("expected error for empty transition list")
 	}
-	// Errors are wrapped fmt.Errorf values, not sentinel errors.
-	if !errors.Is(err, err) {
-		t.Fatal("error should match itself via errors.Is")
+	// Errors are fresh fmt.Errorf values, not exported sentinels.
+	// errors.Is must not match the sentinel.
+	if errors.Is(err, sentinel) {
+		t.Fatal("error matched the sentinel; expected a fresh fmt.Errorf value")
 	}
 }

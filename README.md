@@ -134,8 +134,14 @@ envelope/            message envelope — one package per concern
   thread.go          VerifyThread, the hash-chain check for an ordered thread
   testdata/vectors/  conformance vectors pinning the wire contract
 room/                standing groups: roster, roles, message admission
+machine/             status model: triggers, guards, transitions, wire form
+flow/                step graph: Step, Panel, Definition; runner is future
+events/              in-process reaction bus: typed names, Subscribe, Emit
 docs/                index + architecture + package docs + examples
+api/                 exported-surface locks; check_api diffs them
+policy/              layers.json: the allowed internal import edges
 scripts/             gates: docs, structure, deps, plan, api, semgrep
+semgrep/             pattern rules for the Semgrep scan
 .semgrepignore       Semgrep ignore list; test files are scanned again
 .githooks/           pre-commit runs make verify-fast on the staged snapshot
 Makefile             make verify, make verify-fast, make bench, make api-update,

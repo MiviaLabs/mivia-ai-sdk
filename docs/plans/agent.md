@@ -337,8 +337,15 @@ Test files land in `agent/agent_test/`, alongside the phase 12 files:
     nil and the handler receives ThreadVerifiedEvent.
   - A thread with a broken hash chain: EmitThreadVerified returns the
     VerifyThread error and the handler never runs.
-  - A nil bus argument to each of the three functions: expect
-    errors.Is against ErrNoBus.
+  - A nil bus argument to each of the three functions, paired with a
+    valid envelope value: expect errors.Is against ErrNoBus.
+  - A nil bus argument to each of the three functions, paired with an
+    invalid envelope value: expect errors.Is against ErrNoBus, not the
+    verify error. Reuse badSignatureMessage(t) for
+    EmitMessageDelivered, blankMessageIDAck() for EmitMessageAcked,
+    and brokenThread() for EmitThreadVerified. These three fixtures
+    already exist in translator_test.go. This proves the nil-bus
+    check runs before the verify call, for each function on its own.
   - No subscriber registered for the event name: expect the
     events.Bus.Emit "no subscriber" error, unwrapped.
 - `translator_integration_test.go` — build a real events.Bus with
@@ -350,6 +357,44 @@ Test files land in `agent/agent_test/`, alongside the phase 12 files:
   `go test -race`. Add a fourth case: many goroutines call all three
   EmitX functions against one shared bus. An atomic counter proves
   each call still delivers exactly once, with no data race.
+
+### Phase 20 gap-closure: nil-bus check-order coverage
+
+A review found a gap. TestEmitNilBusReturnsErrNoBus paired bus == nil
+only with valid envelope fixtures. A valid envelope passes verify
+regardless of guard order, so the old test could not tell a
+nil-bus-first implementation from a verify-first implementation. A
+reviewer confirmed this by swapping the two guards in
+EmitMessageDelivered, in EmitMessageAcked, and in EmitThreadVerified
+in a scratch copy; the full test suite still reported ok.
+
+The fix adds three cases to TestEmitNilBusReturnsErrNoBus's existing
+cases table. TestEmitNilBusReturnsErrNoBus already builds its cases as
+a slice of `struct{ name string; run func() error }` and loops with
+t.Run. The three new cases fit that shape directly: no new test
+function, no new fixture helper. Each new case pairs bus == nil with
+one of the three existing invalid fixtures (badSignatureMessage,
+blankMessageIDAck, brokenThread) already used elsewhere in
+translator_test.go, and asserts errors.Is(err, agent.ErrNoBus). An
+invalid envelope paired with a nil bus can only return ErrNoBus if the
+nil-bus check runs first; a verify-first implementation would return
+the verify error instead, and the new case would fail.
+
+The three new cases use distinct names, not the three existing case
+names. The existing cases are named "EmitMessageDelivered",
+"EmitMessageAcked", and "EmitThreadVerified". A new case with the
+same name would still pass; t.Run would append a silent #01 suffix
+and hide the case in `go test -v` output. The new cases are named
+"EmitMessageDeliveredInvalidEnvelope",
+"EmitMessageAckedInvalidEnvelope", and
+"EmitThreadVerifiedInvalidEnvelope".
+
+This is a test-only change. agent/translator.go already checks bus
+for nil before calling the verify step, in that order, for all three
+EmitX functions. The plan API section above already documents that
+order. No exported symbol changes, so api/agent.txt does not change.
+No import edge changes, so policy/layers.json does not change. The
+builder edits only agent/agent_test/translator_test.go.
 
 ## Verification
 
@@ -387,3 +432,27 @@ Test files land in `agent/agent_test/`, alongside the phase 12 files:
 - This phase adds no conformance vector. It defines no new wire
   schema. It composes envelope.Message, envelope.Ack, and
   envelope.VerifyThread, all already vector-covered in envelope.
+
+### Phase 20 gap-closure: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- `go test -run TestEmitNilBusReturnsErrNoBus -v ./agent/...` shows
+  six subtests, each with a distinct name: EmitMessageDelivered,
+  EmitMessageAcked, and EmitThreadVerified from the existing
+  valid-envelope pairing; EmitMessageDeliveredInvalidEnvelope,
+  EmitMessageAckedInvalidEnvelope, and
+  EmitThreadVerifiedInvalidEnvelope for the new invalid-envelope
+  pairing. All six pass, and none carries a t.Run #01 suffix.
+- `api/agent.txt` does not change. `policy/layers.json` does not
+  change. Neither gate has a diff to review for this fix.
+- The builder touches only
+  `agent/agent_test/translator_test.go`. A diff that touches
+  `agent/translator.go` fails review; the check-order logic there is
+  already correct.
+- The reviewer repeats the swapped-guard reproduction from the
+  finding: swap the nil-bus and verify guards in EmitMessageDelivered,
+  in EmitMessageAcked, and in EmitThreadVerified, one function at a
+  time, in a scratch copy. The updated test suite must show three
+  fresh failures across the three scratch mutations, one per new
+  case, where the old suite passed on all three.

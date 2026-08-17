@@ -1,8 +1,9 @@
 # Phase 12: agent definition
 
-Status: future. Builds the agent block. An agent composes the blocks.
+Status: done. Builds the agent block. An agent composes the blocks.
 This phase defines the agent shape. It holds an identity, a capability
-set, a transport, and a set of steps. It does not run yet.
+card, and a step plan. It does not run yet. See docs/plans/agent.md
+for the shipped plan.
 
 ## Goal
 
@@ -22,11 +23,16 @@ belong to phase 13 and phase 14.
   set.
 - `Name() string` returns the agent name.
 - `Capabilities() []string` returns the card capability list.
-- `New(id identity.Identity, card discovery.Card, plan flow.Definition) (*Agent, error)`
+- `New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)`
+
+The shipped signature takes `id` and `plan` as pointers, not values.
+`identity.New` and `flow.New` both return a pointer; `New` accepts the
+same pointer the caller already holds. See docs/plans/agent.md.
 
 `New` rejects an agent with no name on the card. It rejects a step
-plan with a cycle. The agent imports the blocks; no block imports the
-agent. The agent is the composition layer.
+plan with a cycle, by trusting a Definition that only `flow.New` could
+have built. The agent imports the blocks; no block imports the agent.
+The agent is the composition layer.
 
 ## Tests
 

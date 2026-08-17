@@ -1,8 +1,9 @@
 # Phase 11: discovery agent card
 
-Status: future. Builds the discovery block. An agent card declares a
+Status: done. Builds the discovery block. An agent card declares a
 capability. A caller asks the card whether it can do a task. This
-phase parses the card and matches a capability.
+phase parses the card and matches a capability. See
+docs/plans/discovery.md for the shipped plan.
 
 ## Goal
 
@@ -21,12 +22,15 @@ agent phase. See `docs/research-agents.md` for the card decision.
 - `type Card struct` holding the name, the description, and the
   capability list.
 - `Parse(data []byte) (Card, error)`
-- `(*Card).Match(need string) (string, bool)`
+- `(Card).Validate() error`
+- `(Card).Match(need string) (string, bool)`
 
 `Parse` rejects an empty card and a blank name. `Match` compares a
 need against the capability list. A partial word does not match. The
-match is case-insensitive. The decision to reuse the A2A shape stays
-open for plan review.
+match is case-insensitive. `Card` uses value receivers throughout,
+matching `envelope.Message`'s convention for wire-decoded data. The
+shipped `Card` defines its own shape; it does not reuse the A2A
+Agent Card format. See docs/plans/discovery.md.
 
 ## Tests
 

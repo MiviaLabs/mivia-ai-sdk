@@ -290,6 +290,15 @@ func TestEmitNilBusReturnsErrNoBus(t *testing.T) {
 		{"EmitThreadVerified", func() error {
 			return agent.EmitThreadVerified(context.Background(), nil, validThread())
 		}},
+		{"EmitMessageDeliveredInvalidEnvelope", func() error {
+			return agent.EmitMessageDelivered(context.Background(), nil, badSignatureMessage(t))
+		}},
+		{"EmitMessageAckedInvalidEnvelope", func() error {
+			return agent.EmitMessageAcked(context.Background(), nil, blankMessageIDAck())
+		}},
+		{"EmitThreadVerifiedInvalidEnvelope", func() error {
+			return agent.EmitThreadVerified(context.Background(), nil, brokenThread())
+		}},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {

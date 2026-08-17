@@ -1,9 +1,10 @@
 # Phase 20: envelope delivery emits via composition
 
-Status: future. Builds on phase 17 and a composition layer. This phase
+Status: done. Builds on phase 17 and a composition layer. This phase
 lets the shared bus carry the envelope delivery path. A delivered
 message, an ack, or a thread event emits onto the bus. No envelope code
 and no events code import the other. The composition layer translates.
+See docs/plans/agent.md for the shipped plan.
 
 ## Goal
 

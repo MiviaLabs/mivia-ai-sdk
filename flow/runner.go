@@ -109,13 +109,8 @@ func Run(
 		}
 
 		// Emit event after successful wave execution
-		if bus != nil {
-			for _, step := range group {
-				_ = bus.Emit(ctx, events.Event{
-					Name: StepCompletedEvent,
-					Data: fmt.Sprintf("step %s completed", step.ID),
-				})
-			}
+		for _, step := range group {
+			emitStep(ctx, bus, step.ID)
 		}
 
 		markDone(done, group)
@@ -143,13 +138,7 @@ func runSingleton(
 		if err := confirm(ctx, step); err != nil {
 			return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
 		}
-		// Emit event after successful confirmation for chained steps
-		if bus != nil {
-			_ = bus.Emit(ctx, events.Event{
-				Name: StepCompletedEvent,
-				Data: fmt.Sprintf("step %s completed", step.ID),
-			})
-		}
+		emitStep(ctx, bus, step.ID)
 		return cur, rec, nil
 	}
 
@@ -167,13 +156,7 @@ func runSingleton(
 	if err := confirm(ctx, step); err != nil {
 		return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
 	}
-	// Emit event after successful confirmation for singleton steps
-	if bus != nil {
-		_ = bus.Emit(ctx, events.Event{
-			Name: StepCompletedEvent,
-			Data: fmt.Sprintf("step %s completed", step.ID),
-		})
-	}
+	emitStep(ctx, bus, step.ID)
 	return cur, rec, nil
 }
 
@@ -411,4 +394,18 @@ func rowsFrom(rows []machine.Transition) machine.Status {
 		return machine.Status("")
 	}
 	return rows[0].From
+}
+
+// emitStep emits a StepCompletedEvent onto the bus. It silently
+// ignores a missing subscriber. A validation error or an unexpected
+// error is also ignored; the caller owns the bus and decides what
+// to log. Emit never fails the run.
+func emitStep(ctx context.Context, bus *events.Bus, id string) {
+	if bus == nil {
+		return
+	}
+	_ = bus.Emit(ctx, events.Event{
+		Name: StepCompletedEvent,
+		Data: fmt.Sprintf("step %s completed", id),
+	})
 }

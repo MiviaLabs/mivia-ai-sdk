@@ -54,3 +54,49 @@ func TestValidateAllocBudget(t *testing.T) {
 		t.Fatalf("Validate allocated %v times per call; budget is 0", alloc)
 	}
 }
+
+// TestAllowedRowsAllocBudget guards the allocation floor for the row
+// accessors. Both accessors use two passes: a count pass and a fill
+// pass with one exact-size make. The budget is one allocation for a
+// non-empty result and zero for an empty result. Triggers may
+// stack-allocate when the result escapes analysis; the budget is
+// the non-escaping floor.
+func TestAllowedRowsAllocBudget(t *testing.T) {
+	d, err := machine.New(
+		"idle",
+		machine.Transition{From: "idle", To: "running", Trigger: "start"},
+		machine.Transition{From: "running", To: "done", Trigger: "finish"},
+		machine.Transition{From: "running", To: "idle", Trigger: "cancel"},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	tests := []struct {
+		name  string
+		fn    func(d machine.Definition)
+		limit int
+	}{
+		{"transitions from running (2 rows)", func(d machine.Definition) {
+			d.AllowedTransitions("running")
+		}, 1},
+		{"transitions from absent (0 rows)", func(d machine.Definition) {
+			d.AllowedTransitions("absent")
+		}, 0},
+		{"triggers from running (2 triggers)", func(d machine.Definition) {
+			d.AllowedTriggers("running")
+		}, 1},
+		{"triggers from absent (0 triggers)", func(d machine.Definition) {
+			d.AllowedTriggers("absent")
+		}, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			alloc := testing.AllocsPerRun(1000, func() {
+				tc.fn(*d)
+			})
+			if int(alloc) > tc.limit {
+				t.Fatalf("allocated %v times per call; budget is %d", alloc, tc.limit)
+			}
+		})
+	}
+}

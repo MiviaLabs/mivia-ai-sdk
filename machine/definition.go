@@ -48,6 +48,8 @@ func (d Definition) AllowedTransitions(from Status) []Transition {
 }
 
 // AllowedTriggers returns the distinct triggers available from from.
+// Distinctness is enforced by Validate: two transitions that share
+// From and Trigger are rejected at construction.
 // Returns an empty slice when no transitions match.
 func (d Definition) AllowedTriggers(from Status) []Trigger {
 	// First pass: count the matching rows

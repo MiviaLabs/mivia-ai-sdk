@@ -108,7 +108,8 @@ Failure routing uses admission over a failed need, not a separate
 fallback field. A fallback field would duplicate the Needs edge and
 can drift from it.
 
-The policy/layers.json row for flow stays `"flow": ["machine"]`.
+The policy/layers.json row for flow is `"flow": ["events", "machine"]`.
+Phase 19 adds the `events` import for the step outcome bus emit.
 `flow` never imports `envelope`. The audit thread stays caller-owned.
 The runner enforces the gate; the caller provides the transport.
 Phases 21 through 23 add no import edge. The failure context travels

@@ -257,6 +257,12 @@ not the transport, registry, or session manager.
 - **Trust policy is out of band.** Signatures authenticate the key
   holder, but which signers a receiver accepts is the caller's
   decision. There is no revocation or key rotation story yet.
+- **A status transition precedes its ack check.** The `flow` runner
+  fires a step's status transition, then waits on the step's ack. A
+  rejected or escalated ack halts the walk but does not roll the
+  status or its record back to the pre-step value. See `agent`'s
+  `Run` (docs/plans/agents/phase13_agent_run.md) for the caller-facing
+  effect of this order.
 
 ## Validation plan
 

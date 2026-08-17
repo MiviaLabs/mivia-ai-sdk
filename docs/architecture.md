@@ -60,9 +60,15 @@ references.
   `EmitMessageAcked`, and `EmitThreadVerified`. Each function verifies
   an already-received `envelope.Message`, `envelope.Ack`, or message
   thread, then emits one typed `events.Event` onto a caller-owned
-  `events.Bus`. `agent` imports both `envelope` and `events`; neither
-  of those two packages imports the other or `agent`. See
-  [plans/agent.md](plans/agent.md).
+  `events.Bus`. It also ships `Run` and the `AckWait` function type:
+  `Run` drives the agent's bound `flow.Definition` through `flow.Run`,
+  in-process. For each step `flow.Run` gates behind `Confirm`, `Run`
+  signs an `envelope.Message`, emits `MessageDeliveredEvent`, calls the
+  caller-supplied `AckWait`, and emits `MessageAckedEvent` once the ack
+  confirms. An `AckWait` that wraps `ErrEscalated` routes the step back
+  to the caller. `agent` imports `envelope`, `events`, and `machine`;
+  none of those three packages imports `agent` or either of the other
+  two. See [plans/agent.md](plans/agent.md).
 - `heartbeat/` — a leaf primitive. It ships `Monitor`, `New`, `Beat`,
   `Alive`, `Dead`, `Forget`, and the typed event name `MissedEvent`.
   `Monitor` tracks liveness by time: it records the last beat per id

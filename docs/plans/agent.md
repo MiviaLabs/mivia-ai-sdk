@@ -1,10 +1,11 @@
 # Plan: agent
 
-Status: phase 12 and phase 20 shipped. Phase 20's contract is
-docs/plans/agents/phase20_envelope_composition.md. Phase 12 depends on
-identity, discovery, and flow, all shipped. Phase 20 adds envelope and
-events, both shipped. Phase 13 adds the execution loop; phase 14 adds
-tools.
+Status: phase 12, phase 20, and phase 13 shipped. Phase 13's
+contract is docs/plans/agents/phase13_agent_run.md. Phase 20's
+contract is docs/plans/agents/phase20_envelope_composition.md. Phase 12
+depends on identity, discovery, and flow, all shipped. Phase 20 adds
+envelope and events, both shipped. Phase 13 adds the execution loop,
+descoped to the in-process runner (see below); phase 14 adds tools.
 
 ## Goal
 
@@ -52,6 +53,45 @@ policy row becomes `"agent": ["identity", "discovery", "flow",
 "envelope", "events"]`. `envelope`'s row and `events`'s row stay
 empty. Neither package gains an import of the other or of `agent`.
 
+### Phase 13 addition: scope
+
+Phase contract: docs/plans/agents/phase13_agent_run.md. This phase
+adds the run entry point: `(*Agent).Run` drives the agent's bound
+`*flow.Definition` through `flow.Run`, in-process. It signs each
+gated step as an `envelope.Message`, waits on a caller-supplied ack
+resolver, and emits the phase 20 translator events at the right
+points. It routes an escalated step back to the caller through a
+sentinel error.
+
+The phase sketch proposed sending each step "through the a2a adapter
+or the in-process runner." The `a2a` package carries no code; its plan
+stays status future. This phase descopes to the in-process path only.
+`Run` never imports or assumes a network transport. See
+docs/plans/agents/phase13_agent_run.md for the full descoping
+rationale and the ack-resolution design.
+
+Inside: `Run`, the `AckWait` function type, and three new sentinels
+(`ErrEscalated`, `ErrNoWait`, `ErrNoThread`). `Run` reuses the phase 20
+translator functions (`EmitMessageDelivered`, `EmitMessageAcked`,
+`EmitThreadVerified`) and the phase 20 sentinel `ErrNoBus`; it adds no
+new emit function. Outside: the tool registry and the memory store
+(phases 14 and 15). Outside: any network transport binding; that
+belongs to the future `a2a` package.
+
+The package imports gain `machine` in this phase, because `Run` takes
+a `*machine.Definition` parameter to hand to `flow.Run`. The policy row
+becomes `"agent": ["identity", "discovery", "flow", "envelope",
+"events", "machine"]`. `machine`'s own row stays `["events"]`; it gains
+no new import.
+
+`Run` does not add a `*machine.Definition` field to `Agent`. `Agent`
+stays the declarative binding `New` built in phase 12: an identity, a
+card, and a plan, no per-run state. The status model and the starting
+record are `Run` parameters, matching `flow.Run`'s own shape, so one
+`Agent` value can run against more than one machine model or resume
+with more than one starting record, without `New`'s signature or
+`Agent`'s fields changing.
+
 ## API
 
 The surface below is the lock target. It lands in `api/agent.txt` via
@@ -60,7 +100,7 @@ make api-update.
 - `type Agent struct` holds an `*identity.Identity`, a
   `discovery.Card`, and a `*flow.Definition`. All three fields stay
   unexported. A caller reaches them through `Name`, `Capabilities`,
-  and the accessors phase 13 adds for the run loop.
+  and `Run`, which phase 13 adds.
 - `func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)`
   builds an Agent from the three parts. It checks id for nil, calls
   card.Validate(), then checks plan for nil, in that order. It returns
@@ -264,6 +304,61 @@ package agent
   var ErrNoPlan
 ```
 
+### Phase 13 addition: the run entry point
+
+Full design in docs/plans/agents/phase13_agent_run.md; this section
+states the API lock target.
+
+- `type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, error)`
+  is the caller-supplied ack resolver. `Run` calls it once per step
+  `flow.Run` gates behind `Confirm`, with the signed step message. It
+  returns the receiver's real `envelope.Ack`, or an error. An
+  implementation wraps `ErrEscalated` with `%w` to route the step to
+  a human instead of resolving an ack.
+- `func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)`
+  drives `a.plan` through `flow.Run`. It checks `wait` for nil, then
+  `bus` for nil, then `threadID` for empty, in that order, before it
+  touches `m` or `a.plan`; `flow.Run` itself rejects a nil `m` or a
+  nil `d`. For each gated step, `Run` builds an `envelope.Message`
+  from the step's `ID`, `threadID`, and `Payload`, with `Version:
+  envelope.Version`, `Intent: envelope.IntentRequest`, and `Epistemic:
+  envelope.EpistemicAssumed`, signs it with `a`'s identity, calls
+  `EmitMessageDelivered`, then calls `wait`. If `wait` returns a
+  non-nil error, `Run`'s `flow.Confirm` closure returns that error
+  unchanged and skips `EmitMessageAcked`; a zero-value `Ack` would
+  otherwise fail `Ack.Validate()` with an unrelated error and break
+  `errors.Is` against a wrapped `ErrEscalated`. Only when `wait`
+  returns a nil error does `Run` call `EmitMessageAcked` and require
+  `Ack.Status == envelope.AckConfirmed` before it lets the step count
+  as done. On a successful run with one or more gated steps, `Run`
+  calls `EmitThreadVerified` once, over every step message it built,
+  in order, after `flow.Run` returns with a nil error. `IntentRequest`
+  and `EpistemicAssumed` let each built message pass `Validate()` on
+  its own, which `EmitThreadVerified`'s call to `envelope.VerifyThread`
+  requires.
+- `var ErrEscalated error` is the sentinel an `AckWait` wraps to
+  signal a step needs a human. Test with `errors.Is` against the
+  error `Run` returns; `flow.Run`'s own wrap preserves the chain.
+- `var ErrNoWait error` is the sentinel `Run` returns when `wait` is
+  nil.
+- `var ErrNoThread error` is the sentinel `Run` returns when
+  `threadID` is empty.
+
+`Run` adds no new field to `Agent` and no new emit function. It reuses
+`EmitMessageDelivered`, `EmitMessageAcked`, `EmitThreadVerified`, and
+`ErrNoBus`, all already exported by the phase 20 translator.
+
+The expected `api/agent.txt` lock, phase 13 lines added to the phase
+20 block above:
+
+```text
+  func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
+  type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
+  var ErrEscalated
+  var ErrNoThread
+  var ErrNoWait
+```
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -396,6 +491,40 @@ order. No exported symbol changes, so api/agent.txt does not change.
 No import edge changes, so policy/layers.json does not change. The
 builder edits only agent/agent_test/translator_test.go.
 
+### Phase 13 addition: run-loop tests
+
+Full test list in docs/plans/agents/phase13_agent_run.md. Summary:
+
+- `run_test.go` — red-green table cases for `Run`'s own checks: the
+  nil-`wait`, nil-`bus`, and empty-`threadID` sentinels and their
+  check order, a confirmed one-step run, a corrected one-step run, an
+  escalated one-step run, a one-step run where `wait` returns a plain
+  error wrapping nothing (proving the ack-error short-circuit is
+  unconditional, not special-cased to escalation), and a zero-step
+  plan.
+- `run_integration_test.go` — a real two-step sequential plan proves
+  the ack for step one confirms before `wait` runs for step two, each
+  built message independently passes `Message.Validate()`, the bus
+  receives the five expected events in order, and an escalated second
+  step returns `errors.Is(err, agent.ErrEscalated)` with no
+  `ThreadVerifiedEvent`. Runs under `go test -race`.
+- `run_panel_integration_test.go` — the multi-member panel path: a
+  two-member panel step alongside one gated step proves `wait` runs
+  zero times and no message events fire for the panel members; a
+  plan that is only a two-member panel proves `Run` succeeds with
+  zero `wait` calls and no `ThreadVerifiedEvent`. Runs under `go test
+  -race`.
+- `run_bench_test.go` — a two-step run with an in-process,
+  synchronous `AckWait`, target under two milliseconds, with an
+  `AllocsPerRun` budget recorded by the builder.
+- `lifecycle_integration_test.go` — the full-lifecycle proof this
+  phase adds beyond the original phase 13 test list: one one-member
+  panel step and one sequential step, a real identity, card, plan, and
+  machine model, asserting the exact ordered event sequence for a
+  successful run and that a forced ack failure halts the walk without
+  erasing the events already emitted for the steps that already
+  passed.
+
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
@@ -456,3 +585,27 @@ builder edits only agent/agent_test/translator_test.go.
   time, in a scratch copy. The updated test suite must show three
   fresh failures across the three scratch mutations, one per new
   case, where the old suite passed on all three.
+
+### Phase 13 addition: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for agent and for the total, with
+  `Run`'s new lines counted in.
+- The agent row in policy/layers.json gains machine. The row change
+  lands with this plan update, before the code.
+- machine's row in policy/layers.json stays `["events"]`; machine
+  gains no new import.
+- `api/agent.txt` gains `AckWait`, `Run`, `ErrEscalated`, `ErrNoWait`,
+  and `ErrNoThread`, through make api-update in the same change as the
+  code. `ErrNoBus` is reused, not re-declared; `api/envelope.txt`,
+  `api/events.txt`, and `api/machine.txt` stay unchanged.
+- `agent/doc.go`'s file map gains the new file name this phase adds,
+  for example run.go.
+- docs/architecture.md's agent/ bullet gains `Run`, `AckWait`, and the
+  machine import edge, in the same change as the code.
+- This phase adds no conformance vector. It composes envelope.Message
+  and envelope.Ack, both already vector-covered in envelope, and
+  defines no new wire schema.
+- docs/plans/a2a.md stays status future. This phase does not add code
+  to a2a and does not require it.

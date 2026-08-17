@@ -4,12 +4,17 @@ package agent
   const ThreadVerifiedEvent = "agent.thread_verified"
   func (a *Agent) Capabilities() ([]string)
   func (a *Agent) Name() (string)
+  func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
   func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) (error)
   func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) (error)
   func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) (error)
   func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
+  type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
   type Agent struct {
 }
+  var ErrEscalated
   var ErrNoBus
   var ErrNoIdentity
   var ErrNoPlan
+  var ErrNoThread
+  var ErrNoWait

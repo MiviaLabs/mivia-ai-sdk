@@ -62,6 +62,54 @@ mirrors `api/flow.txt`.
 - A step without a nil-returning `confirm` call does not advance. The
   next step never fires until the prior ack confirms.
 
+## Attaching work to a step
+
+A step never names its own executor. `Step` holds graph data only: an
+ID, a dependency list, a target status, and an opaque payload.
+
+The real work runs through two mechanisms outside `Step` itself.
+
+- A `machine.Transition`'s `OnEntry` and `OnExit` actions run when a
+  step's target status fires. An action is a plain
+  `func(ctx, *machine.InOut) error`. It may call an agent, call a
+  method, run a program, or call another package. `flow` never knows
+  which one runs.
+- `Confirm` runs once per step after the transition fires. A caller
+  reads `step.ID` or decodes `step.Payload` to route the ack to the
+  right handler.
+
+Agents are one caller of this contract, not a special case inside
+`flow`. The future `agent` package composes a `machine.Definition` and
+a `flow.Definition` the same way any other automation would. `flow`
+never imports `agent`; see `policy/layers.json`.
+
+### Phase 7 design note: two attachment mechanisms, not three
+
+Phase 7 (`docs/plans/agents/phase07_flow_chain.md`) adds a second
+mechanism. A step may nest a `Definition` and run it as a
+sub-workflow. This composes workflows; it does not run arbitrary code.
+
+Two mechanisms exist by design. A third must not appear.
+
+- The `machine.Transition` action closures run arbitrary work.
+- A nested `Definition` composes one workflow inside another.
+
+Do not add a third attachment field to `Step` for a new use case, such
+as a `Handler` or an `Executor` field. Route new work through an
+action closure instead.
+
+Options for phase 7, recorded here so the choice does not get lost:
+
+- Option A (recommended). State this two-mechanism rule in the phase
+  7 plan before implementation starts. Map every future use case to
+  one of the two mechanisms, never to a new `Step` field.
+- Option B. Defer the decision until phase 7 begins, and re-run an
+  architecture assessment then. This risks losing the reasoning
+  between now and phase 7.
+
+This note mirrors the same text in
+`docs/plans/agents/phase07_flow_chain.md`.
+
 ## Usage
 
 ```go

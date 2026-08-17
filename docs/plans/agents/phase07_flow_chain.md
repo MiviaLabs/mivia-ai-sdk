@@ -26,6 +26,32 @@ The run appends the envelope message of each step to one thread. The
 thread uses `thread_id` and `prev_hash`. After the run, `VerifyThread`
 checks the chain and the unique message ids.
 
+## Design note: two attachment mechanisms, not three
+
+A step attaches to real work through exactly two mechanisms. A third
+must not appear. See `docs/packages/flow.md` for the full contract.
+
+- A `machine.Transition`'s `OnEntry` and `OnExit` actions run
+  arbitrary work: an agent call, a method call, a program, or a call
+  into another package. `flow` never knows which.
+- This phase adds the second mechanism: a step nests a `Definition`
+  and runs it as a sub-workflow. This composes workflows; it does not
+  run arbitrary code.
+
+Do not add a third attachment field to `Step`, such as a `Handler` or
+an `Executor` field, for a future use case. Route new work through an
+action closure instead.
+
+Options, recorded so the choice does not get lost before this phase
+starts:
+
+- Option A (recommended). Pin this two-mechanism rule before writing
+  any code for this phase. Map every future use case to one of the
+  two mechanisms, never to a new `Step` field.
+- Option B. Defer the decision until this phase begins, and re-run an
+  architecture assessment then. This risks losing the reasoning
+  between now and this phase.
+
 ## Tests
 
 Test files live in `flow/flow_test/`:

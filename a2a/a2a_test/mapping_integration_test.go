@@ -13,7 +13,11 @@ import (
 // Mapped value with ToPart, maps it back with FromPart, then verifies
 // the signature on the result. It proves every field, including the
 // signature, survives the a2a boundary, and that ThreadID round-trips
-// through ContextID and ID round-trips through MessageID intact.
+// through ContextID and ID round-trips through MessageID intact. The
+// message sets InReplyTo, PrevHash, and AckRequired to non-zero values,
+// not just the zero defaults, so a field the mapping silently drops
+// changes the round-tripped struct and fails the reflect.DeepEqual
+// check below.
 func TestSignedMessageRoundTripsThroughPart(t *testing.T) {
 	_, key, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -26,18 +30,21 @@ func TestSignedMessageRoundTripsThroughPart(t *testing.T) {
 		Room:        "platform-team",
 		ThreadID:    "thread-integration-1",
 		To:          []string{"agent-a", "agent-b"},
+		InReplyTo:   "msg-integration-0",
 		Intent:      envelope.IntentAssert,
 		Epistemic:   envelope.EpistemicVerified,
 		Confidence:  0.9,
 		ContextRefs: []string{envelope.ContextRef("shared context")},
+		PrevHash:    envelope.ContextRef("previous message"),
 		Provenance: envelope.Provenance{
 			Source:   "tool:grep",
 			Chain:    []string{"agent-a"},
 			Evidence: []string{envelope.ContextRef("evidence blob")},
 		},
-		MaxHops:    3,
-		CostBudget: 2000,
-		Payload:    "The config loader reads mivia.toml.",
+		MaxHops:     3,
+		CostBudget:  2000,
+		AckRequired: true,
+		Payload:     "The config loader reads mivia.toml.",
 	}
 
 	signed, err := envelope.Sign(key, original)

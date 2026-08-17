@@ -7,13 +7,13 @@ the invariants the architecture enforces. See
 [packages/room.md](packages/room.md),
 [packages/machine.md](packages/machine.md),
 [packages/flow.md](packages/flow.md),
-[packages/identity.md](packages/identity.md), and
-[packages/events.md](packages/events.md) for the exported API
-references.
+[packages/identity.md](packages/identity.md),
+[packages/events.md](packages/events.md), and
+[packages/a2a.md](packages/a2a.md) for the exported API references.
 
 ## Package map
 
-The diagram shows the nine packages and the import edges between
+The diagram shows the ten packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `discovery`, `envelope`, and `events` are leaves: they import no
 other package in this module.
@@ -34,6 +34,7 @@ flowchart LR
     machine --> events
     room --> envelope
     room --> heartbeat
+    a2a --> envelope
     discovery[discovery]
     envelope[envelope]
     events[events]
@@ -116,12 +117,19 @@ flowchart LR
   roster-staleness check. It imports `events` only, for the
   `MissedEvent` constant. See
   [packages/heartbeat.md](packages/heartbeat.md).
+- `a2a/` — the A2A v1.0 mapping. It provides `Part`, `Mapped`,
+  `ToPart`, and `FromPart`. `ToPart` validates an `envelope.Message`
+  and encodes it into a `Part`. `FromPart` decodes a `Part` back into
+  a `Message`, with the caller-supplied `ContextID`/`MessageID`
+  overriding any value embedded in the part. `a2a` imports `envelope`
+  only; it carries no network call. See [packages/a2a.md](packages/a2a.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
 package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
 The identity package imports envelope only; it wraps `envelope.Sign`.
+The a2a package imports envelope only; it holds no other edge.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import

@@ -1,9 +1,8 @@
 # Package reference: a2a
 
 The a2a package maps an `envelope.Message` onto an A2A v1.0 message
-part and back. Phase 9 carries no network call and no third-party
-import; the `a2a-go` client is phase 10. The exported surface below
-mirrors `api/a2a.txt`.
+part and back. It carries no network call and no third-party import.
+The exported surface below mirrors `api/a2a.txt`.
 
 ## Types
 
@@ -45,20 +44,19 @@ mirrors `api/a2a.txt`.
   produces. `FromPart` reads it with `encoding/json.Unmarshal`, not
   `envelope.Decode`, because the `ContextID`/`MessageID` override must
   run before `Validate`.
-- `Text`, `Raw`, and `URL` stay empty in phase 9. Phase 10 uses them
-  once the `a2a-go` client needs a non-`Data` part.
+- `Text`, `Raw`, and `URL` stay empty today. A later change to this
+  package can use them once a client needs a non-`Data` part.
 - Conformance vectors live in `a2a/testdata/vectors/`, `valid_`
   prefixed. A vector pairs the source `envelope.Message` with its
   mapped `Part`, `ContextID`, and `MessageID`.
 
 ## Why this shape
 
-`Part` mirrors the A2A v1.0 wire shape from
-[../research-a2a.md](../research-a2a.md) so phase 10 can adapt it to
-the real `a2aproject/a2a-go` client without reshaping `Part` itself.
-`ContextID` and `MessageID` sit on `Mapped`, not on `Part`, because
-in the real A2A wire form they belong to the wrapping A2A `Message`,
-not to an individual `Part`.
+`Part` mirrors the A2A v1.0 wire shape, so a future transport can
+adopt it without reshaping `Part` itself. `ContextID` and `MessageID`
+sit on `Mapped`, not on `Part`, because in the real A2A wire form
+they belong to the wrapping A2A `Message`, not to an individual
+`Part`.
 
 ## Usage
 

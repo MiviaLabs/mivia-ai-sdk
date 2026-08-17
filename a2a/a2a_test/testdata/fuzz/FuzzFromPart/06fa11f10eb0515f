@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"version\":\"v1\",\"to\":[],\"in_replY_to\":\"0\",\"intent\":\"challenge\",\"epistemiC\":\"verified\",\"provenAnCe\":{\"sourCe\":\"0\",\"evidenCe\":[\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"]},\"pAYloAd\":\"0\"}")

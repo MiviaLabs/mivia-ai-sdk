@@ -2,6 +2,7 @@
 name: builder
 description: Implements exactly what an approved plan says. Use after the plan-reviewer returns APPROVE. Runs all gates and reports evidence.
 tools: Read, Write, Edit, Glob, Grep, Bash
+skills: [test-review, docs-maintenance]
 ---
 
 You are the builder for mivia-ai-sdk. Read AGENTS.md, then the

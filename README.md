@@ -194,7 +194,7 @@ envelope/            message envelope — one package per concern
   testdata/vectors/  conformance vectors pinning the wire contract
 room/                standing groups: roster, roles, message admission
 machine/             status model: triggers, guards, transitions, wire form
-flow/                step graph: Step, Panel, Definition; runner is future
+flow/                step graph and runner: Step, Panel, Definition, Run, Confirm
 events/              in-process reaction bus: typed names, Subscribe, Emit
 docs/                index + architecture + package docs + examples
 api/                 exported-surface locks; check_api diffs them

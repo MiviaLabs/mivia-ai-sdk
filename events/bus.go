@@ -6,10 +6,15 @@ import (
 	"sync"
 )
 
+// Name is the typed event kind that separates subscriptions.
+// A domain defines its own Name constants, so a literal never survives.
+// The zero value is an empty name, which Validate rejects.
+type Name string
+
 // Event is one typed change a caller emits onto a bus.
 // Name is the event kind. Data is the opaque payload.
 type Event struct {
-	Name string
+	Name Name
 	Data string
 }
 
@@ -36,18 +41,18 @@ type Handler func(ctx context.Context, e Event) error
 // The zero value is not usable; create a bus with New.
 type Bus struct {
 	mu   sync.Mutex
-	subs map[string][]Handler
+	subs map[Name][]Handler
 }
 
 // New creates a bus with an empty subscription set.
 // It has no error path; a fresh bus cannot reject the caller.
 func New() *Bus {
-	return &Bus{subs: make(map[string][]Handler)}
+	return &Bus{subs: make(map[Name][]Handler)}
 }
 
 // Subscribe adds a handler for one event name.
 // It rejects an empty name and a nil handler.
-func (b *Bus) Subscribe(name string, h Handler) error {
+func (b *Bus) Subscribe(name Name, h Handler) error {
 	if name == "" {
 		return fmt.Errorf("events: subscription name must not be empty")
 	}

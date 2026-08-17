@@ -1,4 +1,5 @@
 package machine
+  const MoveEvent = "machine.move"
   func (d *Definition) Encode(reg Registry) ([]byte, error)
   func (d *Definition) Fire(ctx context.Context, from Status, trig Trigger, in InOut) (Status, InOut, error)
   func (d *Definition) Validate() (error)

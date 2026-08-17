@@ -8,8 +8,12 @@ surface below mirrors `api/events.txt`.
 
 ## Types
 
+- `Name` — the typed event kind that separates subscriptions. A domain
+  defines its own `Name` constants; a literal never survives in shared
+  code.
 - `Event` — one typed change a caller emits. Fields: `Name` and `Data`.
-  `Name` is the event kind. `Data` is the opaque payload.
+  `Name` is the event kind, of type `Name`. `Data` is the opaque
+  payload.
 - `Handler` — the subscriber callback. The signature is
   `func(context.Context, Event) error`. The bus does not propagate the
   returned error.
@@ -21,10 +25,17 @@ surface below mirrors `api/events.txt`.
 
 - `New()` — creates a bus with an empty subscription set. It has no
   error path.
-- `Bus.Subscribe(name, handler)` — adds a handler for one event name.
-  It rejects an empty name and a nil handler.
+- `Bus.Subscribe(name, handler)` — adds a handler for one event name,
+  of type `Name`. It rejects an empty name and a nil handler.
 - `Bus.Emit(ctx, event)` — validates the event, then runs each handler
   for its name. It rejects an unknown name with an error.
+
+## Event names
+
+An event name is a typed `Name`, defined as a constant in the package
+that owns the event. The machine package defines `MoveEvent`. A caller
+references that constant for both publish and subscribe. A typo is a
+compile error, not a silent miss.
 
 ## Invariants
 
@@ -48,13 +59,13 @@ surface below mirrors `api/events.txt`.
 
 ```go
 b := events.New()
-if err := b.Subscribe("machine.move", func(ctx context.Context, e events.Event) error {
+if err := b.Subscribe(machine.MoveEvent, func(ctx context.Context, e events.Event) error {
     // react to the move
     return nil
 }); err != nil {
     // the name or handler was invalid
 }
-if err := b.Emit(context.Background(), events.Event{Name: "machine.move", Data: "running"}); err != nil {
+if err := b.Emit(context.Background(), events.Event{Name: machine.MoveEvent, Data: "idle->running"}); err != nil {
     // the event was invalid or had no subscriber
 }
 ```

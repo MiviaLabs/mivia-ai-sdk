@@ -9,13 +9,10 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
-// moveEventName names the move event this test package emits.
-// It is not exported API; it does not live in the events package.
-const moveEventName = "machine.move"
-
 // emitMoveData renders the move event data a caller emits after Fire.
 // A real caller would derive richer data; the test asserts the wired
-// value reaches the bus exactly once.
+// value reaches the bus exactly once. The event name is the typed
+// machine.MoveEvent constant, not a string literal.
 func emitMoveData(from machine.Status, to machine.Status) string {
 	return string(from) + "->" + string(to)
 }
@@ -56,7 +53,7 @@ func TestMachineMoveArrivesOnceOnBus(t *testing.T) {
 	d := busWiringDefinition()
 	bus := events.New()
 	var got []string
-	if err := bus.Subscribe(moveEventName, func(_ context.Context, e events.Event) error {
+	if err := bus.Subscribe(machine.MoveEvent, func(_ context.Context, e events.Event) error {
 		got = append(got, e.Data)
 		return nil
 	}); err != nil {
@@ -71,7 +68,7 @@ func TestMachineMoveArrivesOnceOnBus(t *testing.T) {
 	if to != machine.Status("running") {
 		t.Fatalf("Fire status = %q, want %q", to, "running")
 	}
-	if err := bus.Emit(ctx, events.Event{Name: moveEventName, Data: emitMoveData("idle", to)}); err != nil {
+	if err := bus.Emit(ctx, events.Event{Name: machine.MoveEvent, Data: emitMoveData("idle", to)}); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	_ = out
@@ -90,7 +87,7 @@ func TestGuardFailureEmitsNothing(t *testing.T) {
 	d := busWiringDefinition()
 	bus := events.New()
 	called := 0
-	if err := bus.Subscribe(moveEventName, func(context.Context, events.Event) error {
+	if err := bus.Subscribe(machine.MoveEvent, func(context.Context, events.Event) error {
 		called++
 		return nil
 	}); err != nil {

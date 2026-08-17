@@ -32,7 +32,10 @@ events code imports the other.
 The surface below is the lock target. It lands in `api/events.txt` via
 make api-update.
 
-- `type Event struct { Name string; Data string }` holds the typed
+- `type Name string` is the typed event kind that separates
+  subscriptions. A domain owns its own `Name` constants, so a literal
+  never survives in shared code.
+- `type Event struct { Name Name; Data string }` holds the typed
   payload. A transition move uses `Name` for the event kind and
   `Data` for a description. The payload is opaque to the bus.
 - `func (e Event) Validate() error` enforces the field rules. It
@@ -44,7 +47,7 @@ make api-update.
   subscription set, not a general bus.
 - `func New() *Bus` creates a bus with an empty subscription set. It
   has no error path. A fresh bus cannot reject the caller.
-- `func (b *Bus) Subscribe(name string, h Handler) error` adds a
+- `func (b *Bus) Subscribe(name Name, h Handler) error` adds a
   callback. It rejects an empty name and a nil handler.
 - `func (b *Bus) Emit(ctx context.Context, e Event) error` validates
   the event, then it runs each handler for the event name. It rejects
@@ -61,9 +64,10 @@ failure. `Emit` never starts a goroutine.
 
 The bus imports nothing of this module. It is a leaf block. The import
 edge is one-directional; consumers import the bus, never the reverse.
-The machine and flow packages stay untouched. A caller at the
-composition layer owns a bus. It subscribes and emits through the bus
-API. The `events` row in policy/layers.json is empty.
+The machine package imports the bus for its typed `MoveEvent` constant.
+A caller at the composition layer owns a bus. It subscribes and emits
+through the bus API. The `events` row in policy/layers.json is empty;
+the `machine` row lists `events`.
 
 ## Tests
 

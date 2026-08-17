@@ -45,9 +45,9 @@ func TestBusConcurrentSubscribeEmit(t *testing.T) {
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	for g := 0; g < goroutines; g++ {
-		ownName := fmt.Sprintf("own-%d", g)
+		ownName := events.Name(fmt.Sprintf("own-%d", g))
 		wg.Add(1)
-		go func(g int, ownName string) {
+		go func(g int, ownName events.Name) {
 			defer wg.Done()
 			<-start
 			runEmitter(b, ctx, &counts, g, ownName)
@@ -101,7 +101,7 @@ func TestBusConcurrentSubscribeEmit(t *testing.T) {
 // a handler may call Subscribe while other goroutines emit. A
 // regression that runs handlers under the lock deadlocks here. The
 // test watchdog turns that deadlock into a bounded failure.
-func runEmitter(b *events.Bus, ctx context.Context, counts *busCounters, g int, ownName string) {
+func runEmitter(b *events.Bus, ctx context.Context, counts *busCounters, g int, ownName events.Name) {
 	noop := func(context.Context, events.Event) error { return nil }
 	reentrant := func() {
 		if err := b.Subscribe("noop", noop); err != nil {

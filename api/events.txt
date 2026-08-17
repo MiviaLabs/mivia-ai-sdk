@@ -1,12 +1,13 @@
 package events
   func (b *Bus) Emit(ctx context.Context, e Event) (error)
-  func (b *Bus) Subscribe(name string, h Handler) (error)
+  func (b *Bus) Subscribe(name Name, h Handler) (error)
   func (e Event) Validate() (error)
   func New() (*Bus)
   type Bus struct {
 }
   type Event struct {
-  Name string
+  Name Name
   Data string
 }
   type Handler func(ctx context.Context, e Event) error
+  type Name string

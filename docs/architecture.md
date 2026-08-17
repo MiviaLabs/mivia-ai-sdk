@@ -27,9 +27,10 @@ references.
   parallel waves, and the chaining land later. See
   [packages/flow.md](packages/flow.md) and
   [plans/flow.md](plans/flow.md).
-- `events/` — the in-process reaction bus. It ships `Event`,
+- `events/` — the in-process reaction bus. It ships `Name`, `Event`,
   `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The caller owns the
-  bus; the module has no shared bus. See
+  bus; the module has no shared bus. Event names are typed `Name`
+  constants owned by each domain. See
   [packages/events.md](packages/events.md) and
   [plans/events.md](plans/events.md).
 - `a2a/` — a future package. It is planned in
@@ -37,6 +38,8 @@ references.
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions. The import edge lands when the code lands.
+The machine package imports events for its typed `MoveEvent` constant.
+The events package imports nothing; it is a leaf.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import

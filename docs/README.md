@@ -40,6 +40,8 @@ change before the code lands.
   and 18 ship.
 - [plans/identity.md](plans/identity.md) — the identity key-wrap plan;
   Phase 8 ships.
+- [plans/discovery.md](plans/discovery.md) — the discovery
+  capability-card plan; ships.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
   integration, tdd, and perf test files.

@@ -1,0 +1,9 @@
+package discovery
+  func (c Card) Match(need string) (string, bool)
+  func (c Card) Validate() (error)
+  func Parse(data []byte) (Card, error)
+  type Card struct {
+  Name string `json:"name"`
+  Description string `json:"description,omitempty"`
+  Capabilities []string `json:"capabilities"`
+}

@@ -227,8 +227,9 @@ concurrent writers.
 These belong to other layers. This protocol is the message envelope,
 not the transport, registry, or session manager.
 
-- **Capability discovery (A2A Agent Cards).** A registry concern. A
-  future `discovery` package can adopt the Agent Card format.
+- **Capability discovery (A2A Agent Cards).** A registry concern. The
+  `discovery` package defines its own minimal card shape instead of
+  the A2A Agent Card format. See docs/plans/discovery.md.
 - **Streaming, push, task lifecycle (A2A).** Transport and session
   concerns. A future `session` package can own task state over
   `thread_id`.

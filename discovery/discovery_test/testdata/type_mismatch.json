@@ -1,0 +1,5 @@
+{
+  "name": "Agent A",
+  "description": "capabilities is a string, not a list",
+  "capabilities": "read"
+}

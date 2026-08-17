@@ -1,0 +1,6 @@
+{
+  "name": "Agent A",
+  "description": "reads files and writes patches",
+  "capabilities": ["read", "write", "execute"],
+  "region": "us-east"
+}

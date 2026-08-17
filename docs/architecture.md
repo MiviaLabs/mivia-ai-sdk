@@ -46,6 +46,12 @@ references.
   hex public key from the private key. See
   [packages/identity.md](packages/identity.md) and
   [plans/identity.md](plans/identity.md).
+- `discovery/` — the capability card. It ships `Card`, `Parse`,
+  `Validate`, and `Match`. `Parse` reads a card from JSON and validates
+  it. `Validate` rejects a blank name, an empty capability list, and a
+  duplicate capability. `Match` compares a capability request against
+  the card, case-insensitive and exact. See
+  [plans/discovery.md](plans/discovery.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

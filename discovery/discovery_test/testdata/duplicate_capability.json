@@ -1,0 +1,5 @@
+{
+  "name": "Agent A",
+  "description": "a duplicate entry differing only in case",
+  "capabilities": ["read", "Read"]
+}

@@ -1,6 +1,6 @@
 # Plan: heartbeat
 
-Status: planned. No phase contract yet; this is a new top-level
+Status: shipped. No phase contract yet; this is a new top-level
 package. See docs/architecture.md for the module map this package
 joins.
 

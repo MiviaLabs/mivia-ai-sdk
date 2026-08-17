@@ -1,6 +1,6 @@
 # Plan: discovery
 
-Status: planned. Phase 11 of the agent work. The phase contract is
+Status: shipped. Phase 11 of the agent work. The phase contract is
 docs/plans/agents/phase11_discovery.md. This package has no internal
 imports. See docs/research-agents.md for the capability-card decision.
 

@@ -46,7 +46,7 @@ change before the code lands.
   Phase 12 ships.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
-  integration, tdd, and perf test files.
+  integration, unit, and benchmark test files.
 - [plans/a2a.md](plans/a2a.md) — the future a2a package plan.
 - [plans/gates.md](plans/gates.md) — the gate-hardening plan.
 - [plans/labels.md](plans/labels.md) — the label-ban plan.

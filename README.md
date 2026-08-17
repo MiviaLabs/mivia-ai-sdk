@@ -13,6 +13,9 @@ building blocks, not a monolith. Standard library only.
 - **flow** — step graphs: composable steps, panels, definitions
 - **events** — in-process reaction bus: typed names, subscribe, emit
 - **identity** — agent keys: ed25519 key wrap, key-file load, hex signer
+- **heartbeat** — liveness tracking: per-id beats, alive/dead checks
+- **discovery** — capability cards: parse, validate, match
+- **agent** — the composition layer: wires blocks into an agent
 
 The GitHub remote for this repo is private. Licensed under the
 [MIT License](LICENSE).
@@ -52,7 +55,7 @@ public API.
   Signer. Ships.
 - **a2a** — a future block. The plan lives in
   [docs/plans/a2a.md](docs/plans/a2a.md).
-- **agent** — the composition layer. Future. An agent wires the blocks;
+- **agent** — the composition layer. Ships. An agent wires the blocks;
   a block never imports the agent.
 
 ## Roadmap
@@ -66,9 +69,10 @@ framework. One small plan per step lives in
   graph, runner, panels, and chaining. The machine block, the flow
   graph and runner, and the events bus ship.
 - **Transport and identity**: identity key wrap, a2a mapping, a2a
-  client, discovery card. The identity key wrap ships; the a2a blocks
-  stay future.
-- **Composition**: agent definition, run loop, tools, memory. Future.
+  client, discovery card. The identity key wrap and discovery card ship;
+  the a2a blocks stay future.
+- **Composition**: agent definition, run loop, tools, memory. The
+  agent definition ships; the run loop stays future.
 - **System integration**: the end-to-end multi-agent exchange. Future.
 - **Reactions**: the events bus and the block emissions. The bus and
   the machine emissions ship.
@@ -201,6 +205,9 @@ machine/             status model: triggers, guards, transitions, wire form
 flow/                step graph and runner: Step, Panel, Definition, Run, Confirm
 events/              in-process reaction bus: typed names, Subscribe, Emit
 identity/            agent key wrap: ed25519 pair, Load, Sign, Signer
+heartbeat/           liveness tracking: Monitor, Beat, Alive, Dead
+discovery/           capability cards: Card, Parse, Match
+agent/               composition layer: wires blocks into an agent
 docs/                index + architecture + package docs + examples
 api/                 exported-surface locks; check_api diffs them
 policy/              layers.json: the allowed internal import edges

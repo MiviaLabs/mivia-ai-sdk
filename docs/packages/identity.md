@@ -38,7 +38,7 @@ exported surface below mirrors `api/identity.txt`.
 `Validate` enforces both rules below. Load and Sign call it first.
 
 - The private key is exactly `ed25519.PrivateKeySize` bytes.
-- The public key equals the private key's public half.
+- The public key equals the seed-derived key.
 
 A zero-value Identity fails `Validate`. `Signer` returns an empty
 string for a wrong-length private key; the length guard runs before

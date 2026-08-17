@@ -70,16 +70,21 @@ func Load(path string) (*Identity, error) {
 }
 
 // Validate checks the key invariants: the private key is exactly
-// ed25519.PrivateKeySize bytes and the public key is its public half.
-// A broken invariant wraps ErrKeyInvalid. A zero-value Identity fails.
+// ed25519.PrivateKeySize bytes and the public key equals the
+// seed-derived key. A broken invariant wraps ErrKeyInvalid. A
+// zero-value Identity fails.
 func (i *Identity) Validate() error {
 	if len(i.PrivateKey) != ed25519.PrivateKeySize {
 		return fmt.Errorf("%w: private key length %d, want %d",
 			ErrKeyInvalid, len(i.PrivateKey), ed25519.PrivateKeySize)
 	}
-	pub, _ := i.PrivateKey.Public().(ed25519.PublicKey) // length checked above
-	if !pub.Equal(i.PublicKey) {
-		return fmt.Errorf("%w: public key is not the private key's public half", ErrKeyInvalid)
+	derived := ed25519.NewKeyFromSeed(i.PrivateKey[:32])
+	wantPub := derived[32:]
+	if !ed25519.PublicKey(wantPub).Equal(i.PublicKey) {
+		return fmt.Errorf("%w: public key does not match the seed-derived key", ErrKeyInvalid)
+	}
+	if !ed25519.PublicKey(wantPub).Equal(ed25519.PublicKey(i.PrivateKey[32:])) {
+		return fmt.Errorf("%w: embedded public half does not match the seed-derived key", ErrKeyInvalid)
 	}
 	return nil
 }

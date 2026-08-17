@@ -1,9 +1,10 @@
 # Plan: agent
 
-Status: planned. Phase 12 of the agent work. The phase contract is
-docs/plans/agents/phase12_agent_definition.md. This package depends on
-identity, discovery, and flow, all shipped. Phase 13 adds the
-execution loop; phase 14 adds tools.
+Status: phase 12 and phase 20 shipped. Phase 20's contract is
+docs/plans/agents/phase20_envelope_composition.md. Phase 12 depends on
+identity, discovery, and flow, all shipped. Phase 20 adds envelope and
+events, both shipped. Phase 13 adds the execution loop; phase 14 adds
+tools.
 
 ## Goal
 
@@ -23,9 +24,33 @@ package owns no goroutine, no context.Context walk, and no network
 call.
 
 The package imports identity, discovery, and flow. No other internal
-import. Stdlib only: errors and fmt, for the sentinel errors and the
-wrapped card error. The policy row is
-`"agent": ["identity", "discovery", "flow"]`.
+import through phase 12. Stdlib only: errors and fmt, for the sentinel
+errors and the wrapped card error. The policy row was
+`"agent": ["identity", "discovery", "flow"]` through phase 12.
+
+### Phase 20 addition: scope
+
+Phase contract: docs/plans/agents/phase20_envelope_composition.md.
+This phase adds a thin translator inside the same `agent` package. It
+turns a delivered `envelope.Message`, an `envelope.Ack`, or an
+`envelope.VerifyThread` outcome into one `events.Event`. It emits that
+event onto a caller-owned `events.Bus`. The translator is
+composition-layer code. It is the one place allowed to import both
+`envelope` and `events`, because neither of those two packages may
+import the other.
+
+Inside: three free functions (`EmitMessageDelivered`,
+`EmitMessageAcked`, `EmitThreadVerified`), three `events.Name`
+constants, and one new sentinel, `ErrNoBus`. Outside: room admission,
+the transport step, and any change to the envelope wire contract or
+the events bus contract. The translator does not sign, encode, or
+transport a message. It only verifies an already-received value and
+emits.
+
+The package imports gain `envelope` and `events` in this phase. The
+policy row becomes `"agent": ["identity", "discovery", "flow",
+"envelope", "events"]`. `envelope`'s row and `events`'s row stay
+empty. Neither package gains an import of the other or of `agent`.
 
 ## API
 
@@ -151,6 +176,94 @@ package agent
   var ErrNoPlan
 ```
 
+### Phase 20 addition: the envelope-to-events translator
+
+Three exported functions, three exported `events.Name` constants, and
+one exported sentinel land in this phase. They join the phase 12
+surface above. Nothing from phase 12 changes.
+
+- `const MessageDeliveredEvent events.Name = "agent.message_delivered"`
+  names the event `EmitMessageDelivered` emits.
+- `const MessageAckedEvent events.Name = "agent.message_acked"` names
+  the event `EmitMessageAcked` emits.
+- `const ThreadVerifiedEvent events.Name = "agent.thread_verified"`
+  names the event `EmitThreadVerified` emits.
+- `var ErrNoBus` is the sentinel every `EmitX` function returns when
+  its `bus` argument is nil. It replaces a nil-pointer panic inside
+  `events.Bus.Emit`. Panics inside a package violate AGENTS.md.
+- `func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) error`
+  checks `bus` for nil first and returns `ErrNoBus`. It then calls
+  `m.VerifySignature()`. A verification failure returns that error
+  and emits nothing. On success it emits one `Event` named
+  `MessageDeliveredEvent`, with `Data` set to
+  `fmt.Sprintf("message %s delivered", m.ID)`.
+- `func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) error`
+  checks `bus` for nil first and returns `ErrNoBus`. It then calls
+  `a.Validate()`. A validation failure returns that error and emits
+  nothing. On success it emits one `Event` named `MessageAckedEvent`,
+  with `Data` set to
+  `fmt.Sprintf("ack for message %s status %s", a.MessageID, a.Status)`.
+- `func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) error`
+  checks `bus` for nil first and returns `ErrNoBus`. It then calls
+  `envelope.VerifyThread(msgs)`. A verification failure returns that
+  error and emits nothing. On success it emits one `Event` named
+  `ThreadVerifiedEvent`, with `Data` set to
+  `fmt.Sprintf("thread of %d messages verified", len(msgs))`.
+
+Each function returns the raw error from `bus.Emit`, unwrapped. A
+missing subscriber is not this package's concern. The caller owns the
+bus and decides whether a missing subscriber is an error worth acting
+on.
+
+#### Design decisions
+
+1. Three `Name` constants, not one. `machine.MoveEvent` and
+   `flow.StepCompletedEvent` each name one package's one emitted kind,
+   and no existing package declares more than one `Name` constant.
+   This phase extends that pattern from one kind per package to three
+   kinds in one package. A delivered message, an ack, and a verified
+   thread are three distinct kinds. A subscriber tells them apart
+   through `Subscribe`, not by parsing `Data`. One shared name would
+   force every subscriber to sniff the payload string.
+2. Three functions, not one overloaded function. Each source kind
+   pairs with one envelope call (`VerifySignature`, `Validate`,
+   `VerifyThread`) and one `Name` constant. A single function taking
+   an `any` argument would need a type switch for three fixed cases.
+   No second caller asks for a fourth case. AGENTS.md rejects that
+   abstraction as speculative generality.
+3. Free functions, not `*Agent` methods. None of the three functions
+   read `id`, `card`, or `plan`, the only fields `Agent` holds. Each
+   needs only the `bus` and the envelope value the caller passes in.
+   A method receiver with no use in the method body is a receiver in
+   name only. A free function states that plainly.
+4. The race test targets the translator's call path, not the bus
+   directly. `events.Bus` already proves its own concurrency safety in
+   its own test suite. Phase 20's race test proves the translator adds
+   no shared mutable state of its own. Many goroutines call
+   `EmitMessageDelivered`, `EmitMessageAcked`, and `EmitThreadVerified`
+   against one shared bus. An atomic counter proves each call still
+   delivers exactly once.
+
+The expected `api/agent.txt` lock, phase 20 lines included:
+
+```text
+package agent
+  const MessageAckedEvent = "agent.message_acked"
+  const MessageDeliveredEvent = "agent.message_delivered"
+  const ThreadVerifiedEvent = "agent.thread_verified"
+  func (a *Agent) Capabilities() ([]string)
+  func (a *Agent) Name() (string)
+  func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) (error)
+  func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) (error)
+  func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) (error)
+  func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
+  type Agent struct {
+}
+  var ErrNoBus
+  var ErrNoIdentity
+  var ErrNoPlan
+```
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -205,6 +318,39 @@ Test files live in `agent/agent_test/`:
   the allocation budget; the builder records the measured baseline in
   this file.
 
+### Phase 20 addition: translator tests
+
+Test files land in `agent/agent_test/`, alongside the phase 12 files:
+
+- `translator_test.go` — the red-green cases. Start with the
+  assertions; confirm they fail against the empty package, then
+  implement to green. Table cases:
+  - A valid Message, a subscribed bus: EmitMessageDelivered returns
+    nil and the handler receives MessageDeliveredEvent.
+  - A Message with a bad signature: EmitMessageDelivered returns the
+    VerifySignature error and the handler never runs.
+  - A valid Ack, a subscribed bus: EmitMessageAcked returns nil and
+    the handler receives MessageAckedEvent.
+  - An Ack with a blank MessageID: EmitMessageAcked returns the
+    Validate error and the handler never runs.
+  - A two-message thread that verifies: EmitThreadVerified returns
+    nil and the handler receives ThreadVerifiedEvent.
+  - A thread with a broken hash chain: EmitThreadVerified returns the
+    VerifyThread error and the handler never runs.
+  - A nil bus argument to each of the three functions: expect
+    errors.Is against ErrNoBus.
+  - No subscriber registered for the event name: expect the
+    events.Bus.Emit "no subscriber" error, unwrapped.
+- `translator_integration_test.go` — build a real events.Bus with
+  events.New. Sign a real Message with a real identity.Identity. Call
+  EmitMessageDelivered; prove the event arrives exactly once. Build a
+  real Ack with envelope.NewAck; call EmitMessageAcked; prove it
+  arrives once. Build a real two-message thread; call
+  EmitThreadVerified; prove it arrives once. Run every case under
+  `go test -race`. Add a fourth case: many goroutines call all three
+  EmitX functions against one shared bus. An atomic counter proves
+  each call still delivers exactly once, with no data race.
+
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
@@ -218,3 +364,26 @@ Test files live in `agent/agent_test/`:
   reference in the same change as the code.
 - The phase adds no conformance vectors. Agent composes existing
   wire-validated blocks; it defines no new wire schema of its own.
+
+### Phase 20 addition: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for agent and for the total, with the
+  translator's new lines counted in.
+- The agent row in policy/layers.json gains envelope and events. The
+  row change lands with this plan update, before the code.
+- envelope's row and events's row in policy/layers.json stay empty.
+  Neither package gains an import of the other or of agent.
+- `api/agent.txt` gains three functions, three events.Name constants,
+  and one sentinel, through make api-update in the same change as the
+  code. `api/envelope.txt` and `api/events.txt` stay unchanged; this
+  phase adds no exported symbol to either package.
+- `agent/doc.go`'s file map gains the new file names this phase adds,
+  for example translator.go and events.go.
+- docs/architecture.md's agent/ bullet gains the three Emit functions
+  and the events/envelope import edges, in the same change as the
+  code.
+- This phase adds no conformance vector. It defines no new wire
+  schema. It composes envelope.Message, envelope.Ack, and
+  envelope.VerifyThread, all already vector-covered in envelope.

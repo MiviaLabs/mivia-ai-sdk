@@ -16,7 +16,9 @@ docs/plans/agents/phase21_flow_outcomes.md. Phase 22 owns the
 admission rule, the skip semantics, and the branch step; see
 docs/plans/agents/phase22_flow_routing.md. Phase 23 owns the fallback
 path and the failure context; see
-docs/plans/agents/phase23_flow_fallback.md.
+docs/plans/agents/phase23_flow_fallback.md. Phase 25 owns the
+checkpoint, the pause rule, and `Resume`; see
+docs/plans/agents/phase25_flow_checkpoint.md.
 
 ## Goal
 
@@ -43,8 +45,22 @@ failed need and receives the failure context. The status walk
 advances only through executed steps. A skipped step never fires a
 transition.
 
-Outside: retries, compensation, scheduling, persistence, and history
-replay. A future version adds these only when that consumer asks.
+Inside, from phase 25: a `Checkpoint` of the current status, the
+record, and the completed step IDs; a pause rule keyed on context
+cancellation; and `Resume`, which restarts a walk from a stored
+checkpoint. Persistence stays a caller concern: `flow` reports a
+checkpoint through a hook and never writes storage itself. See
+docs/plans/agents/phase25_flow_checkpoint.md.
+
+Outside: retries, compensation, scheduling, and history replay. A
+future version adds these only when that consumer asks. A caller
+retries by calling `Resume` again on the same checkpoint after a step
+failure. A caller schedules a resume from a cron job, a queue, or a
+webhook, since `Resume` is a plain resumable function call. History
+replay is rejected: a caller who persists every checkpoint already
+holds a replayable log, and `flow` does not build an event log. See
+docs/research-state-machine.md:236-238. Compensation has no named
+caller yet; adding it now is speculative generality.
 Parallel panels run in goroutines; the runner is in-process, not a
 distributed service. Each wave reads the incoming record. Each step in
 a wave runs with a copy of that record. The wave collects results
@@ -86,6 +102,11 @@ pattern sources.
 - `type Failure struct { Step string; Err error }` and
   `FailureFrom(ctx)` as the failure context a fallback step reads.
   These land in phase 23.
+- `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string }`
+  with `Validate`, `Encode`, and `Decode`, as the resumable run state.
+  `Run` gains a trailing `onCheckpoint func(Checkpoint)` parameter.
+  `Resume(ctx, d, m, checkpoint, confirm, bus, onCheckpoint)` restarts
+  a walk from a stored checkpoint. These land in phase 25.
 
 The machine instance passes by pointer. The input and output records
 come from the machine package. Run may pass any in and out through the
@@ -97,6 +118,28 @@ remaining dependencies. The scheduler runs one wave at a time. Steps
 inside a wave run in goroutines. It gathers results with a WaitGroup
 and a buffered channel. It combines errors with errors.Join, which is
 stdlib. It never uses errgroup.
+
+Panel validation rejects a step ID named in two panels. The runner
+schedules a step through the first panel that names it. A second panel
+naming the same ID can never become ready, so the walk stalls or the
+second panel is silently ignored. `validatePanels` in flow/validate.go
+runs the check after the per-panel loop. Every panel passes the
+unknown-step, duplicate, and To checks first. The scan walks panels in
+declaration order and members in declaration order. It maps each step
+ID to the first panel index that named it. The first member found
+again returns the pinned error:
+
+- `flow: step %q is named in panels %d and %d` — `%q` is the repeated
+  step ID. The first `%d` is the first panel that names it. The second
+  `%d` is the later panel that names it again.
+
+Add the new rejection to `New`'s doc comment in flow/definition.go. A
+cross-panel scheduling deadlock stays a Run-time stall, not a `New`
+rejection. Panels with no shared member may still need each other.
+`TestRunCrossPanelDeadlockStalls` keeps passing unchanged.
+
+Run's doc comment gains one sentence: a chained step's child workflow
+runs with a nil bus, and its child steps emit no events.
 
 Chaining is function composition. A step takes an input and returns an
 output. A chained step runs a nested Definition and returns its
@@ -132,12 +175,39 @@ routing: a branch keeps one alternative and skips the other, a strict
 join propagates the skip, and a panel with an unadmitted member skips
 whole. Phase 23 covers the fallback: a handled failure lets the run
 complete, the fallback reads the failure context, and an unhandled
-failure still aborts.
+failure still aborts. Phase 25 covers the checkpoint: the hook fires
+once per completed step or wave, a paused run returns cleanly on
+context cancellation, and `Resume` reaches the same final status a
+plain `Run` reaches.
+
+A logic review added four case groups. flow/flow_test/panel_new_test.go
+gains a table-driven case set with exact-message pins:
+TestNewPanelStepNamedInTwoPanels. The cases:
+
+- `New` rejects the confirmed stall shapes: panels naming one shared
+  step, two panels sharing a middle step, and one full duplicate
+  panel. Each pins the exact message.
+- `New` reports both panel indexes when the naming panels sit apart.
+  Panels at index zero and index two pin
+  `flow: step "a" is named in panels 0 and 2`.
+- `New` reports the first repeated member in member order on a swap
+  shape: panels naming "a" then "b", then "b" then "a", pin
+  `flow: step "b" is named in panels 0 and 1`.
+- `New` accepts panels whose members each sit in one panel only.
+
+flow/flow_test/run_test.go gains TestRunNilMAndNilConfirmTogether next
+to the other nil-argument cases. A valid definition, a nil machine,
+and a nil confirm return exactly `flow: m must not be nil` and never
+panic. flow/flow_test/emit_test.go gains TestEmitNoneOnConfirmFailure.
+A subscribed bus and a confirm that fails on the first step emit zero
+events. Run wraps the confirm error and names the failing step. The
+chained-step bus sentence needs no new test. TestEmitOnChainedStep
+already pins the nil-bus behavior.
 
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
 rationale lives in docs/research-state-machine.md. `api/flow.txt`
-lands via make api-update. Phases 21 through 23 each extend
-`api/flow.txt` via make api-update in their own change. They leave
-`api/machine.txt` and `policy/layers.json` unchanged.
+lands via make api-update. Phases 21 through 23 and phase 25 each
+extend `api/flow.txt` via make api-update in their own change. They
+leave `api/machine.txt` and `policy/layers.json` unchanged.

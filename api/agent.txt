@@ -1,8 +1,15 @@
 package agent
+  const MessageAckedEvent = "agent.message_acked"
+  const MessageDeliveredEvent = "agent.message_delivered"
+  const ThreadVerifiedEvent = "agent.thread_verified"
   func (a *Agent) Capabilities() ([]string)
   func (a *Agent) Name() (string)
+  func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) (error)
+  func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) (error)
+  func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) (error)
   func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
   type Agent struct {
 }
+  var ErrNoBus
   var ErrNoIdentity
   var ErrNoPlan

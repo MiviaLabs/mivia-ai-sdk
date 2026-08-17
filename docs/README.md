@@ -12,12 +12,13 @@ Leave the research record for last.
 3. [architecture.md](architecture.md) — the module map and the message flow.
 4. [packages/envelope.md](packages/envelope.md) — the envelope package reference.
 5. [packages/room.md](packages/room.md) — the room package reference.
-6. [examples/envelope-flow.md](examples/envelope-flow.md) — the envelope walkthrough.
-7. [examples/room-flow.md](examples/room-flow.md) — the room walkthrough.
-8. [plans/](plans/) — the change contracts; read them before code changes.
-9. [research-a2a.md](research-a2a.md) — the A2A research record; read it last.
-10. [research-agents.md](research-agents.md) — the building-block, agent, and A2A v1.0 assessment; read it last.
-11. [research-state-machine.md](research-state-machine.md) — the workflow state primitive assessment; read it last.
+6. [packages/machine.md](packages/machine.md) — the machine package reference.
+7. [examples/envelope-flow.md](examples/envelope-flow.md) — the envelope walkthrough.
+8. [examples/room-flow.md](examples/room-flow.md) — the room walkthrough.
+9. [plans/](plans/) — the change contracts; read them before code changes.
+10. [research-a2a.md](research-a2a.md) — the A2A research record; read it last.
+11. [research-agents.md](research-agents.md) — the building-block, agent, and A2A v1.0 assessment; read it last.
+12. [research-state-machine.md](research-state-machine.md) — the workflow state primitive assessment; read it last.
 
 ## Change contracts
 
@@ -30,7 +31,7 @@ change before the code lands.
 - [plans/envelope.md](plans/envelope.md) — the envelope package plan.
 - [plans/room.md](plans/room.md) — the room package plan.
 - [plans/flow.md](plans/flow.md) — the future flow step-runner plan.
-- [plans/machine.md](plans/machine.md) — the future machine state plan.
+- [plans/machine.md](plans/machine.md) — the machine state plan; Phase 1 code ships.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
   integration, tdd, and perf test files.

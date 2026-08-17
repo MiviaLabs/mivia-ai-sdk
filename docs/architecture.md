@@ -3,8 +3,10 @@
 This document maps the modules, the message flow, the gate system, and
 the invariants the architecture enforces. See
 [protocol-design.md](protocol-design.md) for the wire rationale. See
-[packages/envelope.md](packages/envelope.md) and
-[packages/room.md](packages/room.md) for the exported API references.
+[packages/envelope.md](packages/envelope.md),
+[packages/room.md](packages/room.md), and
+[packages/machine.md](packages/machine.md) for the exported API
+references.
 
 ## Package map
 
@@ -12,9 +14,12 @@ the invariants the architecture enforces. See
   VerifyThread. One package per concern.
 - `room/` — standing groups. It holds the roster, the roles, and
   message admission.
-- `machine/` — a future package. It owns typed statuses, gates, inputs,
-  outputs, and entry and exit actions. It is planned in
-  [plans/machine.md](plans/machine.md); no code exists yet.
+- `machine/` — the status model. Phase 1 ships `Status`, `Trigger`,
+  `Guard`, `Transition`, `Definition`, `New`, and `Validate`. The move
+  dispatch `Fire`, the input and output records, the entry and exit
+  actions, and the wire form land in later phases. See
+  [packages/machine.md](packages/machine.md) and
+  [plans/machine.md](plans/machine.md).
 - `flow/` — a future package. It owns the step graph, panels, parallel
   execution, and chaining. It is planned in
   [plans/flow.md](plans/flow.md); no code exists yet.

@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
-"""Gate: reject Go files and function names containing phase, tdd, or perf.
-These are process artifacts, not descriptive names. File basenames and
-function declarations must not contain the words phase, tdd, or perf
-(case-insensitive). Exits non-zero on violations."""
+"""Gate: reject Go files and function names containing process-artifact
+keywords. File basenames and function declarations must not contain:
+phase, tdd, perf, wip, draft, scratch, tmp, old, backup, or a version
+suffix like _v2, _v3 (versioning belongs in git, not in file names).
+Exits non-zero on violations."""
 import re
 import sys
 from pathlib import Path
 
-BAD_BASENAME = re.compile(r"(?i)(?:phase|tdd|perf)")
-BAD_FUNC = re.compile(r"(?i)func\s+\w*(?:phase|tdd|perf)\w*\s*\(")
+BAD_BASENAME = re.compile(
+    r"(?i)(?:phase|tdd|perf|wip|draft|scratch|tmp|old|backup)"
+    r"|_v\d+\."
+)
+BAD_FUNC = re.compile(
+    r"(?i)func\s+\w*(?:phase|tdd|perf|wip|draft|scratch|tmp|old|backup)"
+    r"|func\s+\w+_v\d+\w*\s*\("
+)
 
 
 def check_file(path: Path, rel: Path) -> list[str]:
     violations = []
     if BAD_BASENAME.search(path.name):
-        violations.append(f"{rel}: filename contains phase/tdd/perf")
+        violations.append(f"{rel}: filename contains a prohibited keyword")
     for n, line in enumerate(path.read_text().splitlines(), 1):
         if BAD_FUNC.search(line):
             violations.append(
-                f"{rel}:{n}: function name contains phase/tdd/perf"
+                f"{rel}:{n}: function name contains a prohibited keyword"
             )
     return violations
 

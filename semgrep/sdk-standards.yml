@@ -145,11 +145,13 @@ rules:
   - id: sdk.go.no-phase-tdd-perf-names
     languages: [go]
     severity: ERROR
-    message: Function names must not contain phase, tdd, or perf; use descriptive names instead.
+    message: Function names must not contain process-artifact keywords (phase, tdd, perf, wip, draft, scratch, tmp, old, backup) or version suffixes (v2, v3). Use descriptive domain names instead.
     paths:
       include: ["/**/*.go"]
       exclude: ["/semgrep/**"]
-    pattern-regex: '(?i)func\s+\w*(?:phase|tdd|perf)\w*\s*\('
+    pattern-either:
+      - pattern-regex: '(?i)func\s+\w*(?:phase|tdd|perf|wip|draft|scratch|tmp|old|backup)\w*\s*\('
+      - pattern-regex: '(?i)func\s+\w+_v\d+\w*\s*\('
 
   - id: sdk.generic.no-drift-markers
     languages: [generic]

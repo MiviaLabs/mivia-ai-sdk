@@ -110,9 +110,9 @@ PROBES = [
     (
         "sdk.go.no-phase-tdd-perf-names",
         "viol_bad_names.go",
-        'package p\n\nfunc phase07Build() {}\nfunc testTDDHelper() {}\nfunc perfMeasure() {}\n',
+        'package p\n\nfunc phase07Build() {}\nfunc testTDDHelper() {}\nfunc perfMeasure() {}\nfunc wipHandler() {}\nfunc draft_v2() {}\n',
         "clean_good_names.go",
-        'package p\n\nfunc panelBuild() {}\nfunc testHelper() {}\nfunc allocMeasure() {}\n',
+        'package p\n\nfunc panelBuild() {}\nfunc testHelper() {}\nfunc allocMeasure() {}\nfunc parseIPv4() {}\n',
     ),
 ]
 

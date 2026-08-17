@@ -127,7 +127,8 @@ any stage means stop and escalate to the user.
 - Invariants live in `Validate` methods, not in comments alone. If a
   comment states a rule, `Validate` must enforce it.
 - File and function names must describe the feature, not the development
-  process. Forbidden in names: phase, tdd, perf. Use descriptive names
+  process. Forbidden in names: phase, tdd, perf, wip, draft, scratch,
+  tmp, old, backup, version suffixes (v2, v3). Use descriptive names
   like `panel_test.go`, `chain_bench_test.go`. Gate:
   `scripts/check_names.py`; Semgrep:
   `sdk.go.no-phase-tdd-perf-names`. Plan documents in

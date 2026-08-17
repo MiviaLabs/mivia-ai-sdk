@@ -73,6 +73,13 @@ PROBES = [
         "package p\n\nfunc f(key ed25519.PrivateKey, msg []byte) {\n\t_ = envelope.Sign(key, msg)\n}\n",
     ),
     (
+        "sdk.go.no-reflection-in-packages",
+        "viol_reflect.go",
+        'package p\n\nimport "reflect"\n\nfunc f(x interface{}) interface{} {\n\tt := reflect.TypeOf(x)\n\treturn reflect.New(t)\n}\n',
+        "clean_reflect.go",
+        "package p\n\nfunc f(x string) string {\n\treturn table[x]\n}\n",
+    ),
+    (
         "sdk.go.no-hardcoded-secrets",
         "viol_secrets.go",
         'package p\n\nfunc f() {\n\ttoken := "abcdefghij"\n\tsecret := "abcdefghij"\n\tapiKey := "abcdefghij"\n\traw := `abcdefghij`\n\t_, _, _, _ = token, secret, apiKey, raw\n}\n',

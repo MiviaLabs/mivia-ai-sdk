@@ -182,7 +182,7 @@ Two traps recur in this repo:
   rewrite a plan only when a new package or concern exists. Do not pad an
   existing plan.
 - If a doc change is large (new package, restructure, many files), route it
-  through the delivery loop in `.claude/skills/delivery/SKILL.md`.
+  through the delivery loop in `.agents/skills/delivery/SKILL.md`.
 
 ## Done means verified
 

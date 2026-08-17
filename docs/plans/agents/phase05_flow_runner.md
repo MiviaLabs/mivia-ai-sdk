@@ -18,11 +18,13 @@ belong to phases 6 and 7.
 
 ## API
 
-- `Run(ctx, d *Definition, m machine.Definition, in InOut) (Status, Out, error)`
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut) (Status, machine.InOut, error)`
 
 `Run` walks the roots in order. It fires each step through the machine
 definition. A step with a failed gate stops the run. A step without a
 confirmed ack does not advance. The output of a step feeds the next.
+The machine instance passes by pointer. The records come from the
+machine package.
 
 Ack confirmation uses the envelope ack flow. A request to a room waits
 for every addressed recipient to confirm. The caller owns the ack

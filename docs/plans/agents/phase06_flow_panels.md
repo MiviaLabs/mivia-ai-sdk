@@ -19,7 +19,7 @@ belong to phase 7.
 ## API
 
 No new exported symbol. `Run` gains parallel behavior for a panel. The
-wave is internal state. The return stays `(Status, Out, error)`.
+wave is internal state. The return stays `(Status, machine.InOut, error)`.
 
 A wave runs its steps in goroutines. A `WaitGroup` waits for the wave.
 A buffered channel carries the results. `errors.Join` combines the

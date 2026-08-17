@@ -25,6 +25,24 @@ rules:
       - pattern: log.Panicln(...)
       - pattern: os.Exit(...)
 
+  - id: sdk.go.no-reflection-in-packages
+    languages: [go]
+    severity: ERROR
+    message: Packages dispatch by map lookup or generics; reflection is forbidden outside tests (see AGENTS.md).
+    paths:
+      include: ["/**/*.go"]
+      exclude: ["/**/*_test.go", "/scripts/**"]
+    pattern-either:
+      - pattern: reflect.TypeOf(...)
+      - pattern: reflect.ValueOf(...)
+      - pattern: reflect.Type(...)
+      - pattern: reflect.Value(...)
+      - pattern: reflect.New(...)
+      - pattern: reflect.Zero(...)
+      - pattern: reflect.Indirect(...)
+      - pattern: reflect.TypeOf
+      - pattern: reflect.ValueOf
+
   - id: sdk.go.stdlib-only-imports
     languages: [go]
     severity: ERROR

@@ -18,12 +18,14 @@ list. Those belong to phase 3.
 ## API
 
 - `type InOut struct` holding the input and the output record.
-- `type Action func(c Context) error` as an entry or exit action.
-- `(*Definition).Fire(ctx, from Status, in InOut) (Status, Out, error)`
+- `type Action func(Context) error` as an entry or exit action.
+- `(*Definition).Fire(ctx, from Status, trig Trigger, in InOut) (Status, InOut, error)`
 
 `Fire` returns an error on an unknown from status or trigger. A guard
 that fails returns an error and moves nothing. The exit action runs
-before the entry action. The output record carries the result.
+before the entry action. `OnExit` does not run when the guard fails. A
+nil `Guard` or a nil `Action` is checked, never invoked. The returned
+`InOut` carries the output record.
 
 ## Tests
 

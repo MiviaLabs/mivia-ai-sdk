@@ -185,5 +185,5 @@ limit".
 ## After the assessment
 
 When the user asks for the fix, route a refactor through the delivery
-loop in `.claude/skills/delivery/SKILL.md`: planner, plan-reviewer,
+loop in `.agents/skills/delivery/SKILL.md`: planner, plan-reviewer,
 builder, reviewer, verify. This skill only assesses. It does not build.

@@ -24,7 +24,7 @@ The base types follow `docs/plans/machine.md`. No public entry point
 exists yet. The phase lands the types and the table validation only.
 
 - `type Status string`
-- `type Trigger any`
+- `type Trigger string`
 - `type Guard func(ctx Context) (bool, error)`
 - `type Transition struct { From, To Status; Trigger Trigger; Guard Guard }`
 - `type Definition struct` holding the initial status and the list of

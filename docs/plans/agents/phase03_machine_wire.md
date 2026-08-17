@@ -19,11 +19,15 @@ invariants. Those are in phase 1. The flow package waits for phase 4.
 ## API
 
 - `(*Definition).Encode() ([]byte, error)`
-- `Decode(data []byte) (Definition, error)`
+- `Decode(data []byte, reg Registry) (Definition, error)`
+- `type Registry struct { Actions map[string]Action; Guards map[string]Guard }`
+- `NewRegistry() Registry` to build an empty registry.
 
-The canonical form stores a status and a namespace for each guard and
-action. A function does not serialize. The form replaces a function
-with a name the caller resolves. Unknown fields are ignored on decode.
+A function does not serialize. The form stores a name for each guard
+and action. Guard names and action names are separate namespaces in
+the wire form. Decode rebinds each name through the matching Registry
+map. A missing name returns an error. Unknown fields are ignored on
+decode.
 
 ## Tests
 

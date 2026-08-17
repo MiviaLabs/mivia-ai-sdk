@@ -2,7 +2,7 @@
 
 Status: future. No code yet. This plan sets the boundary before any
 builder starts. Rationale in docs/research-state-machine.md. The build
-phases live in docs/plans/phases/. See phases 1 through 4.
+phases live in docs/plans/agents/. See phases 1 through 3.
 
 ## Goal
 
@@ -28,9 +28,9 @@ Proposed shape, subject to plan review. It follows the action model
 pattern. See docs/research-state-machine.md for the pattern sources.
 
 - `type Status string` as the typed status enum base.
-- `type Trigger any` as the event that causes a move.
-- `type InOut struct` holding the input and the output record.
-- `type Action func(ioc Context) error` as an entry or exit action.
+- `type Trigger string` as the label that selects a transition.
+- `type InOut struct` holding the input record and the output record.
+- `type Action func(Context) error` as an entry or exit action.
 - `type Guard func(ctx Context) (bool, error)` as a transition guard.
 - `type Transition struct { From, To Status; Trigger Trigger; Guard Guard; OnEntry Action; OnExit Action }`
   as a table row.
@@ -38,13 +38,16 @@ pattern. See docs/research-state-machine.md for the pattern sources.
   transitions.
 - `New(initial Status, ts ...Transition) (*Definition, error)` to
   build a definition and reject a bad shape.
-- `(*Definition).Fire(ctx, from Status, in InOut) (Status, Out, error)`
-  to move a record when the guard passes.
+- `(*Definition).Fire(ctx, from Status, trig Trigger, in InOut) (Status, InOut, error)`
+  to move a record when the guard passes. The output record fills the
+  returned InOut.
 - `(*Definition).Validate() error` on the transitions.
 
 Fire resolves the row by from and trigger. It runs the guard, then the
 exit action, then the entry action. Dispatch is a map lookup, not
-reflection. A trigger with a mismatch returns an error.
+reflection. A trigger that does not match returns an error. OnExit does
+not run when the guard fails. A nil Guard or a nil Action is checked,
+never invoked.
 
 A new row in policy/layers.json: machine imports nothing. The flow
 package imports machine.

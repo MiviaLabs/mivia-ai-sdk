@@ -29,13 +29,14 @@ PoC Go SDK for model-to-model communication. Module:
   scripts/check_semgrepignore.py pins its exact content.
 - `.githooks/pre-commit` — runs `make verify-fast` on the staged
   snapshot; untracked files never enter the gate.
-- `.claude/agents/` — subagent roles: planner, plan-reviewer,
-  builder, reviewer. `.claude/skills/delivery/` drives the loop.
-- `.claude/settings.json` — PreToolUse hooks wired to
-  `scripts/agent_hook_guard.py`. The guard blocks hook bypass,
-  core.hooksPath overrides, and manual edits to generated `api/`
-  locks and `.semgrepignore`. It covers Bash, Write, Edit, MultiEdit,
-  and NotebookEdit.
+- `.agents/agents/` — subagent roles: planner, plan-reviewer,
+  builder, reviewer. `.agents/skills/delivery/` drives the loop.
+- `.claude/` — aliases only: the agents and the delivery skill
+  symlink to `.agents/`. `.claude/settings.json` stays here and wires
+  PreToolUse hooks to `scripts/agent_hook_guard.py`. The guard blocks
+  hook bypass, core.hooksPath overrides, and manual edits to generated
+  `api/` locks and `.semgrepignore`. It covers Bash, Write, Edit,
+  MultiEdit, and NotebookEdit.
 - `CLAUDE.md` — thin adapter; imports this file only.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
@@ -92,7 +93,7 @@ decision follows this rule.
 ## Subagent workflow
 
 Non-trivial changes (new package, API change, more than one file) go
-through the delivery loop in `.claude/skills/delivery/SKILL.md`:
+through the delivery loop in `.agents/skills/delivery/SKILL.md`:
 planner → plan-reviewer (hostile, before code) → builder → reviewer
 (adversarial, after code) → verify → commit. Never skip a review
 stage. Never let an agent grade its own work. Three failed rounds at

@@ -3,7 +3,7 @@
 Status: future. No code yet. This plan expands the earlier step-list
 design into a step runner for v1. Rationale in
 docs/research-state-machine.md. The build phases live in
-docs/plans/phases/. See phases 5 through 8.
+docs/plans/agents/. See phases 4 through 7.
 
 ## Goal
 
@@ -39,9 +39,14 @@ pattern sources.
 - `type Definition struct` holding the step graph and the panels.
 - `New(steps []Step, panels []Panel) (*Definition, error)` to build a
   definition and reject cycles with Kahn's algorithm.
-- `Run(ctx, d *Definition, m machine.Definition, in InOut) (Status, Out, error)`
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut) (Status, machine.InOut, error)`
   to execute the graph and return the final status.
 - A chained step nests another Definition as one step.
+
+The machine instance passes by pointer. The input and output records
+come from the machine package. Run may pass any in and out through the
+graph. A panel of steps that run in parallel gather results and errors
+without a third-party library.
 
 Panels map to topological waves. A wave is a set of steps with no
 remaining dependencies. The scheduler runs one wave at a time. Steps

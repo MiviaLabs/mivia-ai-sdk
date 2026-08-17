@@ -14,11 +14,11 @@ type Definition struct {
 // New builds a Definition and validates the step graph.
 // It rejects an empty ID, a duplicate ID, a missing dependency,
 // and a panel that names an unknown step. Kahn's algorithm rejects
-// a cycle. It copies the input slices so later caller mutation
+// a cycle. It deep-copies the input slices so later caller mutation
 // cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
-		steps:  append([]Step(nil), steps...),
+		steps:  copySteps(steps),
 		panels: copyPanels(panels),
 	}
 	ids := map[string]int{}
@@ -34,6 +34,17 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 	}
 	d.roots = roots
 	return d, nil
+}
+
+// copySteps deep-copies the step slice. Each step's Needs slice is
+// copied, so later caller mutation cannot change the built graph.
+func copySteps(steps []Step) []Step {
+	out := make([]Step, len(steps))
+	for i, s := range steps {
+		out[i] = s
+		out[i].Needs = append([]string(nil), s.Needs...)
+	}
+	return out
 }
 
 // Roots returns the root step IDs in declaration order.

@@ -27,9 +27,10 @@ func buildHundredSteps() []flow.Step {
 // Target: under one millisecond.
 // Baseline (empty implementation): no benchmark; New and the flow
 // package did not exist.
-// Measured with implementation: ~10.8 us/op, ~20 kB/op, 114 allocs/op.
-// New copies the steps and builds the adjacency and in-degree slices
-// for Kahn's algorithm. The cost scales with the steps and the edges.
+// Measured with implementation: ~12.3 us/op, ~22 kB/op, 213 allocs/op.
+// New deep-copies the steps and each Needs slice, builds the
+// adjacency and in-degree slices for Kahn's algorithm, and returns
+// the root list. The cost scales with the steps and the edges.
 func BenchmarkNewHundred(b *testing.B) {
 	steps := buildHundredSteps()
 	b.ResetTimer()
@@ -57,8 +58,9 @@ func TestNewAllocBudget(t *testing.T) {
 }
 
 // newAllocBudget states the allocation budget for New on one hundred
-// steps. Measured at 114 allocs/op; the budget holds headroom above
-// that so a regression to quadratic allocation still fails.
+// steps. Measured at 213 allocs/op after the deep-copy fix; the budget
+// holds headroom above that so a regression to quadratic allocation
+// still fails.
 func newAllocBudget() int {
-	return 200
+	return 300
 }

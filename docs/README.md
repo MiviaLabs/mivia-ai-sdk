@@ -42,6 +42,8 @@ change before the code lands.
   Phase 8 ships.
 - [plans/discovery.md](plans/discovery.md) — the discovery
   capability-card plan; ships.
+- [plans/agent.md](plans/agent.md) — the agent composition-layer plan;
+  Phase 12 ships.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
   integration, tdd, and perf test files.

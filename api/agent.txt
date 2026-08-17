@@ -1,0 +1,8 @@
+package agent
+  func (a *Agent) Capabilities() ([]string)
+  func (a *Agent) Name() (string)
+  func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
+  type Agent struct {
+}
+  var ErrNoIdentity
+  var ErrNoPlan

@@ -52,6 +52,11 @@ references.
   duplicate capability. `Match` compares a capability request against
   the card, case-insensitive and exact. See
   [plans/discovery.md](plans/discovery.md).
+- `agent/` — the composition layer. It ships `Agent`, `New`, `Name`,
+  and `Capabilities`. `New` wires an `identity.Identity`, a
+  `discovery.Card`, and a `flow.Definition` into one agent. It rejects
+  a nil identity, an invalid card, and a nil plan, in that order. See
+  [plans/agent.md](plans/agent.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

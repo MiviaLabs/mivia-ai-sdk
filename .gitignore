@@ -2,3 +2,6 @@ vendor/
 *.test
 *.out
 .claude/settings.local.json
+
+# ZCode session artifacts (plans, scratch)
+.zcode/

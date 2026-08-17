@@ -78,6 +78,11 @@ The plan records a measured baseline for each benchmark. A benchmark
 without a baseline documents nothing. The `make bench` target runs
 them.
 
+A benchmark may skip the allocation budget when the count depends on
+non-deterministic runtime overhead, such as goroutines, channels, or
+closures. It reports the allocs/op ratio instead. The phase plan
+states the rationale for the exception.
+
 ## Phase order
 
 The phases build in dependency order. Foundations come first. The

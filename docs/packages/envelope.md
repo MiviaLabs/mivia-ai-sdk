@@ -72,8 +72,11 @@ exported surface below mirrors `api/envelope.txt`.
 - `Decode` ignores unknown fields, so a newer sender can add fields.
 - `Encode` validates first; an invalid message never becomes wire
   JSON.
-- The vectors in `envelope/testdata/vectors/` pin the contract. The
-  prefixes are `valid_`, `invalid_decode_`, and `invalid_sig_`.
+- The vectors in `envelope/testdata/vectors/` pin the message contract.
+  The prefixes are `valid_`, `invalid_decode_`, and `invalid_sig_`.
+- Ack vectors live in `envelope/testdata/ack_vectors/`. The prefixes
+  are `valid_ack_` and `invalid_decode_ack_`. A valid ack re-encodes to
+  the same bytes.
 
 ## Usage
 

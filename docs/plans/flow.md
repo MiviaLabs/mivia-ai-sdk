@@ -1,6 +1,6 @@
 # Plan: flow
 
-Status: the step graph ships. The sequential runner ships next. The
+Status: the step graph and the sequential runner ship. The
 panels and the chaining stay future. This plan expands the earlier
 step-list design into a step runner for v1. Rationale in
 docs/research-state-machine.md. The build phases live in

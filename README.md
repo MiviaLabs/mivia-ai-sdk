@@ -12,6 +12,7 @@ building blocks, not a monolith. Standard library only.
   entry and exit actions, JSON wire form
 - **flow** — step graphs: composable steps, panels, definitions
 - **events** — in-process reaction bus: typed names, subscribe, emit
+- **identity** — agent keys: ed25519 key wrap, key-file load, hex signer
 
 The GitHub remote for this repo is private. Licensed under the
 [MIT License](LICENSE).
@@ -43,10 +44,12 @@ public API.
 - **room** — standing groups: roster, roles, message admission. Ships.
 - **machine** — the status model: Status, Trigger, Guard, Transition,
   Fire, and the JSON wire form. Ships.
-- **flow** — the step graph: Step, Panel, Definition. The runner stays
-  future.
+- **flow** — the step graph and the runner: Step, Panel, Definition,
+  Run, Confirm. Ships.
 - **events** — the in-process reaction bus. Caller-owned; no shared
   bus. Ships.
+- **identity** — the agent key wrap: Identity, New, Load, Sign,
+  Signer. Ships.
 - **a2a** — a future block. The plan lives in
   [docs/plans/a2a.md](docs/plans/a2a.md).
 - **agent** — the composition layer. Future. An agent wires the blocks;
@@ -61,9 +64,10 @@ framework. One small plan per step lives in
 
 - **Foundation**: the machine status model and wire form, then the flow
   graph, runner, panels, and chaining. The machine block, the flow
-  graph, and the events bus ship.
+  graph and runner, and the events bus ship.
 - **Transport and identity**: identity key wrap, a2a mapping, a2a
-  client, discovery card. Future.
+  client, discovery card. The identity key wrap ships; the a2a blocks
+  stay future.
 - **Composition**: agent definition, run loop, tools, memory. Future.
 - **System integration**: the end-to-end multi-agent exchange. Future.
 - **Reactions**: the events bus and the block emissions. The bus and
@@ -196,6 +200,7 @@ room/                standing groups: roster, roles, message admission
 machine/             status model: triggers, guards, transitions, wire form
 flow/                step graph and runner: Step, Panel, Definition, Run, Confirm
 events/              in-process reaction bus: typed names, Subscribe, Emit
+identity/            agent key wrap: ed25519 pair, Load, Sign, Signer
 docs/                index + architecture + package docs + examples
 api/                 exported-surface locks; check_api diffs them
 policy/              layers.json: the allowed internal import edges

@@ -14,6 +14,8 @@ Go SDK for building AI agents. Module:
 - `flow/` — the step graph and the sequential runner: Step, Panel,
   Definition, Run, Confirm. Parallel panels and chaining stay future.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
+- `identity/` — the agent key wrap: Identity, New, Load, Sign,
+  Signer. Imports envelope only.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.

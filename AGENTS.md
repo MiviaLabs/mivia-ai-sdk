@@ -20,6 +20,11 @@ Go SDK for building AI agents. Module:
   reports ids that have gone silent past a fixed timeout.
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.
+- `heartbeat/` — liveness tracking: Monitor records a beat per id and
+  reports ids that have gone silent past a fixed timeout.
+- `discovery/` — capability cards: Card, Parse, Validate, Match. Leaf
+  block; no internal imports.
+- `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.
@@ -42,6 +47,14 @@ Go SDK for building AI agents. Module:
   snapshot; untracked files never enter the gate.
 - `.agents/agents/` — subagent roles: planner, plan-reviewer,
   builder, reviewer. `.agents/skills/delivery/` drives the loop.
+- `.agents/memories/` — team-shared, git-committed operational memory
+  (corrected mistakes, standing preferences discovered while working in
+  this repo), following the open `.agents` protocol
+  (https://dotagentsprotocol.com/): one markdown file per memory, `id`/
+  `title`/`content`/`importance`/`tags` frontmatter. Read every file here
+  at the start of a task, the same way you read this file. Not a
+  substitute for a rule enforced by a gate above — a fact that hardens
+  into a rule belongs in this file or a gate script, not a memory file.
 - `.claude/` — aliases only: the agents and the delivery skill
   symlink to `.agents/`. `.claude/settings.json` stays here and wires
   PreToolUse hooks to `scripts/agent_hook_guard.py`. The guard blocks

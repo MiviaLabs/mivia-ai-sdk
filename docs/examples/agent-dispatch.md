@@ -96,16 +96,15 @@ func main() {
 	}
 
 	// wait plays the receiver's role: it checks room admission, then
-	// builds and confirms a real Ack. agent.Run does not stamp Room
-	// on the messages it builds, so this Accepts call reports the
-	// mismatch; a production receiver would route through a room-aware
-	// transport that sets Room before Run signs it.
+	// builds and confirms a real Ack. Run stamps Message.Room with the
+	// room name the caller passes, before it signs the message, so
+	// this Accepts call succeeds.
 	wait := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		if err := rm.Accepts(msg); err != nil {
 			fmt.Println("room check:", err)
-		} else {
-			fmt.Println("room check: accepted")
+			return envelope.Ack{}, err
 		}
+		fmt.Println("room check: accepted")
 		ack, err := envelope.NewAck(msg, receiver.Signer(), "received: "+msg.Payload)
 		if err != nil {
 			return envelope.Ack{}, err
@@ -121,7 +120,7 @@ func main() {
 		return
 	}
 
-	status, _, err := a.Run(context.Background(), "thread-dispatch-1", m, machine.InOut{Input: "incoming task"}, wait, bus, mon)
+	status, _, err := a.Run(context.Background(), "thread-dispatch-1", m, machine.InOut{Input: "incoming task"}, wait, bus, mon, rm.ID())
 	if err != nil {
 		fmt.Println("run:", err)
 		return
@@ -144,7 +143,7 @@ sequenceDiagram
     participant Receiver as Receiver (AckWait)
     participant Room as room
     participant Bus as events.Bus
-    Agent->>Run: Run(ctx, threadID, m, in, wait, bus, hb)
+    Agent->>Run: Run(ctx, threadID, m, in, wait, bus, hb, room)
     Run->>Run: sign step message, chain PrevHash
     Run->>Bus: EmitMessageDelivered
     Run->>HB: Beat(hbID, now)
@@ -170,17 +169,13 @@ outside any panel, so `flow.Run` gates it behind `Confirm` and `Run`
 gets a hook to build a signed message and wait for its ack.
 
 `room.New` and `Admit` build a receiver-side roster with the
-dispatching agent as a member. `Run` signs each step message with the
-agent's identity but does not stamp `Message.Room`, so the room's
-`Accepts` call inside `wait` reports a room mismatch; the printed line
-reads `room check: message names a different room: ""`. This stands
-in for the real gap a production receiver must close: a transport
-layer that sets `Room` before the message reaches `Run`'s signing
-step, so admission can gate on membership instead of failing on an
-unset field. `wait` still builds and confirms a real `envelope.Ack`
-through `envelope.NewAck` and `Confirm`, which stands in for a
-receiver that accepts the message through its own channel and
-acknowledges it back to the sender.
+dispatching agent as a member. `Run` takes `rm.ID()` as its trailing
+`room` argument and stamps it onto `Message.Room` before it signs each
+step message, so the room's `Accepts` call inside `wait` succeeds; the
+printed line reads `room check: accepted`. `wait` still builds and
+confirms a real `envelope.Ack` through `envelope.NewAck` and
+`Confirm`, which stands in for a receiver that accepts the message
+through its own channel and acknowledges it back to the sender.
 
 `heartbeat.New` builds a monitor with a thirty-second timeout. `Run`
 beats one id, the agent's signer joined with the thread ID, right

@@ -137,7 +137,9 @@ Decision by decision:
   `room` package: a moderator-gated roster with roles, and
   `Room.Accepts` gates a message on signer and recipient membership.
   The envelope carries the address; the room package carries the
-  roster.
+  roster. `agent.Run` may stamp a caller-chosen room name onto each
+  step message before signing, so a plan whose caller supplies one
+  produces messages a `room.Room` can admit.
 - **Tamper-evident audit.** `prev_hash` links each message to the
   `Hash()` of the previous message in the thread. Reordering,
   deletion, or insertion breaks the chain and is detectable. Cheap:

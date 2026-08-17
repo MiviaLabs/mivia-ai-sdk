@@ -61,9 +61,15 @@ var (
 // phase26_agent_heartbeat.md's disclosed scope limit. Run never calls
 // hb.Dead and never aborts a step on staleness; an external caller
 // holding the same hb polls Dead on its own schedule.
+//
+// An empty room reproduces today's zero-value behavior: Message.Room
+// stays "". A non-empty room makes confirmStep stamp it onto
+// Message.Room before a.id.Sign runs, on every gated step's built
+// message.
 func (a *Agent) Run(
 	ctx context.Context, threadID string, m *machine.Definition,
 	in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor,
+	room string,
 ) (machine.Status, machine.InOut, error) {
 	if wait == nil {
 		return machine.Status(""), in, ErrNoWait
@@ -81,7 +87,7 @@ func (a *Agent) Run(
 	}
 
 	var built []envelope.Message
-	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID)
+	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID, room)
 
 	status, rec, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
 	if err != nil {
@@ -101,8 +107,10 @@ func (a *Agent) Run(
 // so Run can verify the full thread once the walk finishes. Run
 // calls confirmStep sequentially per gated step; flow.Run never runs
 // two Confirm calls concurrently, so built needs no lock. hb, when
-// non-nil, beats hbID right before wait; a nil hb skips the beat.
-func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string) flow.Confirm {
+// non-nil, beats hbID right before wait; a nil hb skips the beat. room,
+// when non-empty, sets msg.Room before a.id.Sign; an empty room leaves
+// Message.Room at the zero value.
+func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string, room string) flow.Confirm {
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{
 			Version:   envelope.Version,
@@ -114,6 +122,9 @@ func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, buil
 		}
 		if n := len(*built); n > 0 {
 			msg.PrevHash = (*built)[n-1].Hash()
+		}
+		if room != "" {
+			msg.Room = room
 		}
 		signed, err := a.id.Sign(msg)
 		if err != nil {

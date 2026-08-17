@@ -19,8 +19,8 @@ messages. The exported surface below mirrors `api/agent.txt`.
 - `New(id, card, plan)` — builds an `Agent`.
 - `Agent.Name()` — the card's `Name` field.
 - `Agent.Capabilities()` — the card's `Capabilities` slice.
-- `Agent.Run(ctx, threadID, m, in, wait, bus, hb)` — drives the bound
-  plan through `flow.Run`.
+- `Agent.Run(ctx, threadID, m, in, wait, bus, hb, room)` — drives the
+  bound plan through `flow.Run`.
 - `EmitMessageDelivered(ctx, bus, m)` — verifies `m`'s signature, then
   emits `MessageDeliveredEvent`.
 - `EmitMessageAcked(ctx, bus, a)` — validates `a`, then emits
@@ -104,6 +104,15 @@ Use `errors.Is` to test these.
 - `Run` never calls `hb.Dead` and never aborts a step on staleness. A
   caller holding the same `Monitor` polls `Dead` on its own schedule.
 
+### The optional room parameter
+
+- `room` is an optional room name, a plain `string`. An empty `room`
+  leaves `Message.Room` at the zero value; `Run`'s behavior is
+  otherwise unchanged.
+- A non-empty `room` makes `confirmStep` set `msg.Room = room` before
+  `a.id.Sign` runs, on every gated step's built message, since
+  `Sign` covers the whole canonical-JSON payload including `Room`.
+
 ## Why this shape
 
 `agent` is the composition layer. It imports six other packages:
@@ -163,7 +172,7 @@ m, _ := machine.New(
     machine.Transition{From: "pending", To: "reviewed", Trigger: "advance"},
 )
 
-status, out, err := a.Run(context.Background(), "task-42", m, machine.InOut{}, wait, bus, nil)
+status, out, err := a.Run(context.Background(), "task-42", m, machine.InOut{}, wait, bus, nil, "")
 if err != nil {
     // a step failed, escalated (errors.Is(err, agent.ErrEscalated)),
     // or an entry check rejected an argument

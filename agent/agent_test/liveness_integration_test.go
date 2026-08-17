@@ -32,7 +32,7 @@ func TestLivenessFullRunLeavesDeadEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("heartbeat.New() unexpected error: %v", err)
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb)
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "")
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestLivenessTwoConcurrentThreadsShareOneMonitor(t *testing.T) {
 		wg.Add(1)
 		go func(i int, threadID string) {
 			defer wg.Done()
-			_, _, err := a.Run(context.Background(), threadID, m, machine.InOut{}, confirmingWait, bus, hb)
+			_, _, err := a.Run(context.Background(), threadID, m, machine.InOut{}, confirmingWait, bus, hb, "")
 			errs[i] = err
 		}(i, threadID)
 	}
@@ -97,7 +97,7 @@ func TestLivenessExternalSweepCancelsStalledWait(t *testing.T) {
 	var runErr error
 	go func() {
 		defer close(done)
-		_, _, runErr = a.Run(ctx, "thread-1", m, machine.InOut{}, blockedWait, bus, hb)
+		_, _, runErr = a.Run(ctx, "thread-1", m, machine.InOut{}, blockedWait, bus, hb, "")
 	}()
 
 	for {
@@ -158,7 +158,7 @@ func TestLivenessPanelWaveReachesNoBeat(t *testing.T) {
 	}
 	wantID := id.Signer() + ":thread-1"
 
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb)
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "")
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}

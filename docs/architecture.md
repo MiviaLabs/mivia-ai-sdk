@@ -100,9 +100,13 @@ flowchart LR
   `AckWait` call, and forgets it once, on every return path. A panel
   step reaches no beat call. `Run` never reads `Dead` itself; an
   external caller holding the same `Monitor` polls `Dead` on its own
-  schedule. `agent` imports `envelope`, `events`, `machine`, and
-  `heartbeat`; none of those four packages imports `agent` or any of
-  the other three. See [packages/agent.md](packages/agent.md).
+  schedule. `Run` also takes one trailing, optional `room string`
+  parameter. A non-empty `room` makes `Run` stamp it onto
+  `Message.Room` before it signs each gated step's message; an empty
+  `room` leaves `Message.Room` at the zero value. `agent` imports
+  `envelope`, `events`, `machine`, and `heartbeat`; none of those four
+  packages imports `agent` or any of the other three. See
+  [packages/agent.md](packages/agent.md).
 - `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
   `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
   `MissedEvent`. `Monitor` tracks liveness by time: it records the

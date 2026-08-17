@@ -144,6 +144,24 @@ func TestDead(t *testing.T) {
 		}
 	})
 
+	t.Run("exactly at boundary is excluded", func(t *testing.T) {
+		m, _ := heartbeat.New(timeout)
+		_ = m.Beat("a", base)
+		// now.Sub(last) == timeout: Alive reports true at this boundary
+		// (see TestAlive/exactly at boundary), so Dead must agree and
+		// exclude the id.
+		got := m.Dead(base.Add(timeout))
+		if len(got) != 0 {
+			t.Fatalf("Dead(now) at exact boundary = %v, want empty", got)
+		}
+		// One nanosecond past the boundary, the id must be dead.
+		got = m.Dead(base.Add(timeout + time.Nanosecond))
+		want := []string{"a"}
+		if !equalSlices(got, want) {
+			t.Fatalf("Dead(now) one ns past boundary = %v, want %v", got, want)
+		}
+	})
+
 	t.Run("mix of alive and dead ids sorted", func(t *testing.T) {
 		m, _ := heartbeat.New(timeout)
 		_ = m.Beat("zebra", base)

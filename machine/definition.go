@@ -23,6 +23,33 @@ func (d Definition) Transitions() []Transition {
 	return append([]Transition(nil), d.transitions...)
 }
 
+// AllowedTransitions returns all transitions whose From matches from.
+// The returned slice is a fresh copy; mutating it cannot affect the definition.
+// Returns an empty slice when no transitions match.
+func (d Definition) AllowedTransitions(from Status) []Transition {
+	out := make([]Transition, 0)
+	for _, t := range d.transitions {
+		if t.From == from {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// AllowedTriggers returns the distinct triggers available from from.
+// Returns an empty slice when no transitions match.
+func (d Definition) AllowedTriggers(from Status) []Trigger {
+	seen := make(map[Trigger]bool, 0)
+	out := make([]Trigger, 0)
+	for _, t := range d.transitions {
+		if t.From == from && !seen[t.Trigger] {
+			seen[t.Trigger] = true
+			out = append(out, t.Trigger)
+		}
+	}
+	return out
+}
+
 // New builds a Definition and validates the transition table.
 // It rejects an empty transition list. It copies the input slice so
 // later caller mutation of ts cannot change the built table.

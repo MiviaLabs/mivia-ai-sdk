@@ -3,6 +3,8 @@ package machine
   func (d *Definition) Encode(reg Registry) ([]byte, error)
   func (d *Definition) Fire(ctx context.Context, from Status, trig Trigger, in InOut) (Status, InOut, error)
   func (d *Definition) Validate() (error)
+  func (d Definition) AllowedTransitions(from Status) ([]Transition)
+  func (d Definition) AllowedTriggers(from Status) ([]Trigger)
   func (d Definition) Initial() (Status)
   func (d Definition) Transitions() ([]Transition)
   func Decode(data []byte, reg Registry) (Definition, error)

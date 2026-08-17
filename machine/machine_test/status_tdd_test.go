@@ -218,3 +218,88 @@ func TestErrorsAreNotSentinel(t *testing.T) {
 		t.Fatal("error matched the sentinel; expected a fresh fmt.Errorf value")
 	}
 }
+
+// threeStep builds a three-status machine for query tests.
+func threeStep(t *testing.T) *machine.Definition {
+	t.Helper()
+	d, err := machine.New(
+		"idle",
+		machine.Transition{From: "idle", To: "running", Trigger: "start"},
+		machine.Transition{From: "running", To: "done", Trigger: "finish"},
+		machine.Transition{From: "running", To: "idle", Trigger: "cancel"},
+	)
+	if err != nil {
+		t.Fatalf("threeStep: %v", err)
+	}
+	return d
+}
+
+func TestAllowedTransitions(t *testing.T) {
+	t.Parallel()
+	d := threeStep(t)
+	t.Run("returns matching rows", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTransitions("running")
+		if len(got) != 2 {
+			t.Fatalf("len = %d, want 2", len(got))
+		}
+		if got[0].Trigger != "finish" && got[0].Trigger != "cancel" {
+			t.Fatalf("unexpected trigger %q", got[0].Trigger)
+		}
+		if got[1].Trigger != "finish" && got[1].Trigger != "cancel" {
+			t.Fatalf("unexpected trigger %q", got[1].Trigger)
+		}
+	})
+	t.Run("returns empty for unknown status", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTransitions("absent")
+		if len(got) != 0 {
+			t.Fatalf("len = %d, want 0", len(got))
+		}
+	})
+	t.Run("returns a copy", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTransitions("idle")
+		got[0].To = "evil"
+		second := d.AllowedTransitions("idle")
+		if second[0].To != "running" {
+			t.Fatalf("mutation leaked: To = %q, want %q", second[0].To, "running")
+		}
+	})
+}
+
+func TestAllowedTriggers(t *testing.T) {
+	t.Parallel()
+	d := threeStep(t)
+	t.Run("returns distinct triggers", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTriggers("running")
+		if len(got) != 2 {
+			t.Fatalf("len = %d, want 2", len(got))
+		}
+		set := map[machine.Trigger]bool{}
+		for _, trig := range got {
+			set[trig] = true
+		}
+		if !set["finish"] || !set["cancel"] {
+			t.Fatalf("missing triggers: %v", set)
+		}
+	})
+	t.Run("returns empty for unknown status", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTriggers("absent")
+		if len(got) != 0 {
+			t.Fatalf("len = %d, want 0", len(got))
+		}
+	})
+	t.Run("single trigger from leaf status", func(t *testing.T) {
+		t.Parallel()
+		got := d.AllowedTriggers("idle")
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1", len(got))
+		}
+		if got[0] != "start" {
+			t.Fatalf("trigger = %q, want %q", got[0], "start")
+		}
+	})
+}

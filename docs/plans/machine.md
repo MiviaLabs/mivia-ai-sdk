@@ -45,6 +45,12 @@ pattern. See docs/research-state-machine.md for the pattern sources.
 - `(d Definition).Transitions() []Transition` returns a copy of the
   transition table. The value receiver also serves non-addressable
   values, such as the `Decode` result in Phase 3.
+- `(d Definition).AllowedTransitions(from Status) []Transition` returns
+  all transitions whose From matches the argument. Returns an empty
+  slice when no transitions match. The returned slice is a fresh copy.
+- `(d Definition).AllowedTriggers(from Status) []Trigger` returns the
+  distinct triggers available from the given status. Returns an empty
+  slice when no transitions match.
 
 A `Definition` is immutable after `New`. The unexported fields make
 the invariant enforced, not caller-honored. `Transitions` returns a

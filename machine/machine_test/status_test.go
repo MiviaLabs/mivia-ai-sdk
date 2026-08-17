@@ -243,11 +243,11 @@ func TestAllowedTransitions(t *testing.T) {
 		if len(got) != 2 {
 			t.Fatalf("len = %d, want 2", len(got))
 		}
-		if got[0].Trigger != "finish" && got[0].Trigger != "cancel" {
-			t.Fatalf("unexpected trigger %q", got[0].Trigger)
+		if got[0].Trigger != "finish" {
+			t.Fatalf("got[0].Trigger = %q, want %q (declaration order)", got[0].Trigger, "finish")
 		}
-		if got[1].Trigger != "finish" && got[1].Trigger != "cancel" {
-			t.Fatalf("unexpected trigger %q", got[1].Trigger)
+		if got[1].Trigger != "cancel" {
+			t.Fatalf("got[1].Trigger = %q, want %q (declaration order)", got[1].Trigger, "cancel")
 		}
 	})
 	t.Run("returns empty for unknown status", func(t *testing.T) {

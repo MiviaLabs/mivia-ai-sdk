@@ -400,3 +400,87 @@ func TestRunChainedStepChildGetsFreshInOut(t *testing.T) {
 		t.Fatalf("out.Input = %v, want %q", out.Input, "parent-input")
 	}
 }
+
+// TestRunOneMemberPanelAmongOtherStepsCallsConfirm proves a one-member
+// panel scheduled alongside other steps runs through the group-based
+// singleton branch in Run's multi-step loop, not just the
+// len(d.steps)==1 shortcut. It must still call confirm for the
+// panel's sole member.
+func TestRunOneMemberPanelAmongOtherStepsCallsConfirm(t *testing.T) {
+	t.Parallel()
+	const statusMid = machine.Status("mid")
+	d, err := flow.New([]flow.Step{
+		{ID: "a", To: string(statusMid)},
+		{ID: "b", Needs: []string{"a"}, To: string(statusDone)},
+	}, []flow.Panel{{"a"}})
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: statusMid, Trigger: triggerGo},
+		machine.Transition{From: statusMid, To: statusDone, Trigger: triggerGo},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	var confirmed []string
+	confirm := func(ctx context.Context, step flow.Step) error {
+		confirmed = append(confirmed, step.ID)
+		return nil
+	}
+	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != statusDone {
+		t.Fatalf("status = %q, want %q", status, statusDone)
+	}
+	if len(confirmed) != 2 || confirmed[0] != "a" || confirmed[1] != "b" {
+		t.Fatalf("confirmed = %v, want [a b]", confirmed)
+	}
+}
+
+// TestRunChainedStepParentFireFromChildGuardRejects proves Run returns
+// a step-scoped error when the child workflow completes successfully
+// but the parent's post-child transition has a Guard that rejects.
+// This exercises fireFromChild's Fire-error branch, distinct from a
+// guard failure inside the child's own run: the child reaches its
+// final status through an unguarded path, and only the parent-level
+// row from the shared start status to that final status is guarded.
+func TestRunChainedStepParentFireFromChildGuardRejects(t *testing.T) {
+	t.Parallel()
+	const statusMid = machine.Status("mid")
+	const triggerParent = machine.Trigger("parentGo")
+	child, err := flow.New([]flow.Step{
+		{ID: "c1", To: string(statusMid)},
+		{ID: "c2", Needs: []string{"c1"}, To: string(statusDone)},
+	}, nil)
+	if err != nil {
+		t.Fatalf("child New: %v", err)
+	}
+	d, err := flow.New([]flow.Step{
+		{ID: "parent", Sub: child},
+	}, nil)
+	if err != nil {
+		t.Fatalf("parent New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: statusMid, Trigger: triggerGo},
+		machine.Transition{From: statusMid, To: statusDone, Trigger: triggerGo},
+		machine.Transition{From: statusStart, To: statusDone, Trigger: triggerParent,
+			Guard: func(ctx context.Context) (bool, error) { return false, nil }},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), `step "parent"`) {
+		t.Fatalf("error %q should name the parent step", err.Error())
+	}
+	if strings.Contains(err.Error(), `step "c1"`) || strings.Contains(err.Error(), `step "c2"`) {
+		t.Fatalf("error %q should not name a child step", err.Error())
+	}
+}

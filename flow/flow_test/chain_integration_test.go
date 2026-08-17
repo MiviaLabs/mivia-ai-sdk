@@ -17,10 +17,10 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
-// phase07Workflows builds the child and parent workflows for the main
+// chainWorkflows builds the child and parent workflows for the main
 // integration test. The child has two steps; the parent has a chained
 // step and a dependent normal step.
-func phase07Workflows(t *testing.T) (*flow.Definition, *flow.Definition) {
+func chainWorkflows(t *testing.T) (*flow.Definition, *flow.Definition) {
 	t.Helper()
 	const statusMid = machine.Status("mid")
 	child, err := flow.New([]flow.Step{
@@ -41,10 +41,10 @@ func phase07Workflows(t *testing.T) (*flow.Definition, *flow.Definition) {
 	return child, parent
 }
 
-// phase07Machine builds the machine for the main integration test.
+// chainMachine builds the machine for the main integration test.
 // It supports the child path start->mid->done, the chained-parent
 // shortcut start->done, and the dependent step done->final.
-func phase07Machine(t *testing.T) *machine.Definition {
+func chainMachine(t *testing.T) *machine.Definition {
 	t.Helper()
 	const (
 		statusMid   = machine.Status("mid")
@@ -62,9 +62,9 @@ func phase07Machine(t *testing.T) *machine.Definition {
 	return m
 }
 
-// phase07Confirm returns a Confirm closure that signs and records each
+// chainConfirm returns a Confirm closure that signs and records each
 // step as an envelope message. It also returns the thread slice.
-func phase07Confirm(t *testing.T, priv ed25519.PrivateKey, room, threadID string) (flow.Confirm, *[]envelope.Message) {
+func chainConfirm(t *testing.T, priv ed25519.PrivateKey, room, threadID string) (flow.Confirm, *[]envelope.Message) {
 	t.Helper()
 	var thread []envelope.Message
 	var prev string
@@ -115,13 +115,13 @@ func TestChainedWorkflowStatusAndAuditThread(t *testing.T) {
 		auditRoom   = "room://phase07"
 		auditThread = "thread://phase07"
 	)
-	_, parent := phase07Workflows(t)
-	m := phase07Machine(t)
+	_, parent := chainWorkflows(t)
+	m := chainMachine(t)
 	_, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
 	}
-	confirm, threadPtr := phase07Confirm(t, priv, auditRoom, auditThread)
+	confirm, threadPtr := chainConfirm(t, priv, auditRoom, auditThread)
 
 	status, _, err := flow.Run(context.Background(), parent, m, machine.InOut{}, confirm, nil)
 	if err != nil {

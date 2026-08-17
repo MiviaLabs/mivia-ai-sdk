@@ -142,6 +142,15 @@ rules:
       exclude: ["/semgrep/**"]
     pattern-regex: '(?i)^\s*nosemgrep\b'
 
+  - id: sdk.go.no-phase-tdd-perf-names
+    languages: [go]
+    severity: ERROR
+    message: Function names must not contain phase, tdd, or perf; use descriptive names instead.
+    paths:
+      include: ["/**/*.go"]
+      exclude: ["/semgrep/**"]
+    pattern-regex: '(?i)func\s+\w*(?:phase|tdd|perf)\w*\s*\('
+
   - id: sdk.generic.no-drift-markers
     languages: [generic]
     severity: ERROR

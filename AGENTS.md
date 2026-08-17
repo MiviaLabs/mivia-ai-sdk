@@ -126,6 +126,12 @@ any stage means stop and escalate to the user.
   the limits.
 - Invariants live in `Validate` methods, not in comments alone. If a
   comment states a rule, `Validate` must enforce it.
+- File and function names must describe the feature, not the development
+  process. Forbidden in names: phase, tdd, perf. Use descriptive names
+  like `panel_test.go`, `chain_bench_test.go`. Gate:
+  `scripts/check_names.py`; Semgrep:
+  `sdk.go.no-phase-tdd-perf-names`. Plan documents in
+  `docs/plans/agents/` may use phase numbers as plan identifiers.
 - No string literals where constants exist: enum values (Intent,
   Epistemic, AckStatus, Role), hash prefixes, wire serialization
   (Encode), signing (Sign). Enforced by `semgrep/sdk-standards.yml`.

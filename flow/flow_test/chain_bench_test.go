@@ -122,9 +122,9 @@ func BenchmarkRunChainedThreeLevels(b *testing.B) {
 	}
 }
 
-// TestChainedPerfBudget asserts the chained workflow stays under the
+// TestChainedAllocBudget asserts the chained workflow stays under the
 // budget when run once outside the benchmark harness.
-func TestChainedPerfBudget(t *testing.T) {
+func TestChainedAllocBudget(t *testing.T) {
 	t.Parallel()
 	d, m := chainedThreeGraph(t)
 	ctx := context.Background()

@@ -107,6 +107,13 @@ PROBES = [
         "clean_drift.md",
         "# Title\n\nEverything is done.\n\nwith AckRequired set the check runs\n",
     ),
+    (
+        "sdk.go.no-phase-tdd-perf-names",
+        "viol_bad_names.go",
+        'package p\n\nfunc phase07Build() {}\nfunc testTDDHelper() {}\nfunc perfMeasure() {}\n',
+        "clean_good_names.go",
+        'package p\n\nfunc panelBuild() {}\nfunc testHelper() {}\nfunc allocMeasure() {}\n',
+    ),
 ]
 
 FIXTURES = {

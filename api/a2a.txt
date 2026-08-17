@@ -1,0 +1,14 @@
+package a2a
+  func FromPart(mapped Mapped) (envelope.Message, error)
+  func ToPart(m envelope.Message) (Mapped, error)
+  type Mapped struct {
+  Part Part
+  ContextID string
+  MessageID string
+}
+  type Part struct {
+  Text string `json:"text,omitempty"`
+  Data json.RawMessage `json:"data,omitempty"`
+  Raw []byte `json:"raw,omitempty"`
+  URL string `json:"url,omitempty"`
+}

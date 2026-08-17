@@ -1,0 +1,12 @@
+package flow
+  func (d Definition) Roots() ([]string)
+  func New(steps []Step, panels []Panel) (*Definition, error)
+  type Definition struct {
+}
+  type Panel []string
+  type Step struct {
+  ID string
+  Needs []string
+  To string
+  Payload string
+}

@@ -20,9 +20,10 @@ references.
   Phase 3 ships the JSON wire form: `Encode`, `Decode`, `Registry`, and
   `NewRegistry`. See [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
-- `flow/` — a future package. It owns the step graph, panels, parallel
-  execution, and chaining. It is planned in
-  [plans/flow.md](plans/flow.md); no code exists yet.
+- `flow/` — the step graph. Phase 4 ships `Step`, `Panel`,
+  `Definition`, `New`, and `Roots`. The runner, the scheduling, the
+  parallel waves, and the chaining own in later phases. See
+  [plans/flow.md](plans/flow.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

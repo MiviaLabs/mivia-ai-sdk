@@ -211,6 +211,31 @@ func TestRunAmbiguityZeroMatchesTerminalState(t *testing.T) {
 	}
 }
 
+// TestRunEmptyGraph proves Run on a zero-step graph returns the
+// initial status with no error, and never calls confirm.
+func TestRunEmptyGraph(t *testing.T) {
+	t.Parallel()
+	d, err := flow.New(nil, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m := singleTransitionMachine(t)
+	confirm := func(ctx context.Context, step flow.Step) error {
+		t.Fatal("confirm ran on an empty step graph")
+		return nil
+	}
+	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{Input: "x"}, confirm)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != statusStart {
+		t.Fatalf("status = %q, want the initial status %q", status, statusStart)
+	}
+	if out.Input != "x" {
+		t.Fatalf("out.Input = %v, want the untouched input record", out.Input)
+	}
+}
+
 // TestRunAmbiguityManyMatches proves Run fails when more than one
 // transition row targets the step's status.
 func TestRunAmbiguityManyMatches(t *testing.T) {

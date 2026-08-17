@@ -237,6 +237,31 @@ func TestEncodeRejectsUnregisteredName(t *testing.T) {
 	}
 }
 
+// TestEncodeRejectsNilValueRegistry proves a name that maps to a nil func
+// on encode returns an error, mirroring the Decode-side nil rejection.
+// Encode must not emit bytes that the same registry cannot decode back.
+func TestEncodeRejectsNilValueRegistry(t *testing.T) {
+	t.Parallel()
+	decReg := machine.NewRegistry()
+	decReg.Guards["is_ready"] = busyReady
+	d, err := machine.Decode(
+		[]byte(`{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","guard":"is_ready"}]}`),
+		decReg,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	encReg := machine.NewRegistry()
+	encReg.Guards["is_ready"] = nil
+	_, err = d.Encode(encReg)
+	if err == nil {
+		t.Fatal("expected error for name resolving to nil, got nil")
+	}
+	if !strings.Contains(err.Error(), "resolves to nil") {
+		t.Fatalf("error %q should mention resolves to nil", err.Error())
+	}
+}
+
 // TestEncodeNewStructureOnly proves a New-built table with no bound
 // functions survives Encode and a second Decode unchanged.
 func TestEncodeNewStructureOnly(t *testing.T) {

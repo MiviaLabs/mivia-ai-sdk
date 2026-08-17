@@ -61,15 +61,15 @@ func (d *Definition) Encode(reg Registry) ([]byte, error) {
 		Transitions: make([]wireTransition, 0, len(d.transitions)),
 	}
 	for i, t := range d.transitions {
-		guard, err := wireName(reg.Guards, entryOf(d.names, i).guard, t.Guard == nil, "guard")
+		guard, err := wireName(reg.Guards, entryOf(d.names, i).guard, t.Guard == nil, guardNil, "guard")
 		if err != nil {
 			return nil, fmt.Errorf("machine: transition %d: %w", i, err)
 		}
-		onExit, err := wireName(reg.Actions, entryOf(d.names, i).onExit, t.OnExit == nil, "action")
+		onExit, err := wireName(reg.Actions, entryOf(d.names, i).onExit, t.OnExit == nil, actionNil, "action")
 		if err != nil {
 			return nil, fmt.Errorf("machine: transition %d: %w", i, err)
 		}
-		onEntry, err := wireName(reg.Actions, entryOf(d.names, i).onEntry, t.OnEntry == nil, "action")
+		onEntry, err := wireName(reg.Actions, entryOf(d.names, i).onEntry, t.OnEntry == nil, actionNil, "action")
 		if err != nil {
 			return nil, fmt.Errorf("machine: transition %d: %w", i, err)
 		}
@@ -93,19 +93,29 @@ func entryOf(entries []transName, i int) transName {
 	return transName{}
 }
 
+// guardNil reports whether a bound guard is the nil value.
+func guardNil(g Guard) bool { return g == nil }
+
+// actionNil reports whether a bound action is the nil value.
+func actionNil(a Action) bool { return a == nil }
+
 // wireName returns a pointer to name, or nil when absent.
 // A bound function must carry a name; an anonymous function cannot
-// serialize. Every emitted name must still resolve in m, so the same
-// registry can decode the bytes back.
-func wireName[T any](m map[string]T, name string, absent bool, kind string) (*string, error) {
+// serialize. Every emitted name must still resolve in m to a real func,
+// so the same registry can decode the bytes back.
+func wireName[T any](m map[string]T, name string, absent bool, isNil func(T) bool, kind string) (*string, error) {
 	if absent {
 		return nil, nil
 	}
 	if name == "" {
 		return nil, fmt.Errorf("%v is anonymous and has no wire name", kind)
 	}
-	if _, ok := m[name]; !ok {
+	v, ok := m[name]
+	if !ok {
 		return nil, fmt.Errorf("%v %q is not registered", kind, name)
+	}
+	if isNil(v) {
+		return nil, fmt.Errorf("%v %q resolves to nil", kind, name)
 	}
 	n := name
 	return &n, nil

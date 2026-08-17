@@ -17,7 +17,8 @@ list. Those belong to phase 3.
 
 ## API
 
-- `type InOut struct` holding the input and the output record.
+- `type InOut struct { Input any; Output any }` holding the input
+  record and the output record.
 - `type Action func(Context) error` as an entry or exit action.
 - `(*Definition).Fire(ctx, from Status, trig Trigger, in InOut) (Status, InOut, error)`
 

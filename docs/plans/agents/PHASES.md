@@ -74,8 +74,9 @@ A perf file holds a Go benchmark. It measures time and allocations.
 `AllocsPerRun` states the allocation budget. The baseline runs before
 the phase, so the improvement is measurable.
 
-The plan states a target for each benchmark. A benchmark without a
-target documents nothing. The `make bench` target runs them.
+The plan records a measured baseline for each benchmark. A benchmark
+without a baseline documents nothing. The `make bench` target runs
+them.
 
 ## Phase order
 

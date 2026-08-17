@@ -29,7 +29,9 @@ pattern. See docs/research-state-machine.md for the pattern sources.
 
 - `type Status string` as the typed status enum base.
 - `type Trigger string` as the label that selects a transition.
-- `type InOut struct` holding the input record and the output record.
+- `type InOut struct { Input any; Output any }` holding the input
+  record and the output record. A bound function reads Input and
+  writes Output. The caller type-asserts concrete payloads.
 - `type Action func(Context) error` as an entry or exit action.
 - `type Guard func(ctx Context) (bool, error)` as a transition guard.
 - `type Transition struct { From, To Status; Trigger Trigger; Guard Guard; OnEntry Action; OnExit Action }`

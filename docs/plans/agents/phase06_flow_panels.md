@@ -21,9 +21,11 @@ belong to phase 7.
 No new exported symbol. `Run` gains parallel behavior for a panel. The
 wave is internal state. The return stays `(Status, machine.InOut, error)`.
 
-A wave runs its steps in goroutines. A `WaitGroup` waits for the wave.
-A buffered channel carries the results. `errors.Join` combines the
-failure across the wave. A failed gate fails the whole run.
+A wave runs its steps in goroutines. Each step receives a copy of
+the incoming record. A `WaitGroup` waits for the wave. A buffered
+channel carries the results. `errors.Join` combines the failure
+across the wave. A failed gate fails the whole run. No goroutine
+mutates the shared record.
 
 ## Tests
 

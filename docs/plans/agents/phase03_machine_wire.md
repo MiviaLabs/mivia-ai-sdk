@@ -26,8 +26,10 @@ invariants. Those are in phase 1. The flow package waits for phase 4.
 A function does not serialize. The form stores a name for each guard
 and action. Guard names and action names are separate namespaces in
 the wire form. Decode rebinds each name through the matching Registry
-map. A missing name returns an error. Unknown fields are ignored on
-decode.
+map. A missing name returns an error. A bound function reads the
+payload from `InOut.Input` and writes the result to `InOut.Output`.
+It never uses reflection to reach the record. Unknown fields are
+ignored on decode.
 
 ## Tests
 

@@ -24,8 +24,11 @@ consumer is real; another system needs these capabilities now.
 Outside: retries, compensation, scheduling, persistence, and history
 replay. A future version adds these only when that consumer asks.
 Parallel panels run in goroutines; the runner is in-process, not a
-distributed service. The design is correct, not hardened. It meets the
-need without overengineering.
+distributed service. Each wave reads the incoming record. Each step in
+a wave runs with a copy of that record. The wave collects results
+and errors. errors.Join reports failures across the wave. No goroutine
+mutates the shared record. The design is correct, not hardened. It
+meets the need without overengineering.
 
 ## API
 
@@ -59,7 +62,9 @@ output. A chained step runs a nested Definition and returns its
 status. The parent reads the child result as one output.
 
 A new row in policy/layers.json: flow imports envelope and machine.
-The import edge lands when the code lands.
+The ack transport stays caller-owned. The runner enforces the gate;
+the caller provides the transport. The import edge lands when the code
+lands.
 
 ## Tests
 

@@ -24,6 +24,9 @@ Go SDK for building AI agents. Module:
   reports ids that have gone silent past a fixed timeout.
 - `discovery/` — capability cards: Card, Parse, Validate, Match. Leaf
   block; no internal imports.
+- `a2a/` — the A2A v1.0 mapping: Part, Mapped, ToPart, FromPart.
+  Imports envelope only. No network and no third-party import in
+  phase 9; the a2a-go client is phase 10.
 - `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.

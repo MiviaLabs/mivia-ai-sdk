@@ -189,6 +189,14 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEncodeRejectsInvalidMessage(t *testing.T) {
+	m := validMessage()
+	m.ThreadID = "" // Validate rejects a missing thread id
+	if _, err := m.Encode(); err == nil {
+		t.Fatal("encode of an invalid message must fail")
+	}
+}
+
 func TestDecodeIgnoresUnknownFields(t *testing.T) {
 	data := []byte(`{"version":"v1","id":"m","thread_id":"t","intent":"query","epistemic":"assumed","confidence":0.1,"payload":"q?","future_field":42}`)
 	if _, err := Decode(data); err != nil {

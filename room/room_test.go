@@ -36,6 +36,13 @@ func TestAdmitFlow(t *testing.T) {
 	}
 }
 
+func TestAdmitRejectsEmptyMemberID(t *testing.T) {
+	r := newRoom(t)
+	if err := r.Admit("   ", "founder"); err == nil {
+		t.Fatal("admit of an empty member id must fail")
+	}
+}
+
 func TestMembershipGuards(t *testing.T) {
 	r := newRoom(t)
 	if err := r.Admit("agent-a", "founder"); err != nil {

@@ -87,6 +87,37 @@ func TestSignRejectsBadKey(t *testing.T) {
 	}
 }
 
+func TestSignRejectsUnserializableMessage(t *testing.T) {
+	m := validMessage()
+	m.Confidence = math.NaN()
+	var marshalErr *json.UnsupportedValueError
+	if _, err := Sign(testKey(t), m); !errors.As(err, &marshalErr) {
+		t.Fatalf("err = %v, want the json marshal error", err)
+	}
+}
+
+func TestVerifyRejectsMalformedSigner(t *testing.T) {
+	m, err := Sign(testKey(t), validMessage())
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	m.Signer = "zz" // not a hex-encoded ed25519 public key
+	if err := m.VerifySignature(); err == nil {
+		t.Fatal("malformed signer must fail verification")
+	}
+}
+
+func TestVerifyRejectsBadSignatureLength(t *testing.T) {
+	m, err := Sign(testKey(t), validMessage())
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	m.Signature = "aabb" // far short of a 64-byte signature
+	if err := m.VerifySignature(); err == nil {
+		t.Fatal("short signature must fail verification")
+	}
+}
+
 func TestSignatureSurvivesWire(t *testing.T) {
 	m, err := Sign(testKey(t), validMessage())
 	if err != nil {

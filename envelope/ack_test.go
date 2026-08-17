@@ -36,3 +36,9 @@ func TestAckEncodeRejectsInvalid(t *testing.T) {
 		t.Fatal("empty ack must not encode")
 	}
 }
+
+func TestNewAckRejectsEmptyMessageID(t *testing.T) {
+	if _, err := NewAck(Message{}, "agent-b", "You want X."); err == nil {
+		t.Fatal("ack for an empty message id must fail")
+	}
+}

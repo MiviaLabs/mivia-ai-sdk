@@ -82,6 +82,12 @@ var decodeCases = []wireCase{
 		errSub:  "must not be empty",
 	},
 	{
+		name:    "rejects empty action name",
+		json:    `{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","on_exit":""}]}`,
+		wantErr: true,
+		errSub:  "must not be empty",
+	},
+	{
 		name:    "rejects self loop",
 		json:    `{"initial":"idle","transitions":[{"from":"idle","to":"idle","trigger":"start"}]}`,
 		wantErr: true,
@@ -284,6 +290,41 @@ func TestEncodeNewStructureOnly(t *testing.T) {
 	ts := d2.Transitions()
 	if len(ts) != 1 || ts[0].From != "idle" || ts[0].To != "running" || ts[0].Trigger != "start" {
 		t.Fatalf("round trip table = %#v, want idle->running on start", ts)
+	}
+}
+
+// TestEncodeRejectsUnregisteredActionName proves Encode fails when an
+// on_exit or on_entry name no longer resolves in the encode registry.
+// The guard-name path is covered elsewhere; this pins the action paths.
+func TestEncodeRejectsUnregisteredActionName(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"on_exit", "on_entry"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			reg := wireRegistry()
+			wire := `{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","` + field + `":"mark_started"}]}`
+			d, err := machine.Decode([]byte(wire), reg)
+			if err != nil {
+				t.Fatalf("Decode: %v", err)
+			}
+			_, err = d.Encode(machine.NewRegistry())
+			if err == nil {
+				t.Fatalf("Encode with unregistered %s must fail", field)
+			}
+			if !strings.Contains(err.Error(), "not registered") {
+				t.Fatalf("error %q should mention not registered", err.Error())
+			}
+		})
+	}
+}
+
+// TestEncodeRejectsEmptyDefinition proves Encode fails on a zero-value
+// Definition, which Validate rejects for having no transitions.
+func TestEncodeRejectsEmptyDefinition(t *testing.T) {
+	t.Parallel()
+	var d machine.Definition
+	if _, err := d.Encode(machine.NewRegistry()); err == nil {
+		t.Fatal("Encode of a zero-value Definition must fail")
 	}
 }
 

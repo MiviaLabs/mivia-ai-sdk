@@ -15,10 +15,9 @@ func Sign(key ed25519.PrivateKey, m Message) (Message, error) {
 	if len(key) != ed25519.PrivateKeySize {
 		return Message{}, fmt.Errorf("key length %d, want %d", len(key), ed25519.PrivateKeySize)
 	}
-	pub, ok := key.Public().(ed25519.PublicKey)
-	if !ok {
-		return Message{}, errors.New("key has no ed25519 public part")
-	}
+	// A valid-length PrivateKey always exposes a PublicKey, so the length
+	// check covers the format; the assertion only converts the type.
+	pub, _ := key.Public().(ed25519.PublicKey)
 	m.Signer = hex.EncodeToString(pub)
 	m.Signature = ""
 	data, err := json.Marshal(m)

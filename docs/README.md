@@ -14,12 +14,13 @@ Leave the research record for last.
 5. [packages/room.md](packages/room.md) — the room package reference.
 6. [packages/machine.md](packages/machine.md) — the machine package reference.
 7. [packages/flow.md](packages/flow.md) — the flow package reference.
-8. [examples/envelope-flow.md](examples/envelope-flow.md) — the envelope walkthrough.
-9. [examples/room-flow.md](examples/room-flow.md) — the room walkthrough.
-10. [plans/](plans/) — the change contracts; read them before code changes.
-11. [research-a2a.md](research-a2a.md) — the A2A research record; read it last.
-12. [research-agents.md](research-agents.md) — the building-block, agent, and A2A v1.0 assessment; read it last.
-13. [research-state-machine.md](research-state-machine.md) — the workflow state primitive assessment; read it last.
+8. [packages/events.md](packages/events.md) — the events package reference.
+9. [examples/envelope-flow.md](examples/envelope-flow.md) — the envelope walkthrough.
+10. [examples/room-flow.md](examples/room-flow.md) — the room walkthrough.
+11. [plans/](plans/) — the change contracts; read them before code changes.
+12. [research-a2a.md](research-a2a.md) — the A2A research record; read it last.
+13. [research-agents.md](research-agents.md) — the building-block, agent, and A2A v1.0 assessment; read it last.
+14. [research-state-machine.md](research-state-machine.md) — the workflow state primitive assessment; read it last.
 
 ## Change contracts
 
@@ -34,6 +35,8 @@ change before the code lands.
 - [plans/flow.md](plans/flow.md) — the future flow step-runner plan.
 - [plans/machine.md](plans/machine.md) — the machine state plan; Phases
   1 through 3 ship.
+- [plans/events.md](plans/events.md) — the events bus plan; Phases 17
+  and 18 ship.
 - [plans/agents/](plans/agents/) — the phased agent-block build: the
   PHASES framework plus one small plan per phase, each with its own
   integration, tdd, and perf test files.

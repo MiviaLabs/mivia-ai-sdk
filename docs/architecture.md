@@ -5,8 +5,10 @@ the invariants the architecture enforces. See
 [protocol-design.md](protocol-design.md) for the wire rationale. See
 [packages/envelope.md](packages/envelope.md),
 [packages/room.md](packages/room.md),
-[packages/machine.md](packages/machine.md), and
-[packages/flow.md](packages/flow.md) for the exported API references.
+[packages/machine.md](packages/machine.md),
+[packages/flow.md](packages/flow.md), and
+[packages/events.md](packages/events.md) for the exported API
+references.
 
 ## Package map
 
@@ -25,6 +27,11 @@ the invariants the architecture enforces. See
   parallel waves, and the chaining land later. See
   [packages/flow.md](packages/flow.md) and
   [plans/flow.md](plans/flow.md).
+- `events/` — the in-process reaction bus. It ships `Event`,
+  `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The caller owns the
+  bus; the module has no shared bus. See
+  [packages/events.md](packages/events.md) and
+  [plans/events.md](plans/events.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

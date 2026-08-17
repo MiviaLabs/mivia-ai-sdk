@@ -66,8 +66,12 @@ transition list, not reflection. A trigger that does not match returns
 an error. OnExit does not run when the guard fails. A nil Guard or a
 nil Action is checked, never invoked.
 
-The machine row in policy/layers.json already declares no imports.
-This change adds no edge. The flow package imports machine.
+Phase 18 leaves `machine` completely untouched. The move emit happens
+at the call site, not inside `Fire`. A caller reads the move from the
+`Fire` return value and emits onto a caller-owned bus. This adds no
+exported symbol, no import edge, and no conformance vector. The
+`machine` row in policy/layers.json stays empty. Phase 18 proves this
+wiring with an external test package. The flow package imports machine.
 
 ## Tests
 

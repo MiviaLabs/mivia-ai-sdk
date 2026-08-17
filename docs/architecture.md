@@ -55,7 +55,13 @@ references.
 - `agent/` — the composition layer. It ships `Agent`, `New`, `Name`,
   and `Capabilities`. `New` wires an `identity.Identity`, a
   `discovery.Card`, and a `flow.Definition` into one agent. It rejects
-  a nil identity, an invalid card, and a nil plan, in that order. See
+  a nil identity, an invalid card, and a nil plan, in that order. It
+  also ships the envelope-to-events translator: `EmitMessageDelivered`,
+  `EmitMessageAcked`, and `EmitThreadVerified`. Each function verifies
+  an already-received `envelope.Message`, `envelope.Ack`, or message
+  thread, then emits one typed `events.Event` onto a caller-owned
+  `events.Bus`. `agent` imports both `envelope` and `events`; neither
+  of those two packages imports the other or `agent`. See
   [plans/agent.md](plans/agent.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.

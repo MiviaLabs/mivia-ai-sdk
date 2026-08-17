@@ -1,0 +1,12 @@
+package heartbeat
+  const MissedEvent = "heartbeat.missed"
+  func (m *Monitor) Alive(id string, now time.Time) (bool)
+  func (m *Monitor) Beat(id string, at time.Time) (error)
+  func (m *Monitor) Dead(now time.Time) ([]string)
+  func (m *Monitor) Forget(id string)
+  func New(timeout time.Duration) (*Monitor, error)
+  type Monitor struct {
+}
+  var ErrNoID
+  var ErrNoTimeout
+  var ErrStaleBeat

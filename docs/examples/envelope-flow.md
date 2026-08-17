@@ -1,8 +1,7 @@
 # Example: the envelope flow
 
 This walkthrough follows one message: create, sign, encode, decode,
-verify, then tamper. The code is illustrative. It is a PoC sketch, not
-a buildable package.
+verify, then tamper. The program builds and runs against the module.
 
 ## The program
 
@@ -77,5 +76,6 @@ func main() {
 The original message passes every step. After the payload changes, the
 JSON stays valid, so the message still encodes and decodes. The
 signature covers every field except itself; any value change fails
-verification. This example changes a value, not the structure; a
-structural change would break the JSON and fail Decode instead.
+verification. This example changes a value, not the structure. A
+structural change through the struct fails at `Encode`, which
+validates. Only raw-JSON tampering fails at `Decode`.

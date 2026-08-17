@@ -2,7 +2,7 @@
 
 The envelope package defines the wire unit: the message, its metadata
 types, the semantic ack, and signing. It is the only package that
-serializes to the wire. See
+serializes messages to the wire. See
 [architecture.md](../architecture.md) for the flow and
 [protocol-design.md](../protocol-design.md) for the rationale. The
 exported surface below mirrors `api/envelope.txt`.

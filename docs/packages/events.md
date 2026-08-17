@@ -29,6 +29,8 @@ surface below mirrors `api/events.txt`.
   of type `Name`. It rejects an empty name and a nil handler.
 - `Bus.Emit(ctx, event)` — validates the event, then runs each handler
   for its name. It rejects an unknown name with an error.
+- `Event.Validate()` — the field rules on one event. It rejects an
+  empty `Name` and an empty `Data`.
 
 ## Event names
 

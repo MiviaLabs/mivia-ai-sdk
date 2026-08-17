@@ -83,13 +83,16 @@ them.
 The phases build in dependency order. Foundations come first. The
 composition comes last.
 
-- Foundation: machine status model, machine wire form, flow step
-  graph, flow sequential runner, flow parallel panels, flow chaining.
+- Foundation: machine status model, machine move dispatch, machine
+  wire form, flow step graph, flow sequential runner, flow parallel
+  panels, flow chaining.
 - Transport and identity: identity key wrap, a2a mapping, a2a client,
   discovery agent card.
 - Composition: agent definition, agent execution loop, tools
   registry, memory context store.
 - System: the end-to-end two-agent exchange.
+- Reaction: events core, machine emit, flow emit, envelope emit. The
+  reaction phases ship when their dependencies allow it.
 
 Each plan names its phase number and its dependency on the prior phase.
 

@@ -5,9 +5,7 @@ creates a room, a moderator admits a member by its public key, the
 member sends a signed message, and `Room.Accepts` gates it. A stranger
 fails admission. `Sign` sets `Message.Signer` to the hex ed25519
 public key, so the roster stores public keys, not person names. The
-code is illustrative. It is a PoC sketch, not a buildable package.
-Runnable examples are future work; a runnable package would need a
-policy row, an API lock, and a plan.
+program builds and runs against the module.
 
 ## The program
 
@@ -52,7 +50,7 @@ func main() {
 		Intent:     envelope.IntentRequest,
 		Epistemic:  envelope.EpistemicInferred,
 		Provenance: envelope.Provenance{Source: "model:self"},
-		To:         []string{bobHex},
+		To:         []string{founderHex},
 		Payload:    "Please review the plan.",
 	})
 	if err != nil {

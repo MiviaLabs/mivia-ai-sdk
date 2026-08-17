@@ -159,6 +159,8 @@ func Decode(data []byte, reg Registry) (Definition, error) {
 }
 
 // bindGuard resolves a wire name to a bound guard. A nil name means absent.
+// A name that resolves to a nil func is rejected; a registered name must
+// mean a real check, or a round trip would silently drop it.
 func bindGuard(reg Registry, name *string) (Guard, string, error) {
 	if name == nil {
 		return nil, "", nil
@@ -170,10 +172,15 @@ func bindGuard(reg Registry, name *string) (Guard, string, error) {
 	if !ok {
 		return nil, "", fmt.Errorf("machine: guard %q is not registered", *name)
 	}
+	if g == nil {
+		return nil, "", fmt.Errorf("machine: guard %q resolves to nil", *name)
+	}
 	return g, *name, nil
 }
 
 // bindAction resolves a wire name to a bound action. A nil name means absent.
+// A name that resolves to a nil func is rejected; a registered name must
+// mean a real side effect, or a round trip would silently drop it.
 func bindAction(reg Registry, name *string) (Action, string, error) {
 	if name == nil {
 		return nil, "", nil
@@ -184,6 +191,9 @@ func bindAction(reg Registry, name *string) (Action, string, error) {
 	a, ok := reg.Actions[*name]
 	if !ok {
 		return nil, "", fmt.Errorf("machine: action %q is not registered", *name)
+	}
+	if a == nil {
+		return nil, "", fmt.Errorf("machine: action %q resolves to nil", *name)
 	}
 	return a, *name, nil
 }

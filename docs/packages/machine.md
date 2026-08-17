@@ -23,7 +23,8 @@ the name registry. The exported surface below mirrors `api/machine.txt`.
   `Transitions`.
 - `Registry` — the named guards and actions the wire form rebinds.
   Fields: `Actions` and `Guards`. The two name sets are separate
-  namespaces.
+  namespaces. A registered name never maps to a nil function; `Decode`
+  rejects such a name.
 
 ## Functions and methods
 
@@ -72,7 +73,8 @@ the name registry. The exported surface below mirrors `api/machine.txt`.
   absent. `omitempty` skips absent fields.
 - `Decode(data, reg)` parses JSON and rebinds each name through `reg`.
   A name that is missing from the registry returns an error. An empty
-  name returns an error. Unknown fields are ignored.
+  name returns an error. A name that resolves to a nil function returns
+  an error. Unknown fields are ignored.
 - A function does not serialize. The wire form stores a name for each
   guard and action. `New` never records a name, so an anonymous
   function cannot encode. Only a name that `Decode` read back can

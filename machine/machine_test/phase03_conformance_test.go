@@ -16,6 +16,7 @@ import (
 func TestMachineConformanceVectors(t *testing.T) {
 	reg := machine.NewRegistry()
 	reg.Guards["is_ready"] = busyReady
+	reg.Guards["nil_handler"] = nil
 	reg.Actions["mark_started"] = busyStart
 	reg.Actions["mark_left"] = busyExit
 

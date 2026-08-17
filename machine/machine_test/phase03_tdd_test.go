@@ -9,10 +9,13 @@ import (
 )
 
 // wireRegistry builds the named guards and actions the TDD cases use.
+// nil_guard is deliberately bound to a nil func; Decode must reject it.
 func wireRegistry() machine.Registry {
 	reg := machine.NewRegistry()
 	reg.Guards["is_ready"] = busyReady
+	reg.Guards["nil_guard"] = nil
 	reg.Actions["mark_started"] = busyStart
+	reg.Actions["nil_action"] = nil
 	return reg
 }
 
@@ -59,6 +62,18 @@ var decodeCases = []wireCase{
 		json:    `{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","on_exit":"nope"}]}`,
 		wantErr: true,
 		errSub:  "not registered",
+	},
+	{
+		name:    "rejects guard name bound to nil func",
+		json:    `{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","guard":"nil_guard"}]}`,
+		wantErr: true,
+		errSub:  "resolves to nil",
+	},
+	{
+		name:    "rejects action name bound to nil func",
+		json:    `{"initial":"idle","transitions":[{"from":"idle","to":"running","trigger":"start","on_entry":"nil_action"}]}`,
+		wantErr: true,
+		errSub:  "resolves to nil",
 	},
 	{
 		name:    "rejects empty guard name",

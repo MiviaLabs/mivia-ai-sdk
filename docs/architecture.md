@@ -6,7 +6,8 @@ the invariants the architecture enforces. See
 [packages/envelope.md](packages/envelope.md),
 [packages/room.md](packages/room.md),
 [packages/machine.md](packages/machine.md),
-[packages/flow.md](packages/flow.md), and
+[packages/flow.md](packages/flow.md),
+[packages/identity.md](packages/identity.md), and
 [packages/events.md](packages/events.md) for the exported API
 references.
 
@@ -35,6 +36,12 @@ references.
   constants owned by each domain. See
   [packages/events.md](packages/events.md) and
   [plans/events.md](plans/events.md).
+- `identity/` — one agent key. It ships `Identity`, `New`, `Load`,
+  `Validate`, `Sign`, `Signer`, and the sentinels `ErrKeyFormat` and
+  `ErrKeyInvalid`. `Sign` wraps `envelope.Sign`; `Signer` derives the
+  hex public key from the private key. See
+  [packages/identity.md](packages/identity.md) and
+  [plans/identity.md](plans/identity.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 
@@ -42,6 +49,7 @@ The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
 package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
+The identity package imports envelope only; it wraps `envelope.Sign`.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import

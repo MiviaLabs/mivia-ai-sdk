@@ -4,6 +4,7 @@
     "envelope": [],
     "events": [],
     "flow": ["machine"],
+    "identity": ["envelope"],
     "machine": ["events"],
     "room": ["envelope"]
   }

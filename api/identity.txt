@@ -1,0 +1,12 @@
+package identity
+  func (i *Identity) Sign(m envelope.Message) (envelope.Message, error)
+  func (i *Identity) Signer() (string)
+  func (i *Identity) Validate() (error)
+  func Load(path string) (*Identity, error)
+  func New() (*Identity, error)
+  type Identity struct {
+  PublicKey ed25519.PublicKey
+  PrivateKey ed25519.PrivateKey
+}
+  var ErrKeyFormat
+  var ErrKeyInvalid

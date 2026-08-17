@@ -32,13 +32,13 @@ The interface earns its place because tools are many and replaceable.
 
 Test files live in `tools/tools_test/`:
 
-- `phase14_tdd_test.go` — the red-green cases for `Add`, `Get`, and
+- `registry_test.go` — the red-green cases for `Add`, `Get`, and
   `Run`. Start with the assertions. Confirm they fail on the empty
   phase. Implement and watch them pass.
-- `phase14_integration_test.go` — register two tools, resolve them by
+- `registry_integration_test.go` — register two tools, resolve them by
   name, and run one. Prove a duplicate fails add. Prove an unknown
   name fails run.
-- `phase14_perf_test.go` — benchmark `Run` on a registry of one
+- `registry_bench_test.go` — benchmark `Run` on a registry of one
   hundred tools. Target under one microsecond. State the allocation
   budget.
 

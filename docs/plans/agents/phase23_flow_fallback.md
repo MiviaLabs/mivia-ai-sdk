@@ -106,7 +106,7 @@ with the joined error, as today.
 
 Test files live in `flow/flow_test/`:
 
-- `fallback_tdd_test.go` — the red-green cases. Red step: the file
+- `fallback_test.go` — the red-green cases. Red step: the file
   does not compile on the empty phase, because `AdmissionOnFailed` and
   `FailureFrom` do not exist. Record the compiler error as the red.
   Cases:
@@ -141,7 +141,7 @@ Test files live in `flow/flow_test/`:
   the fallback read the failed step's ID. Run the confirm-rejection
   case and assert the run aborts. Run the race detector over a panel
   failure case.
-- `fallback_perf_test.go` — benchmark the failure-plus-fallback path
+- `fallback_bench_test.go` — benchmark the failure-plus-fallback path
   against the all-success path on the same graph. Measure the
   all-success baseline on the phase 22 code before this phase lands.
   Record both in the file's leading comment. Report the ratio. Set no

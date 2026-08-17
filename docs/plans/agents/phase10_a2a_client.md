@@ -34,13 +34,13 @@ again after every remote hop.
 
 Test files live in `a2a/a2a_test/`:
 
-- `phase10_tdd_test.go` — the red-green cases for the adapter against a
+- `client_test.go` — the red-green cases for the adapter against a
   recorded transcript. Start with the assertions. Confirm they fail on
   the empty phase. Implement and watch them pass.
-- `phase10_integration_test.go` — run a contract test against a
+- `client_integration_test.go` — run a contract test against a
   recorded a2a server transcript. Send a signed message, poll the
   status, fetch the result. Verify the signature after the hop.
-- `phase10_perf_test.go` — benchmark a full send-status-result cycle
+- `client_bench_test.go` — benchmark a full send-status-result cycle
   against the recorded transcript. Target under ten milliseconds.
   State the allocation budget.
 

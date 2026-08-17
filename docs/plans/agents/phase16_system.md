@@ -26,13 +26,14 @@ blocks work together as built.
 The test files live in `agent/agent_test/` under the system phase
 name:
 
-- `phase16_integration_test.go` — two agents on one plan exchange a
+- `exchange_integration_test.go` — two agents on one plan exchange a
   signed request and a confirmed ack. The tool registry runs a step.
   The memory store holds the shared context. `VerifyThread` validates
   the thread after the exchange.
-- `phase16_perf_test.go` — benchmark one full two-agent exchange.
+- `exchange_bench_test.go` — benchmark one full two-agent exchange.
   Target under ten milliseconds. State the allocation budget.
-  The tdd file has no role here. The behavior is integration-only.
+  The red-green file has no role here. The behavior is
+  integration-only.
 
 ## Verification
 

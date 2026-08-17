@@ -32,13 +32,13 @@ open for plan review.
 
 Test files live in `discovery/discovery_test/`:
 
-- `phase11_tdd_test.go` — the red-green cases for `Parse` and `Match`.
+- `card_test.go` — the red-green cases for `Parse` and `Match`.
   Start with the assertions. Confirm they fail on the empty phase.
   Implement and watch them pass.
-- `phase11_integration_test.go` — parse a real card, match a request
+- `card_integration_test.go` — parse a real card, match a request
   to a capability, and reject a stranger. Prove a malformed card fails
   parse.
-- `phase11_perf_test.go` — benchmark `Match` over a card of one hundred
+- `card_bench_test.go` — benchmark `Match` over a card of one hundred
   capabilities. Target under one microsecond. State the allocation
   budget.
 

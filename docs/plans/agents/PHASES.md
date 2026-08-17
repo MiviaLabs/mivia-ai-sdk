@@ -26,14 +26,19 @@ test and the test kind live in the filename, not in folders.
 ```text
 <package>/<package>_test/
   <concern>_integration_test.go
-  <concern>_tdd_test.go
-  <concern>_perf_test.go
+  <concern>_test.go
+  <concern>_bench_test.go
 ```
 
 - `<concern>` names the behavior under test, such as `status` or `fire`.
 - `_integration_test.go` holds the end-to-end tests.
-- `_tdd_test.go` holds the red-green unit tests for this phase.
-- `_perf_test.go` holds the benchmarks and the allocations.
+- `_test.go` holds the red-green unit tests for this phase.
+- `_bench_test.go` holds the benchmarks and the allocations.
+- No file basename carries a process-artifact word: `phase`, `tdd`,
+  `perf`, `wip`, `draft`, `scratch`, `tmp`, `old`, `backup`, or a
+  version suffix. `scripts/check_names.py` rejects those. Name the
+  file for the concern under test, not the phase or the test kind's
+  old label.
 - The directory is a Go test package that imports the package under
   test. It sits inside the package directory, so the plan gate in
   `scripts/check_plan.py` does not rescan it as a new top-level package.
@@ -54,23 +59,24 @@ sign, encode, transport, decode, verify, admit, ack, thread. For a
 workflow phase, it runs a real graph end to end. It proves two blocks
 work together.
 
-### TDD tests
+### Red-green tests
 
-A tdd test is the red-green loop for one unit of behavior. It asserts
-the intended behavior before the code exists. It must fail on the
-empty implementation. Then the behavior lands and the test turns green.
+A red-green test is the red-green loop for one unit of behavior. It
+asserts the intended behavior before the code exists. It must fail on
+the empty implementation. Then the behavior lands and the test turns
+green.
 
 The file starts with the assertions only. The builder writes them
 first, runs the test, and records the red. Then the builder writes the
 smallest code that makes them pass. Then the builder refactors without
 changing the assertions.
 
-An empty tdd file that never saw red is a failed contract. The plan
-records the red step for each case.
+An empty red-green file that never saw red is a failed contract. The
+plan records the red step for each case.
 
-### Performance tests
+### Benchmark tests
 
-A perf file holds a Go benchmark. It measures time and allocations.
+A benchmark file holds a Go benchmark. It measures time and allocations.
 `AllocsPerRun` states the allocation budget. The baseline runs before
 the phase, so the improvement is measurable.
 

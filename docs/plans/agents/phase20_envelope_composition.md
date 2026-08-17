@@ -31,10 +31,10 @@ it emits the outcome onto the bus.
 
 Test files live in the composition layer's test directory:
 
-- `phase20_tdd_test.go` — the red-green cases for the translator. Start
+- `translator_test.go` — the red-green cases for the translator. Start
   with the assertions. Confirm they fail on the empty implementation.
   Implement and watch them pass.
-- `phase20_integration_test.go` — run a deliver and prove an event
+- `translator_integration_test.go` — run a deliver and prove an event
   arrives once. Feed an ack and a thread verify and prove each arrives.
   Run under `go test -race`.
 

@@ -32,13 +32,13 @@ This is the core rule from `docs/protocol-design.md`.
 
 Test files live in `agent/agent_test/`:
 
-- `phase13_tdd_test.go` — the red-green cases for `Run`. Start with
+- `run_test.go` — the red-green cases for `Run`. Start with
   the assertions. Confirm they fail on the empty phase. Implement and
   watch them pass.
-- `phase13_integration_test.go` — run an agent over a two-step plan.
+- `run_integration_test.go` — run an agent over a two-step plan.
   Prove the ack confirms before the second step. Feed an escalate and
   prove the run routes to a human. Run under `go test -race`.
-- `phase13_perf_test.go` — benchmark a two-step run with an ack
+- `run_bench_test.go` — benchmark a two-step run with an ack
   round trip. Target under two milliseconds. State the allocation
   budget.
 

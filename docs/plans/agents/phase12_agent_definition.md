@@ -32,13 +32,13 @@ agent. The agent is the composition layer.
 
 Test files live in `agent/agent_test/`:
 
-- `phase12_tdd_test.go` — the red-green cases for `New`. Start with
+- `definition_test.go` — the red-green cases for `New`. Start with
   the assertions. Confirm they fail on the empty phase. Implement and
   watch them pass.
-- `phase12_integration_test.go` — build an agent from an identity, a
+- `definition_integration_test.go` — build an agent from an identity, a
   card, and a plan. Prove the name and the capabilities resolve. Feed
   a bad plan and confirm `New` rejects it.
-- `phase12_perf_test.go` — benchmark `New` on a small plan. Target
+- `definition_bench_test.go` — benchmark `New` on a small plan. Target
   under one millisecond. State the allocation budget.
 
 ## Verification

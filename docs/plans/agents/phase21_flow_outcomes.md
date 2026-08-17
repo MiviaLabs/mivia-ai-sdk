@@ -60,18 +60,18 @@ Test files live in `flow/flow_test/`.
 
 The signature change touches every existing caller. Ten test files
 destructure the three-value return, 51 call sites in total:
-`run_tdd_test.go`, `run_integration_test.go`, `run_perf_test.go`,
-`phase06_tdd_test.go`, `phase06_integration_test.go`,
-`phase06_perf_test.go`, `phase07_tdd_test.go`,
-`phase07_integration_test.go`, `phase07_perf_test.go`, and
-`phase07_tdd_new_test.go`. Every file moves to the `Report` API in
+`run_test.go`, `run_integration_test.go`, `run_bench_test.go`,
+`panel_test.go`, `panel_integration_test.go`,
+`panel_bench_test.go`, `chain_test.go`,
+`chain_integration_test.go`, `chain_bench_test.go`, and
+`chain_new_test.go`. Every file moves to the `Report` API in
 the same change. Each file keeps its assertions; only the return
-handling changes. The `new_tdd_test.go`, `new_integration_test.go`,
-`new_perf_test.go`, and `phase06_tdd_new_test.go` files test `New`,
-whose signature stays unchanged. `phase07_tdd_new_test.go` also holds
+handling changes. The `new_test.go`, `new_integration_test.go`,
+`new_bench_test.go`, and `panel_new_test.go` files test `New`,
+whose signature stays unchanged. `chain_new_test.go` also holds
 one `Run` call site; it moves to the `Report` API with the rest.
 
-- `outcomes_tdd_test.go` — the red-green cases. Red step: the file
+- `outcomes_test.go` — the red-green cases. Red step: the file
   does not compile on the empty phase, because `Report` and `Outcome`
   do not exist. Record the compiler error as the red. Cases:
   - A linear three-step run reports every step `OutcomeSucceeded`.
@@ -90,7 +90,7 @@ one `Run` call site; it moves to the `Report` API with the rest.
 - `outcomes_integration_test.go` — rerun the phase 5 diamond graph
   through the new signature. Assert the outcome of every step. Assert
   the declaration-order tie-break still holds.
-- `outcomes_perf_test.go` — keep the existing benchmarks compiling
+- `outcomes_bench_test.go` — keep the existing benchmarks compiling
   under the new signature. Measure the three-step linear baseline
   again on the same machine before this phase's code lands. Record
   ns/op, B/op, and allocs/op in the file's leading comment. The

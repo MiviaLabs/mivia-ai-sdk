@@ -1,7 +1,7 @@
 # Phase 24: machine row accessors allocate once
 
-Status: ready to build. This phase fixes an allocation defect that
-flow's phase 7 perf test exposed. The machine block plan lives in
+Status: done. This phase fixes an allocation defect that
+flow's phase 7 benchmark exposed. The machine block plan lives in
 `docs/plans/machine.md`. See `docs/plans/agents/PHASES.md` for the
 contract.
 
@@ -10,14 +10,14 @@ contract.
 Make `AllowedTransitions` and `AllowedTriggers` allocate exactly one
 slice per call. Drop the chained benchmark to the flat baseline alloc
 count. Remove the zero-margin allocation budget in flow's phase 7
-perf test.
+benchmark.
 
 ## Scope
 
 Inside: the two accessor bodies and the `AllowedTriggers` doc comment
 in `machine/definition.go`, the alloc budget test in
-`machine/machine_test/status_perf_test.go`, the leading comment of
-`flow/flow_test/phase07_perf_test.go`, and one paragraph in
+`machine/machine_test/status_bench_test.go`, the leading comment of
+`flow/flow_test/chain_bench_test.go`, and one paragraph in
 `docs/plans/machine.md`.
 
 Outside: caching, exported-symbol changes, wire changes, flow code,
@@ -45,7 +45,7 @@ then a larger slice at capacity two. The chained runner calls
 `AllowedTransitions` four times on a two-row status. The chained
 benchmark reports twelve allocs per op against the flat baseline's
 eight. That count equals the 1.5x budget with zero margin. See the
-leading comment in `flow/flow_test/phase07_perf_test.go`.
+leading comment in `flow/flow_test/chain_bench_test.go`.
 
 `AllowedTriggers` has the same append growth plus a `seen` map. Its
 cost depends on escape analysis. At an escaping call site, a call with
@@ -100,13 +100,13 @@ Append this paragraph at the end of the API section:
 ## Tests
 
 The two accessors already sit under the status concern, so their perf
-cases join `machine/machine_test/status_perf_test.go`. That file holds
+cases join `machine/machine_test/status_bench_test.go`. That file holds
 the benchmarks and the allocation budgets for the status concern.
 
 - `TestAllowedRowsAllocBudget` — a table-driven alloc budget test. Use
   `testing.AllocsPerRun` with one thousand runs, as
   `TestFireAllocBudget` does. Reuse the `threeStep` helper from
-  `status_tdd_test.go`. Cases:
+  `status_test.go`. Cases:
   - Allowed transitions from `running`, two rows: budget one.
   - Allowed transitions from `absent`, no rows: budget zero.
   - Allowed triggers from `running`, two triggers: budget one.
@@ -120,10 +120,10 @@ post-fix bound of one slice per call. The `absent` cases pass before
 and after; a zero-size `make` does not count as an allocation.
 
 `TestAllowedTransitions` and `TestAllowedTriggers` in
-`status_tdd_test.go` stay unchanged and green. They keep pinning
+`status_test.go` stay unchanged and green. They keep pinning
 declaration order, empty results, and the fresh copy.
 
-`flow/flow_test/phase07_perf_test.go` changes in its leading comment
+`flow/flow_test/chain_bench_test.go` changes in its leading comment
 only:
 
 - Re-measure both benchmarks after the machine change with

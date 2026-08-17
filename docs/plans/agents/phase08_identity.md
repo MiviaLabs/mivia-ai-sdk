@@ -1,6 +1,6 @@
 # Phase 8: identity key wrap
 
-Status: future. Builds the identity block. An identity is an ed25519
+Status: done. Builds the identity block. An identity is an ed25519
 key plus its hex signer string. This phase wraps the key so callers
 hold one object. See `docs/plans/agents/PHASES.md`.
 
@@ -52,12 +52,12 @@ apart.
 
 Test files live in `identity/identity_test/`:
 
-- `new_tdd_test.go` — the red-green cases for `New`, `Load`,
+- `new_test.go` — the red-green cases for `New`, `Load`,
   `Validate`, and `Signer`. Start with the assertions. Confirm they
   fail on the empty phase. Implement and watch them pass.
 - `sign_integration_test.go` — the cross-package path, three cases.
   Each case is listed below.
-- `sign_perf_test.go` — benchmark `Sign` on a small message.
+- `sign_bench_test.go` — benchmark `Sign` on a small message.
   `AllocsPerRun` states the allocation budget. The builder records
   the measured baseline in this file.
 

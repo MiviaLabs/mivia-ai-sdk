@@ -115,7 +115,7 @@ the 80-line cap:
 
 Test files live in `flow/flow_test/`:
 
-- `routing_tdd_test.go` — the red-green cases. Red step: the file does
+- `routing_test.go` — the red-green cases. Red step: the file does
   not compile on the empty phase, because `Admission` and `Route` do
   not exist. Record the compiler error as the red. Cases:
   - `New` rejects a branch step with no dependent, pinned message.
@@ -144,7 +144,7 @@ Test files live in `flow/flow_test/`:
   Assert the strict join skips. Assert `Confirm` never runs for a
   skipped step. Assert the final status equals the chosen branch's
   target status.
-- `routing_perf_test.go` — benchmark a five-step branch graph: root,
+- `routing_bench_test.go` — benchmark a five-step branch graph: root,
   branch, two alternatives, join. Measure the five-step linear
   baseline on the phase 21 code before this phase lands. Record both
   in the file's leading comment. Report the ratio. Set no fixed

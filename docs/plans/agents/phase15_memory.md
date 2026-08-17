@@ -32,13 +32,13 @@ use.
 
 Test files live in `memory/memory_test/`:
 
-- `phase15_tdd_test.go` — the red-green cases for `Put` and `Get`.
+- `store_test.go` — the red-green cases for `Put` and `Get`.
   Start with the assertions. Confirm they fail on the empty phase.
   Implement and watch them pass.
-- `phase15_integration_test.go` — put two blobs, get them by ref, and
+- `store_integration_test.go` — put two blobs, get them by ref, and
   prove the refs match `envelope.ContextRef`. Exceed the budget and
   prove the store rejects it. Run under `go test -race`.
-- `phase15_perf_test.go` — benchmark `Put` and `Get` on a ten-megabyte
+- `store_bench_test.go` — benchmark `Put` and `Get` on a ten-megabyte
   budget. Target under one microsecond for a small blob.
 
 ## Verification

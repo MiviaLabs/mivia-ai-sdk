@@ -33,13 +33,13 @@ envelope `thread_id`. The `messageId` maps to the envelope `id`.
 
 Test files live in `a2a/a2a_test/`:
 
-- `phase09_tdd_test.go` — the red-green cases for `ToPart` and
+- `mapping_test.go` — the red-green cases for `ToPart` and
   `FromPart`. Start with the assertions. Confirm they fail on the
   empty phase. Implement and watch them pass.
-- `phase09_integration_test.go` — build a signed message, map it to a
+- `mapping_integration_test.go` — build a signed message, map it to a
   part, map it back, and verify the signature and every field. Prove
   `thread_id` becomes `contextId` and returns intact.
-- `phase09_perf_test.go` — benchmark the round trip on a full message.
+- `mapping_bench_test.go` — benchmark the round trip on a full message.
   Target under fifty microseconds. State the allocation budget.
 
 Conformance vectors for the mapped form land in

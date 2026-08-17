@@ -33,13 +33,13 @@ nil `Guard` or a nil `Action` is checked, never invoked. The returned
 
 Test files live in `machine/machine_test/`:
 
-- `phase02_tdd_test.go` — the red-green cases for `Fire`. Start with
+- `fire_tdd_test.go` — the red-green cases for `Fire`. Start with
   the assertions. Confirm they fail on the empty phase. Implement and
   watch them pass.
-- `phase02_integration_test.go` — build a definition with a guard and
+- `fire_integration_test.go` — build a definition with a guard and
   an action. Fire it across two transitions. Prove the order of the
   exit and entry actions.
-- `phase02_perf_test.go` — benchmark `Fire` on a ten-row table.
+- `fire_perf_test.go` — benchmark `Fire` on a ten-row table.
   Target under one microsecond. State the allocation budget.
 
 ## Verification

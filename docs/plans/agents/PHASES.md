@@ -20,17 +20,17 @@ phase does not pull in a later phase.
 
 ## Test layout
 
-The flat layout puts every test in one subdirectory. The phase number
-and the test kind live in the filename, not in folders.
+The flat layout puts every test in one subdirectory. The concern under
+test and the test kind live in the filename, not in folders.
 
 ```text
 <package>/<package>_test/
-  phase<NN>_integration_test.go
-  phase<NN>_tdd_test.go
-  phase<NN>_perf_test.go
+  <concern>_integration_test.go
+  <concern>_tdd_test.go
+  <concern>_perf_test.go
 ```
 
-- `<NN>` is the two-digit phase number, zero-padded.
+- `<concern>` names the behavior under test, such as `status` or `fire`.
 - `_integration_test.go` holds the end-to-end tests.
 - `_tdd_test.go` holds the red-green unit tests for this phase.
 - `_perf_test.go` holds the benchmarks and the allocations.

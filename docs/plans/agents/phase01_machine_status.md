@@ -45,7 +45,7 @@ It accepts a nil `Guard`.
 
 Test files live in `machine/machine_test/`:
 
-- `phase01_tdd_test.go` — the red-green cases for `New` and `Validate`.
+- `status_tdd_test.go` — the red-green cases for `New` and `Validate`.
   Start with the assertions. Confirm they fail on the empty phase.
   Then implement and watch them pass. Cases:
   - `New` rejects an empty transition list.
@@ -54,11 +54,11 @@ Test files live in `machine/machine_test/`:
 - `Validate` rejects a `From` not reachable from the initial status.
 - `Validate` accepts a nil Guard.
 - `Validate` accepts a valid table.
-- `phase01_integration_test.go` — merged into the TDD file.
+- `status_integration_test.go` — merged into the TDD file.
   Phase 1 imports no other package. No cross-boundary path exists.
   See PHASES.md: "A phase may merge files only when a test kind has
   no case yet."
-- `phase01_perf_test.go` — benchmark `Validate` on a table of ten
+- `status_perf_test.go` — benchmark `Validate` on a table of ten
   transitions. The builder runs the benchmark against the empty
   implementation first and records the baseline in a comment. Target
   under one microsecond. State the allocation budget with

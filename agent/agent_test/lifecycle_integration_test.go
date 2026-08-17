@@ -91,7 +91,7 @@ func TestLifecycleFullRunSucceeds(t *testing.T) {
 	rec := &lifecycleRecorder{}
 	rec.subscribe(t, bus, agent.MessageDeliveredEvent, agent.MessageAckedEvent, flow.StepCompletedEvent, agent.ThreadVerifiedEvent)
 
-	status, _, err := a.Run(context.Background(), "thread-lifecycle", m, machine.InOut{}, confirmingWait, bus)
+	status, _, err := a.Run(context.Background(), "thread-lifecycle", m, machine.InOut{}, confirmingWait, bus, nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestLifecycleForcedAckFailureHaltsWithoutErasingPriorEvents(t *testing.T) {
 		return confirmingWait(ctx, msg)
 	}
 
-	_, _, err := a.Run(context.Background(), "thread-lifecycle-fail", m, machine.InOut{}, wait, bus)
+	_, _, err := a.Run(context.Background(), "thread-lifecycle-fail", m, machine.InOut{}, wait, bus, nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a corrected ack")
 	}

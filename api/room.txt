@@ -9,12 +9,14 @@ package room
   func (r *Room) Members() ([]string)
   func (r *Room) Promote(id, by string) (error)
   func (r *Room) Remove(id, by string) (error)
+  func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)
   func New(id, founder string) (*Room, error)
   type Role string
   type Room struct {
 }
   var ErrAlreadyMember
   var ErrLastModerator
+  var ErrNoMonitor
   var ErrNotMember
   var ErrNotModerator
   var ErrUnsigned

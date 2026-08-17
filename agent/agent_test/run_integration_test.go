@@ -86,7 +86,7 @@ func TestRunTwoStepOrderAndEvents(t *testing.T) {
 	}
 
 	w := &orderedWait{}
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus)
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus, nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestRunTwoStepEscalatedSecondStep(t *testing.T) {
 		t.Fatalf("Subscribe() unexpected error: %v", err)
 	}
 
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus)
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil)
 	if !errors.Is(err, agent.ErrEscalated) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrEscalated", err)
 	}

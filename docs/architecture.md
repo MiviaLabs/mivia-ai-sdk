@@ -16,7 +16,12 @@ references.
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
   VerifyThread. One package per concern.
 - `room/` — standing groups. It holds the roster, the roles, and
-  message admission.
+  message admission. It also ships `StaleMembers` and the sentinel
+  `ErrNoMonitor`. `StaleMembers` takes a caller-supplied
+  `*heartbeat.Monitor` and reports which current roster members
+  `hb.Dead` also reports; the roster, not the `Monitor`, is the source
+  of truth for membership. `room` imports `heartbeat`. See
+  [plans/room.md](plans/room.md).
 - `machine/` — the status model. It ships `Status`, `Trigger`,
   `Guard`, `Action`, `Transition`, `InOut`, `Definition`, `New`,
   `Initial`, `Transitions`, `AllowedTransitions`, `AllowedTriggers`,
@@ -66,17 +71,25 @@ references.
   signs an `envelope.Message`, emits `MessageDeliveredEvent`, calls the
   caller-supplied `AckWait`, and emits `MessageAckedEvent` once the ack
   confirms. An `AckWait` that wraps `ErrEscalated` routes the step back
-  to the caller. `agent` imports `envelope`, `events`, and `machine`;
-  none of those three packages imports `agent` or either of the other
-  two. See [plans/agent.md](plans/agent.md).
+  to the caller. `Run` takes one trailing, optional
+  `*heartbeat.Monitor` parameter. A non-nil `Monitor` beats one id,
+  `a.id.Signer()+":"+threadID`, right before each gated step's
+  `AckWait` call, and forgets it once, on every return path. A panel
+  step reaches no beat call; see
+  [plans/agents/phase26_agent_heartbeat.md](plans/agents/phase26_agent_heartbeat.md)'s
+  disclosed scope limit. `Run` never reads `Dead` itself; an external
+  caller holding the same `Monitor` polls `Dead` on its own schedule.
+  `agent` imports `envelope`, `events`, `machine`, and `heartbeat`;
+  none of those four packages imports `agent` or any of the other
+  three. See [plans/agent.md](plans/agent.md).
 - `heartbeat/` — a leaf primitive. It ships `Monitor`, `New`, `Beat`,
   `Alive`, `Dead`, `Forget`, and the typed event name `MissedEvent`.
   `Monitor` tracks liveness by time: it records the last beat per id
-  and reports which ids have gone silent past a fixed timeout. It has
-  no caller in this repo yet; it is a plausible future building block
-  for agent execution work, once that work is scoped, not yet named in
-  any phase contract. It imports `events` only, for the `MissedEvent`
-  constant. See [plans/heartbeat.md](plans/heartbeat.md).
+  and reports which ids have gone silent past a fixed timeout. `agent`
+  and `room` both import it: `agent.Run`'s optional step-liveness
+  heartbeat, and `room.Room.StaleMembers`'s roster-staleness check. It
+  imports `events` only, for the `MissedEvent` constant. See
+  [plans/heartbeat.md](plans/heartbeat.md).
 - `a2a/` — a future package. It is planned in
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 

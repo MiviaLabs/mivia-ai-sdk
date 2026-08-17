@@ -104,6 +104,9 @@ composition comes last.
 - System: the end-to-end two-agent exchange.
 - Reaction: events core, machine emit, flow emit, envelope emit. The
   reaction phases ship when their dependencies allow it.
+- Liveness: agent step-liveness heartbeat, room membership staleness.
+  Both build on the shipped `heartbeat` package and ship independently
+  of each other.
 
 Each plan names its phase number and its dependency on the prior phase.
 

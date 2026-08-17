@@ -1,11 +1,13 @@
 # Plan: agent
 
-Status: phase 12, phase 20, and phase 13 shipped. Phase 13's
-contract is docs/plans/agents/phase13_agent_run.md. Phase 20's
-contract is docs/plans/agents/phase20_envelope_composition.md. Phase 12
-depends on identity, discovery, and flow, all shipped. Phase 20 adds
-envelope and events, both shipped. Phase 13 adds the execution loop,
-descoped to the in-process runner (see below); phase 14 adds tools.
+Status: phase 12, phase 20, and phase 13 shipped. Phase 26 is ready to
+build. Phase 13's contract is docs/plans/agents/phase13_agent_run.md.
+Phase 20's contract is docs/plans/agents/phase20_envelope_composition.md.
+Phase 26's contract is docs/plans/agents/phase26_agent_heartbeat.md.
+Phase 12 depends on identity, discovery, and flow, all shipped. Phase
+20 adds envelope and events, both shipped. Phase 13 adds the execution
+loop, descoped to the in-process runner (see below); phase 14 adds
+tools. Phase 26 adds an optional step-liveness heartbeat to `Run`.
 
 ## Goal
 
@@ -83,6 +85,37 @@ a `*machine.Definition` parameter to hand to `flow.Run`. The policy row
 becomes `"agent": ["identity", "discovery", "flow", "envelope",
 "events", "machine"]`. `machine`'s own row stays `["events"]`; it gains
 no new import.
+
+### Phase 26 addition: scope
+
+Phase contract: docs/plans/agents/phase26_agent_heartbeat.md. This
+phase closes the one real liveness gap in `Run`: the caller-supplied
+`wait` call can block forever, with no stall signal. `Run` gains one
+trailing, optional parameter, `hb *heartbeat.Monitor`. `Run` beats it
+once per gated step, right before `wait`, and forgets it once, on
+every return path. `Run` never reads `Dead` itself; an external
+caller, holding the same `Monitor`, polls `Dead` and reacts on its
+own, for example by canceling `ctx`. See
+docs/plans/agents/phase26_agent_heartbeat.md for the full beat-id and
+beat-timing design.
+
+Inside: the new `hb` parameter, one beat call, one deferred forget
+call. Outside: a `Dead` check inside `Run`, a retry or cancellation
+policy, and a `MissedEvent` emission from inside `agent`.
+
+Disclosed scope limit: coverage reaches only a gated, singleton step,
+the kind `confirmStep` gates behind `wait`. `flow.Run`'s panel wave
+runs every panel member concurrently with no `Confirm` or `wait` call
+at all, so a panel of two or more members never reaches a beat call
+and `hb.Dead` can never report a stalled panel member. This is a
+known, disclosed limit, not a bug this phase fixes; see
+docs/plans/agents/phase26_agent_heartbeat.md's "Disclosed scope
+limit" section.
+
+The package imports gain `heartbeat` in this phase. The policy row
+becomes `"agent": ["identity", "discovery", "flow", "envelope",
+"events", "machine", "heartbeat"]`. `heartbeat`'s own row stays
+`["events"]`; it gains no new import and does not import `agent`.
 
 `Run` does not add a `*machine.Definition` field to `Agent`. `Agent`
 stays the declarative binding `New` built in phase 12: an identity, a
@@ -359,6 +392,36 @@ The expected `api/agent.txt` lock, phase 13 lines added to the phase
   var ErrNoWait
 ```
 
+### Phase 26 addition: the heartbeat parameter
+
+Full design in docs/plans/agents/phase26_agent_heartbeat.md; this
+section states the API lock target.
+
+`Run`'s signature gains one trailing parameter:
+
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)`
+
+`hb == nil` skips every heartbeat call; `Run` behaves exactly as the
+phase 13 section above describes. `hb != nil` adds, per gated step,
+one `hb.Beat(a.id.Signer()+":"+threadID, time.Now())` call right
+before `wait`, using one id for the whole `Run` call, and one deferred
+`hb.Forget` call on that same id that runs once, on every return path.
+No new sentinel, constant, or type. `Run`'s existing sentinel checks
+stay unchanged; `hb` gets no nil-check sentinel of its own, because a
+nil `Monitor` is a valid, supported "no telemetry" choice, not a
+caller error.
+
+The expected `api/agent.txt` diff, against the phase 13 block above:
+
+```text
+- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
+```
+
+This is a breaking change to every existing call site of `Run`. The
+full list of the 20 call sites that gain a trailing `nil` argument
+lives in docs/plans/agents/phase26_agent_heartbeat.md.
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -525,6 +588,28 @@ Full test list in docs/plans/agents/phase13_agent_run.md. Summary:
   erasing the events already emitted for the steps that already
   passed.
 
+### Phase 26 addition: liveness tests
+
+Full test list in docs/plans/agents/phase26_agent_heartbeat.md.
+Summary:
+
+- `liveness_test.go` — red-green cases for `hb == nil` (fully inert),
+  `hb != nil` (beat lands before `wait`, `Forget` runs after `Run`
+  returns on a success, an escalation, and a plain error), one id
+  reused across a two-step run, and a one-nanosecond-timeout case that
+  proves staleness deterministically with no `time.Sleep`.
+- `liveness_integration_test.go` — a full successful run leaves
+  `hb.Dead` empty, two goroutines run the same `*Agent` on two threads
+  against one shared `Monitor` with no stale-beat failure, an
+  external-sweep case where a second goroutine polls `Dead` and
+  cancels `ctx` to unblock a stalled `wait`, and a panel-coverage-gap
+  case: a two-member panel plan with no gated step, run with
+  `hb != nil`, asserting `hb.Dead` stays empty and `hb.Alive` reads
+  false for the panel wave's would-be id, pinning the disclosed scope
+  limit above. Runs under `go test -race`.
+- `run_bench_test.go` gains `BenchmarkRunWithHeartbeat`, compared
+  against the existing nil-`hb` benchmark.
+
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
@@ -609,3 +694,24 @@ Full test list in docs/plans/agents/phase13_agent_run.md. Summary:
   defines no new wire schema.
 - docs/plans/a2a.md stays status future. This phase does not add code
   to a2a and does not require it.
+
+### Phase 26 addition: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for `agent` and for the total, with
+  the new heartbeat lines counted in.
+- The `agent` row in `policy/layers.json` gains `heartbeat`. The row
+  change lands with this plan update, before the code.
+- `heartbeat`'s row in `policy/layers.json` stays `["events"]`; it
+  gains no new import and does not import `agent`.
+- `api/agent.txt` gains the changed `Run` line, through
+  `make api-update` in the same change as the code. No other line
+  changes; `api/heartbeat.txt` stays unchanged.
+- `go test -race ./agent/...` passes, covering the two-goroutine and
+  the external-sweep integration cases.
+- `docs/architecture.md`'s `agent/` bullet gains one sentence on the
+  optional `hb` parameter and the `heartbeat` import edge, in the same
+  change as the code.
+- This phase adds no conformance vector. `Run`'s heartbeat addition
+  carries no wire form of its own.

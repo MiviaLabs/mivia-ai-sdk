@@ -3,10 +3,12 @@ package agent_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
+	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -46,7 +48,31 @@ func BenchmarkRun(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus); err != nil {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkRunWithHeartbeat benchmarks the same two-step run as
+// BenchmarkRun, with a non-nil *heartbeat.Monitor built with a
+// one-second timeout.
+// Measured: ~108 us/op, ~7258 B/op, 67 allocs/op, against
+// BenchmarkRun's own measured nil-hb baseline of ~106 us/op,
+// ~7259 B/op, 67 allocs/op. The two Beat calls and one deferred
+// Forget call per Run invocation reuse the Monitor's already-sized
+// map, so they add no measurable allocation on this two-step plan.
+func BenchmarkRunWithHeartbeat(b *testing.B) {
+	a, m := twoStepFixture(b)
+	bus := benchRunBus(b)
+	hb, err := heartbeat.New(time.Second)
+	if err != nil {
+		b.Fatalf("heartbeat.New() unexpected error: %v", err)
+	}
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, hb); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -67,7 +93,7 @@ func TestRunAllocBudget(t *testing.T) {
 	}
 	ctx := context.Background()
 	alloc := testing.AllocsPerRun(200, func() {
-		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus); err != nil {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil); err != nil {
 			t.Fatal(err)
 		}
 	})

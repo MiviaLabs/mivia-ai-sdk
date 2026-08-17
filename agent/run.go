@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
+	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -50,9 +52,18 @@ var (
 // On a successful run with one or more gated steps, Run calls
 // EmitThreadVerified once, over every step message it built, in
 // order.
+//
+// hb is an optional step-liveness heartbeat. A nil hb skips every
+// heartbeat call; Run's behavior is otherwise unchanged. A non-nil hb
+// beats one id, a.id.Signer()+":"+threadID, right before each gated
+// step's wait call, and forgets that id once, on every return path.
+// A panel step reaches no beat call; see docs/plans/agents/
+// phase26_agent_heartbeat.md's disclosed scope limit. Run never calls
+// hb.Dead and never aborts a step on staleness; an external caller
+// holding the same hb polls Dead on its own schedule.
 func (a *Agent) Run(
 	ctx context.Context, threadID string, m *machine.Definition,
-	in machine.InOut, wait AckWait, bus *events.Bus,
+	in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor,
 ) (machine.Status, machine.InOut, error) {
 	if wait == nil {
 		return machine.Status(""), in, ErrNoWait
@@ -64,8 +75,13 @@ func (a *Agent) Run(
 		return machine.Status(""), in, ErrNoThread
 	}
 
+	hbID := a.id.Signer() + ":" + threadID
+	if hb != nil {
+		defer hb.Forget(hbID)
+	}
+
 	var built []envelope.Message
-	confirm := a.confirmStep(threadID, wait, bus, &built)
+	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID)
 
 	status, rec, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
 	if err != nil {
@@ -84,8 +100,9 @@ func (a *Agent) Run(
 // built accumulates every message the closure signs, in step order,
 // so Run can verify the full thread once the walk finishes. Run
 // calls confirmStep sequentially per gated step; flow.Run never runs
-// two Confirm calls concurrently, so built needs no lock.
-func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message) flow.Confirm {
+// two Confirm calls concurrently, so built needs no lock. hb, when
+// non-nil, beats hbID right before wait; a nil hb skips the beat.
+func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string) flow.Confirm {
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{
 			Version:   envelope.Version,
@@ -104,6 +121,9 @@ func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, buil
 		}
 		if err := EmitMessageDelivered(ctx, bus, signed); err != nil {
 			return err
+		}
+		if hb != nil {
+			_ = hb.Beat(hbID, time.Now())
 		}
 		ack, err := wait(ctx, signed)
 		if err != nil {

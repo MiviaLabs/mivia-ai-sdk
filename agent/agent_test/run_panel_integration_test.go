@@ -101,7 +101,7 @@ func TestRunMixedGatedAndPanel(t *testing.T) {
 	counter := newEventCounter(bus, t, agent.MessageDeliveredEvent, agent.MessageAckedEvent, agent.ThreadVerifiedEvent, flow.StepCompletedEvent)
 
 	w := newCountingWait()
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus)
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus, nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestRunPanelOnlyPlanNoGatedSteps(t *testing.T) {
 	counter := newEventCounter(bus, t, agent.MessageDeliveredEvent, agent.MessageAckedEvent, agent.ThreadVerifiedEvent, flow.StepCompletedEvent)
 
 	w := newCountingWait()
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus)
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, w.run, bus, nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}

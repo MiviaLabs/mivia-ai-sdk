@@ -1,13 +1,16 @@
 # Plan: agent
 
-Status: phase 12, phase 20, and phase 13 shipped. Phase 26 is ready to
-build. Phase 13's contract is docs/plans/agents/phase13_agent_run.md.
-Phase 20's contract is docs/plans/agents/phase20_envelope_composition.md.
-Phase 26's contract is docs/plans/agents/phase26_agent_heartbeat.md.
-Phase 12 depends on identity, discovery, and flow, all shipped. Phase
-20 adds envelope and events, both shipped. Phase 13 adds the execution
-loop, descoped to the in-process runner (see below); phase 14 adds
-tools. Phase 26 adds an optional step-liveness heartbeat to `Run`.
+Status: phase 12, phase 20, and phase 13 shipped. Phase 26 and phase
+28 are ready to build. Phase 13's contract is docs/plans/agents/
+phase13_agent_run.md. Phase 20's contract is docs/plans/agents/
+phase20_envelope_composition.md. Phase 26's contract is docs/plans/
+agents/phase26_agent_heartbeat.md. Phase 28's contract is docs/plans/
+agents/phase28_agent_run_room.md. Phase 12 depends on identity,
+discovery, and flow, all shipped. Phase 20 adds envelope and events,
+both shipped. Phase 13 adds the execution loop, descoped to the
+in-process runner (see below); phase 14 adds tools. Phase 26 adds an
+optional step-liveness heartbeat to `Run`. Phase 28 adds an optional
+room name to `Run`, so a built step message can pass `room.Room.Accepts`.
 
 ## Goal
 
@@ -124,6 +127,30 @@ record are `Run` parameters, matching `flow.Run`'s own shape, so one
 `Agent` value can run against more than one machine model or resume
 with more than one starting record, without `New`'s signature or
 `Agent`'s fields changing.
+
+### Phase 28 addition: scope
+
+Phase contract: docs/plans/agents/phase28_agent_run_room.md. This
+phase closes a room-admission gap: `Run` never sets `Message.Room`
+before it signs a step message, so a `room.Room.Accepts` call can
+never admit a `Run`-built message. `Run` gains one trailing, optional
+parameter, `room string`. `confirmStep` stamps it onto each built
+message, as `msg.Room = room`, before `a.id.Sign(msg)` runs, because
+`envelope.Sign` covers `Room` in its signed payload and nothing after
+`Sign` can add it without invalidating the signature.
+
+Inside: the new `room` parameter, one field assignment inside
+`confirmStep`, guarded so an empty `room` reproduces today's exact
+behavior (`Message.Room` stays the zero value). Outside: a `Room`
+field on `Agent`, a generic pre-sign decorator hook, and any change to
+`room.Room.Accepts` or to `envelope.Sign`. See
+docs/plans/agents/phase28_agent_run_room.md for the three rejected
+alternatives and why.
+
+The package's imports do not change in this phase. `agent` already
+imports `envelope`, which already declares `Message.Room`; the policy
+row stays `["identity", "discovery", "flow", "envelope", "events",
+"machine", "heartbeat"]`.
 
 ## API
 
@@ -422,6 +449,36 @@ This is a breaking change to every existing call site of `Run`. The
 full list of the 20 call sites that gain a trailing `nil` argument
 lives in docs/plans/agents/phase26_agent_heartbeat.md.
 
+### Phase 28 addition: the room parameter
+
+Full design in docs/plans/agents/phase28_agent_run_room.md; this
+section states the API lock target.
+
+`Run`'s signature gains one trailing parameter:
+
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)`
+
+`room == ""` skips the assignment; `Run` behaves exactly as the phase
+26 section above describes. `room != ""` sets `msg.Room = room` inside
+`confirmStep`, on every gated step's built message, before
+`a.id.Sign(msg)` runs. No new sentinel, constant, or type. `Run`'s
+existing sentinel checks stay unchanged; `room` gets no nil-or-empty
+check of its own, because an empty room is a valid, supported "no
+room" choice, not a caller error.
+
+The expected `api/agent.txt` diff, against the phase 26 block above:
+
+```text
+- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)
+```
+
+This is a breaking change to every existing call site of `Run`. Every
+call site listed in the phase 26 section above gains a trailing `""`
+argument in this change, since no existing test supplies a room name
+yet. The full rollout list lives in docs/plans/agents/
+phase28_agent_run_room.md.
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -610,6 +667,31 @@ Summary:
 - `run_bench_test.go` gains `BenchmarkRunWithHeartbeat`, compared
   against the existing nil-`hb` benchmark.
 
+### Phase 28 addition: room-stamping tests
+
+Full test list in docs/plans/agents/phase28_agent_run_room.md.
+Summary:
+
+- `run_test.go` gains two cases in the existing `Run` table: a
+  non-empty `room` argument proves the built message's `Room` equals
+  the supplied name and still passes `Message.Validate()` and
+  `Message.VerifySignature()`; an empty `room` argument proves
+  `Message.Room` stays the zero value, reproducing today's behavior.
+- `run_room_integration_test.go` — the cross-package proof: a real
+  `room.Room`, admitted with the agent's signer, calls `Accepts` on a
+  `Run`-built message signed with a non-empty `room` argument equal to
+  the room's `ID()`, and the call returns nil. A second case reruns
+  the same setup with `room` left empty and asserts `Accepts` now
+  returns a non-nil error, pinning the gap as a regression check.
+- Every existing call site to `a.Run(...)` gains a trailing `""`
+  argument, mirroring phase 26's mechanical rollout across the same
+  files. No existing assertion changes.
+- `docs/examples/agent-dispatch.md` gets fixed in the same phase:
+  thread the room string through the example's `Run` call using the
+  real `room.Room`'s `ID()`, and change the example's `wait` closure
+  to return the `Accepts` error instead of only printing it, so the
+  final printed status honestly reflects the run's real outcome.
+
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
@@ -715,3 +797,32 @@ Summary:
   change as the code.
 - This phase adds no conformance vector. `Run`'s heartbeat addition
   carries no wire form of its own.
+
+### Phase 28 addition: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for `agent` and for the total, with
+  the new room-stamping line counted in.
+- `policy/layers.json` does not change. The `agent` row already lists
+  `envelope`; this phase adds no new import edge.
+- `api/agent.txt` gains the changed `Run` line, through
+  `make api-update` in the same change as the code. No other line
+  changes; no other package's API lock changes.
+- `go test -race ./agent/...` passes, covering the room integration
+  case.
+- `docs/architecture.md`'s `agent/` bullet gains one sentence on the
+  optional `room` parameter, in the same change as the code.
+- `docs/packages/agent.md` gains the updated `Run` signature and one
+  new invariant line stating the room-stamping rule, in the same
+  change as the code.
+- `docs/protocol-design.md`'s Addressing bullet gains one sentence
+  noting `agent.Run` can stamp a caller-chosen room name onto each
+  step message before signing. Required by AGENTS.md: message-
+  semantics changes update `docs/protocol-design.md` in the same
+  change as the code.
+- `docs/examples/agent-dispatch.md` gains the room-string fix,
+  verified by re-running the program against the real module; the
+  final printed status must match the program's real outcome.
+- This phase adds no conformance vector. `Message.Room` already has
+  wire-level coverage in `envelope`'s own vectors.

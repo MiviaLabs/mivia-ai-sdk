@@ -1,4 +1,4 @@
-// Package envelope implements the model-to-model message envelope:
+// Package envelope implements the AI message envelope:
 // a natural-language payload inside machine-checkable metadata.
 //
 // Map: message.go = Message, Intent, Epistemic, validation, wire

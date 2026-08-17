@@ -16,11 +16,12 @@ references.
   VerifyThread. One package per concern.
 - `room/` — standing groups. It holds the roster, the roles, and
   message admission.
-- `machine/` — the status model. Phases 1 and 2 ship `Status`,
-  `Trigger`, `Guard`, `Action`, `Transition`, `InOut`, `Definition`,
-  `New`, `Initial`, `Transitions`, `Validate`, and the `Fire` dispatch.
-  Phase 3 ships the JSON wire form: `Encode`, `Decode`, `Registry`, and
-  `NewRegistry`. See [packages/machine.md](packages/machine.md) and
+- `machine/` — the status model. It ships `Status`, `Trigger`,
+  `Guard`, `Action`, `Transition`, `InOut`, `Definition`, `New`,
+  `Initial`, `Transitions`, `AllowedTransitions`, `AllowedTriggers`,
+  `Validate`, `Fire`, and the JSON wire form: `Encode`, `Decode`,
+  `Registry`, `NewRegistry`, and `MoveEvent`. See
+  [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
 - `flow/` — the step graph. It ships `Step`, `Panel`,
   `Definition`, `New`, and `Roots`. The runner, the scheduling, the

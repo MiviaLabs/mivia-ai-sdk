@@ -1,19 +1,26 @@
 # mivia-ai-sdk
 
-Proof-of-concept Go SDK for an agent stack. It is a set of composable
-building blocks, not a monolith. The core block is a message envelope:
-natural-language payloads inside machine-checkable, authenticatable
-metadata. The other blocks add standing groups, a status model, a step
-graph, and an event bus.
+Go SDK for building AI agents and workflows. A set of composable
+building blocks, not a monolith. Standard library only.
+
+## Features
+
+- **envelope** — AI message protocol: typed intents, epistemic labels,
+  ed25519 signatures, semantic acks, thread audit chains
+- **room** — standing groups: roster, roles, moderator-gated admission
+- **machine** — state machines: typed statuses, guard-gated transitions,
+  entry and exit actions, JSON wire form
+- **flow** — step graphs: composable steps, panels, definitions
+- **events** — in-process reaction bus: typed names, subscribe, emit
 
 The GitHub remote for this repo is private. Licensed under the
 [MIT License](LICENSE).
 
 ## Why
 
-Natural language is the right payload format between two models. Both
-sides parse it well. The failures in model-to-model exchange are not in
-the payload. They are in the missing metadata:
+Natural language is the right payload format between AI agents. Both
+sides parse it well. The failures in agent exchange are not in the
+payload. They are in the missing metadata:
 
 - A guess and a checked fact look the same in prose.
 - A misunderstanding is silent until it shows up in the output.
@@ -58,7 +65,7 @@ framework. One small plan per step lives in
 - **Transport and identity**: identity key wrap, a2a mapping, a2a
   client, discovery card. Future.
 - **Composition**: agent definition, run loop, tools, memory. Future.
-- **System integration**: the end-to-end two-agent exchange. Future.
+- **System integration**: the end-to-end multi-agent exchange. Future.
 - **Reactions**: the events bus and the block emissions. The bus and
   the machine emissions ship.
 

@@ -2,7 +2,7 @@
 
 ## Goal
 
-The wire unit for model-to-model communication: a natural-language
+The wire unit for AI message exchange: a natural-language
 payload inside machine-checkable, authenticatable metadata.
 
 ## Scope

@@ -17,8 +17,8 @@ Contents:
 - [Validation plan](#validation-plan)
 - [References](#references)
 
-This document records the design decisions of the model-to-model
-message protocol that this SDK implements. Schema version: **v1**.
+This document records the design decisions of the AI message protocol
+that this SDK implements. Schema version: **v1**.
 
 ## Problem statement
 

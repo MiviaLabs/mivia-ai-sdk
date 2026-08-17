@@ -1,43 +1,55 @@
 # Phase 7: flow chaining and audit
 
 Status: future. Builds on phase 6. This phase adds the chained step
-and the audit thread. A chained step runs a nested workflow as one
-step. The audit thread verifies after the run. See `docs/plans/agents/PHASES.md`.
+and the audit thread contract. A chained step runs a nested workflow
+as one step. A caller records the audit thread during the run. See
+`docs/plans/agents/PHASES.md`.
 
 ## Goal
 
 Compose a workflow from smaller workflows. A step nests a `Definition`
-and returns its status as one output. The run leaves a thread that
-`VerifyThread` validates.
+and returns the child status as one output. A caller records an audit
+thread during the run. The caller runs `envelope.VerifyThread` after
+the run.
 
 ## Scope
 
 Inside: the chained step, the function composition, and the thread
-records. Outside: retries, scheduling, and persistence. A future
-version adds them only when a consumer asks.
+contract for callers. Outside: retries, scheduling, and persistence.
+A future version adds them only when a consumer asks. `flow` stays
+independent of `envelope`; the caller owns the audit thread.
 
 ## API
 
-No new exported symbol. A `Step` gains optional chaining by nesting a
-`Definition`. The runner detects the nested type and executes it. The
-parent reads the child status as one output.
+`Step` gains one exported field: `Sub *Definition`. A step with a
+non-nil `Sub` runs the child graph to completion before the parent
+resumes. The child status becomes the step's output. `make api-update`
+refreshes `api/flow.txt` in the same change.
 
-The run appends the envelope message of each step to one thread. The
-thread uses `thread_id` and `prev_hash`. After the run, `VerifyThread`
-checks the chain and the unique message ids.
+`New` validates each non-nil `Sub` with the same rules as a top-level
+graph. A child graph must be acyclic. Every child dependency must
+resolve inside the child graph.
+
+`flow` does not import `envelope`. The audit thread is caller-owned.
+A caller records each step's envelope message through an `OnEntry`
+action, an `OnExit` action, or the `Confirm` closure. The caller runs
+`envelope.VerifyThread` after `Run` returns.
 
 ## Design note: two attachment mechanisms, not three
 
-A step attaches to real work through exactly two mechanisms. A third
-must not appear. See `docs/packages/flow.md` for the full contract.
+A step attaches to real work through exactly two mechanisms. `Confirm`
+is an ack gate, not an attachment mechanism. A third attachment
+mechanism must not appear. See `docs/packages/flow.md` for the full
+contract.
 
 - A `machine.Transition`'s `OnEntry` and `OnExit` actions run
   arbitrary work: an agent call, a method call, a program, or a call
   into another package. `flow` never knows which.
-- This phase adds the second mechanism: a step nests a `Definition`
-  and runs it as a sub-workflow. This composes workflows; it does not
-  run arbitrary code.
+- This phase adds the second attachment mechanism: a step nests a
+  `Definition` and runs it as a sub-workflow. This composes workflows;
+  it does not run arbitrary code.
 
+`Step.Sub` is the one new `Step` field allowed for this mechanism.
 Do not add a third attachment field to `Step`, such as a `Handler` or
 an `Executor` field, for a future use case. Route new work through an
 action closure instead.
@@ -47,7 +59,7 @@ starts:
 
 - Option A (recommended). Pin this two-mechanism rule before writing
   any code for this phase. Map every future use case to one of the
-  two mechanisms, never to a new `Step` field.
+  two attachment mechanisms, never to a new `Step` field beyond `Sub`.
 - Option B. Defer the decision until this phase begins, and re-run an
   architecture assessment then. This risks losing the reasoning
   between now and this phase.
@@ -60,14 +72,19 @@ Test files live in `flow/flow_test/`:
   Start with the assertions. Confirm they fail on the empty phase.
   Implement and watch them pass.
 - `phase07_integration_test.go` — run a workflow that nests another
-  workflow. Prove the child status returns to the parent. Verify the
-  audit thread with `VerifyThread` after the run. Feed a tampered
-  message and confirm the thread fails.
-- `phase07_perf_test.go` — benchmark a three-level chain. Target under
-  two milliseconds for the whole run.
+  workflow. Prove the child status returns to the parent. Record an
+  audit thread inside the `Confirm` closure. Run `envelope.VerifyThread`
+  after `Run` returns. Feed a tampered message and confirm verification
+  fails.
+- `phase07_perf_test.go` — before the phase code lands, benchmark an
+  equivalent flat workflow on the current `Run` path. Record ns/op,
+  B/op, and allocs/op in the file's leading comment. Then benchmark a
+  three-level chain. The chain must stay under two milliseconds and
+  must not allocate more than 1.5 times the flat baseline.
 
 ## Verification
 
-`make verify` passes. The coverage floor for `flow` holds. The flow
+`make verify` passes. Run `make api-update` and commit the `api/flow.txt`
+diff in the same change. The coverage floor for `flow` holds. The flow
 projection in `docs/protocol-design.md` updates if the wire changes.
 The flow block is complete after this phase.

@@ -12,8 +12,8 @@ chaining lands later. The exported surface below mirrors
 ## Types
 
 - `Step` — one node in a workflow graph. A step has an ID, a list of
-  prerequisite step IDs, a target status string, and a payload. A step
-  with no prerequisites is a root.
+  prerequisite step IDs, a target status string, a payload, and an
+  optional nested `Definition`. A step with no prerequisites is a root.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -113,18 +113,21 @@ this package yet.
 ## Attaching work to a step
 
 A step never names its own executor. `Step` holds graph data only: an
-ID, a dependency list, a target status, and an opaque payload.
+ID, a dependency list, a target status, a payload, and an optional
+nested `Definition`.
 
-The real work runs through two mechanisms outside `Step` itself.
+The real work runs through one attachment mechanism outside `Step`
+itself.
 
 - A `machine.Transition`'s `OnEntry` and `OnExit` actions run when a
   step's target status fires. An action is a plain
   `func(ctx, *machine.InOut) error`. It may call an agent, call a
   method, run a program, or call another package. `flow` never knows
   which one runs.
-- `Confirm` runs once per step after the transition fires. A caller
-  reads `step.ID` or decodes `step.Payload` to route the ack to the
-  right handler.
+
+`Confirm` is an ack gate, not an attachment mechanism. It runs once
+per step after the transition fires. A caller reads `step.ID` or
+decodes `step.Payload` to route the ack to the right handler.
 
 Agents are one caller of this contract, not a special case inside
 `flow`. The future `agent` package composes a `machine.Definition` and
@@ -133,15 +136,16 @@ never imports `agent`; see `policy/layers.json`.
 
 ### Phase 7 design note: two attachment mechanisms, not three
 
-Phase 7 (`docs/plans/agents/phase07_flow_chain.md`) adds a second
-mechanism. A step may nest a `Definition` and run it as a
+Phase 7 (`docs/plans/agents/phase07_flow_chain.md`) adds the second
+attachment mechanism. A step may nest a `Definition` and run it as a
 sub-workflow. This composes workflows; it does not run arbitrary code.
 
-Two mechanisms exist by design. A third must not appear.
+Two attachment mechanisms exist by design. A third must not appear.
 
 - The `machine.Transition` action closures run arbitrary work.
 - A nested `Definition` composes one workflow inside another.
 
+`Step.Sub` is the one new `Step` field allowed for this mechanism.
 Do not add a third attachment field to `Step` for a new use case, such
 as a `Handler` or an `Executor` field. Send new work through an
 action closure instead.
@@ -154,7 +158,8 @@ Options for phase 7, recorded here so the choice does not get lost:
 
 - Option A (recommended). State this two-mechanism rule in the phase
   7 plan before implementation starts. Map every future use case to
-  one of the two mechanisms, never to a new `Step` field.
+  one of the two attachment mechanisms, never to a new `Step` field
+  beyond `Sub`.
 - Option B. Defer the decision until phase 7 begins, and re-run an
   architecture assessment then. This risks losing the reasoning
   between now and phase 7.

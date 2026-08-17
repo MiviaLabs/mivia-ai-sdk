@@ -1,6 +1,8 @@
 package flow
   func (d Definition) Roots() ([]string)
   func New(steps []Step, panels []Panel) (*Definition, error)
+  func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)
+  type Confirm func(ctx context.Context, step Step) error
   type Definition struct {
 }
   type Panel []string

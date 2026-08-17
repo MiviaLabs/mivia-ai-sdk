@@ -23,9 +23,10 @@ references.
   `Registry`, `NewRegistry`, and `MoveEvent`. See
   [packages/machine.md](packages/machine.md) and
   [plans/machine.md](plans/machine.md).
-- `flow/` — the step graph. It ships `Step`, `Panel`,
-  `Definition`, `New`, and `Roots`. The runner, the scheduling, the
-  parallel waves, and the chaining land later. See
+- `flow/` — the step graph and the sequential runner. It ships `Step`,
+  `Panel`, `Definition`, `New`, `Roots`, `Run`, and `Confirm`. `Run`
+  walks the graph in topological order and gates each step on a
+  confirmed ack. The parallel waves and the chaining land later. See
   [packages/flow.md](packages/flow.md) and
   [plans/flow.md](plans/flow.md).
 - `events/` — the in-process reaction bus. It ships `Name`, `Event`,
@@ -38,8 +39,8 @@ references.
   [plans/a2a.md](plans/a2a.md); no code exists yet.
 
 The machine and flow packages compose. Flow imports machine for each
-step's status transitions. The import edge lands when the code lands.
-The machine package imports events for its typed `MoveEvent` constant.
+step's status transitions and for `Run`'s status walk. The machine
+package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
 
 The root holds no Go code. New concerns get new subpackages. The

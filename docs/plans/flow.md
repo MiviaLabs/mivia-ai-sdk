@@ -1,11 +1,14 @@
 # Plan: flow
 
-Status: the step graph ships. The runner stays future. This plan
-expands the earlier step-list design into a step runner for v1.
-Rationale in docs/research-state-machine.md. The build phases live in
+Status: the step graph ships. The sequential runner ships next. The
+panels and the chaining stay future. This plan expands the earlier
+step-list design into a step runner for v1. Rationale in
+docs/research-state-machine.md. The build phases live in
 docs/plans/agents/. See phases 4 through 7. Phase 4 owns the step graph
-and the cycle check; the runner, the panels, and the chaining own in
-phases 5 through 7.
+and the cycle check. Phase 5 owns the sequential `Run` and the
+`Confirm` ack gate; see docs/plans/agents/phase05_flow_runner.md for
+its exact API and error contract. Phases 6 and 7 own the panels and
+the chaining.
 
 ## Goal
 
@@ -44,9 +47,15 @@ pattern sources.
 - `type Definition struct` holding the step graph and the panels.
 - `New(steps []Step, panels []Panel) (*Definition, error)` to build a
   definition and reject cycles with Kahn's algorithm.
-- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut) (Status, machine.InOut, error)`
-  to execute the graph and return the final status.
-- A chained step nests another Definition as one step.
+- `type Confirm func(ctx context.Context, step Step) error` as the ack
+  gate a caller supplies. Phase 5 ships this shape.
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)`
+  to execute the graph and return the final status. Phase 5 ships the
+  sequential walk only: no panels, no chaining, no envelope import.
+  Later phases may add a panel-aware entry point without breaking this
+  signature.
+- A chained step nests another Definition as one step. This lands in
+  phase 7.
 
 The machine instance passes by pointer. The input and output records
 come from the machine package. Run may pass any in and out through the
@@ -63,18 +72,21 @@ Chaining is function composition. A step takes an input and returns an
 output. A chained step runs a nested Definition and returns its
 status. The parent reads the child result as one output.
 
-A new row in policy/layers.json: flow imports envelope and machine.
-The ack transport stays caller-owned. The runner enforces the gate;
-the caller provides the transport. The import edge lands when the code
-lands.
+The policy/layers.json row for flow grows in two steps. Phase 5 sets
+`"flow": ["machine"]`. Phase 7 widens it to `["envelope", "machine"]`
+when chaining needs the audit thread. The ack transport stays
+caller-owned in every phase. The runner enforces the gate; the caller
+provides the transport.
 
 ## Tests
 
 Topological order on a diamond DAG. Cycle detection rejects a bad
-graph. A panel of independent steps runs in parallel. A step that
-fails its gate stops the run. Chaining runs a nested workflow and
-returns its status. The audit thread verifies with VerifyThread after
-the run.
+graph. Phase 5 covers the sequential case: linear order, the
+declaration-order tie-break, a gate failure, and an unconfirmed ack.
+A panel of independent steps runs in parallel; this lands in phase 6.
+Chaining runs a nested workflow and returns its status; this lands in
+phase 7. The audit thread verifies with VerifyThread after the run,
+once phase 7 lands.
 
 ## Verification
 

@@ -20,10 +20,10 @@ func emitMoveData(from machine.Status, to machine.Status) string {
 	return string(from) + "->" + string(to)
 }
 
-// phase18Definition builds a real machine definition for the wiring test.
+// busWiringDefinition builds a real machine definition for the wiring test.
 // idle starts. start moves idle to running. stop moves running to done
 // through a guard that rejects once. It returns the definition.
-func phase18Definition() *machine.Definition {
+func busWiringDefinition() *machine.Definition {
 	guardCalls := 0
 	d, err := machine.New(
 		machine.Status("idle"),
@@ -44,7 +44,7 @@ func phase18Definition() *machine.Definition {
 		},
 	)
 	if err != nil {
-		panic("phase18Definition: " + err.Error())
+		panic("busWiringDefinition: " + err.Error())
 	}
 	return d
 }
@@ -53,7 +53,7 @@ func phase18Definition() *machine.Definition {
 // It proves one real move lands as exactly one event on the bus.
 func TestMachineMoveArrivesOnceOnBus(t *testing.T) {
 	t.Parallel()
-	d := phase18Definition()
+	d := busWiringDefinition()
 	bus := events.New()
 	var got []string
 	if err := bus.Subscribe(moveEventName, func(_ context.Context, e events.Event) error {
@@ -87,7 +87,7 @@ func TestMachineMoveArrivesOnceOnBus(t *testing.T) {
 // happens only after a successful move. The bus stays empty.
 func TestGuardFailureEmitsNothing(t *testing.T) {
 	t.Parallel()
-	d := phase18Definition()
+	d := busWiringDefinition()
 	bus := events.New()
 	called := 0
 	if err := bus.Subscribe(moveEventName, func(context.Context, events.Event) error {

@@ -111,6 +111,10 @@ AGENTS.md. Update the a2a plan to use part data. Route the agent
 package through the delivery loop. Start the agent plan from the table
 above. Update research-a2a.md with the v1.0 facts.
 
+The phased build lives in docs/plans/agents/. Read the PHASES
+framework there before any phase. Each phase has its own integration,
+tdd, and perf test files.
+
 ## Open questions
 
 - Should a2a-go break the stdlib-only rule? The plan review must decide.

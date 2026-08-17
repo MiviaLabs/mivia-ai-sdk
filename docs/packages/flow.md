@@ -30,7 +30,7 @@ Chaining ships in phase 7. The exported surface below mirrors
 - `New(steps, panels)` — builds a `Definition` and validates the graph.
 - `Definition.Roots()` — returns the root step IDs in declaration
   order. A root is a step with no prerequisites.
-- `Run(ctx, d, m, in, confirm)` — walks `d` in topological order.
+- `Run(ctx, d, m, in, confirm, bus)` — walks `d` in topological order.
   Ready steps run in declaration order. A step named in no panel fires
   the `machine.Transition` row whose `To` matches the step's target
   status, then waits for `confirm` before the next step runs, exactly
@@ -43,6 +43,9 @@ Chaining ships in phase 7. The exported surface below mirrors
   applies to a step named in no panel, and to a one-member panel.
   `Run` returns the final
   `machine.Status`, the final `machine.InOut` record, and an error.
+  When `bus` is non-nil, `Run` emits a `StepCompletedEvent` to it
+  after each step completes; a chained step's child sub-workflow runs
+  with a nil bus, so only the parent step emits.
 
 ## Invariants
 
@@ -211,7 +214,8 @@ concurrently through the one transition row targeting `"reviewed"`.
 confirm := func(ctx context.Context, step flow.Step) error {
     return nil // the caller's ack transport confirms here
 }
-status, out, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm)
+bus := events.New() // nil is also valid; Run skips emission then
+status, out, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm, bus)
 if err != nil {
     // a transition pick failed, a guard rejected a step, or an ack
     // did not confirm

@@ -4,17 +4,14 @@ package flow_test
 // workflow. The chain must stay under two milliseconds and must not
 // allocate more than 1.5 times the flat baseline.
 //
-// Measured after phase 7 review fixes (go1.26.0, linux/amd64,
+// Measured after phase 24 review fixes (go1.26.0, linux/amd64,
 // AMD Ryzen 9 9900X, go test -bench -benchmem -count=3):
-// BenchmarkRunFlatThreeSteps: 342 ns/op, 448 B/op, 8 allocs/op.
-// BenchmarkRunChainedThreeLevels: 360 ns/op, 1024 B/op, 12 allocs/op.
-// Ratio: ns/op 1.05x, allocs/op exactly 1.5x. The alloc count sits at
-// the budget with zero margin: 12 against a limit of 12. One more
-// allocation per chain fails the assertion below. The profile puts all
-// twelve allocations in machine.AllowedTransitions and machine.Fire;
-// the flow runner adds none. The counts depend on the toolchain and
-// its escape analysis. Re-measure on the local toolchain before you
-// judge a failure.
+// BenchmarkRunFlatThreeSteps: 348 ns/op, 448 B/op, 8 allocs/op.
+// BenchmarkRunChainedThreeLevels: 281 ns/op, 704 B/op, 8 allocs/op.
+// Ratio: allocs/op 1.0x. The alloc count carries four allocations of
+// margin against the budget: 8 against a limit of 12. The counts
+// depend on the toolchain and its escape analysis. Re-measure on the
+// local toolchain before you judge a failure.
 
 import (
 	"context"

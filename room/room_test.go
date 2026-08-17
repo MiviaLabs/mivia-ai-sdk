@@ -26,6 +26,25 @@ func TestNewRequiresIDAndFounder(t *testing.T) {
 	}
 }
 
+// TestMembersSingleFounder proves a fresh room with no admits reports
+// exactly the founder: the single-element boundary of Members.
+func TestMembersSingleFounder(t *testing.T) {
+	r := newRoom(t)
+	got := r.Members()
+	if len(got) != 1 || got[0] != "founder" {
+		t.Fatalf("Members() = %v, want [founder]", got)
+	}
+}
+
+// TestRoomID proves ID returns the id given to New unchanged: the
+// value envelope.Message.Room must match for Accepts to admit.
+func TestRoomID(t *testing.T) {
+	r := newRoom(t)
+	if got := r.ID(); got != "platform-team" {
+		t.Fatalf("ID() = %q, want %q", got, "platform-team")
+	}
+}
+
 func TestAdmitFlow(t *testing.T) {
 	r := newRoom(t)
 	if err := r.Admit("agent-a", "founder"); err != nil {

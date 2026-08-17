@@ -4,8 +4,7 @@ The identity package owns one agent key: an ed25519 pair, the key-file
 load, the invariant check, and the hex signer string. It signs
 envelopes through `envelope.Sign`; it never calls `ed25519.Sign`
 directly.
-See [architecture.md](../architecture.md) for the flow and
-[plans/identity.md](../plans/identity.md) for the contract. The
+See [architecture.md](../architecture.md) for the flow. The
 exported surface below mirrors `api/identity.txt`.
 
 ## Types

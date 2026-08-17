@@ -13,85 +13,105 @@ references.
 
 ## Package map
 
+The diagram shows the nine packages and the import edges between
+them. An arrow points from an importer to the package it imports.
+`discovery`, `envelope`, and `events` are leaves: they import no
+other package in this module.
+
+```mermaid
+flowchart LR
+    agent --> identity
+    agent --> discovery
+    agent --> flow
+    agent --> envelope
+    agent --> events
+    agent --> machine
+    agent --> heartbeat
+    flow --> events
+    flow --> machine
+    heartbeat --> events
+    identity --> envelope
+    machine --> events
+    room --> envelope
+    room --> heartbeat
+    discovery[discovery]
+    envelope[envelope]
+    events[events]
+```
+
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. One package per concern.
+  VerifyThread. One package per concern. See
+  [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
-  message admission. It also ships `StaleMembers` and the sentinel
+  message admission. It also provides `StaleMembers` and the sentinel
   `ErrNoMonitor`. `StaleMembers` takes a caller-supplied
   `*heartbeat.Monitor` and reports which current roster members
   `hb.Dead` also reports; the roster, not the `Monitor`, is the source
   of truth for membership. `room` imports `heartbeat`. See
-  [plans/room.md](plans/room.md).
-- `machine/` — the status model. It ships `Status`, `Trigger`,
+  [packages/room.md](packages/room.md).
+- `machine/` — the status model. It provides `Status`, `Trigger`,
   `Guard`, `Action`, `Transition`, `InOut`, `Definition`, `New`,
   `Initial`, `Transitions`, `AllowedTransitions`, `AllowedTriggers`,
   `Validate`, `Fire`, and the JSON wire form: `Encode`, `Decode`,
   `Registry`, `NewRegistry`, and `MoveEvent`. See
-  [packages/machine.md](packages/machine.md) and
-  [plans/machine.md](plans/machine.md).
+  [packages/machine.md](packages/machine.md).
 - `flow/` — the step graph, the sequential runner, and the parallel
-  panel waves. It ships `Step`, `Panel`, `Definition`, `New`, `Roots`,
-  `Run`, and `Confirm`. `Step` carries an optional `Sub *Definition`
-  for chaining. `Run` walks the graph in topological order. A step
-  named in no panel runs alone and gates on a confirmed ack, as before.
-  A step named in a panel runs as part of that panel's wave, in a
+  panel waves. It provides `Step`, `Panel`, `Definition`, `New`,
+  `Roots`, `Run`, and `Confirm`. `Step` carries an optional
+  `Sub *Definition` for chaining. `Run` walks the graph in topological
+  order. A step named in no panel runs alone and gates on a confirmed
+  ack. A step named in a panel runs as part of that panel's wave, in a
   goroutine, once every member is ready; the wave joins its members'
-  errors with `errors.Join`. Chaining ships in phase 7. See
-  [packages/flow.md](packages/flow.md) and
-  [plans/flow.md](plans/flow.md).
-- `events/` — the in-process reaction bus. It ships `Name`, `Event`,
-  `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The caller owns the
-  bus; the module has no shared bus. Event names are typed `Name`
-  constants owned by each domain. See
-  [packages/events.md](packages/events.md) and
-  [plans/events.md](plans/events.md).
-- `identity/` — one agent key. It ships `Identity`, `New`, `Load`,
+  errors with `errors.Join`. See [packages/flow.md](packages/flow.md).
+- `events/` — the in-process reaction bus. It provides `Name`,
+  `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
+  caller owns the bus; the module has no shared bus. Event names are
+  typed `Name` constants owned by each domain. See
+  [packages/events.md](packages/events.md).
+- `identity/` — one agent key. It provides `Identity`, `New`, `Load`,
   `Validate`, `Sign`, `Signer`, and the sentinels `ErrKeyFormat` and
   `ErrKeyInvalid`. `Sign` wraps `envelope.Sign`; `Signer` derives the
   hex public key from the private key. See
-  [packages/identity.md](packages/identity.md) and
-  [plans/identity.md](plans/identity.md).
-- `discovery/` — the capability card. It ships `Card`, `Parse`,
+  [packages/identity.md](packages/identity.md).
+- `discovery/` — the capability card. It provides `Card`, `Parse`,
   `Validate`, and `Match`. `Parse` reads a card from JSON and validates
   it. `Validate` rejects a blank name, an empty capability list, and a
   duplicate capability. `Match` compares a capability request against
   the card, case-insensitive and exact. See
-  [plans/discovery.md](plans/discovery.md).
-- `agent/` — the composition layer. It ships `Agent`, `New`, `Name`,
-  and `Capabilities`. `New` wires an `identity.Identity`, a
+  [packages/discovery.md](packages/discovery.md).
+- `agent/` — the composition layer. It provides `Agent`, `New`,
+  `Name`, and `Capabilities`. `New` wires an `identity.Identity`, a
   `discovery.Card`, and a `flow.Definition` into one agent. It rejects
   a nil identity, an invalid card, and a nil plan, in that order. It
-  also ships the envelope-to-events translator: `EmitMessageDelivered`,
-  `EmitMessageAcked`, and `EmitThreadVerified`. Each function verifies
-  an already-received `envelope.Message`, `envelope.Ack`, or message
-  thread, then emits one typed `events.Event` onto a caller-owned
-  `events.Bus`. It also ships `Run` and the `AckWait` function type:
-  `Run` drives the agent's bound `flow.Definition` through `flow.Run`,
-  in-process. For each step `flow.Run` gates behind `Confirm`, `Run`
-  signs an `envelope.Message`, emits `MessageDeliveredEvent`, calls the
-  caller-supplied `AckWait`, and emits `MessageAckedEvent` once the ack
-  confirms. An `AckWait` that wraps `ErrEscalated` routes the step back
-  to the caller. `Run` takes one trailing, optional
+  also provides the envelope-to-events translator:
+  `EmitMessageDelivered`, `EmitMessageAcked`, and `EmitThreadVerified`.
+  Each function verifies an already-received `envelope.Message`,
+  `envelope.Ack`, or message thread, then emits one typed
+  `events.Event` onto a caller-owned `events.Bus`. It also provides
+  `Run` and the `AckWait` function type: `Run` drives the agent's
+  bound `flow.Definition` through `flow.Run`, in-process. For each
+  step `flow.Run` gates behind `Confirm`, `Run` signs an
+  `envelope.Message`, emits `MessageDeliveredEvent`, calls the
+  caller-supplied `AckWait`, and emits `MessageAckedEvent` once the
+  ack confirms. An `AckWait` that wraps `ErrEscalated` routes the step
+  back to the caller. `Run` takes one trailing, optional
   `*heartbeat.Monitor` parameter. A non-nil `Monitor` beats one id,
   `a.id.Signer()+":"+threadID`, right before each gated step's
   `AckWait` call, and forgets it once, on every return path. A panel
-  step reaches no beat call; see
-  [plans/agents/phase26_agent_heartbeat.md](plans/agents/phase26_agent_heartbeat.md)'s
-  disclosed scope limit. `Run` never reads `Dead` itself; an external
-  caller holding the same `Monitor` polls `Dead` on its own schedule.
-  `agent` imports `envelope`, `events`, `machine`, and `heartbeat`;
-  none of those four packages imports `agent` or any of the other
-  three. See [plans/agent.md](plans/agent.md).
-- `heartbeat/` — a leaf primitive. It ships `Monitor`, `New`, `Beat`,
-  `Alive`, `Dead`, `Forget`, and the typed event name `MissedEvent`.
-  `Monitor` tracks liveness by time: it records the last beat per id
-  and reports which ids have gone silent past a fixed timeout. `agent`
-  and `room` both import it: `agent.Run`'s optional step-liveness
-  heartbeat, and `room.Room.StaleMembers`'s roster-staleness check. It
-  imports `events` only, for the `MissedEvent` constant. See
-  [plans/heartbeat.md](plans/heartbeat.md).
-- `a2a/` — a future package. It is planned in
-  [plans/a2a.md](plans/a2a.md); no code exists yet.
+  step reaches no beat call. `Run` never reads `Dead` itself; an
+  external caller holding the same `Monitor` polls `Dead` on its own
+  schedule. `agent` imports `envelope`, `events`, `machine`, and
+  `heartbeat`; none of those four packages imports `agent` or any of
+  the other three. See [packages/agent.md](packages/agent.md).
+- `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
+  `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
+  `MissedEvent`. `Monitor` tracks liveness by time: it records the
+  last beat per id and reports which ids have gone silent past a
+  fixed timeout. `agent` and `room` both import it: `agent.Run`'s
+  optional step-liveness heartbeat, and `room.Room.StaleMembers`'s
+  roster-staleness check. It imports `events` only, for the
+  `MissedEvent` constant. See
+  [packages/heartbeat.md](packages/heartbeat.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
@@ -105,8 +125,32 @@ which; `scripts/check_deps.py` enforces it.
 
 ## Message flow
 
-One step at a time. The wire form is the JSON bytes that Encode and
-Decode handle.
+The wire form is the JSON bytes that Encode and Decode handle.
+
+```mermaid
+sequenceDiagram
+    participant A as Agent A
+    participant E as envelope
+    participant T as Transport
+    participant R as room
+    participant B as Agent B
+    A->>E: Sign(key, m)
+    E-->>A: signed Message
+    A->>E: Message.Encode()
+    E-->>A: JSON bytes
+    A->>T: transport
+    T->>B: JSON bytes
+    B->>E: Decode(data)
+    E-->>B: Message
+    B->>E: Message.VerifySignature()
+    E-->>B: nil
+    B->>R: Room.Accepts(m)
+    R-->>B: nil
+    B->>E: NewAck / Ack.Confirm
+    E-->>B: confirmed Ack
+    B->>E: VerifyThread(chain)
+    E-->>B: nil
+```
 
 1. **Sign.** `envelope/sign.go`, `Sign(key, m)`: sets Signer and
    Signature. The signature covers the canonical JSON of every field
@@ -135,8 +179,8 @@ in the pre-commit hook.
 
 - `scripts/` — the gates: check_docs, check_structure, check_deps,
   check_plan, check_prose, check_api, check_gomod,
-  check_semgrepignore, check_labels, check_semgrep_probes, and
-  api_surface (Go).
+  check_semgrepignore, check_labels, check_names,
+  check_semgrep_probes, and api_surface (Go).
 - `semgrep/` — the pattern rules: no panic or exit in packages,
   stdlib-only imports, centralized constants, no hardcoded secrets, no
   suppression markers, no drift markers.

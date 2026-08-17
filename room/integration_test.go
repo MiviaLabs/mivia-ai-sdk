@@ -130,6 +130,32 @@ func TestGroupLifecycle(t *testing.T) {
 	}
 }
 
+// TestAcceptsBroadcastWithNoRecipients proves a member message with a
+// nil To list is admitted: nil To means broadcast to the room, and
+// Accepts' recipient loop must not reject an empty list.
+func TestAcceptsBroadcastWithNoRecipients(t *testing.T) {
+	founder := newAgent(t, "founder")
+	alice := newAgent(t, "alice")
+
+	r, err := room.New("platform-team", founder.id)
+	if err != nil {
+		t.Fatalf("new room: %v", err)
+	}
+	if err := r.Admit(alice.id, founder.id); err != nil {
+		t.Fatalf("admit alice: %v", err)
+	}
+
+	m := baseMessage(r.ID())
+	m.ID = "broadcast-1"
+	if m.To != nil {
+		t.Fatalf("baseMessage() To = %v, want nil for this test's premise", m.To)
+	}
+	m = alice.post(t, m)
+	if err := r.Accepts(m); err != nil {
+		t.Fatalf("broadcast message rejected: %v", err)
+	}
+}
+
 // errInvalidMessage marks a table case whose Accepts error comes from
 // envelope.Message.Validate, which has no sentinel error to compare against.
 var errInvalidMessage = errors.New("invalid message")

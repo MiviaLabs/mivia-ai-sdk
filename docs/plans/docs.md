@@ -11,6 +11,34 @@ Answer what docs/protocol-design.md is: the wire-protocol rationale.
 Inside: one new plan file, six new docs, and four edits. Outside:
 every rejected item at the bottom of this section.
 
+### Extension: public-docs completion and language purge
+
+The SDK grew past the original six shipped packages. Three packages —
+discovery, heartbeat, agent — shipped with no package reference or
+example. Every public doc still carried internal development-process
+language: phase numbers, `docs/plans/` cross-links, "ships"/"future"
+status wording. This extension closes both gaps in one pass.
+
+New files: `docs/packages/discovery.md`, `docs/packages/heartbeat.md`,
+`docs/packages/agent.md`, `docs/examples/machine-flow.md`,
+`docs/examples/events-bus.md`, `docs/examples/heartbeat-liveness.md`,
+`docs/examples/flow-runner.md`, `docs/examples/agent-dispatch.md` (the
+full end-to-end walkthrough).
+
+Edited files: `docs/README.md` and `docs/architecture.md` (full
+rewrite: an index and a module map with no `docs/plans/` links or
+process language), `docs/protocol-design.md`, `docs/packages/machine.md`,
+`docs/packages/flow.md`, `docs/packages/identity.md` (each purged of
+phase numbers, `docs/plans/` links, and the "ships" status idiom).
+
+Rule going forward: no file outside `docs/plans/` links to
+`docs/plans/`, names a phase number, or describes an unshipped
+package as part of the reading path. `docs/plans/` and
+`docs/research-*.md` stay internal; `docs/README.md`'s "Internal
+records" section names them collectively, not per file. AGENTS.md is
+exempt — it is the contribution contract, not public documentation,
+and correctly describes the `docs/plans/` convention.
+
 ### New files
 
 - `docs/README.md` — the table of contents.
@@ -191,8 +219,12 @@ the docs tree above plus the two edited non-doc files.
   so no new package plan is required.
 - `python3 scripts/check_deps.py` passes. The import policy does not
   change.
-- The reviewer checks index coverage by hand: every file under docs/
-  appears in docs/README.md, and every entry resolves. No new gate.
+- The reviewer checks index coverage by hand: every file under
+  docs/architecture.md, docs/protocol-design.md, docs/packages/, and
+  docs/examples/ appears in docs/README.md, and every entry resolves.
+  docs/plans/ and docs/research-*.md are referenced collectively, not
+  per file, per docs/README.md's "Internal records" section. No new
+  gate.
 - The drift rule, the label gate, and the suppression scan stay clean
   on the new docs. The builder runs the full scan.
 

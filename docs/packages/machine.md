@@ -1,10 +1,8 @@
 # Package reference: machine
 
-The machine package is the state-machine building block. Phase 1 ships
-the status model: typed statuses, triggers, transitions, and guards.
-Phase 2 ships the move dispatch `Fire`, the input and output records,
-and the entry and exit actions. Phase 3 ships the JSON wire form and
-the name registry. The exported surface below mirrors `api/machine.txt`.
+The machine package is the state-machine building block. It owns the
+status model, the move dispatch `Fire`, and the JSON wire form with a
+name registry. The exported surface below mirrors `api/machine.txt`.
 
 ## Constants
 

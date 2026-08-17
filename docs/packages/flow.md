@@ -6,8 +6,7 @@ not code. The graph has steps and panels. `Run` walks the graph and
 moves a `machine.Definition` one step at a time. A step named in no
 panel runs alone; a step named in a panel runs as part of that
 panel's wave, in a goroutine, together with every other member.
-Chaining ships in phase 7. The exported surface below mirrors
-`api/flow.txt`.
+The exported surface below mirrors `api/flow.txt`.
 
 ## Types
 
@@ -150,42 +149,25 @@ per step after the transition fires. A caller reads `step.ID` or
 decodes `step.Payload` to route the ack to the right handler.
 
 Agents are one caller of this contract, not a special case inside
-`flow`. The future `agent` package composes a `machine.Definition` and
-a `flow.Definition` the same way any other automation would. `flow`
-never imports `agent`; see `policy/layers.json`.
+`flow`. The `agent` package composes a `machine.Definition` and a
+`flow.Definition` the same way any other automation would. `flow`
+never imports `agent`; see [policy/layers.json](../../policy/layers.json).
+See [agent.md](agent.md) for the composition layer's full reference.
 
-### Phase 7 design note: two attachment mechanisms, not three
+### Two attachment mechanisms, not three
 
-Phase 7 (`docs/plans/agents/phase07_flow_chain.md`) adds the second
-attachment mechanism. A step may nest a `Definition` and run it as a
-sub-workflow. This composes workflows; it does not run arbitrary code.
+A step may nest a `Definition` and run it as a sub-workflow. This
+composes workflows; it does not run arbitrary code.
 
-Two attachment mechanisms exist by design. A third must not appear.
+Exactly two attachment mechanisms exist by design. A third must not
+appear.
 
 - The `machine.Transition` action closures run arbitrary work.
 - A nested `Definition` composes one workflow inside another.
 
-`Step.Sub` is the one new `Step` field allowed for this mechanism.
-Do not add a third attachment field to `Step` for a new use case, such
-as a `Handler` or an `Executor` field. Send new work through an
-action closure instead.
-
-Phase 22 adds `Step.Route`. `Route` is scheduling, not work
-attachment. It selects which dependents run. It fires no transition
-and runs no step work. The two-mechanism rule stands.
-
-Options for phase 7, recorded here so the choice does not get lost:
-
-- Option A (recommended). State this two-mechanism rule in the phase
-  7 plan before implementation starts. Map every future use case to
-  one of the two attachment mechanisms, never to a new `Step` field
-  beyond `Sub`.
-- Option B. Defer the decision until phase 7 begins, and re-run an
-  architecture assessment then. This risks losing the reasoning
-  between now and phase 7.
-
-This note mirrors the same text in
-`docs/plans/agents/phase07_flow_chain.md`.
+`Step.Sub` is the one `Step` field that carries this second mechanism.
+No third attachment field belongs on `Step`, such as a `Handler` or an
+`Executor` field. New work runs through an action closure instead.
 
 ## Usage
 

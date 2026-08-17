@@ -229,10 +229,9 @@ not the transport, registry, or session manager.
 
 - **Capability discovery (A2A Agent Cards).** A registry concern. The
   `discovery` package defines its own minimal card shape instead of
-  the A2A Agent Card format. See docs/plans/discovery.md.
+  the A2A Agent Card format.
 - **Streaming, push, task lifecycle (A2A).** Transport and session
-  concerns. A future `session` package can own task state over
-  `thread_id`.
+  concerns. Task state ownership stays outside this protocol's scope.
 - **Voting and dissent preservation.** Governance-layer primitives.
   `challenge` and `escalate` cover the two-party case; multi-party
   preference aggregation is out of scope.
@@ -260,9 +259,10 @@ not the transport, registry, or session manager.
 - **A status transition precedes its ack check.** The `flow` runner
   fires a step's status transition, then waits on the step's ack. A
   rejected or escalated ack halts the walk but does not roll the
-  status or its record back to the pre-step value. See `agent`'s
-  `Run` (docs/plans/agents/phase13_agent_run.md) for the caller-facing
-  effect of this order.
+  status or its record back to the pre-step value. `agent`'s `Run`
+  signs each step's message, waits for a confirmed ack through a
+  caller-supplied `AckWait`, and only advances the walk once the ack
+  confirms.
 
 ## Validation plan
 

@@ -1,0 +1,173 @@
+# Package reference: agent
+
+The agent package is the composition layer. It binds one identity, one
+capability card, and one step plan into a single declarative value,
+then drives that plan through signed, acked, hash-chained envelope
+messages. The exported surface below mirrors `api/agent.txt`.
+
+## Types
+
+- `Agent` — an opaque struct binding one `*identity.Identity`, one
+  `discovery.Card`, and one `*flow.Definition`. Build it with `New`;
+  the fields stay unexported.
+- `AckWait` — `func(ctx context.Context, msg envelope.Message)
+  (envelope.Ack, error)`. `Run` calls it once per step `flow.Run`
+  gates behind `Confirm`, with the signed step message.
+
+## Functions and methods
+
+- `New(id, card, plan)` — builds an `Agent`.
+- `Agent.Name()` — the card's `Name` field.
+- `Agent.Capabilities()` — the card's `Capabilities` slice.
+- `Agent.Run(ctx, threadID, m, in, wait, bus, hb)` — drives the bound
+  plan through `flow.Run`.
+- `EmitMessageDelivered(ctx, bus, m)` — verifies `m`'s signature, then
+  emits `MessageDeliveredEvent`.
+- `EmitMessageAcked(ctx, bus, a)` — validates `a`, then emits
+  `MessageAckedEvent`.
+- `EmitThreadVerified(ctx, bus, msgs)` — verifies `msgs` as one
+  hash-linked thread, then emits `ThreadVerifiedEvent`.
+
+## Constants
+
+- `MessageDeliveredEvent` — the event kind `EmitMessageDelivered`
+  emits.
+- `MessageAckedEvent` — the event kind `EmitMessageAcked` emits.
+- `ThreadVerifiedEvent` — the event kind `EmitThreadVerified` emits.
+
+## Sentinel errors
+
+Use `errors.Is` to test these.
+
+- `ErrNoIdentity` — `New` got a nil identity.
+- `ErrNoPlan` — `New` got a nil plan.
+- `ErrNoBus` — an `EmitX` function, or `Run`, got a nil bus.
+- `ErrEscalated` — an `AckWait` implementation wraps this to route a
+  step to a human instead of resolving an ack.
+- `ErrNoWait` — `Run` got a nil `wait`.
+- `ErrNoThread` — `Run` got an empty `threadID`.
+
+## Invariants
+
+### New
+
+- `New` checks `id` for nil first, then calls `card.Validate()`, then
+  checks `plan` for nil, in that order. It returns the first error
+  hit.
+- A nil `id` returns `ErrNoIdentity`.
+- A card that fails `Validate` returns that error wrapped, since
+  `discovery` exports no sentinel of its own.
+- A nil `plan` returns `ErrNoPlan`.
+- `New` does not re-run `flow`'s cycle check. A plan built through
+  `flow.New` already passed it.
+
+### Run
+
+- `Run` checks `wait` for nil, then `bus` for nil, then `threadID` for
+  empty, in that order, before it touches `m` or the bound plan. Each
+  check returns `machine.Status("")`, `in` unchanged, and its
+  sentinel: `ErrNoWait`, `ErrNoBus`, or `ErrNoThread`.
+- For each step `flow.Run` gates behind `Confirm`, `Run` builds an
+  `envelope.Message` from the step's ID, `threadID`, and payload, with
+  `Version`, `Intent`, and `Epistemic` set to values that pass
+  `Validate` on their own.
+- `Run` signs the message with the agent's identity and chains it to
+  the previous step message by setting `PrevHash` to that message's
+  `Hash()`.
+- `Run` calls `EmitMessageDelivered`, then calls `wait` with the
+  signed message.
+- A `wait` error returns unchanged, without calling
+  `EmitMessageAcked`.
+- A nil `wait` error runs `EmitMessageAcked`, then requires the ack's
+  `Status` to equal `envelope.AckConfirmed` before the step counts as
+  done. Any other status returns an error naming the step and the
+  status seen.
+- On a successful run with one or more gated steps, `Run` calls
+  `EmitThreadVerified` exactly once, over every step message it
+  built, in order.
+- A run with zero gated steps returns without calling
+  `EmitThreadVerified`.
+
+### The optional heartbeat parameter
+
+- `hb` is an optional step-liveness `*heartbeat.Monitor`. A nil `hb`
+  skips every heartbeat call; `Run`'s behavior is otherwise unchanged.
+- A non-nil `hb` beats one id, `a.id.Signer() + ":" + threadID`, right
+  before each gated step's `wait` call.
+- `Run` forgets that same id on every return path, through a deferred
+  `hb.Forget` call set up once `Run` starts.
+- A panel step, a step named in a `flow.Panel` with two or more
+  members, never gets a beat. `flow.Run` never gates a panel wave of
+  two or more members behind `Confirm`, so `Run` has no gated-step
+  hook to beat from for that wave. This is a permanent characteristic
+  of `Run`, not a limitation pending a fix.
+- `Run` never calls `hb.Dead` and never aborts a step on staleness. A
+  caller holding the same `Monitor` polls `Dead` on its own schedule.
+
+## Why this shape
+
+`agent` is the composition layer. It imports six other packages:
+`identity`, `discovery`, `flow`, `envelope`, `events`, and
+`heartbeat`. None of those six packages imports `agent` back.
+Dependency direction flows inward, from the leaf building blocks
+toward the package that wires them together, so `agent` composes
+signing, workflow stepping, event emission, and liveness tracking
+without any of those packages knowing an agent exists.
+
+## Cross-references
+
+- [identity.md](identity.md) — the key `New` binds and `Run` signs
+  with.
+- [discovery.md](discovery.md) — the capability card `New` validates.
+- [heartbeat.md](heartbeat.md) — the optional liveness monitor `Run`
+  beats.
+- [flow.md](flow.md) — the step graph and runner `Run` drives.
+- [../architecture.md](../architecture.md) — the module map, with the
+  full import graph.
+
+## Usage
+
+```go
+id, _ := identity.New()
+card := discovery.Card{
+    Name:         "invoice-agent",
+    Capabilities: []string{"invoice.review"},
+}
+plan, _ := flow.New([]flow.Step{
+    {ID: "review", To: "reviewed", Payload: "review invoice 42"},
+}, nil)
+
+a, err := agent.New(id, card, plan)
+if err != nil {
+    // identity was nil, the card failed Validate, or plan was nil
+}
+
+wait := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+    // a real transport would send msg and block for the receiver's ack
+    return envelope.Ack{
+        MessageID: msg.ID,
+        Status:    envelope.AckConfirmed,
+    }, nil
+}
+
+bus := events.New()
+noop := func(context.Context, events.Event) error { return nil }
+_ = bus.Subscribe(agent.MessageDeliveredEvent, noop)
+_ = bus.Subscribe(agent.MessageAckedEvent, noop)
+_ = bus.Subscribe(agent.ThreadVerifiedEvent, noop)
+// Run emits on bus per step and once per run; each name needs a
+// subscriber, or events.Bus.Emit rejects the call.
+
+m, _ := machine.New(
+    machine.Status("pending"),
+    machine.Transition{From: "pending", To: "reviewed", Trigger: "advance"},
+)
+
+status, out, err := a.Run(context.Background(), "task-42", m, machine.InOut{}, wait, bus, nil)
+if err != nil {
+    // a step failed, escalated (errors.Is(err, agent.ErrEscalated)),
+    // or an entry check rejected an argument
+}
+_ = status
+_ = out
+```

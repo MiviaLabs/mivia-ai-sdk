@@ -60,6 +60,7 @@ Chaining ships in phase 7. The exported surface below mirrors
 - No panel names one step ID twice. A repeated step ID fails.
 - Every member of a panel shares one `To`. A member whose `To` differs
   from the panel's first member fails.
+- No step ID is named in two panels. A repeat across panels fails.
 - The step graph is acyclic. Kahn's algorithm detects a cycle before
   any step runs. A cycle fails.
 - No panel member's `Needs` closure reaches a fellow member of the

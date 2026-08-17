@@ -27,7 +27,8 @@ func validateSteps(steps []Step, ids map[string]int) error {
 // validatePanels checks every panel entry. Within one panel the check
 // order is fixed: every member's ID must resolve to a known step
 // first; no member ID may repeat second; every member's To must equal
-// the first member's To last. The homogeneity check keeps a wave's
+// the first member's To last. After that loop, no step ID may be
+// named in two panels. The homogeneity check keeps a wave's
 // resulting status well-defined: every member fires from one shared
 // cur and lands on one shared To, never several.
 func validatePanels(panels []Panel, steps []Step, ids map[string]int) error {
@@ -46,6 +47,25 @@ func validatePanels(panels []Panel, steps []Step, ids map[string]int) error {
 		}
 		if err := validatePanelHomogeneity(i, p, steps, ids); err != nil {
 			return err
+		}
+	}
+	return validatePanelOverlap(panels)
+}
+
+// validatePanelOverlap rejects a step ID named by two panels. The
+// scan walks panels in declaration order and members in member
+// order. It maps each ID to the first panel index that named it. The
+// first member found again fails.
+func validatePanelOverlap(panels []Panel) error {
+	first := map[string]int{}
+	for i, p := range panels {
+		for _, id := range p {
+			j, ok := first[id]
+			if !ok {
+				first[id] = i
+				continue
+			}
+			return errorf("step %q is named in panels %d and %d", id, j, i)
 		}
 	}
 	return nil

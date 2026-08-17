@@ -138,3 +138,116 @@ func TestNewPanelIndependenceTransitive(t *testing.T) {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 }
+
+// panelOverlapNewCases lists the panel shapes for the cross-panel
+// overlap test. want is the pinned error text. An empty want expects
+// New to accept the shape.
+var panelOverlapNewCases = []struct {
+	name   string
+	steps  []flow.Step
+	panels []flow.Panel
+	want   string
+}{
+	{
+		name: "two panels share one member",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+		},
+		panels: []flow.Panel{{"a"}, {"a", "b"}},
+		want:   `flow: step "a" is named in panels 0 and 1`,
+	},
+	{
+		name: "two panels share a middle step",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+			{ID: "c", To: "x"},
+		},
+		panels: []flow.Panel{{"a", "b"}, {"b", "c"}},
+		want:   `flow: step "b" is named in panels 0 and 1`,
+	},
+	{
+		name: "one panel duplicated",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+		},
+		panels: []flow.Panel{{"a", "b"}, {"a", "b"}},
+		want:   `flow: step "a" is named in panels 0 and 1`,
+	},
+	{
+		name: "panels apart report both indexes",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+		},
+		panels: []flow.Panel{{"a"}, {"b"}, {"a"}},
+		want:   `flow: step "a" is named in panels 0 and 2`,
+	},
+	{
+		name: "later panel scanned in member order",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+		},
+		panels: []flow.Panel{{"a", "b"}, {"b", "a"}},
+		want:   `flow: step "b" is named in panels 0 and 1`,
+	},
+	{
+		name: "three panels report the first repeat",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+		},
+		panels: []flow.Panel{{"a"}, {"a"}, {"a"}},
+		want:   `flow: step "a" is named in panels 0 and 1`,
+	},
+	{
+		name: "unknown step beats the overlap scan",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+		},
+		panels: []flow.Panel{{"a"}, {"a", "nope"}},
+		want:   `flow: panel 1 names unknown step "nope"`,
+	},
+	{
+		name: "panels with no shared member accept",
+		steps: []flow.Step{
+			{ID: "a", To: "x"},
+			{ID: "b", To: "x"},
+			{ID: "c", To: "x"},
+		},
+		panels: []flow.Panel{{"a", "b"}, {"c"}},
+		want:   "",
+	},
+}
+
+// TestNewPanelStepNamedInTwoPanels proves New rejects a step ID named
+// by two panels, with the pinned message. The per-panel checks run
+// before the overlap scan: a panel with both a repeat and an unknown
+// step reports the unknown step.
+func TestNewPanelStepNamedInTwoPanels(t *testing.T) {
+	t.Parallel()
+	for _, tc := range panelOverlapNewCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d, err := flow.New(tc.steps, tc.panels)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("New: got error %q, want nil", err.Error())
+				}
+				if d == nil {
+					t.Fatal("New: got nil definition, want non-nil")
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("New: got nil error, want %q", tc.want)
+			}
+			if err.Error() != tc.want {
+				t.Fatalf("New: error = %q, want %q", err.Error(), tc.want)
+			}
+		})
+	}
+}

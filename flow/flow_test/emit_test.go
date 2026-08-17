@@ -2,6 +2,8 @@ package flow_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -224,5 +226,48 @@ func TestEmitOnFailedGuard(t *testing.T) {
 	}
 	if got := count.Load(); got != 0 {
 		t.Fatalf("got %d events, want 0 (guard rejected)", got)
+	}
+}
+
+// TestEmitNoneOnConfirmFailure proves no event emits when confirm
+// rejects the ack. Run wraps the confirm error and names the step.
+func TestEmitNoneOnConfirmFailure(t *testing.T) {
+	t.Parallel()
+	bus := events.New()
+	var count atomic.Int64
+	if err := bus.Subscribe(flow.StepCompletedEvent, func(ctx context.Context, e events.Event) error {
+		count.Add(1)
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	confirmErr := errors.New("ack denied")
+	confirm := func(ctx context.Context, step flow.Step) error { return confirmErr }
+	d, err := flow.New([]flow.Step{
+		{ID: "a", To: string(statusDone)},
+	}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: statusDone, Trigger: triggerGo},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+
+	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, confirm, bus)
+	if err == nil {
+		t.Fatal("expected confirm failure error, got nil")
+	}
+	if !errors.Is(err, confirmErr) {
+		t.Fatalf("error %q should wrap the confirm error %q", err, confirmErr)
+	}
+	if !strings.Contains(err.Error(), `step "a": ack not confirmed`) {
+		t.Fatalf("error %q should contain the ack-not-confirmed message", err.Error())
+	}
+	if got := count.Load(); got != 0 {
+		t.Fatalf("got %d events, want 0 (confirm failed)", got)
 	}
 }

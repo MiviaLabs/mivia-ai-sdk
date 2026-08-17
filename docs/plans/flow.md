@@ -133,13 +133,17 @@ again returns the pinned error:
   step ID. The first `%d` is the first panel that names it. The second
   `%d` is the later panel that names it again.
 
-Add the new rejection to `New`'s doc comment in flow/definition.go. A
-cross-panel scheduling deadlock stays a Run-time stall, not a `New`
-rejection. Panels with no shared member may still need each other.
+Add the new rejection to `New`'s doc comment in flow/definition.go.
+docs/packages/flow.md gains one Invariants bullet: "No step ID is
+named in two panels. A repeat across panels fails." A cross-panel
+scheduling deadlock stays a Run-time stall, not a `New` rejection.
+Panels with no shared member may still need each other.
 `TestRunCrossPanelDeadlockStalls` keeps passing unchanged.
 
 Run's doc comment gains one sentence: a chained step's child workflow
 runs with a nil bus, and its child steps emit no events.
+docs/packages/flow.md needs no change for that sentence: its `Run`
+entry already documents the nil-bus child behavior.
 
 Chaining is function composition. A step takes an input and returns an
 output. A chained step runs a nested Definition and returns its
@@ -180,9 +184,10 @@ once per completed step or wave, a paused run returns cleanly on
 context cancellation, and `Resume` reaches the same final status a
 plain `Run` reaches.
 
-A logic review added four case groups. flow/flow_test/panel_new_test.go
-gains a table-driven case set with exact-message pins:
-TestNewPanelStepNamedInTwoPanels. The cases:
+A logic review added three tests: the table-driven
+TestNewPanelStepNamedInTwoPanels in flow/flow_test/panel_new_test.go,
+TestRunNilMAndNilConfirmTogether, and TestEmitNoneOnConfirmFailure.
+The panel table cases:
 
 - `New` rejects the confirmed stall shapes: panels naming one shared
   step, two panels sharing a middle step, and one full duplicate
@@ -193,6 +198,13 @@ TestNewPanelStepNamedInTwoPanels. The cases:
 - `New` reports the first repeated member in member order on a swap
   shape: panels naming "a" then "b", then "b" then "a", pin
   `flow: step "b" is named in panels 0 and 1`.
+- `New` reports the first repeat when one step sits in three panels.
+  Panels naming "a" three times pin
+  `flow: step "a" is named in panels 0 and 1`.
+- `New` reports the unknown-step message when a later panel holds both
+  a repeat and an unknown step: steps "a" and "b", panels naming "a",
+  then "a" and "nope", pin `flow: panel 1 names unknown step "nope"`.
+  This proves the per-panel checks run before the overlap scan.
 - `New` accepts panels whose members each sit in one panel only.
 
 flow/flow_test/run_test.go gains TestRunNilMAndNilConfirmTogether next

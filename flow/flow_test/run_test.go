@@ -165,6 +165,23 @@ func TestRunNilDAndMTogether(t *testing.T) {
 	}
 }
 
+// TestRunNilMAndNilConfirmTogether proves the m-nil error wins when
+// both m and confirm are nil, and Run never panics.
+func TestRunNilMAndNilConfirmTogether(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	status, _, err := flow.Run(context.Background(), d, nil, machine.InOut{}, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got, want := err.Error(), "flow: m must not be nil"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if status != machine.Status("") {
+		t.Fatalf("status = %q, want the zero Status", status)
+	}
+}
+
 // TestRunAmbiguityZeroMatches proves Run fails when no transition
 // row targets the step's status.
 func TestRunAmbiguityZeroMatches(t *testing.T) {

@@ -14,13 +14,13 @@ type Definition struct {
 // New builds a Definition and validates the step graph.
 // It rejects an empty ID, a duplicate ID, a missing dependency, a
 // panel that names an unknown step, a panel that names one step
-// twice, and a panel whose members disagree on To. Kahn's algorithm
-// rejects a cycle. After the graph is proven acyclic, New also
-// rejects a panel where one member's Needs closure reaches a fellow
-// member of the same panel. It rejects a chained step in a panel of
-// two or more members. It rejects a Sub nesting depth above eight.
-// It deep-copies the input slices so later caller mutation cannot
-// change the built graph.
+// twice, a panel whose members disagree on To, and a step ID named
+// in two panels. Kahn's algorithm rejects a cycle. After the graph
+// is proven acyclic, New also rejects a panel where one member's
+// Needs closure reaches a fellow member of the same panel. It
+// rejects a chained step in a panel of two or more members. It
+// rejects a Sub nesting depth above eight. It deep-copies the input
+// slices so later caller mutation cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),

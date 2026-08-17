@@ -28,7 +28,9 @@ type Confirm func(ctx context.Context, step Step) error
 // shared row every member's homogeneous To selects. Run does not call
 // confirm for a wave of two or more members. A step with a non-nil
 // Sub runs its child workflow to completion, then uses the child
-// final status as the parent step's target status. Run keeps the
+// final status as the parent step's target status. A chained step's
+// child workflow runs with a nil bus, and its child steps emit no
+// events. Run keeps the
 // current status and one record through the walk; each wave reads the
 // record and writes the next. Run rejects a nil d, a nil m, and a
 // nil confirm at entry, before it dereferences d or m. It checks d

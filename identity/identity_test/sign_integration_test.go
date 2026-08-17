@@ -2,6 +2,8 @@ package identity_test
 
 import (
 	"errors"
+	"math"
+	"reflect"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -51,6 +53,25 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 	tampered.Payload = "The build is red."
 	if err := tampered.VerifySignature(); err == nil {
 		t.Fatal("tampered message passed verification")
+	}
+}
+
+// TestSignForwardsEnvelopeError proves Sign passes through an error from
+// the wrapped envelope.Sign call unchanged, not just its own Validate
+// failure. A NaN confidence breaks envelope.Sign's JSON marshal step.
+func TestSignForwardsEnvelopeError(t *testing.T) {
+	id, err := identity.New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	m := testMessage()
+	m.Confidence = math.NaN()
+	signed, err := id.Sign(m)
+	if err == nil {
+		t.Fatal("Sign accepted a message envelope.Sign cannot marshal")
+	}
+	if !reflect.DeepEqual(signed, envelope.Message{}) {
+		t.Fatalf("signed = %+v, want the zero Message on error", signed)
 	}
 }
 

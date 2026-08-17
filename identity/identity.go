@@ -58,6 +58,9 @@ func Load(path string) (*Identity, error) {
 	priv := ed25519.PrivateKey(raw)
 	pub, _ := priv.Public().(ed25519.PublicKey) // length checked above
 	id := &Identity{PublicKey: pub, PrivateKey: priv}
+	// Defensive: PublicKey is derived from priv above, so this cannot
+	// fail for any id built here. It stays in case a future edit
+	// changes how id is constructed.
 	if err := id.Validate(); err != nil {
 		return nil, err
 	}

@@ -114,8 +114,11 @@ func TestValidateFailures(t *testing.T) {
 	mismatched.PublicKey = other.PublicKey
 
 	cases := map[string]identity.Identity{
-		"zero value":          {},
-		"short private key":   {PrivateKey: make([]byte, ed25519.SeedSize)},
+		"zero value":        {},
+		"short private key": {PrivateKey: make([]byte, ed25519.SeedSize)},
+		"oversized private key": {
+			PrivateKey: make([]byte, ed25519.PrivateKeySize+ed25519.SeedSize),
+		},
 		"mismatched pub half": *mismatched,
 	}
 	for name, id := range cases {
@@ -133,6 +136,9 @@ func TestSignerLengthGuard(t *testing.T) {
 	cases := map[string]identity.Identity{
 		"zero value":        {},
 		"short private key": {PrivateKey: make([]byte, ed25519.SeedSize)},
+		"oversized private key": {
+			PrivateKey: make([]byte, ed25519.PrivateKeySize+ed25519.SeedSize),
+		},
 	}
 	for name, id := range cases {
 		t.Run(name, func(t *testing.T) {

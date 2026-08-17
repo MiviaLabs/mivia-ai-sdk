@@ -11,4 +11,5 @@ package flow
   Needs []string
   To string
   Payload string
+  Sub *Definition
 }

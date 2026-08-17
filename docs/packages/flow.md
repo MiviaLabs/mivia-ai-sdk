@@ -5,8 +5,8 @@ the step graph, the cycle check, and the runner. A workflow is data,
 not code. The graph has steps and panels. `Run` walks the graph and
 moves a `machine.Definition` one step at a time. A step named in no
 panel runs alone; a step named in a panel runs as part of that
-panel's wave, in a goroutine, together with every other member. The
-chaining lands later. The exported surface below mirrors
+panel's wave, in a goroutine, together with every other member.
+Chaining ships in phase 7. The exported surface below mirrors
 `api/flow.txt`.
 
 ## Types
@@ -14,6 +14,8 @@ chaining lands later. The exported surface below mirrors
 - `Step` — one node in a workflow graph. A step has an ID, a list of
   prerequisite step IDs, a target status string, a payload, and an
   optional nested `Definition`. A step with no prerequisites is a root.
+  For a chained step, `To` is ignored by `Run` and may be empty; the
+  child final status supplies the target status.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -61,6 +63,16 @@ chaining lands later. The exported surface below mirrors
   same panel, directly or through a chain of dependencies. This check
   runs after the cycle check, since it needs an acyclic graph to walk
   safely.
+- A chained step's `Sub` is a valid `Definition`. It was already built
+  by `New`, so its internal graph is acyclic.
+- A chained step may not be a member of a multi-member panel. `New`
+  rejects any such panel.
+- A chained step's `To` is ignored by `Run`; `New` uses it only for
+  panel homogeneity checks.
+- Nesting stays within the depth limit. `New` rejects a `Sub` chain
+  deeper than eight levels. Eight bounds the recursive runner's stack use
+  while still allowing deep workflow composition; it is a local safety
+  guard, not a wire-format limit.
 - A step with no prerequisites is a root. `Roots` returns every root.
 - `New` copies the input slices. A `Definition` is immutable after
   `New`. The fields are unexported, so the invariant is enforced.
@@ -80,6 +92,10 @@ chaining lands later. The exported surface below mirrors
   not advance. The next step never fires until the prior ack confirms.
 - A wave that fails leaves the current status and the record at their
   pre-wave values. No member of that wave is marked done.
+- When a chained step is not part of a multi-member panel, it runs its
+  child `Definition` to completion before the parent resumes. The child
+  final status becomes the parent step's target status. `confirm` runs
+  for each child step and for the parent chained step.
 - `New` does not validate cross-panel scheduling feasibility. A member
   of one panel that needs a member of another panel, with the reverse
   true too, stalls `Run` at runtime with the same "no ready step"

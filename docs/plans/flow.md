@@ -1,8 +1,8 @@
 # Plan: flow
 
-Status: the step graph, the sequential runner, and the parallel panel
-waves ship. The chaining stays future. Three more phases are planned:
-step outcomes, branch routing, and failure routing. This plan expands
+Status: the step graph, the sequential runner, the parallel panel
+waves, and chaining ship. Three more phases are planned: step
+outcomes, branch routing, and failure routing. This plan expands
 the earlier step-list design into a step runner for v1. Rationale in
 docs/research-state-machine.md. The build phases live in
 docs/plans/agents/. See phases 4 through 7. Phase 4 owns the step graph
@@ -58,20 +58,19 @@ Proposed shape, subject to plan review. It follows the DAG scheduler
 and step-as-data patterns. See docs/research-state-machine.md for the
 pattern sources.
 
-- `type Step struct { ID string; Needs []string; To string; Payload string }`
-  as a graph node.
+- `type Step struct { ID string; Needs []string; To string; Payload string; Sub *Definition }`
+  as a graph node. `Sub` is the chained child definition.
 - `type Panel []string` as a group of step IDs that run in parallel.
 - `type Definition struct` holding the step graph and the panels.
 - `New(steps []Step, panels []Panel) (*Definition, error)` to build a
   definition and reject cycles with Kahn's algorithm.
 - `type Confirm func(ctx context.Context, step Step) error` as the ack
   gate a caller supplies. Phase 5 ships this shape.
-- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (Report, error)`
-  to execute the graph and return the run report. Phase 5 shipped the
-  sequential walk with a status and record return. Phase 6 added the
-  panel waves inside `Run`. Phase 21 changes the return to `Report`.
-- A chained step nests another Definition as one step. This lands in
-  phase 7.
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)`
+  to execute the graph and return the final status and record. Phase 21
+  changes the return to `Report`.
+- A chained step nests another Definition as one step. Phase 7 ships
+  this through `Step.Sub`.
 - `type Outcome int` with `OutcomeSucceeded`, `OutcomeFailed`, and
   `OutcomeSkipped` as the terminal states. This lands in phase 21.
 - `type Report struct` with `Status`, `Record`, `Outcome`, and
@@ -109,12 +108,11 @@ Failure routing uses admission over a failed need, not a separate
 fallback field. A fallback field would duplicate the Needs edge and
 can drift from it.
 
-The policy/layers.json row for flow grows in two steps. Phase 5 sets
-`"flow": ["machine"]`. Phase 7 widens it to `["envelope", "machine"]`
-when chaining needs the audit thread. The ack transport stays
-caller-owned in every phase. The runner enforces the gate; the caller
-provides the transport. Phases 21 through 23 add no import edge. The
-failure context travels through `context.Context`, which is stdlib.
+The policy/layers.json row for flow stays `"flow": ["machine"]`.
+`flow` never imports `envelope`. The audit thread stays caller-owned.
+The runner enforces the gate; the caller provides the transport.
+Phases 21 through 23 add no import edge. The failure context travels
+through `context.Context`, which is stdlib.
 
 ## Tests
 

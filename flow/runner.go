@@ -12,7 +12,9 @@ import (
 // Confirm gates a step's ack. Run calls it after Fire moves the
 // status, for a step named in no panel and for a one-member panel.
 // Run does not call Confirm for a step in a panel of two or more
-// members. A nil return means the ack confirmed; the walk advances.
+// members. Run calls Confirm again for a chained step after its
+// child workflow completes and the parent transition fires. A nil
+// return means the ack confirmed; the walk advances.
 type Confirm func(ctx context.Context, step Step) error
 
 // Run walks the step graph in topological order. A step named in no
@@ -23,12 +25,14 @@ type Confirm func(ctx context.Context, step Step) error
 // runs as part of that panel's wave, once every member is ready; the
 // wave fires every member's transition concurrently through the one
 // shared row every member's homogeneous To selects. Run does not call
-// confirm for a wave of two or more members. Run keeps the current
-// status and
-// one record through the walk; each wave reads the record and writes
-// the next. Run rejects a nil d, a nil m, and a nil confirm at entry,
-// before it dereferences d or m. It checks d first, then m, then
-// confirm, so a nil m never panics inside a d-nil or m-nil check.
+// confirm for a wave of two or more members. A step with a non-nil
+// Sub runs its child workflow to completion, then uses the child
+// final status as the parent step's target status. Run keeps the
+// current status and one record through the walk; each wave reads the
+// record and writes the next. Run rejects a nil d, a nil m, and a
+// nil confirm at entry, before it dereferences d or m. It checks d
+// first, then m, then confirm, so a nil m never panics inside a
+// d-nil or m-nil check.
 //
 // A panel member's Input and Output must be either an immutable
 // value, or a value the caller has already cloned per step. Run
@@ -52,12 +56,20 @@ func Run(
 		return m.Initial(), in, errorf("confirm must not be nil")
 	}
 
-	done := make(map[string]bool, len(d.steps))
 	cur := m.Initial()
 	rec := in
 
+	if len(d.steps) == 0 {
+		return cur, rec, nil
+	}
+	if len(d.steps) == 1 {
+		return runSingleton(ctx, m, cur, rec, d.steps[0], confirm)
+	}
+
+	done := make(map[string]bool, len(d.steps))
+
 	for len(done) < len(d.steps) {
-		group, ok := nextReadyGroup(d.steps, d.panels, done)
+		next, group, ok := nextReadyGroup(d.steps, d.panels, done)
 		if !ok {
 			// Unreachable for a same-panel Needs cycle: validatePanelIndependence
 			// rejects that shape in New. Still reachable for a cross-panel
@@ -69,25 +81,23 @@ func Run(
 			return cur, rec, errorf("no ready step; graph stalled")
 		}
 
-		if len(group) == 1 {
-			next := group[0]
-			rows := m.AllowedTransitions(cur)
-			row, err := pickTransition(rows, machine.Status(next.To))
+		if group == nil {
+			var err error
+			cur, rec, err = runSingleton(ctx, m, cur, rec, next, confirm)
 			if err != nil {
-				return cur, rec, errorf("step %q: %w", next.ID, err)
+				return cur, rec, err
 			}
+			done[next.ID] = true
+			continue
+		}
 
-			var fireErr error
-			cur, rec, fireErr = m.Fire(ctx, cur, row.Trigger, rec)
-			if fireErr != nil {
-				return cur, rec, errorf("step %q: %w", next.ID, fireErr)
+		if len(group) == 1 {
+			var err error
+			cur, rec, err = runSingleton(ctx, m, cur, rec, group[0], confirm)
+			if err != nil {
+				return cur, rec, err
 			}
-
-			if err := confirm(ctx, next); err != nil {
-				return cur, rec, errorf("step %q: ack not confirmed: %w", next.ID, err)
-			}
-
-			markDone(done, group)
+			done[group[0].ID] = true
 			continue
 		}
 
@@ -103,15 +113,83 @@ func Run(
 	return cur, rec, nil
 }
 
+// runSingleton runs one ready step. It handles a chained step by
+// running its child workflow first, then firing the parent transition.
+// It returns the updated status and record, or an error.
+func runSingleton(
+	ctx context.Context, m *machine.Definition, cur machine.Status,
+	rec machine.InOut, step Step, confirm Confirm,
+) (machine.Status, machine.InOut, error) {
+	if step.Sub != nil {
+		child, err := runChild(ctx, step.Sub, m, confirm)
+		if err != nil {
+			return cur, rec, err
+		}
+		cur, rec, err = fireFromChild(ctx, m, cur, rec, step, child)
+		if err != nil {
+			return cur, rec, err
+		}
+		if err := confirm(ctx, step); err != nil {
+			return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
+		}
+		return cur, rec, nil
+	}
+
+	rows := m.AllowedTransitions(cur)
+	row, err := pickTransition(rows, machine.Status(step.To))
+	if err != nil {
+		return cur, rec, errorf("step %q: %w", step.ID, err)
+	}
+
+	cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
+	if err != nil {
+		return cur, rec, errorf("step %q: %w", step.ID, err)
+	}
+
+	if err := confirm(ctx, step); err != nil {
+		return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
+	}
+	return cur, rec, nil
+}
+
+// runChild runs a chained step's child workflow to completion. It
+// passes the same machine definition and a fresh InOut, starting from
+// the machine's initial status. It uses the same confirm closure.
+func runChild(
+	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
+) (machine.Status, error) {
+	childStatus, _, err := Run(ctx, child, m, machine.InOut{}, confirm)
+	return childStatus, err
+}
+
+// fireFromChild picks the parent transition row from cur to child,
+// fires it, and returns the updated status and record. It wraps
+// errors with the parent step ID.
+func fireFromChild(
+	ctx context.Context, m *machine.Definition, cur machine.Status,
+	rec machine.InOut, step Step, child machine.Status,
+) (machine.Status, machine.InOut, error) {
+	rows := m.AllowedTransitions(cur)
+	row, err := pickTransition(rows, child)
+	if err != nil {
+		return cur, rec, errorf("step %q: %w", step.ID, err)
+	}
+	cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
+	if err != nil {
+		return cur, rec, errorf("step %q: %w", step.ID, err)
+	}
+	return cur, rec, nil
+}
+
 // nextReadyGroup scans steps in declaration order for the next ready
-// wave. A ready step named in no panel returns alone, as a
-// one-element singleton wave: the phase 5 path. A ready step named in
-// a panel returns with its whole panel, once every member of that
-// panel is ready. A partially-ready panel is skipped, not returned;
-// the scan keeps looking for another ready step so a partially-ready
-// panel never blocks the rest of the graph. Returns false when no
-// step is ready.
-func nextReadyGroup(steps []Step, panels []Panel, done map[string]bool) ([]Step, bool) {
+// wave. A ready step named in no panel returns it as the singleton
+// step with a nil group: the phase 5 path. A ready step named in a
+// panel returns a zero step and the whole panel, once every member of
+// that panel is ready. A partially-ready panel is skipped, not
+// returned; the scan keeps looking for another ready step so a
+// partially-ready panel never blocks the rest of the graph. Returns
+// false when no step is ready.
+func nextReadyGroup(steps []Step, panels []Panel, done map[string]bool) (Step, []Step, bool) {
 	for _, s := range steps {
 		if done[s.ID] {
 			continue
@@ -121,13 +199,13 @@ func nextReadyGroup(steps []Step, panels []Panel, done map[string]bool) ([]Step,
 		}
 		p, found := panelFor(s.ID, panels)
 		if !found {
-			return []Step{s}, true
+			return s, nil, true
 		}
 		if panelReady(p, steps, done) {
-			return panelMembers(p, steps), true
+			return Step{}, panelMembers(p, steps), true
 		}
 	}
-	return nil, false
+	return Step{}, nil, false
 }
 
 // needsMet reports whether every entry of needs is already in done.

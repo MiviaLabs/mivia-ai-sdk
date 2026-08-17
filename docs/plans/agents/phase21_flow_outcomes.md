@@ -1,7 +1,8 @@
 # Phase 21: flow step outcomes and run report
 
-Status: ready to build. Builds on phase 6. Independent of phases 7
-through 20; those tracks do not touch the runner. This phase replaces
+Status: ready to build. Builds on phases 5 through 7. Phase 21 extends
+the same runner path; this phase must keep phase 7 behavior intact. This
+phase replaces
 the boolean done map with per-step outcomes. `Run` returns a `Report`.
 The run stays fail-fast. See `docs/plans/agents/PHASES.md`.
 
@@ -57,14 +58,18 @@ returns.
 
 Test files live in `flow/flow_test/`.
 
-The signature change touches every existing caller. Six test files
-destructure the three-value return today, 32 call sites in total:
+The signature change touches every existing caller. Ten test files
+destructure the three-value return, 51 call sites in total:
 `run_tdd_test.go`, `run_integration_test.go`, `run_perf_test.go`,
-`phase06_tdd_test.go`, `phase06_integration_test.go`, and
-`phase06_perf_test.go`. Every file moves to the `Report` API in the
-same change. Each file keeps its assertions; only the return handling
-changes. The `new_*` files and `phase06_tdd_new_test.go` test `New`,
-whose signature stays unchanged.
+`phase06_tdd_test.go`, `phase06_integration_test.go`,
+`phase06_perf_test.go`, `phase07_tdd_test.go`,
+`phase07_integration_test.go`, `phase07_perf_test.go`, and
+`phase07_tdd_new_test.go`. Every file moves to the `Report` API in
+the same change. Each file keeps its assertions; only the return
+handling changes. The `new_tdd_test.go`, `new_integration_test.go`,
+`new_perf_test.go`, and `phase06_tdd_new_test.go` files test `New`,
+whose signature stays unchanged. `phase07_tdd_new_test.go` also holds
+one `Run` call site; it moves to the `Report` API with the rest.
 
 - `outcomes_tdd_test.go` — the red-green cases. Red step: the file
   does not compile on the empty phase, because `Report` and `Outcome`
@@ -104,8 +109,5 @@ diff in the same change. `policy/layers.json` is unchanged.
 sections in the same change. Name `Outcome` and `Report` next to
 `Run` and `Confirm`.
 
-`flow/doc.go` updates in the same change. Its package map is already
-stale: it says the runner, the parallel waves, and the chaining land
-later. Rewrite the map to name `runner.go` and the file that holds
-`Outcome` and `Report`. Drop the "land later" wording for the runner
-and the waves. Keep the chaining marked future.
+`flow/doc.go` updates in the same change. Its package map already
+names `runner.go`. Add the file that holds `Outcome` and `Report`.

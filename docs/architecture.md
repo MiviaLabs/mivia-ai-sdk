@@ -26,11 +26,12 @@ references.
   [plans/machine.md](plans/machine.md).
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It ships `Step`, `Panel`, `Definition`, `New`, `Roots`,
-  `Run`, and `Confirm`. `Run` walks the graph in topological order. A
-  step named in no panel runs alone and gates on a confirmed ack, as
-  before. A step named in a panel runs as part of that panel's wave,
-  in a goroutine, once every member is ready; the wave joins its
-  members' errors with `errors.Join`. The chaining lands later. See
+  `Run`, and `Confirm`. `Step` carries an optional `Sub *Definition`
+  for chaining. `Run` walks the graph in topological order. A step
+  named in no panel runs alone and gates on a confirmed ack, as before.
+  A step named in a panel runs as part of that panel's wave, in a
+  goroutine, once every member is ready; the wave joins its members'
+  errors with `errors.Join`. Chaining ships in phase 7. See
   [packages/flow.md](packages/flow.md) and
   [plans/flow.md](plans/flow.md).
 - `events/` — the in-process reaction bus. It ships `Name`, `Event`,

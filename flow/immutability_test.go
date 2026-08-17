@@ -88,3 +88,51 @@ func TestRootsInternalCopy(t *testing.T) {
 		t.Fatalf("d.roots after mutating returned slice = %v, want %v", d.roots, want)
 	}
 }
+
+// TestNewCopiesSub proves New builds a fresh copy of a step's Sub, not
+// a Definition that shares the child's slices. A Definition is opaque
+// outside flow, so only an internal test can read the parent's copy.
+// See TestRunChainedAfterCallerMutation in
+// flow/flow_test/phase07_tdd_new_test.go for the run-path case.
+func TestNewCopiesSub(t *testing.T) {
+	childSteps := []Step{
+		{ID: "a", To: "x"},
+		{ID: "b", Needs: []string{"a"}, To: "x"},
+	}
+	childPanels := []Panel{{"b"}}
+	child, err := New(childSteps, childPanels)
+	if err != nil {
+		t.Fatalf("child New: %v", err)
+	}
+	parent, err := New([]Step{{ID: "outer", Sub: child}}, nil)
+	if err != nil {
+		t.Fatalf("parent New: %v", err)
+	}
+	sub := parent.steps[0].Sub
+	if sub == child {
+		t.Fatal("parent's Sub is the caller's child pointer; want a fresh copy")
+	}
+
+	// Mutate the caller slices and the child's internals. The child's
+	// own New already isolated the caller slices, so the child mutations
+	// catch a parent that shares the child's slices.
+	childSteps[1].Needs[0] = "zzz"
+	childPanels[0][0] = "zzz"
+	child.steps[1].ID = "zzz"
+	child.steps[1].Needs[0] = "zzz"
+	child.panels[0][0] = "zzz"
+	child.roots[0] = "zzz"
+
+	if got := sub.steps[1].ID; got != "b" {
+		t.Fatalf("parent's sub step ID = %q, want %q", got, "b")
+	}
+	if got := sub.steps[1].Needs[0]; got != "a" {
+		t.Fatalf("parent's sub Needs = %q, want %q", got, "a")
+	}
+	if got := sub.panels[0][0]; got != "b" {
+		t.Fatalf("parent's sub panel member = %q, want %q", got, "b")
+	}
+	if got := sub.roots[0]; got != "a" {
+		t.Fatalf("parent's sub root = %q, want %q", got, "a")
+	}
+}

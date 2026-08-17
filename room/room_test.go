@@ -18,6 +18,9 @@ func TestNewRequiresIDAndFounder(t *testing.T) {
 	if _, err := New("", "founder"); err == nil {
 		t.Fatal("empty id must fail")
 	}
+	if _, err := New("   ", "founder"); err == nil {
+		t.Fatal("whitespace-only id must fail")
+	}
 	if _, err := New("room", "  "); err == nil {
 		t.Fatal("empty founder must fail")
 	}
@@ -91,6 +94,23 @@ func TestPromoteThenRemoveFounder(t *testing.T) {
 	// agent-a is the last moderator and cannot be removed.
 	if err := r.Remove("agent-a", "agent-a"); !errors.Is(err, ErrLastModerator) {
 		t.Fatalf("err = %v, want %v", err, ErrLastModerator)
+	}
+}
+
+func TestRemoveNonLastModeratorSucceeds(t *testing.T) {
+	r := newRoom(t)
+	if err := r.Admit("agent-a", "founder"); err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	if err := r.Promote("agent-a", "founder"); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+	// Two moderators now; removing one via Remove must succeed.
+	if err := r.Remove("agent-a", "founder"); err != nil {
+		t.Fatalf("remove non-last moderator: %v", err)
+	}
+	if r.IsMember("agent-a") {
+		t.Fatal("agent-a must be gone")
 	}
 }
 

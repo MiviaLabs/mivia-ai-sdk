@@ -1,6 +1,6 @@
 # Phase 4: flow step graph
 
-Status: future. Builds the flow block. The flow block plans live in
+Status: done. Builds the flow block. The flow block plans live in
 `docs/plans/flow.md`. This phase owns the step graph and the cycle
 check. See `docs/plans/agents/PHASES.md` for the contract.
 
@@ -31,13 +31,13 @@ cycle. A step with no `Needs` is a root.
 
 Test files live in `flow/flow_test/`:
 
-- `phase04_tdd_test.go` — the red-green cases for `New`. Start with
-  the assertions. Confirm they fail on the empty phase. Implement and
-  watch them pass.
-- `phase04_integration_test.go` — build a diamond graph and a linear
+- `new_tdd_test.go` — the red-green cases for `New`. Start with
+  the assertions. Confirm they fail on the empty implementation.
+  Implement and watch them pass.
+- `new_integration_test.go` — build a diamond graph and a linear
   graph. Prove the roots are correct. Feed a cycle and confirm `New`
   rejects it.
-- `phase04_perf_test.go` — benchmark `New` on a graph of one hundred
+- `new_perf_test.go` — benchmark `New` on a graph of one hundred
   steps. Target under one millisecond. State the allocation budget.
 
 ## Verification

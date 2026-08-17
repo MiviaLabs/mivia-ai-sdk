@@ -1,9 +1,11 @@
 # Plan: flow
 
-Status: future. No code yet. This plan expands the earlier step-list
-design into a step runner for v1. Rationale in
-docs/research-state-machine.md. The build phases live in
-docs/plans/agents/. See phases 4 through 7.
+Status: the step graph ships. The runner stays future. This plan
+expands the earlier step-list design into a step runner for v1.
+Rationale in docs/research-state-machine.md. The build phases live in
+docs/plans/agents/. See phases 4 through 7. Phase 4 owns the step graph
+and the cycle check; the runner, the panels, and the chaining own in
+phases 5 through 7.
 
 ## Goal
 

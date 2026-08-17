@@ -5,8 +5,9 @@ description: >-
   quality. Trigger whenever the user asks to review tests, check test
   coverage, add integration/fuzz/perf tests, or asks whether tests are
   "testing what they should", or mentions mocks, fakes, edge cases,
-  coverage gaps, or vacuous assertions. Use it to check that tests
-  exercise the real code, not a substitute.
+  coverage gaps, vacuous assertions, or cross-package integration
+  tests. Use it to check that tests exercise the real code and the real
+  package composition, not a substitute.
 ---
 
 # Test review
@@ -52,6 +53,32 @@ result.
 A test that stays inside one function and never crosses a boundary is a
 unit test, not an integration test. Flag the package if it has no
 integration test that crosses a boundary.
+
+#### Cross-package integration tests
+
+A cross-package integration test proves two packages compose through
+their public API. It is the highest-value integration test, because it
+exercises the real edges the architecture declares in
+`policy/layers.json`. A single-package integration test cannot prove an
+edge between packages.
+
+Check for cross-package coverage explicitly. For each allowed import
+edge in `policy/layers.json`, ask: is there a test that sends a real
+value from the importer across the edge to the imported package and
+reads the real result? In this repo the edges are:
+
+- `room` imports `envelope`. The real path: `Sign` a message, `Encode`
+  it, `Accepts` it in a `Room`, and verify membership and admission.
+- `flow` imports nothing yet. When a later phase adds the `machine`
+  edge, that edge needs a cross-package test too.
+
+If an allowed edge has no cross-package test, that is a gap. Flag it.
+A fake or a re-bound registry at the edge is not a cross-package test;
+the real types must flow through the boundary.
+
+To find the gaps, list every edge in `policy/layers.json`, then grep
+the test packages for the two package names imported together. An edge
+with no test importing both members is uncovered.
 
 ### 2. No fake-interface coverage
 

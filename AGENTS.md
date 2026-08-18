@@ -58,6 +58,10 @@ Go SDK for building AI agents. Module:
   leaf package; no internal imports. Ships no concrete transport; a
   caller implements `Notifier` per real channel (terminal, Slack,
   another agent).
+- `scheduler/` — the generic invoke-on-schedule primitive: Job,
+  Schedule, Every, At, Scheduler, Add, Remove, Run. Fires each
+  registered Job at its next scheduled time and emits JobFailedEvent
+  on a caller-supplied bus when a Job errors. Imports events only.
 - `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.

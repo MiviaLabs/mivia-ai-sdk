@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the seventeen packages and the import edges between
+The diagram shows the eighteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `envelope`, `events`, `provider`, and
 `tools` are leaves: they import no other package in this module.
@@ -47,6 +47,7 @@ flowchart LR
     a2aclient --> a2a
     a2aclient --> envelope
     mcp --> tools
+    scheduler --> events
     contextbudget[contextbudget]
     discovery[discovery]
     envelope[envelope]
@@ -240,6 +241,14 @@ flowchart LR
   type that asks a question and returns a typed `Answer`; `channel`
   ships no concrete transport. `channel` imports no other package in
   this module. See [packages/channel.md](packages/channel.md).
+- `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
+  `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
+  `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,
+  `ErrNilSchedule`, `ErrNilJob`, and `ErrDuplicateID`. `Run` fires each
+  due `Job` in its own goroutine on a wake-channel sleep loop and
+  emits `JobFailedEvent` on a caller-supplied `*events.Bus` when a
+  `Job` fails. `scheduler` imports `events`. See
+  [packages/scheduler.md](packages/scheduler.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

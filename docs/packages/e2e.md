@@ -20,6 +20,25 @@ each block alone; e2e proves the handoffs. The harness below mirrors
   each step message and records it; `Messages` returns the signed
   thread for `envelope.VerifyThread`.
 
+## Fault kit
+
+The fault kit is a named harness capability. Each decorator wraps one
+seam as an interface and fails its `FaultOn`-th call with an error
+wrapping `ErrFault`; every other call passes through.
+
+- `ErrFault` — the sentinel each injected fault wraps. A failing run
+  matches it through `errors.Is`.
+- `FaultStore` — wraps a `ledger.Store`. Its `FaultOn`-th call faults.
+- `FaultNotifier` — wraps a `channel.Notifier`. Its `FaultOn`-th ask
+  faults.
+- `FaultCompleter` — wraps a `provider.Completer`. Its `FaultOn`-th
+  `Chat` or `ChatStream` call faults.
+- `FaultWait` — wraps an `agent.AckWait`. Its `FaultOn`-th ack
+  resolution faults.
+
+A block behind a concrete type carries no decorator. memory's `Store`
+is such a case and stays out of the kit.
+
 ## Scenarios
 
 The scenarios live in `e2e/e2e_test/`, one file per composed
@@ -40,6 +59,14 @@ behavior:
   two-direction message plane with a room admission.
 - `sqlite_ceremony_test.go` — behind the `ledger_sqlite` tag, the
   ceremony over a SQLite file that is closed and reopened.
+- `faults_store_test.go` — a ledger store faults mid-ceremony in a
+  two-step pipeline; the run names the fault and step one's artifact
+  survives.
+- `faults_notifier_test.go` — a channel notifier dies mid-ask; the
+  escalation surfaces as a step failure, not a hang.
+- `faults_subagent_test.go` — one of three subagents fails through
+  `RunAll`; the siblings land and the failing spec's `Err` is
+  reported.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
 growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP
@@ -47,10 +74,11 @@ tools behind the chain, and scheduled liveness.
 
 ## Failure modes
 
-This package owns no sentinel error. `EscalateTool.Run` wraps
-`agent.ErrEscalated`, so a caller with no `Ask` wired sees the run
-fail with an error matching `agent.ErrEscalated`. Pinned by
-`e2e_test/escalation_test.go`.
+The fault kit owns one sentinel, `ErrFault`. Every injected fault
+wraps it, so a scenario asserts `errors.Is(runErr, e2e.ErrFault)`.
+`EscalateTool.Run` wraps `agent.ErrEscalated`, so a caller with no
+`Ask` wired sees the run fail with an error matching
+`agent.ErrEscalated`. Pinned by `e2e_test/escalation_test.go`.
 
 ## Invariants
 

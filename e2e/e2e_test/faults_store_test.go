@@ -93,8 +93,8 @@ func TestFaultStoreMidCeremonyFailsRunAndKeepsStepOneArtifact(t *testing.T) {
 	if !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("Run error = %v, want e2e.ErrFault", err)
 	}
-	if !strings.Contains(err.Error(), "store") {
-		t.Fatalf("Run error %q does not name the store fault", err)
+	if !strings.Contains(err.Error(), "ledger store fault") {
+		t.Fatalf("Run error %q does not name the ledger store fault", err)
 	}
 	if got, ok := artifacts.Get("insp"); !ok || got != "built:src" {
 		t.Fatalf("step-one artifact = %q,%v, want built:src present", got, ok)
@@ -104,15 +104,44 @@ func TestFaultStoreMidCeremonyFailsRunAndKeepsStepOneArtifact(t *testing.T) {
 	}
 }
 
-// TestFaultStoreDecoratorFaultsOnTheNthCall covers the Range pass and
-// the Load fault paths the ceremony scenario does not reach.
+// TestFaultStoreDecoratorFaultsOnTheNthCall covers the pass and fault
+// paths of Load, CompareAndSwap, and Range the ceremony does not reach.
 func TestFaultStoreDecoratorFaultsOnTheNthCall(t *testing.T) {
 	ctx := context.Background()
-	fs := &e2e.FaultStore{Store: ledger.NewMemStore(), FaultOn: 2}
-	if _, _, err := fs.Load(ctx, "k"); err != nil {
+	// A zero FaultOn never faults; every method forwards.
+	fs := &e2e.FaultStore{Store: ledger.NewMemStore()}
+	if _, _, err := fs.Load(ctx, "a"); err != nil {
+		t.Fatalf("Load pass = %v, want nil", err)
+	}
+	if err := fs.Range(ctx, func(ledger.TaskState) bool { return true }); err != nil {
+		t.Fatalf("Range pass = %v, want nil", err)
+	}
+	if _, err := fs.CompareAndSwap(ctx, "b", ledger.TaskState{},
+		ledger.TaskState{Status: ledger.StatusPending}); err != nil {
+		t.Fatalf("CompareAndSwap pass = %v, want nil", err)
+	}
+	// FaultOn 2 faults the second call of each method in turn.
+	fl := &e2e.FaultStore{Store: ledger.NewMemStore(), FaultOn: 2}
+	if _, _, err := fl.Load(ctx, "c"); err != nil {
 		t.Fatalf("call 1 Load = %v, want pass-through", err)
 	}
-	if err := fs.Range(ctx, func(ledger.TaskState) bool { return true }); !errors.Is(err, e2e.ErrFault) {
+	if _, _, err := fl.Load(ctx, "d"); !errors.Is(err, e2e.ErrFault) {
+		t.Fatalf("call 2 Load = %v, want the fault", err)
+	}
+	fr := &e2e.FaultStore{Store: ledger.NewMemStore(), FaultOn: 2}
+	if err := fr.Range(ctx, func(ledger.TaskState) bool { return true }); err != nil {
+		t.Fatalf("call 1 Range = %v, want pass-through", err)
+	}
+	if err := fr.Range(ctx, func(ledger.TaskState) bool { return true }); !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("call 2 Range = %v, want the fault", err)
+	}
+	fc := &e2e.FaultStore{Store: ledger.NewMemStore(), FaultOn: 2}
+	if _, err := fc.CompareAndSwap(ctx, "e", ledger.TaskState{},
+		ledger.TaskState{Status: ledger.StatusPending}); err != nil {
+		t.Fatalf("call 1 CompareAndSwap = %v, want pass-through", err)
+	}
+	if _, err := fc.CompareAndSwap(ctx, "f", ledger.TaskState{},
+		ledger.TaskState{Status: ledger.StatusPending}); !errors.Is(err, e2e.ErrFault) {
+		t.Fatalf("call 2 CompareAndSwap = %v, want the fault", err)
 	}
 }

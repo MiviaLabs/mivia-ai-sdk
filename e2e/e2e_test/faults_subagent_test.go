@@ -181,8 +181,26 @@ func TestFaultWaitAckResolverFailsRun(t *testing.T) {
 	if !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("Run error = %v, want e2e.ErrFault", err)
 	}
-	if !strings.Contains(err.Error(), "wait") {
-		t.Fatalf("Run error %q does not name the wait fault", err)
+	if !strings.Contains(err.Error(), "agentrun wait fault") {
+		t.Fatalf("Run error %q does not name the agentrun wait fault", err)
+	}
+}
+
+// TestFaultWaitPassesThroughThenFaults covers the forwarding path the
+// fail-run test does not reach: the first ack passes to the wrapped
+// wait, the second faults.
+func TestFaultWaitPassesThroughThenFaults(t *testing.T) {
+	ctx := context.Background()
+	inner := 0
+	fw := &e2e.FaultWait{FaultOn: 2, Inner: func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+		inner++
+		return envelope.Ack{}, nil
+	}}
+	if _, err := fw.Wait(ctx, envelope.Message{}); err != nil || inner != 1 {
+		t.Fatalf("call 1 Wait = %v (inner %d), want forwarding", err, inner)
+	}
+	if _, err := fw.Wait(ctx, envelope.Message{}); !errors.Is(err, e2e.ErrFault) {
+		t.Fatalf("call 2 Wait = %v, want the fault", err)
 	}
 }
 
@@ -202,5 +220,14 @@ func TestFaultCompleterSurfacesFaultOnNthCall(t *testing.T) {
 	// Call 2 faults on ChatStream.
 	if _, err := fc.ChatStream(ctx, req); !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("call 2 ChatStream = %v, want the fault", err)
+	}
+	// A zero FaultOn forwards ChatStream to the stub.
+	fz := &e2e.FaultCompleter{Completer: stubCompleter{}}
+	ch, err := fz.ChatStream(ctx, req)
+	if err != nil {
+		t.Fatalf("ChatStream pass = %v, want nil", err)
+	}
+	if c, ok := <-ch; !ok || !c.Done {
+		t.Fatalf("ChatStream pass chunk = %+v,%v, want a done chunk", c, ok)
 	}
 }

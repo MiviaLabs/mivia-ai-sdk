@@ -45,7 +45,26 @@ func TestFaultNotifierSurfacesEscalationAsStepFailure(t *testing.T) {
 	if !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("Run error = %v, want e2e.ErrFault", err)
 	}
-	if !strings.Contains(err.Error(), "notifier") {
-		t.Fatalf("Run error %q does not name the notifier fault", err)
+	if !strings.Contains(err.Error(), "channel notifier fault") {
+		t.Fatalf("Run error %q does not name the channel notifier fault", err)
+	}
+}
+
+// TestFaultNotifierPassesThroughThenFaults covers the forwarding path
+// the escalation scenario does not reach: the first ask passes to the
+// wrapped notifier, the second faults.
+func TestFaultNotifierPassesThroughThenFaults(t *testing.T) {
+	ctx := context.Background()
+	calls := 0
+	ask := &e2e.FaultNotifier{FaultOn: 2, Notifier: func(ctx context.Context, q channel.Question) (channel.Answer, error) {
+		calls++
+		return channel.Answer{QuestionID: q.ID, Approved: true}, nil
+	}}
+	ans, err := ask.Notify(ctx, channel.Question{ID: "q1", Recipient: "r", Payload: "p"})
+	if err != nil || !ans.Approved || calls != 1 {
+		t.Fatalf("call 1 Notify = %+v,%v (calls %d), want forwarding", ans, err, calls)
+	}
+	if _, err := ask.Notify(ctx, channel.Question{ID: "q2", Recipient: "r", Payload: "p"}); !errors.Is(err, e2e.ErrFault) {
+		t.Fatalf("call 2 Notify = %v, want the fault", err)
 	}
 }

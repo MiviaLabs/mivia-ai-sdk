@@ -358,6 +358,17 @@ flowchart LR
   first, and aggregates a streamed `Chunk` sequence into one
   `Response`. `provider` imports no other package in this module. See
   [packages/provider.md](packages/provider.md).
+- `providerregistry/` — the multi-provider routing package. It
+  provides `Registry`, `New`, `Register`, `Get`, `Names`, `Retryable`,
+  `Route`, and the sentinels `ErrNilCompleter`, `ErrBlankName`,
+  `ErrDuplicateName`, `ErrUnknownName`, `ErrEmptyOrder`, and
+  `ErrAllFailed`. `Registry` holds named `Completer` values behind the
+  same mutex shape `tools.Registry` uses. `Route` walks a
+  caller-chosen order of names through `provider.RunTurn` and falls
+  through to the next name only when the caller's `Retryable`
+  predicate approves the failure. `providerregistry` imports
+  `provider` only. See
+  [packages/providerregistry.md](packages/providerregistry.md).
 - `channel/` — a leaf primitive. It provides `Question`,
   `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
   the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,

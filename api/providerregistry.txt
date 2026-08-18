@@ -1,0 +1,18 @@
+package providerregistry
+  func (e *allFailedError) Error() (string)
+  func (e *allFailedError) Is(target error) (bool)
+  func (e *allFailedError) Unwrap() (error)
+  func (r *Registry) Get(name string) (provider.Completer, bool)
+  func (r *Registry) Names() ([]string)
+  func (r *Registry) Register(name string, c provider.Completer) (error)
+  func (r *Registry) Route(ctx context.Context, req provider.Request, order []string, retryable Retryable) (provider.Response, error)
+  func New() (*Registry)
+  type Registry struct {
+}
+  type Retryable func(error) bool
+  var ErrAllFailed
+  var ErrBlankName
+  var ErrDuplicateName
+  var ErrEmptyOrder
+  var ErrNilCompleter
+  var ErrUnknownName

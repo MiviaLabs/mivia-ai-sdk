@@ -127,6 +127,11 @@ Go SDK for building AI agents. Module:
   Message, Request, Response, Chunk. A leaf package; no internal
   imports. No concrete client ships in this SDK; a caller supplies its
   own `Completer`.
+- `providerregistry/` — the named-provider collection and ordered
+  fallback: Registry, Register, Get, Names, Retryable, Route. Route
+  walks a caller-chosen order through provider.RunTurn and falls
+  through to the next name only when the caller's Retryable predicate
+  approves the failure. Imports provider only.
 - `channel/` — the ask-and-wait shape: Question, Answer, Notifier. A
   leaf package; no internal imports. Ships one reference transport,
   `NewNDJSONNotifier`, speaking newline-delimited JSON over an

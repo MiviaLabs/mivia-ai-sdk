@@ -124,12 +124,13 @@ composition comes last.
   existing composition seams. Depends only on already-shipped
   packages. It adds no code and no new `policy/layers.json` edge; see
   docs/plans/agents/phase45_agent_composition_example.md.
-- Durability and reference gaps: phase 42, a durable `ledger.Store`
-  implementation; phase 43, a reference `channel.Notifier` transport;
-  phase 44, a `provider` token-estimation capability. Each depends
-  only on its own already-shipped package (phase 34 `ledger`, phase 37
-  `channel`, phase 29 `provider`) and ships independently of the other
-  two and of phase 45. See
+- Durability and reference gaps: phase 42, a `ledger.Store` backed by
+  Turso's `go-libsql` driver, behind a dedicated build tag; phase 43,
+  an NDJSON-over-stdio `channel.Notifier` transport, shipped as real
+  `channel` package API; phase 44, a `provider` token-estimation
+  capability. Each depends only on its own already-shipped package
+  (phase 34 `ledger`, phase 37 `channel`, phase 29 `provider`) and
+  ships independently of the other two and of phase 45. See
   docs/plans/agents/phase42_ledger_durable_store.md,
   docs/plans/agents/phase43_channel_reference_transport.md, and
   docs/plans/agents/phase44_provider_token_estimation.md.
@@ -163,10 +164,13 @@ Phase 42 (ledger durable store), phase 43 (channel reference
 transport), and phase 44 (provider token estimation) are plan-only;
 none has gone through plan review yet. Each is independently buildable
 now, since phase 34, phase 37, and phase 29 have all shipped. Phase 42
-states two backend options and recommends the stdlib-only one; the
-other option needs a user decision on a new third-party exception
-before any phase builds it. Phase 43 ships as a `docs/examples/`
-walkthrough, not new `channel` package code.
+weighed a stdlib-only file store against a `go-libsql`-backed store;
+the user chose the `go-libsql` option, so the third-party exception it
+needs is now authorized, scoped to the `ledger_libsql` build tag so
+the default build stays cgo-free. Phase 43 ships an NDJSON-over-stdio
+transport, matching `mivia-agent`'s own wire convention, as real
+`channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
+walkthrough only.
 
 Phase 46 (system integration suite) is plan-only; it has not gone
 through plan review yet. It is independently buildable now: every

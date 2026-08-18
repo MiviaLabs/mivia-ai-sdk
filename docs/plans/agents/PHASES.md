@@ -110,12 +110,18 @@ composition comes last.
 - Model and durability: model provider interface, flow retry policy,
   tools capability markers, agent context budget, durable-fence
   conformance kit, ledger durable admission, tool approval gating,
-  escalation and notification channel abstraction. Phase 30 depends
-  on phases 21 through 23 landing first. Phase 33 depends on phase 34.
-  Phase 36 depends on phase 31 landing first. Phase 37 ships
+  escalation and notification channel abstraction, flow loop
+  iteration, scheduled invocation, and trigger composition. Phase 30
+  depends on phases 21 through 23 landing first. Phase 33 depends on
+  phase 34. Phase 36 depends on phase 31 landing first. Phase 37 ships
   independently; it adds a new leaf package with no dependency on any
-  other phase in this group. The rest ship independently of each
-  other.
+  other phase in this group. Phase 38 depends on phases 22 and 23
+  landing first, the same dependency phase 30 carries. Phase 39 ships
+  independently; it adds a new leaf-shaped package with no dependency
+  on any other phase in this group. Phase 40 composes with phase 39
+  and phase 37 through caller-owned closures only, so it adds no
+  import edge to either and ships independently of both. The rest
+  ship independently of each other.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depends on phase 14 (tools) landing first.
@@ -126,7 +132,10 @@ docs/plans/mcp.md. Phase 30 passed plan review in three rounds and
 depends on phases 22 and 23 landing first. Phase 33 passed in three
 rounds and depends on phase 34, which passed in five rounds; both are
 ready to build. Phase 36 and phase 37 are plan-only; neither has gone
-through plan review yet.
+through plan review yet. Phase 38 (flow loop), phase 39 (scheduler),
+and phase 40 (trigger) are plan-only; none has gone through plan
+review yet. Phase 38 depends on phases 22 and 23 landing first. Phase
+39 and phase 40 are each independently buildable today.
 
 ## Gate interactions
 

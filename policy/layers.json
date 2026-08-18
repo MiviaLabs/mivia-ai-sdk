@@ -19,6 +19,8 @@
     "memory": ["envelope"],
     "provider": [],
     "room": ["envelope", "heartbeat"],
-    "tools": []
+    "scheduler": ["events"],
+    "tools": [],
+    "trigger": []
   }
 }

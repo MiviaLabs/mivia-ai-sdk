@@ -199,6 +199,9 @@ func TestRunGateFailureStopsRun(t *testing.T) {
 	if status != statusStart {
 		t.Fatalf("status = %q, want the unchanged initial status %q", status, statusStart)
 	}
+	if o, ok := report.Outcome("a"); !ok || o != flow.OutcomeFailed {
+		t.Fatalf("Outcome(a) = %v, %v, want OutcomeFailed, true", o, ok)
+	}
 }
 
 // TestRunUnconfirmedAckBlocksNext proves an unconfirmed ack stops the

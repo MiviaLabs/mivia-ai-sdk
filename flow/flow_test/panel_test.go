@@ -54,12 +54,15 @@ func TestRunCrossPanelDeadlockStalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected the stall error, got nil")
 	}
 	if err.Error() != "flow: no ready step; graph stalled" {
 		t.Fatalf("error = %q, want %q", err.Error(), "flow: no ready step; graph stalled")
+	}
+	if outcomes := report.Outcomes(); len(outcomes) != 0 {
+		t.Fatalf("Outcomes() = %v, want empty: both panels stall before any member runs", outcomes)
 	}
 }
 

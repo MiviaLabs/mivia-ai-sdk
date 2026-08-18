@@ -41,10 +41,13 @@ func benchLinearGraph(tb testing.TB) (*flow.Definition, *machine.Definition) {
 // BenchmarkRun measures Run on a linear three-step graph with a
 // no-op confirm. Target: under one millisecond for three steps.
 //
-// Measured baseline on the build machine: 217.4 ns/op, 336 B/op,
-// 6 allocs/op (AMD Ryzen 9 9900X, go test -bench). The budget below
-// allows up to 9 allocs (a 50% margin over the 6 measured), so a
-// small regression in nextReady or pickTransition trips the check.
+// Original phase 5 baseline, before the outcomes map existed:
+// 217.4 ns/op, 336 B/op, 6 allocs/op (AMD Ryzen 9 9900X, go test
+// -bench). Phase 21 added the outcomes map to every Run call; the
+// current measured allocation count is 8 (see outcomes_bench_test.go
+// for the up-to-date baseline and its 50 percent margin). The budget
+// below stays at the phase 5 value of 9 allocs, so it still traps a
+// regression, with a smaller margin than the original 50 percent.
 func BenchmarkRun(b *testing.B) {
 	d, m := benchLinearGraph(b)
 	ctx := context.Background()

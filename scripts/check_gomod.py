@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Gate: go.mod and go.sum carry no dependency outside a named, closed
-allowlist. The SDK is standard library only, with two deliberate
+allowlist. The SDK is standard library only, with three deliberate
 exceptions: a2aclient wraps github.com/a2aproject/a2a-go (see
-docs/plans/a2aclient.md), and mcp wraps
-github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md).
-ALLOWED_MODULES is the union of both modules' verified dependency
+docs/plans/a2aclient.md), mcp wraps
+github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md), and
+ledger wraps modernc.org/sqlite behind the ledger_sqlite build tag
+(see docs/plans/agents/phase42_ledger_durable_store.md).
+ALLOWED_MODULES is the union of all three modules' verified dependency
 closures, reconciled against real `go mod tidy` output; a require or
 go.sum line for any other module path fails the gate. `replace`,
 `exclude`, and `retract` directives stay fully rejected, no
@@ -51,6 +53,27 @@ ALLOWED_MODULES = {
     "google.golang.org/genproto/googleapis/rpc",
     "google.golang.org/grpc",
     "google.golang.org/protobuf",
+    "modernc.org/sqlite",
+    "modernc.org/libc",
+    "modernc.org/mathutil",
+    "modernc.org/memory",
+    "modernc.org/ccgo/v4",
+    "modernc.org/cc/v4",
+    "modernc.org/fileutil",
+    "modernc.org/gc/v2",
+    "modernc.org/gc/v3",
+    "modernc.org/goabi0",
+    "modernc.org/opt",
+    "modernc.org/sortutil",
+    "modernc.org/strutil",
+    "modernc.org/token",
+    "github.com/dustin/go-humanize",
+    "github.com/mattn/go-isatty",
+    "github.com/ncruces/go-strftime",
+    "github.com/remyoudompheng/bigfft",
+    "github.com/google/pprof",
+    "github.com/hashicorp/golang-lru/v2",
+    "golang.org/x/mod",
 }
 
 

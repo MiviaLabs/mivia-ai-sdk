@@ -49,6 +49,17 @@ verify: verify-fast
 bench:
 	go test -run=NONE -bench=. -benchmem ./...
 
+# verify-ledger-sqlite is the tag-gated verification command for
+# SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md). It
+# is not part of the default verify target: sqlite_store*.go never
+# compiles into the default build. It holds the tag-gated ledger
+# package to the same 85% coverage floor verify's default-build block
+# enforces.
+verify-ledger-sqlite:
+	@trap 'rm -f cover_ledger_sqlite.out' EXIT; \
+	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/...; \
+	go tool cover -func=cover_ledger_sqlite.out | awk -v floor="$(COVERAGE_FLOOR)" '/^total:/{pct=$$3; sub(/%/,"",pct); if (pct+0<floor) {printf "ledger (tag ledger_sqlite) coverage %.1f%% below the %d%% floor\n", pct, floor; exit 1}}'
+
 api-update:
 	@mkdir -p api
 	go run scripts/api_surface.go | awk '/^package /{name=$$2} name{print > ("api/" name ".txt")}'

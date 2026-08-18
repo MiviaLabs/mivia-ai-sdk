@@ -220,7 +220,11 @@ flowchart LR
   the `Needs` graph and marks every transitive dependent
   `StatusBlocked`. `ledger` reuses `machine.Status` for its five task
   states and imports `events` for its typed event names; it imports
-  no other package. See [packages/ledger.md](packages/ledger.md).
+  no other internal package. Behind the `ledger_sqlite` build tag,
+  `ledger` also provides `SQLiteStore`, `NewSQLiteStore`, and `Close`:
+  a durable `Store` backed by `modernc.org/sqlite`, next to `MemStore`.
+  The default build never compiles it, so a `MemStore`-only caller
+  pays no dependency cost. See [packages/ledger.md](packages/ledger.md).
 - `durablefence/` — a test-only conformance kit. It provides
   `Scenario`, `Validate`, `ErrIncompleteScenario`, seven `Check*`
   functions, and `RunAll`. A caller wires its own claim, takeover,
@@ -376,7 +380,11 @@ in the pre-commit hook.
 `make verify-fast` runs gofmt, vet, one test pass, the python gates,
 the semgrep scan, and the suppression-marker scan. `make verify` runs
 everything verify-fast runs, plus the coverage floor and the semgrep
-probe suite.
+probe suite. `make verify-ledger-sqlite` is a separate, explicit
+command for `ledger`'s `ledger_sqlite`-build-tag-gated `SQLiteStore`
+code; it runs outside `make verify` since the default build never
+compiles that code, and it holds the tag-gated `ledger` package to the
+same 85% coverage floor.
 
 ## Invariants
 

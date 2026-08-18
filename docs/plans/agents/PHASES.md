@@ -126,21 +126,24 @@ composition comes last.
   docs/plans/agents/phase45_agent_composition_example.md.
 - Durability and reference gaps: phase 42, a `ledger.Store` backed by
   the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
-  tag, plus a bounded-entry-cap knob for `MemStore` in the default
-  build; phase 43,
-  an NDJSON-over-stdio `channel.Notifier` transport, shipped as real
-  `channel` package API; phase 44, a `provider` token-estimation
-  capability. Each depends only on its own already-shipped package
-  (phase 34 `ledger`, phase 37 `channel`, phase 29 `provider`) and
-  ships independently of the other two and of phase 45. See
-  docs/plans/agents/phase42_ledger_durable_store.md,
+  tag (shipped; see docs/plans/ledger.md); phase 42b, a
+  bounded-entry-cap knob for `MemStore` in the default build, split
+  out of phase 42 to stay independently reviewable and revertible;
+  phase 43, an NDJSON-over-stdio `channel.Notifier` transport, shipped
+  as real `channel` package API; phase 44, a `provider`
+  token-estimation capability. Each depends only on its own
+  already-shipped package (phase 34 `ledger`, phase 37 `channel`,
+  phase 29 `provider`) and ships independently of the others and of
+  phase 45. See docs/plans/agents/phase42_ledger_durable_store.md,
+  docs/plans/agents/phase42b_memstore_bounded_cap.md,
   docs/plans/agents/phase43_channel_reference_transport.md, and
   docs/plans/agents/phase44_provider_token_estimation.md.
 - Verification: phase 46, a system integration suite: two new
   `agent/agent_test/` files proving the current, widened package
   surface composes end to end, using `ledger.MemStore` and a
-  test-local `channel.Notifier`-shaped closure in place of the
-  still-plan-only phase 42 and phase 43 backends. It depends only on
+  test-local `channel.Notifier`-shaped closure in place of the tag-
+  gated `SQLiteStore` backend and the still-plan-only phase 43
+  transport. It depends only on
   already-shipped packages, adds no exported symbol, and needs no new
   `policy/layers.json` row. It widens
   `agent/agent_test/exchange_integration_test.go`'s existing coverage
@@ -151,8 +154,8 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, and 40
-have shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
+Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, and
+42 have shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
 docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
 docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
@@ -161,21 +164,21 @@ loop) shipped; see docs/plans/flow.md's Phase 38 subsection. Phase 45
 review yet. It depends only on already-shipped packages and adds no
 code, so it is independently buildable now.
 
-Phase 42 (ledger durable store), phase 43 (channel reference
-transport), and phase 44 (provider token estimation) are plan-only;
-none has gone through plan review yet. Each is independently buildable
-now, since phase 34, phase 37, and phase 29 have all shipped. Phase 42
-weighed a stdlib-only file store against a database-backed store. The
-user chose the database-backed option, first naming `go-libsql`, then
+Phase 42 (ledger durable store) has shipped: `SQLiteStore` landed
+behind the `ledger_sqlite` build tag, backed by the pure-Go
+`modernc.org/sqlite` driver. The user chose the database-backed option
+over a stdlib-only file store, first naming `go-libsql`, then
 reconsidering, once that driver's cgo requirement and missing Windows
-build were found, and naming the pure-Go `modernc.org/sqlite` instead,
-the same driver `mivia-agent` already uses in production. The
-resulting third-party exception is authorized, scoped to the
-`ledger_sqlite` build tag; since the driver needs no cgo, the tag
-exists only to keep a `MemStore`-only caller's dependency graph free
-of it, not to gate a C-toolchain requirement. `MemStore` itself also
-gains an optional, default-build `MaxEntries` cap in the same phase.
-Phase 43 ships an NDJSON-over-stdio
+build were found, and naming `modernc.org/sqlite` instead, the same
+driver `mivia-agent` already uses in production. The resulting
+third-party exception is authorized, scoped to the `ledger_sqlite`
+build tag; since the driver needs no cgo, the tag exists only to keep
+a `MemStore`-only caller's dependency graph free of it, not to gate a
+C-toolchain requirement. Phase 42b (`MemStore`'s `MaxEntries` cap),
+phase 43 (channel reference transport), and phase 44 (provider token
+estimation) are plan-only; none has gone through plan review yet. Each
+is independently buildable now, since phase 34, phase 37, and phase 29
+have all shipped. Phase 43 ships an NDJSON-over-stdio
 transport, matching `mivia-agent`'s own wire convention, as real
 `channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
 walkthrough only.

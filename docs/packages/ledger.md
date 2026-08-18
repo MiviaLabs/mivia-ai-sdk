@@ -19,6 +19,9 @@ surface below mirrors `api/ledger.txt`.
 - `Store` — the pluggable record backend: `Load`, `CompareAndSwap`,
   `Range`.
 - `MemStore` — the shipped mutex-guarded `Store`.
+- `SQLiteStore` — a `Store` backed by a local `modernc.org/sqlite`
+  database file (or `":memory:"`). Behind the `ledger_sqlite` build
+  tag; see "SQLiteStore" below.
 - `Ledger` — the handle over one `Store` and an optional `events.Bus`.
 - `Snapshot` — a point-in-time copy of every record: `Tasks`.
 
@@ -60,6 +63,10 @@ surface below mirrors `api/ledger.txt`.
 - `TaskState.Validate()` — checks one record's field rules.
 - `MemStore.Load`, `MemStore.CompareAndSwap`, `MemStore.Range` — the
   `Store` implementation.
+- `NewSQLiteStore(path)`, `SQLiteStore.Close()`, `SQLiteStore.Load`,
+  `SQLiteStore.CompareAndSwap`, `SQLiteStore.Range` — the
+  `modernc.org/sqlite`-backed `Store` implementation. See
+  "SQLiteStore" below.
 
 ## Sentinel errors
 
@@ -108,6 +115,34 @@ Use `errors.Is` to test these.
   on `(Sequence, Status, Fence, Rev)`, and bumps `Rev` by one on every
   successful write, closing the blind spot two concurrent same-fence
   `Renew` calls would otherwise leave.
+
+## SQLiteStore
+
+`SQLiteStore` is an opt-in, durable `Store` for a caller who needs a
+task record to survive a process restart on one host. It lives behind
+the `ledger_sqlite` build tag: a caller who imports `ledger` for
+`MemStore` and `Ledger` alone never compiles it and never pulls in
+`modernc.org/sqlite`. Build and test it with
+`go build -tags ledger_sqlite ./ledger/...` and
+`go test -tags ledger_sqlite -race ./ledger/...`.
+
+- `NewSQLiteStore(path)` opens `path` (a file path, or `":memory:"`
+  for an in-process database with no file), creates its one-table
+  schema (`ledger_tasks`) if absent, sets the connection pool size and
+  the WAL/synchronous/foreign-keys/busy-timeout pragmas, and `Ping`s
+  once to fail fast on a bad path.
+- `Task` stores through `encoding/json.Marshal`/`Unmarshal`, not as a
+  live Go value: a caller storing a channel, a function, or an
+  unexported-field-only struct in `Task` gets a non-nil error from
+  `CompareAndSwap`, not silent data loss. `MemStore` has no such
+  limit, since it never serializes `Task`.
+- `CompareAndSwap`'s `Rev` bump happens inside the SQL statement
+  itself, so a concurrent writer against the same row from a second
+  process is serialized by the database, not only by an in-process
+  mutex.
+- `MemStore` stays the default, zero-dependency `Store`; `New`'s
+  nil-`Store` fallback is unchanged. `SQLiteStore` is a caller-built,
+  explicitly passed alternative.
 
 ## Cross-references
 

@@ -1,9 +1,39 @@
 # Phase 42: ledger durable store (modernc.org/sqlite)
 
-Status: future. Plan-only; it has not yet gone through plan review.
-`ledger` (phase 34) has shipped; see `docs/plans/ledger.md`. This
-phase extends `ledger` with a second `Store` implementation. It does
+Status: shipped. `SQLiteStore` has landed in `ledger`; see
+`docs/plans/ledger.md`'s "SQLiteStore" section and
+`docs/packages/ledger.md` for the shipped, summarized surface. This
+document stays as the detailed design record: the option comparison,
+the schema, the DSN and pragma choices, and the Semgrep and
+`go.mod`/`go.sum` mechanics behind the third-party exception. It does
 not touch `Ledger`, `TaskState`, or any existing sentinel error.
+
+This plan covers `SQLiteStore` only. A related but separate concern,
+a bounded-entry-cap knob on `MemStore`, moved to its own plan,
+`docs/plans/agents/phase42b_memstore_bounded_cap.md`, so each phase
+stays independently reviewable and revertible. See that document for
+the `MemStoreOptions` design and its idempotency-preserving eviction
+rule.
+
+## Revision note (third revision, plan-review round 1)
+
+The plan-reviewer found two issues with the second revision, both
+fixed in this revision:
+
+- The second revision bundled two unrelated concerns, the tag-gated
+  `SQLiteStore` addition and the default-build `MemStoreOptions`
+  bounded-entry-cap knob, into one phase. This revision splits the
+  knob out into `docs/plans/agents/phase42b_memstore_bounded_cap.md`,
+  where its idempotency-preserving eviction design and test now live
+  too (see that document's Revision note for the reason the eviction
+  design changed shape).
+- The second revision's `make verify-ledger-sqlite` target (see
+  Verification below) ran the tag-gated `SQLiteStore` test suite with
+  no coverage requirement attached, so the entire tag-gated
+  implementation shipped with no enforced coverage floor. This
+  revision adds an explicit coverage check to that target, holding
+  `SQLiteStore` to the same 85% floor every other package in this
+  module holds to.
 
 ## Revision note (second revision)
 
@@ -46,12 +76,10 @@ schema-version table, and no ORM-shaped abstraction layer. See
 "Schema and `CompareAndSwap` mapping" below for the exact, single-table
 shape and "Scope" for this boundary stated as an explicit exclusion.
 
-This phase also adds one small, optional configuration knob to the
-existing `MemStore`, described in "`MemStore` configuration: a bounded
-entry cap" below, so a caller who wants only the in-memory store
-(never `SQLiteStore`) can still bound its growth. This knob ships
-unconditionally, in the default build, since it needs no third-party
-import; only `SQLiteStore` sits behind the build tag.
+This phase does not touch `MemStore`. A bounded-entry-cap knob for
+`MemStore` is a separate concern, planned in
+`docs/plans/agents/phase42b_memstore_bounded_cap.md`, since it needs
+no third-party import and stands on its own review.
 
 ## What `modernc.org/sqlite` actually is, verified before designing against it
 
@@ -336,98 +364,12 @@ nil-`Store` fallback is unchanged. `SQLiteStore` is an additional,
 opt-in implementation a caller builds and passes to `New` explicitly,
 behind the `ledger_sqlite` build tag.
 
-## `MemStore` configuration: a bounded entry cap
-
-`ledger/store.go`'s real `MemStore` and `NewMemStore` today:
-
-```go
-type MemStore struct {
-	mu    sync.Mutex
-	tasks map[IdempotencyKey]TaskState
-}
-
-func NewMemStore() *MemStore {
-	return &MemStore{tasks: make(map[IdempotencyKey]TaskState)}
-}
-```
-
-No capacity or eviction knob exists. `MemStore.tasks` grows without
-bound: a long-running caller sees every admitted key stay in the map
-forever, including one whose task finished (`StatusCompleted`,
-`StatusFailed`, or `StatusBlocked`) and will never be read or mutated
-again, since `Complete` already rejects any further write to a
-terminal record (`docs/plans/ledger.md`'s API section). This is a
-real, not speculative, gap for a caller who runs `Ledger` over
-`MemStore` for the lifetime of a long-running process with no
-external `Store` durability layer at all: `memory.Store` already
-ships a matching, shipped precedent for this exact shape in this
-module — an in-memory store that evicts the oldest-inserted entry
-once a byte budget is spent (`docs/plans/memory.md`) — and this phase
-gives `MemStore` the equivalent bound for entry count.
-
-The knob is a plain, exported options struct, matching this repo's
-existing precedent (`tools.ScopeOptions`, `mcp.ClientOptions`): a
-struct of fields, no functional-options wrapper, since no package in
-this module uses that shape today.
-
-```go
-// MemStoreOptions configures NewMemStoreWithOptions.
-type MemStoreOptions struct {
-	// MaxEntries caps the number of records MemStore holds. Zero
-	// means unbounded, matching NewMemStore's existing behavior
-	// exactly.
-	MaxEntries int
-}
-
-// NewMemStoreWithOptions builds an empty MemStore honoring opts.
-func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)
-```
-
-`NewMemStore()` itself is unchanged, byte for byte: it keeps its
-existing zero-argument signature and its existing unbounded behavior,
-so no caller of the already-shipped constructor sees any difference.
-`NewMemStore()` is defined in terms of `NewMemStoreWithOptions` only
-internally (`NewMemStoreWithOptions(MemStoreOptions{})`, ignoring the
-impossible error a zero-value, non-negative `MaxEntries` can never
-produce), not as two independent implementations.
-
-`NewMemStoreWithOptions` rejects a negative `MaxEntries` with a wrapped
-error, `"ledger: MaxEntries must not be negative"`, matching
-`contextbudget.Limits.Validate`'s own negative-field rejection
-wording style.
-
-Eviction rule, scoped to stay safe under `Complete`'s own
-already-shipped invariants: only a record already at a terminal
-status (`StatusCompleted`, `StatusFailed`, `StatusBlocked`) is ever
-evicted. `CompareAndSwap` never evicts a `StatusPending` or
-`StatusClaimed` record: an active claim or an unclaimed-but-live task
-must never silently disappear out from under a caller mid-lifecycle,
-the same safety bar `Complete`'s own terminal-status immutability
-rule already sets. `MemStore` keeps a small FIFO queue of keys that
-reached a terminal status, appended to exactly once per key, on the
-same `CompareAndSwap` call that writes the terminal status (a
-terminal record is never rewritten again, by `Complete`'s own
-existing rule, so no key is ever queued twice). When `MaxEntries` is
-positive and `len(tasks)` exceeds it after a successful write, `Compare
-AndSwap` pops and deletes the oldest-queued key, repeating until the
-map is back at or under the cap, mirroring `memory.Store`'s own
-oldest-inserted eviction order. When every current record is still
-`StatusPending` or `StatusClaimed` (the queue is empty) and the cap is
-still exceeded, `MemStore` does not evict anything: `MaxEntries` bounds
-what it safely can, not a hard ceiling `CompareAndSwap` would
-otherwise have to fail against. This is a documented, deliberate
-limit, not a bug: a caller who needs a hard ceiling even over live
-claims needs a different admission-throttling layer above `Ledger`,
-outside `Store`'s own contract.
-
 ## Scope
 
 Inside: `SQLiteStore`, `NewSQLiteStore`, `(*SQLiteStore) Close`, its
 `Store` interface implementation (`Load`, `CompareAndSwap`, `Range`),
 the `ledger_tasks` schema, the `sqliteDSN` helper, and the
-`ledger_sqlite` build-tag boundary. Inside: `MemStoreOptions` and
-`NewMemStoreWithOptions`, the bounded-entry-cap knob described below,
-shipped in the default build with no third-party import.
+`ledger_sqlite` build-tag boundary.
 
 Outside: Option A's `FileStore`, declined above. Outside: any remote
 or replicated SQLite mode; `modernc.org/sqlite` is a local-file (or
@@ -451,34 +393,15 @@ Outside: any change to `Ledger`, `TaskState`, or any sentinel error.
 Outside: an eviction or capacity knob on `SQLiteStore`; a durable,
 disk-backed store has no equivalent in-process-growth concern the way
 `MemStore` does, since its cost lives on disk, not in the process's
-own heap, so this phase adds the bounded-entry-cap knob to `MemStore`
-only.
+own heap. Outside: `MemStoreOptions`, `NewMemStoreWithOptions`, and
+any change to `MemStore`; see
+`docs/plans/agents/phase42b_memstore_bounded_cap.md` for that
+follow-on phase.
 
 ## API
 
-Two parts land in `api/ledger.txt`, through two different
-`make api-update` invocations, since one part is tag-gated and the
-other is not.
-
-### Default build: `MemStore` configuration
-
-Compiled and locked by a plain `make api-update`, no tag needed, since
-`MemStoreOptions` and `NewMemStoreWithOptions` add no third-party
-import:
-
-- `type MemStoreOptions struct { MaxEntries int }` — `MaxEntries` caps
-  the number of records `MemStore` holds; zero means unbounded,
-  matching `NewMemStore`'s existing behavior exactly.
-- `func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)`
-  — builds an empty `MemStore` honoring `opts`. Returns a wrapped
-  error for a negative `MaxEntries`.
-
-No change to `NewMemStore`'s existing zero-argument signature or its
-existing unbounded behavior.
-
-### Tag-gated: `SQLiteStore`
-
-Compiled and locked only when the `ledger_sqlite` tag is used;
+One part lands in `api/ledger.txt`, tag-gated: `SQLiteStore` compiles
+and locks only when the `ledger_sqlite` tag is used;
 `make api-update`'s own invocation for this phase runs with
 `-tags ledger_sqlite` so the symbols below actually appear in the
 generated lock, matching how a tag-gated file's exported surface is
@@ -510,23 +433,6 @@ drops it along with the remote and embedded-replica modes it existed
 to configure.
 
 ## Tests
-
-`ledger/ledger_test/mem_store_options_test.go` (default build, no
-tag, runs under the module's existing `go test ./...`) covers
-`MemStoreOptions`: `NewMemStoreWithOptions(MemStoreOptions{})`
-behaves identically to `NewMemStore()` (unbounded); a negative
-`MaxEntries` returns the wrapped error and a nil `*MemStore`; a
-`MemStore` built with a small positive `MaxEntries`, driven through a
-sequence of `Admit`-then-`Complete` calls (via a `Ledger`) that pushes
-the terminal-record count past the cap, evicts the oldest-terminal
-key first and never evicts a `StatusPending` or `StatusClaimed`
-record, asserted by keeping a claimed key alive throughout and
-confirming `Load` still finds it after the cap is exceeded several
-times over; a `MemStore` whose every current record is still
-`StatusPending` or `StatusClaimed` (no terminal entries to evict)
-keeps accepting further `Admit` calls past the cap, proving the
-documented "bounds what it safely can" limit rather than a hard
-failure.
 
 Test files for `SQLiteStore` live directly in `ledger/`, as
 `package ledger`, not in `ledger/ledger_test/`. This breaks from
@@ -591,39 +497,42 @@ under the module's default `go test ./...`.
 
 ## Verification
 
-- `make verify` passes for the default build, with `MemStoreOptions`
-  and `NewMemStoreWithOptions` compiled in and covered like any other
-  default-build code: gofmt, vet, the default test run (including
-  `mem_store_options_test.go`), the doc gate, the structure gate, the
-  Semgrep scan and probes, and the coverage floor all run as they do
-  today, plus the new `MemStore`-configuration lines and their test
-  file counted into the coverage computation. `sqlite_store*.go` never
-  compiles without `-tags ledger_sqlite`, so it contributes zero lines
-  to this default coverage run.
-- The coverage floor of 85 holds for `ledger` and for the total, with
-  `mem_store_options_test.go`'s new lines counted in, under the
-  default (non-tag-gated) `go test -cover ./...` run.
+- `make verify` passes for the default build: gofmt, vet, the default
+  test run, the doc gate, the structure gate, the Semgrep scan and
+  probes, and the coverage floor all run as they do today.
+  `sqlite_store*.go` never compiles without `-tags ledger_sqlite`, so
+  it contributes zero lines to this default coverage run, and this
+  phase changes no other default-build file, so the default coverage
+  floor is unaffected by this phase.
 - A second, explicitly documented command verifies the tag-gated code:
-  `go test -tags ledger_sqlite -race ./ledger/...`. Unlike the
+  `go test -tags ledger_sqlite -race -cover ./ledger/...`. Unlike the
   `go-libsql` draft, this needs no C toolchain and no `CGO_ENABLED=1`;
   it runs on every platform the module's default build already
   targets. This command is not part of the default `make verify`
   target; the builder adds a separate Makefile target (for example
   `make verify-ledger-sqlite`) that runs it, documented in this same
   change, so the command has one canonical name instead of living only
-  in a comment.
+  in a comment. This target must check the reported `ledger` package
+  coverage from the `-tags ledger_sqlite` run against the same 85%
+  floor `make verify`'s default-build coverage block enforces: the
+  tag-gated build compiles `sqlite_store*.go` into the `ledger`
+  package alongside every default-build file, so this one command's
+  coverage number is the true, complete `ledger` coverage for that
+  build, including `SQLiteStore`. A tag-gated build reporting below 85%
+  fails `make verify-ledger-sqlite`, exactly as a default-build report
+  below 85% fails `make verify`. This closes the gap the first plan
+  review round found: without this check, `SQLiteStore` shipped with
+  no enforced coverage floor at all.
 - `python3 scripts/check_structure.py` passes: `sqlite_store.go` stays
   at or below 500 lines and every function at or below 80 lines, the
   same limit every other file in this module holds to, regardless of
   its build tag; the gate scans file text, not a `go build` output, so
   the tag does not exempt the file from this check.
-- `api/ledger.txt` gains `MemStoreOptions` and `NewMemStoreWithOptions`
-  through a plain `make api-update`, and separately gains `SQLiteStore`,
-  `NewSQLiteStore`, and `(*SQLiteStore) Close`'s exported peers
-  (`Load`, `CompareAndSwap`, `Range`) through
-  `make api-update -tags ledger_sqlite` (or the equivalent tag-aware
-  invocation the builder adds); both invocations' results land in the
-  same `api/ledger.txt` file, committed in the same change as the code.
+- `api/ledger.txt` gains `SQLiteStore`, `NewSQLiteStore`, and
+  `(*SQLiteStore) Close`'s exported peers (`Load`, `CompareAndSwap`,
+  `Range`) through `make api-update -tags ledger_sqlite` (or the
+  equivalent tag-aware invocation the builder adds), committed in the
+  same change as the code.
 - `policy/layers.json`'s `"ledger": ["machine", "events"]` row is
   unchanged: `modernc.org/sqlite` is a third-party module, not an
   internal package edge, so it is governed by the mechanisms below,
@@ -793,21 +702,21 @@ exceptions do not carry and naming `modernc.org/sqlite`, not
 ### Summary
 
 `make verify` passes for the default build once this phase lands,
-covering `MemStoreOptions`, `NewMemStoreWithOptions`, and `mem_
-store_options_test.go` like any other default-build change, since the
-tag-gated `SQLiteStore` file never enters that build. A second,
-explicit verification command (`go test -tags ledger_sqlite -race
-./ledger/...`, or the Makefile target that wraps it) must also pass
-before this phase is considered done, covering: the `SQLiteStore` code
-and its tag-gated tests; the `go.mod` and `go.sum` additions; the
-`check_gomod.py` allowlist extension and docstring update; the two
-`semgrep/sdk-standards.yml` rule changes and the new `check_semgrep_
-probes.py` case (these three run under the default, non-tag-gated
-`make verify` since Semgrep does not evaluate build tags); the
-`AGENTS.md` exception-sentence and `ledger/` layout-bullet edits; and
-the `docs/architecture.md` and `docs/plans/ledger.md` doc updates,
-naming `SQLiteStore` next to `MemStore` with the same documented
-Task-serialization and build-tag-boundary limits this plan states, and
-naming `MemStoreOptions`'s bounded-entry-cap knob next to `MemStore`
-itself. `docs/protocol-design.md` does not change: this phase adds no
-message-semantics rule to the envelope wire format.
+unchanged, since the tag-gated `SQLiteStore` file never enters that
+build. A second, explicit verification command
+(`go test -tags ledger_sqlite -race -cover ./ledger/...`, or the
+Makefile target that wraps it) must also pass, including its 85%
+coverage check, before this phase is considered done, covering: the
+`SQLiteStore` code and its tag-gated tests; the `go.mod` and `go.sum`
+additions; the `check_gomod.py` allowlist extension and docstring
+update; the two `semgrep/sdk-standards.yml` rule changes and the new
+`check_semgrep_probes.py` case (these three run under the default,
+non-tag-gated `make verify` since Semgrep does not evaluate build
+tags); the `AGENTS.md` exception-sentence and `ledger/` layout-bullet
+edits; and the `docs/architecture.md` and `docs/plans/ledger.md` doc
+updates, naming `SQLiteStore` next to `MemStore` with the same
+documented Task-serialization and build-tag-boundary limits this plan
+states. `docs/protocol-design.md` does not change: this phase adds no
+message-semantics rule to the envelope wire format. The `MemStore`
+bounded-entry-cap knob is a separate phase; see
+`docs/plans/agents/phase42b_memstore_bounded_cap.md`.

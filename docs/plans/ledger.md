@@ -1,6 +1,12 @@
 # Plan: ledger
 
-Status: shipped. New top-level package, from phase 34. Depends on the
+Status: shipped. New top-level package, from phase 34.
+`docs/plans/agents/phase42_ledger_durable_store.md` (phase 42) later
+adds a second `Store` implementation, `SQLiteStore`, behind the
+`ledger_sqlite` build tag. See that document's own Goal, Scope, and
+Verification sections for the addition. This document covers the
+phase-34 surface `ledger` shipped with: `MemStore` and everything
+above it. Depends on the
 shipped `machine` and `events` packages only; `ledger` does not import
 `heartbeat`. `LeaseUntil` compared against a caller-supplied `now` is
 the only staleness signal `Claim` and `Takeover` read; `ledger` keeps
@@ -47,11 +53,12 @@ transitive dependency blocking on failure (`Complete`); a pluggable
 `Store` with a shipped in-memory default (`MemStore`); and
 `Snapshot`/`Encode`/`Decode`/`Restore` for point-in-time persistence.
 
-Outside: a shipped durable backend beyond `MemStore`. The SDK is
-stdlib-only; a real cross-process durability guarantee needs a
-database or a distributed store this SDK cannot ship, so `ledger`
-defines the `Store` interface the guarantee needs and ships only the
-in-memory implementation its own tests use by default. Outside:
+Outside (at phase 34): a shipped durable backend beyond `MemStore`.
+Phase 42 later adds `SQLiteStore`, an opt-in, `ledger_sqlite`-
+build-tag-gated `Store` backed by `modernc.org/sqlite`, next to
+`MemStore`; see `docs/plans/agents/phase42_ledger_durable_store.md`.
+`MemStore` stays the default, zero-dependency `Store`; `New`'s
+nil-`Store` fallback is unchanged by that addition. Outside:
 distributed consensus — `ledger` does not elect a leader or replicate
 `Store` across nodes; a caller who needs consensus runs `Store`
 against a backend that already provides it, and `ledger`'s own
@@ -319,3 +326,10 @@ this change. `docs/architecture.md` gains the `ledger` package-map
 entry; `docs/packages/ledger.md` documents the exported surface;
 `AGENTS.md` gains a `ledger/` layout bullet. No conformance vector
 changes: `ledger` carries no signed or threaded wire form.
+
+Phase 42 (`docs/plans/agents/phase42_ledger_durable_store.md`) adds
+`SQLiteStore` next to `MemStore`, verified separately: the default
+`make verify` stays green unchanged, since `SQLiteStore` compiles only
+under the `ledger_sqlite` build tag, and a second command,
+`make verify-ledger-sqlite`, holds the tag-gated build to the same 85%
+coverage floor.

@@ -182,6 +182,19 @@ def main() -> int:
             'package mcp\n\nimport mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"\n\nvar _ = mcpsdk.Transport(nil)\n'
         )
 
+        # ledger-scoped rule pair: proves the stdlib-only exclude and
+        # the new scoped rule fire together, in a path-scoped
+        # directory the flat PROBES loop above cannot exercise.
+        ledger_rid = "sdk.go.ledger-scoped-third-party-import"
+        ledger_dir = tmp / "ledger"
+        ledger_dir.mkdir()
+        (ledger_dir / "viol_ledger_other_import.go").write_text(
+            'package ledger\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n'
+        )
+        (ledger_dir / "clean_modernc_sqlite_import.go").write_text(
+            'package ledger\n\nimport _ "modernc.org/sqlite"\n\nvar _ = 1\n'
+        )
+
         data = scan(tmp)
         if data.get("errors"):
             print("semgrep probe scan errors:", data["errors"])
@@ -194,6 +207,8 @@ def main() -> int:
         expected["clean_a2a_import.go"] = a2aclient_rid
         expected["viol_mcp_other_import.go"] = mcp_rid
         expected["clean_go_sdk_import.go"] = mcp_rid
+        expected["viol_ledger_other_import.go"] = ledger_rid
+        expected["clean_modernc_sqlite_import.go"] = ledger_rid
         hits = {}
         for r in data.get("results", []):
             name = Path(r["path"]).name
@@ -246,6 +261,22 @@ def main() -> int:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded mcp/ directory")
         if "sdk.go.stdlib-only-imports" in mcp_clean_hits:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded mcp/ directory")
+
+        # Explicit ledger-scoped assertions, parallel to the a2aclient
+        # and mcp blocks above: the scoped rule fires on the
+        # violation, stays silent on the clean modernc.org/sqlite
+        # import, and the scoped exclude keeps stdlib-only-imports out
+        # of both.
+        ledger_viol_hits = hits.get("viol_ledger_other_import.go", set())
+        ledger_clean_hits = hits.get("clean_modernc_sqlite_import.go", set())
+        if ledger_rid not in ledger_viol_hits:
+            problems.append(f"{ledger_rid}: violation file viol_ledger_other_import.go did not fire")
+        if ledger_rid in ledger_clean_hits:
+            problems.append(f"{ledger_rid}: clean file clean_modernc_sqlite_import.go fired")
+        if "sdk.go.stdlib-only-imports" in ledger_viol_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded ledger/ directory")
+        if "sdk.go.stdlib-only-imports" in ledger_clean_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded ledger/ directory")
 
         for name in hits:
             if name not in expected and not name.startswith("d5"):

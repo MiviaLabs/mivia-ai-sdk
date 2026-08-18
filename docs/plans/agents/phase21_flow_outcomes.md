@@ -107,7 +107,11 @@ its six `Run` call sites move to the `Report` API too.
     `Outcome` call on the same report.
 - `outcomes_integration_test.go` — rerun the phase 5 diamond graph
   through the new signature. Assert the outcome of every step. Assert
-  the declaration-order tie-break still holds.
+  the declaration-order tie-break still holds. The diamond graph is
+  sequential, so it does not exercise a wave failure. Add a panel
+  case: a panel with one failing member and one succeeding member.
+  Assert the wave error aborts the run and assert `Outcomes()` holds
+  no entry for either member.
 - `outcomes_bench_test.go` — keep the existing benchmarks compiling
   under the new signature. Measure the three-step linear baseline
   again on the same machine before this phase's code lands. Record

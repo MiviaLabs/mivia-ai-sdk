@@ -76,9 +76,10 @@ pattern sources.
   definition and reject cycles with Kahn's algorithm.
 - `type Confirm func(ctx context.Context, step Step) error` as the ack
   gate a caller supplies.
-- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)`
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (machine.Status, machine.InOut, error)`
   to execute the graph and return the final status and record. Phase 21
-  changes the return to `Report`.
+  changes the return to `Report`; the six parameters, including `bus`,
+  stay unchanged.
 - A chained step nests another Definition as one step, through
   `Step.Sub`.
 - `type Outcome int` with `OutcomeSucceeded`, `OutcomeFailed`, and

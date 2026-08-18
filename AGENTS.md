@@ -54,6 +54,10 @@ Go SDK for building AI agents. Module:
   Message, Request, Response, Chunk. A leaf package; no internal
   imports. No concrete client ships in this SDK; a caller supplies its
   own `Completer`.
+- `channel/` — the ask-and-wait shape: Question, Answer, Notifier. A
+  leaf package; no internal imports. Ships no concrete transport; a
+  caller implements `Notifier` per real channel (terminal, Slack,
+  another agent).
 - `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.

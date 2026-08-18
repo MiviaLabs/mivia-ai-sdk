@@ -221,6 +221,13 @@ flowchart LR
   first, and aggregates a streamed `Chunk` sequence into one
   `Response`. `provider` imports no other package in this module. See
   [packages/provider.md](packages/provider.md).
+- `channel/` — a leaf primitive. It provides `Question`,
+  `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
+  the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,
+  and `ErrEmptyQuestionID`. `Notifier` is a caller-implemented func
+  type that asks a question and returns a typed `Answer`; `channel`
+  ships no concrete transport. `channel` imports no other package in
+  this module. See [packages/channel.md](packages/channel.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

@@ -33,6 +33,7 @@ func bigPanelSubMachine(t *testing.T) *machine.Definition {
 	return mustMachine(t, "queued",
 		tr("queued", "w", "p"),
 		tr("queued", "cs", "s"),
+		tr("w", "cs", "s2"),
 		tr("cs", "done", "t"),
 	)
 }

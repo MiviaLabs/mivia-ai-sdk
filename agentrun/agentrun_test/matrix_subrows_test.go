@@ -87,7 +87,7 @@ func TestValidateMatrixSubNeedsOnlyTerminalRows(t *testing.T) {
 		tr("queued", "preS", "p"),
 		tr("preS", "final", "q"),
 		tr("queued", "r1s", "r"),
-		tr("queued", "r2s", "s"),
+		tr("r1s", "r2s", "s"),
 		tr("r1s", "final", "t"),
 		tr("r2s", "final", "u"),
 	)
@@ -116,15 +116,12 @@ func loopMachine(t *testing.T, reentry bool) *machine.Definition {
 	rows := []machine.Transition{
 		tr("queued", "cs1", "a"),
 		tr("cs1", "cs2", "b"),
-		tr("cs1", "cs3", "c"),
+		tr("cs2", "cs3", "c"),
 		tr("queued", "cs2", "p"),
 		tr("queued", "cs3", "q"),
 	}
 	if reentry {
-		rows = append(rows,
-			tr("cs2", "cs3", "r"),
-			tr("cs3", "cs2", "s"),
-		)
+		rows = append(rows, tr("cs3", "cs2", "s"))
 	}
 	return mustMachine(t, "queued", rows...)
 }
@@ -178,5 +175,58 @@ func TestValidateMatrixLoopReentry(t *testing.T) {
 			tr("cs", "done", "b"),
 		)
 		assertMatrixPasses(t, once, m)
+	})
+}
+
+// TestValidateMatrixSequentialRootsChains proves the walker models
+// the declaration-order walk: a second root fires from the first
+// root's status, not from the machine's initial status.
+func TestValidateMatrixSequentialRootsChain(t *testing.T) {
+	plan := mustFlow(t, []flow.Step{
+		{ID: "r1", To: "s1", Payload: "a"},
+		{ID: "r2", To: "s2", Payload: "b"},
+	}, nil)
+	t.Run("runnable machine passes", func(t *testing.T) {
+		m := mustMachine(t, "queued",
+			tr("queued", "s1", "a"),
+			tr("s1", "s2", "b"),
+		)
+		assertMatrixPasses(t, plan, m)
+	})
+	t.Run("needs-based machine fails", func(t *testing.T) {
+		// Both rows leave the initial status. The real walk fires r2
+		// from s1, so this machine aborts mid-run and must fail here.
+		m := mustMachine(t, "queued",
+			tr("queued", "s1", "a"),
+			tr("queued", "s2", "b"),
+		)
+		assertMatrixFails(t, plan, m, "s1", "s2")
+	})
+}
+
+// TestValidateMatrixSiblingsChain proves a later sibling fires from
+// the earlier sibling's status, because the walk keeps one shared
+// status and scans in declaration order.
+func TestValidateMatrixSiblingsChain(t *testing.T) {
+	plan := mustFlow(t, []flow.Step{
+		{ID: "a", To: "sa", Payload: "a"},
+		{ID: "x", To: "sx", Needs: []string{"a"}, Payload: "x"},
+		{ID: "y", To: "sy", Needs: []string{"a"}, Payload: "y"},
+	}, nil)
+	t.Run("runnable machine passes", func(t *testing.T) {
+		m := mustMachine(t, "queued",
+			tr("queued", "sa", "a"),
+			tr("sa", "sx", "x"),
+			tr("sx", "sy", "y"),
+		)
+		assertMatrixPasses(t, plan, m)
+	})
+	t.Run("needs-based machine fails", func(t *testing.T) {
+		m := mustMachine(t, "queued",
+			tr("queued", "sa", "a"),
+			tr("sa", "sx", "x"),
+			tr("sa", "sy", "y"),
+		)
+		assertMatrixFails(t, plan, m, "sx", "sy")
 	})
 }

@@ -77,10 +77,12 @@ var ErrNoAgent, ErrNoMachine, ErrNoResolver, ErrAmbiguousWait,
 exclusive ack resolvers; one of them must be set. `Scope`, `Store`,
 `Ask`, and `Artifacts` each need `Tools`. `Ask` needs a non-empty
 `AskTo`. A set `Budget` must pass its own `Validate`. The transition
-matrix must pass `ValidateMatrix`. The check recurses into every
-`Sub` child, whose own rows start from the machine's initial status.
-A loop that can re-iterate needs re-entry rows between its distinct
-child finals. Every Confirm-gated step ID must
+matrix must pass `ValidateMatrix`. The check simulates the runner's
+declaration-order walk, so sequential roots and siblings chain: a
+step's rows start from the statuses the walk rests on. It recurses
+into every `Sub` child, whose own walk starts from the machine's
+initial status. A loop that can re-iterate needs re-entry rows
+between its distinct child finals. Every Confirm-gated step ID must
 resolve in the registry when `Tools` is set.
 
 The agent accessors added in this same change:
@@ -108,17 +110,19 @@ following files exist:
   skip the check, `Sub` children resolve recursively, and a set
   `Receiver` is accepted.
 - `matrix_test.go` — table-driven over `ValidateMatrix`: a root step
-  missing a row; a dependent missing a row; a panel wave unioning its
-  members' sets, with the mirror machine for the second member; a
-  fallback needing failed needs' predecessors, final statuses, and
-  the pre-fire row; `Sub` and `Loop` needs checked against child
-  finals; a child with internal needs excluding its internal step; a
-  deep multi-level `Sub` chain; an ambiguous row pair; the
-  route-exclusion scope limit; the accept path.
+  missing a row; a dependent missing a row; a wave firing from the
+  standing set; sibling roots chaining before a wave; a fallback
+  needing failed needs' predecessors, final statuses, and the
+  pre-fire row; a fallback mixing failed and succeeded needs; `Sub`
+  and `Loop` needs checked against child finals; a child with
+  internal needs excluding its internal step; a deep multi-level
+  `Sub` chain; an ambiguous row pair; the route-exclusion scope
+  limit; the accept path.
 - `matrix_subrows_test.go` — `Sub` children validate their own rows
   at every depth; a non-root `Sub` step needs terminal rows only; a
   loop that can re-iterate needs re-entry rows between distinct
-  finals, and `Max: 1` exempts them.
+  finals, and `Max: 1` exempts them; sequential roots chain; sibling
+  dependents chain.
 - `run_integration_test.go` — a real two-step agent; assert artifacts,
   stored refs, acked events, thread verification, the non-text result,
   and the empty-string result.

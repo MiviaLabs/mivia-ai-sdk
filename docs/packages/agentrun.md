@@ -65,15 +65,16 @@ Use `errors.Is` to test these.
   `MessageAckedEvent`, and `ThreadVerifiedEvent` on the resolved bus,
   so `Bus().Emit` never raises the "no subscriber" fault for the three
   agent event names.
-- `ValidateMatrix` models the declared happy-path predecessors. It does
-  not model route-excluded or skipped-need paths. Each declared
-  predecessor must hold exactly one row `From=p` `To=step.To`; zero rows
-  and two rows both fail, naming the step, the predecessor, and the
-  target. It recurses into every `Sub` child, whose own rows start
-  from the machine's initial status. A loop that can re-iterate needs
-  a re-entry row between every pair of distinct child finals. A loop
-  landing the same final twice always faults at run time:
-  `machine.New` forbids the self row it would need.
+- `ValidateMatrix` simulates the runner's declaration-order walk on
+  the all-run path. Sequential roots and siblings chain: each step's
+  rows start from the statuses the walk rests on, not from the
+  initial status. Zero rows and two rows both fail, naming the step,
+  the source, and the target. It recurses into every `Sub` child,
+  whose own walk starts from the machine's initial status. A loop
+  that can re-iterate needs a re-entry row between every pair of
+  distinct child finals. It does not model route-excluded or
+  skipped-need paths, and a loop landing the same final twice always
+  faults at run time: `machine.New` forbids the self row it needs.
 - The built ack chain resolves a step's tool by `step.ID`. A suffixed
   repeat, which agent.Run mints for a step confirmed twice, resolves
   the plain tool name and records its artifact under the suffixed

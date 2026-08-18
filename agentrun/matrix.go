@@ -10,18 +10,20 @@ import (
 )
 
 // ValidateMatrix checks that the plan's transition rows exist in m.
-// It walks plan.Steps() and plan.Panels() and computes each logical
-// step's predecessor status set. For every predecessor the machine
-// must hold exactly one row From=p To=target. Zero rows and two rows
-// both fail, naming the step, the predecessor, and the target. It
-// recurses into every Sub child at every depth: a child Run starts
-// from the machine's initial status, so the child's own rows are
-// checked the same way. A Loop step that can run a second iteration
-// also needs a re-entry row between every pair of distinct child
-// finals. It is a static check; it does not prove the walk never
-// aborts. Route exclusions, skipped needs, forward-type mismatches,
-// and a loop landing the same final twice (machine.New forbids the
-// self row that needs) can still abort mid-run after New passes.
+// It simulates the runner's declaration-order scan on the all-run
+// path, so each step's rows start from the statuses the walk can
+// rest on, not from the machine's initial status: sequential roots
+// and siblings chain. For every such status the machine must hold
+// exactly one row From=p To=target. Zero rows and two rows both
+// fail, naming the step, the source, and the target. It recurses
+// into every Sub child at every depth: a child Run starts from the
+// machine's initial status, so the child's own walk is checked the
+// same way. A Loop step that can run a second iteration also needs a
+// re-entry row between every pair of distinct child finals. It is a
+// static check; it does not prove the walk never aborts. Route
+// exclusions, skipped needs, forward-type mismatches, and a loop
+// landing the same final twice (machine.New forbids the self row
+// that needs) can still abort mid-run after New passes.
 func ValidateMatrix(plan *flow.Definition, m *machine.Definition) error {
 	if plan == nil {
 		return fmt.Errorf("agentrun: plan must not be nil")
@@ -39,48 +41,205 @@ type walker struct {
 	m *machine.Definition
 }
 
-// walk validates one definition's steps and panels. It validates each
-// two-or-more-member panel as one wave, unioning the members'
-// predecessor sets against the homogeneous To flow.New already proved.
-// Every other step validates alone against its own predecessor set.
+// walk validates one definition by simulating the runner's
+// declaration-order scan on the all-run path. The standing set holds
+// every status the walk can rest on at each point; a step requires
+// rows from that set to its targets. Fallback steps fire from their
+// needs' failure spans instead. A panel fires as one wave from the
+// standing set to its shared To.
 func (w *walker) walk(steps []flow.Step, panels []flow.Panel) error {
-	wave := map[string]bool{}
-	for _, p := range panels {
-		if len(p) < 2 {
-			continue
+	s := &walkSim{
+		w:         w,
+		steps:     steps,
+		panels:    panels,
+		resolved:  map[string]bool{},
+		curs:      map[machine.Status]bool{w.m.Initial(): true},
+		firedFrom: map[string][]machine.Status{},
+		firedTo:   map[string][]machine.Status{},
+	}
+	return s.run()
+}
+
+// walkSim tracks one simulated walk: which steps resolved, the
+// standing status set, and each step's fire span for its fallback
+// dependents.
+type walkSim struct {
+	w         *walker
+	steps     []flow.Step
+	panels    []flow.Panel
+	resolved  map[string]bool
+	curs      map[machine.Status]bool
+	firedFrom map[string][]machine.Status
+	firedTo   map[string][]machine.Status
+}
+
+// run scans in declaration order, mirroring nextReadyGroup's shape,
+// until every step resolves.
+func (s *walkSim) run() error {
+	for {
+		step, panel, isPanel, found := s.nextUnit()
+		if !found {
+			return nil
 		}
-		union := map[machine.Status]bool{}
-		first := w.find(steps, p[0])
-		for _, id := range p {
-			for _, st := range w.preds(steps, w.find(steps, id)) {
-				union[st] = true
-			}
+		var err error
+		if isPanel {
+			err = s.runPanel(panel)
+		} else {
+			err = s.runStep(step)
 		}
-		target := []machine.Status{machine.Status(first.To)}
-		if err := w.checkUnit(joinIDs(p), predSlice(union), target); err != nil {
+		if err != nil {
 			return err
-		}
-		for _, id := range p {
-			wave[id] = true
 		}
 	}
-	for _, s := range steps {
-		if wave[s.ID] {
+}
+
+// nextUnit returns the next ready unit in declaration order: a
+// singleton step, or a whole panel once every member's needs
+// resolved. A waiting step never blocks a later ready one.
+func (s *walkSim) nextUnit() (flow.Step, flow.Panel, bool, bool) {
+	for _, st := range s.steps {
+		if s.resolved[st.ID] {
 			continue
 		}
-		if err := w.checkUnit(s.ID, w.preds(steps, s), w.targets(s)); err != nil {
-			return err
-		}
-		if err := w.checkLoopReentry(s); err != nil {
-			return err
-		}
-		if s.Sub != nil {
-			if err := w.walk(s.Sub.Steps(), s.Sub.Panels()); err != nil {
-				return err
+		if p, ok := simPanelOf(st.ID, s.panels); ok && len(p) >= 2 {
+			if s.panelReady(p) {
+				return flow.Step{}, p, true, true
 			}
+			continue
+		}
+		if s.needsReady(st) {
+			return st, nil, false, true
 		}
 	}
+	return flow.Step{}, nil, false, false
+}
+
+// runStep validates one step, records its fire span, and advances
+// the standing set to its targets.
+func (s *walkSim) runStep(st flow.Step) error {
+	preds := s.standingFor(st)
+	targets := s.w.targets(st)
+	if err := s.w.checkUnit(st.ID, preds, targets); err != nil {
+		return err
+	}
+	if err := s.w.checkLoopReentry(st); err != nil {
+		return err
+	}
+	if st.Sub != nil {
+		if err := s.w.walk(st.Sub.Steps(), st.Sub.Panels()); err != nil {
+			return err
+		}
+	}
+	s.resolved[st.ID] = true
+	s.firedFrom[st.ID] = preds
+	s.firedTo[st.ID] = targets
+	s.advance(targets, s.keepsPriorSet(st.ID, st.When == flow.AdmissionOnFailed))
 	return nil
+}
+
+// runPanel validates one wave from the standing set and lands the
+// walk on the shared To.
+func (s *walkSim) runPanel(p flow.Panel) error {
+	targets := []machine.Status{machine.Status(s.w.find(s.steps, p[0]).To)}
+	if err := s.w.checkUnit(joinIDs(p), predSlice(s.curs), targets); err != nil {
+		return err
+	}
+	keep := false
+	preds := predSlice(s.curs)
+	for _, id := range p {
+		s.resolved[id] = true
+		s.firedFrom[id] = preds
+		s.firedTo[id] = targets
+		if s.keepsPriorSet(id, false) {
+			keep = true
+		}
+	}
+	s.advance(targets, keep)
+	return nil
+}
+
+// standingFor returns the statuses st fires from. A normal step fires
+// from the standing set. A fallback fires from each need's failure
+// span: the statuses the need fired from, for a failed Fire, and its
+// targets, for a failed Route.
+func (s *walkSim) standingFor(st flow.Step) []machine.Status {
+	if st.When != flow.AdmissionOnFailed {
+		return predSlice(s.curs)
+	}
+	set := map[machine.Status]bool{}
+	for _, n := range st.Needs {
+		for _, f := range s.firedFrom[n] {
+			set[f] = true
+		}
+		for _, to := range s.firedTo[n] {
+			set[to] = true
+		}
+	}
+	return predSlice(set)
+}
+
+// advance moves the standing set after one unit ran. The walk rests
+// on the unit's targets. keepPrior also carries the prior set
+// forward, for a step whose failure or skipped branch stays live.
+func (s *walkSim) advance(targets []machine.Status, keepPrior bool) {
+	if !keepPrior {
+		s.curs = map[machine.Status]bool{}
+	}
+	for _, t := range targets {
+		s.curs[t] = true
+	}
+}
+
+// keepsPriorSet reports whether the failure or skipped branch stays
+// live after id ran: id has a fallback dependent, or id is itself a
+// fallback whose success branch skipped it.
+func (s *walkSim) keepsPriorSet(id string, isFallback bool) bool {
+	if isFallback {
+		return true
+	}
+	for _, st := range s.steps {
+		if st.When == flow.AdmissionOnFailed {
+			for _, n := range st.Needs {
+				if n == id {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// needsReady reports whether every need of st resolved.
+func (s *walkSim) needsReady(st flow.Step) bool {
+	for _, n := range st.Needs {
+		if !s.resolved[n] {
+			return false
+		}
+	}
+	return true
+}
+
+// panelReady reports whether every member of p resolved its needs.
+func (s *walkSim) panelReady(p flow.Panel) bool {
+	for _, id := range p {
+		if !s.needsReady(s.w.find(s.steps, id)) {
+			return false
+		}
+	}
+	return true
+}
+
+// simPanelOf returns the first panel naming id, and whether one was
+// found.
+func simPanelOf(id string, panels []flow.Panel) (flow.Panel, bool) {
+	for _, p := range panels {
+		for _, member := range p {
+			if member == id {
+				return p, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // checkLoopReentry requires a row between every pair of distinct child
@@ -115,45 +274,6 @@ func (w *walker) targets(s flow.Step) []machine.Status {
 		return w.childFinals(s.Sub)
 	}
 	return []machine.Status{machine.Status(s.To)}
-}
-
-// preds returns the predecessor status set for step s in its own
-// definition. A step with no needs starts from the machine initial
-// status. A plain need contributes its To. A Sub or Loop need
-// contributes the child's terminal statuses. An AdmissionOnFailed step
-// also adds every need's own predecessor set: a Fire failure leaves
-// the pre-fire status while a Route or loop failure leaves the
-// post-step status.
-func (w *walker) preds(steps []flow.Step, s flow.Step) []machine.Status {
-	if len(s.Needs) == 0 {
-		return []machine.Status{w.m.Initial()}
-	}
-	set := map[machine.Status]bool{}
-	for _, nid := range s.Needs {
-		for _, st := range w.contributed(steps, nid) {
-			set[st] = true
-		}
-	}
-	if s.When == flow.AdmissionOnFailed {
-		for _, nid := range s.Needs {
-			for _, st := range w.preds(steps, w.find(steps, nid)) {
-				set[st] = true
-			}
-		}
-	}
-	return predSlice(set)
-}
-
-// contributed returns the statuses a need named by nid adds to a
-// predecessor set. A plain need contributes its To. A Sub or Loop need
-// contributes the child workflow's terminal statuses, because the
-// runner targets the child's final status, not the parent's To.
-func (w *walker) contributed(steps []flow.Step, nid string) []machine.Status {
-	need := w.find(steps, nid)
-	if need.Sub == nil {
-		return []machine.Status{machine.Status(need.To)}
-	}
-	return w.childFinals(need.Sub)
 }
 
 // childFinals returns the terminal statuses of a child workflow: the

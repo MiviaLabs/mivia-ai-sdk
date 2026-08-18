@@ -131,6 +131,30 @@ func TestValidateMatrixFallback(t *testing.T) {
 		)
 		assertMatrixFails(t, plan, broken, "sb", "fbw")
 	})
+
+	// Pins the pre-fire predecessor: a Fire failure leaves the need's
+	// own predecessor status, so the fallback also needs a row from the
+	// need's pre-fire status, not only its post-fire To.
+	t.Run("fallback needs the pre-fire row", func(t *testing.T) {
+		plan := mustFlow(t, []flow.Step{
+			{ID: "a", To: "sa"},
+			{ID: "fb", To: "fbw", Needs: []string{"a"}, When: flow.AdmissionOnFailed},
+		}, nil)
+		// Has the post-fire row sa->fbw but lacks the pre-fire row
+		// queued->fbw.
+		missingPreFire := mustMachine(t, "queued",
+			tr("queued", "sa", "a"),
+			tr("sa", "fbw", "h"),
+		)
+		assertMatrixFails(t, plan, missingPreFire, "queued", "fbw")
+
+		complete := mustMachine(t, "queued",
+			tr("queued", "sa", "a"),
+			tr("sa", "fbw", "h"),
+			tr("queued", "fbw", "g"),
+		)
+		assertMatrixPasses(t, plan, complete)
+	})
 }
 
 // TestValidateMatrixSubLoops drives the sub- and loop-child final
@@ -195,6 +219,44 @@ func TestValidateMatrixNilGuards(t *testing.T) {
 	if err := agentrun.ValidateMatrix(plan, nil); err == nil {
 		t.Fatal("ValidateMatrix(plan, nil) returned nil, want a nil-machine error")
 	}
+}
+
+// TestValidateMatrixChildWithInternalNeeds proves childFinals excludes a
+// child step that a sibling needs, so only the true terminal counts.
+func TestValidateMatrixChildWithInternalNeeds(t *testing.T) {
+	child := mustFlow(t, []flow.Step{
+		{ID: "x", To: "cx"},
+		{ID: "y", To: "cy", Needs: []string{"x"}},
+	}, nil)
+	plan := mustFlow(t, []flow.Step{
+		{ID: "sub1", Sub: child, To: "pt"},
+		{ID: "tail", To: "done", Needs: []string{"sub1"}},
+	}, nil)
+
+	// Only the terminal cy feeds the parent; cx is an internal step.
+	ok := mustMachine(t, "queued",
+		tr("queued", "cy", "a"),
+		tr("cy", "done", "b"),
+	)
+	assertMatrixPasses(t, plan, ok)
+
+	// A row for the internal cx instead of the terminal cy must fail.
+	wrong := mustMachine(t, "queued",
+		tr("queued", "cx", "a"),
+		tr("cx", "done", "b"),
+	)
+	assertMatrixFails(t, plan, wrong, "cy")
+}
+
+// TestValidateMatrixOneMemberPanel proves a one-member panel is not
+// treated as a wave: its single member validates as a normal step.
+func TestValidateMatrixOneMemberPanel(t *testing.T) {
+	plan := mustFlow(t, []flow.Step{{ID: "s", To: "done"}}, []flow.Panel{{"s"}})
+	ok := mustMachine(t, "queued", tr("queued", "done", "x"))
+	assertMatrixPasses(t, plan, ok)
+
+	missing := mustMachine(t, "queued", tr("queued", "other", "x"))
+	assertMatrixFails(t, plan, missing, "done", "queued")
 }
 
 // assertMatrixPasses requires ValidateMatrix to return nil.

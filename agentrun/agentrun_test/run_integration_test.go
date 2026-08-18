@@ -11,6 +11,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -198,6 +199,30 @@ func TestRunRespectsRoom(t *testing.T) {
 	}
 	if status != "resolved" {
 		t.Fatalf("status = %q, want %q", status, "resolved")
+	}
+}
+
+// TestRunStorePutExceedsBudget proves a Store whose budget cannot hold
+// the tool result fails the step with the Put error, not a silent drop.
+func TestRunStorePutExceedsBudget(t *testing.T) {
+	ctx := context.Background()
+	plan := mustFlow(t, []flow.Step{{ID: "t1", To: "resolved", Payload: "seed"}}, nil)
+	tiny, err := memory.New(2)
+	if err != nil {
+		t.Fatalf("memory.New: %v", err)
+	}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent:   mustAgent(t, plan),
+		Machine: oneStepMachine(t),
+		Tools:   oneStepRegistry(t), // returns "out:seed", 8 bytes > 2
+		Store:   tiny,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, _, err = runner.Run(ctx, "thread-store-full", machine.InOut{})
+	if !errors.Is(err, memory.ErrBudgetExceeded) {
+		t.Fatalf("Run error = %v, want memory.ErrBudgetExceeded", err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
@@ -98,6 +99,32 @@ func TestRunEscalation(t *testing.T) {
 			t.Fatal("Run succeeded, want a Notifier error")
 		}
 	})
+}
+
+// TestRunEscalationApproveEmptyAnswer proves an approved answer with an
+// empty payload fails in askRoundTrip's NewAck, not as ErrResultNotText.
+func TestRunEscalationApproveEmptyAnswer(t *testing.T) {
+	plan := mustFlow(t, []flow.Step{{ID: "escalate", To: "resolved", Payload: "p"}}, nil)
+	m := mustMachine(t, "queued", tr("queued", "resolved", "run"))
+	ctx := context.Background()
+	ask := &captureAsk{approved: true, payload: ""}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent:   mustAgent(t, plan),
+		Machine: m,
+		Tools:   registryOf(t, escalateTool{}),
+		Ask:     ask.Answer,
+		AskTo:   "human",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, _, err = runner.Run(ctx, "thread-esc-empty", machine.InOut{})
+	if err == nil {
+		t.Fatal("Run succeeded, want a NewAck restatement fault")
+	}
+	if !strings.Contains(err.Error(), "restatement") {
+		t.Fatalf("Run error %q lacks a NewAck restatement fault", err)
+	}
 }
 
 // registryOf returns a registry holding t, failing on error.

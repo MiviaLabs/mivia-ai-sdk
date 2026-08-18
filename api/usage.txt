@@ -2,7 +2,11 @@ package usage
   func (a *Accumulator) Record(sessionID string, u provider.Usage) (error)
   func (a *Accumulator) Reset(sessionID string) (error)
   func (a *Accumulator) Total(sessionID string) (provider.Usage, bool)
+  func (r *recordingCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error)
+  func (r *recordingCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)
+  func (r *recordingCompleter) Name() (string)
   func New() (*Accumulator)
+  func WrapCompleter(sessionID string, a *Accumulator, c provider.Completer) (provider.Completer, error)
   type Accumulator struct {
 }
   var ErrBlankSessionID

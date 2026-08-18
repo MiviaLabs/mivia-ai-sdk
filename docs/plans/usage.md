@@ -23,6 +23,13 @@ current total for a session, and resetting a session's total back to
 zero. Inside: safe concurrent `Record` calls against the same session
 from more than one goroutine.
 
+Inside: `WrapCompleter`, one composition seam. It wraps a
+`provider.Completer` so every completed turn records its usage under
+a session, letting any provider consumer — a subagent tool, a
+providerregistry entry — gain per-session totals without importing
+this package's accumulator directly. A blank session id fails
+construction.
+
 Outside: cost-in-currency conversion. A caller multiplies the `Total`
 fields by its own current price outside this package. Outside: budget
 or limit enforcement; `contextbudget.Limits` already owns that gate.

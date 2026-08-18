@@ -15,6 +15,10 @@ surface below mirrors `api/usage.txt`.
 ## Functions and methods
 
 - `New()` — creates an empty `Accumulator`.
+- `WrapCompleter(sessionID, a, c)` — wraps one `provider.Completer`
+  so every completed turn records its usage under sessionID in `a`.
+  The composition seam for any provider consumer; a blank sessionID
+  fails construction, and an erroring turn records nothing.
 - `Accumulator.Record(sessionID, u)` — adds `u`'s four fields onto the
   running total keyed by `sessionID`. Creates the session's total on
   its first call; every later call for the same `sessionID` adds onto

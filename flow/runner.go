@@ -37,6 +37,19 @@ type Confirm func(ctx context.Context, step Step) error
 // first, then m, then confirm, so a nil m never panics inside a
 // d-nil or m-nil check.
 //
+// onCheckpoint, when non-nil, fires immediately after each step or
+// wave resolves OutcomeSucceeded, with a fresh Checkpoint holding the
+// current status, the current record, and the sorted step IDs
+// resolved so far. A nil onCheckpoint skips the call. See Checkpoint
+// and Resume.
+//
+// Before each step or wave starts, Run checks ctx for cancellation. A
+// canceled ctx stops the walk before the next step starts and returns
+// the pinned pause error, wrapping ctx.Err(); the last Checkpoint
+// onCheckpoint delivered is the resume point. A step already running
+// keeps running to its own completion; Run only refuses to start the
+// next step after an observed cancellation.
+//
 // Run returns a Report holding the final status, the final record,
 // and every resolved step's Outcome. On every abort, Run returns the
 // Report built so far, alongside the error. A step whose Fire fails
@@ -55,6 +68,7 @@ type Confirm func(ctx context.Context, step Step) error
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	in machine.InOut, confirm Confirm, bus *events.Bus,
+	onCheckpoint func(Checkpoint),
 ) (Report, error) {
 	if d == nil {
 		return Report{status: machine.Status(""), record: in}, errorf("d must not be nil")
@@ -66,38 +80,21 @@ func Run(
 		return Report{status: m.Initial(), record: in}, errorf("confirm must not be nil")
 	}
 
-	cur := m.Initial()
-	rec := in
 	outcomes := make(map[string]Outcome)
-
-	if len(d.steps) == 0 {
-		return Report{status: cur, record: rec, outcomes: outcomes}, nil
-	}
-	if len(d.steps) == 1 {
-		var err error
-		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes)
-		return Report{status: cur, record: rec, outcomes: outcomes}, err
-	}
-
-	for len(outcomes) < len(d.steps) {
-		next, group, res := nextReadyGroup(d.steps, d.panels, outcomes)
-		var err error
-		cur, rec, err = advanceGroup(ctx, m, cur, rec, next, group, res, d.steps, confirm, bus, outcomes)
-		if err != nil {
-			return Report{status: cur, record: rec, outcomes: outcomes}, err
-		}
-	}
-
-	return Report{status: cur, record: rec, outcomes: outcomes}, nil
+	return runLoop(ctx, d, m, m.Initial(), in, outcomes, confirm, bus, onCheckpoint)
 }
 
 // advanceGroup runs, skips, or rejects the group nextReadyGroup found,
 // for one loop iteration of Run. It marks every resolved step's
-// Outcome in outcomes before it returns.
+// Outcome in outcomes before it returns, and fires onCheckpoint once
+// a step's or a wave's outcomes settle at OutcomeSucceeded, after any
+// route-driven skip so a checkpoint never captures a state a route
+// rejection later overwrites.
 func advanceGroup(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, next Step, group []Step, res scanResult,
 	steps []Step, confirm Confirm, bus *events.Bus, outcomes map[string]Outcome,
+	onCheckpoint func(Checkpoint),
 ) (machine.Status, machine.InOut, error) {
 	switch res {
 	case scanNone:
@@ -123,18 +120,23 @@ func advanceGroup(
 		if err != nil {
 			return cur, rec, err
 		}
-		if next.Route == nil {
-			return cur, rec, nil
+		if next.Route != nil {
+			if err := applyRoute(ctx, next, cur, rec, steps, outcomes); err != nil {
+				outcomes[next.ID] = OutcomeFailed
+				return cur, rec, err
+			}
 		}
-		if err := applyRoute(ctx, next, cur, rec, steps, outcomes); err != nil {
-			outcomes[next.ID] = OutcomeFailed
-			return cur, rec, err
-		}
+		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 		return cur, rec, nil
 
 	case scanPanel:
 		if len(group) == 1 {
-			return runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
+			cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
+			if err != nil {
+				return cur, rec, err
+			}
+			fireCheckpoint(onCheckpoint, cur, rec, outcomes)
+			return cur, rec, nil
 		}
 		cur, rec, err := runWave(ctx, m, cur, rec, group)
 		if err != nil {
@@ -144,6 +146,7 @@ func advanceGroup(
 			emitStep(ctx, bus, step.ID)
 		}
 		markOutcome(outcomes, group, OutcomeSucceeded)
+		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 		return cur, rec, nil
 
 	default:
@@ -219,7 +222,7 @@ func runSingleton(
 func runChild(
 	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
 ) (machine.Status, error) {
-	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil)
+	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil, nil)
 	return report.Status(), err
 }
 

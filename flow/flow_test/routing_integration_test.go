@@ -62,7 +62,7 @@ func TestRoutingIntegrationDefaultJoinAdmitsChosenAlternative(t *testing.T) {
 		t.Fatalf("flow.New: %v", err)
 	}
 	var confirmed []string
-	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirmTracker(&confirmed), nil)
+	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirmTracker(&confirmed), nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestRoutingIntegrationStrictJoinSkipsOnUnchosenAlternative(t *testing.T) {
 		t.Fatalf("flow.New: %v", err)
 	}
 	var confirmed []string
-	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirmTracker(&confirmed), nil)
+	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirmTracker(&confirmed), nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRoutingIntegrationConfirmRejectionBlocksRoute(t *testing.T) {
 		}
 		return nil
 	}
-	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirm, nil)
+	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

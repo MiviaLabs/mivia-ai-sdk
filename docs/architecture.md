@@ -73,20 +73,23 @@ flowchart LR
   [packages/machine.md](packages/machine.md).
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It provides `Step`, `Panel`, `Definition`, `New`,
-  `Roots`, `Run`, `Confirm`, `Admission`, `Route`, `Outcome`, and
-  `Report`. `Step` carries an optional `Sub *Definition` for chaining,
-  an `Admission` rule in `When`, and an optional `Route` that makes it
-  a branch step. `Run` walks the graph in topological order. A step
-  named in no panel runs alone and gates on a confirmed ack. A step
-  named in a panel runs as part of that panel's wave, in a goroutine,
-  once every member is ready; the wave joins its members' errors with
-  `errors.Join`. Once every one of a step's needs is terminal, its
-  `Admission` rule decides whether it runs or skips; a branch step's
-  `Route` then picks which of its direct dependents the run keeps, and
-  the rest skip at once. `Run` returns a `Report` holding the final
-  status, the final record, and every resolved step's `Outcome`:
-  `OutcomeSucceeded`, `OutcomeFailed`, or `OutcomeSkipped`. See
-  [packages/flow.md](packages/flow.md).
+  `Roots`, `Run`, `Confirm`, `Admission`, `Route`, `Outcome`, `Report`,
+  `Checkpoint`, and `Resume`. `Step` carries an optional `Sub
+  *Definition` for chaining, an `Admission` rule in `When`, and an
+  optional `Route` that makes it a branch step. `Run` walks the graph
+  in topological order. A step named in no panel runs alone and gates
+  on a confirmed ack. A step named in a panel runs as part of that
+  panel's wave, in a goroutine, once every member is ready; the wave
+  joins its members' errors with `errors.Join`. Once every one of a
+  step's needs is terminal, its `Admission` rule decides whether it
+  runs or skips; a branch step's `Route` then picks which of its
+  direct dependents the run keeps, and the rest skip at once. `Run`
+  returns a `Report` holding the final status, the final record, and
+  every resolved step's `Outcome`: `OutcomeSucceeded`, `OutcomeFailed`,
+  or `OutcomeSkipped`. `Run`'s `onCheckpoint` hook fires a `Checkpoint`
+  after each step or wave succeeds; a caller pauses a run by canceling
+  `ctx` and resumes it later from the last checkpoint through `Resume`.
+  See [packages/flow.md](packages/flow.md).
 - `events/` — the in-process reaction bus. It provides `Name`,
   `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
   caller owns the bus; the module has no shared bus. Event names are

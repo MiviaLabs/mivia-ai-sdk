@@ -54,7 +54,7 @@ func TestRunCrossPanelDeadlockStalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected the stall error, got nil")
 	}
@@ -84,7 +84,7 @@ func TestRunSingletonForStepInNoPanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -147,7 +147,7 @@ func TestRunSkipsPartiallyReadyPanel(t *testing.T) {
 		record(step.ID)
 		return nil
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil, nil)
 	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -196,7 +196,7 @@ func TestRunWaveJoinedErrorPreservesState(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	in := machine.InOut{Input: "untouched"}
-	report, err := flow.Run(context.Background(), d, m, in, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, in, noopConfirm, nil, nil)
 	status := report.Status()
 	out := report.Record()
 	if err == nil {
@@ -235,7 +235,7 @@ func TestRunWaveJoinedErrorNoSiblingMarkedDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -272,7 +272,7 @@ func TestRunWaveAmbiguousRowFailsBeforeAnyGoroutine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -308,7 +308,7 @@ func TestRunWaveTwoFailuresJoinBoth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -354,7 +354,7 @@ func TestRunWaveGuardRaceUnderFourMembers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -426,7 +426,7 @@ func TestRunWaveGuardRacesConcurrently(t *testing.T) {
 		if err != nil {
 			t.Fatalf("machine.New: %v", err)
 		}
-		report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+		report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 		out := report.Record()
 		if err != nil {
 			t.Fatalf("Run: %v", err)

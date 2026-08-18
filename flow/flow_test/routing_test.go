@@ -68,7 +68,7 @@ func TestRouteKeepsOneDependentSkipsOther(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestRouteEmptyReturnSkipsAllDependents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestRouteDuplicateIDCollapsesToOneAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRouteNamingNonDependentAborts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -157,7 +157,7 @@ func TestRouteErrorMarksBranchFailedAborts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -211,7 +211,7 @@ func TestSkippedStepEmitsNoEventViaRouteOrAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, bus)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, bus, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestSkippedPanelEmitsNoEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -280,7 +280,7 @@ func TestRouteExclusionFinalDespiteSecondPendingParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestDefaultAdmissionAdmitsSkippedNeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestAdmissionOnSucceededCascadeStopsAtDefaultAdmission(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestPanelSkipsWholeGroupWhenOneMemberUnadmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestPanelSkipDecisionWaitsAcrossIterations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -448,7 +448,7 @@ func TestRouteReceivesPostStepStatusAndRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

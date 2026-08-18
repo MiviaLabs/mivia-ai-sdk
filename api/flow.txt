@@ -5,14 +5,23 @@ package flow
   const OutcomeSkipped
   const OutcomeSucceeded = iota
   const StepCompletedEvent = "flow.step_completed"
+  func (c Checkpoint) Encode() ([]byte, error)
+  func (c Checkpoint) Validate() (error)
   func (d Definition) Roots() ([]string)
   func (r Report) Outcome(id string) (Outcome, bool)
   func (r Report) Outcomes() (map[string]Outcome)
   func (r Report) Record() (machine.InOut)
   func (r Report) Status() (machine.Status)
+  func Decode(data []byte) (Checkpoint, error)
   func New(steps []Step, panels []Panel) (*Definition, error)
-  func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (Report, error)
+  func Resume(ctx context.Context, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
+  func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
   type Admission int
+  type Checkpoint struct {
+  Status machine.Status
+  Record machine.InOut
+  Done []string
+}
   type Confirm func(ctx context.Context, step Step) error
   type Definition struct {
 }

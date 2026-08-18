@@ -112,7 +112,7 @@ func (a *Agent) Run(
 	var runningBytes int
 	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID, room, budget, &runningBytes)
 
-	report, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
+	report, err := flow.Run(ctx, a.plan, m, in, confirm, bus, nil)
 	status, rec := report.Status(), report.Record()
 	if err != nil {
 		return status, rec, err

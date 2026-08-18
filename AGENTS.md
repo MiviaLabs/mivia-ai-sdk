@@ -14,7 +14,10 @@ Go SDK for building AI agents. Module:
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves: Step, Panel, Definition, Run, Confirm. A step named in
   a panel runs as part of that panel's wave, in a goroutine, once
-  every member is ready. Chaining ships in phase 7.
+  every member is ready. Chaining ships in phase 7. Checkpoint, pause,
+  and resume: Run's onCheckpoint hook, Checkpoint, Encode, Decode, and
+  Resume let a caller pause a run by canceling ctx and resume it later
+  from the last checkpoint.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
 - `heartbeat/` — liveness tracking: Monitor records a beat per id and
   reports ids that have gone silent past a fixed timeout.

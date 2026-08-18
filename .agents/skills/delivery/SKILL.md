@@ -29,6 +29,11 @@ read-only.
 
 ## Stage 3: Build
 
+Before dispatching, re-read `git log` and `git status`. Another
+session may have committed the same fix or test while the plan waited.
+Reconcile the planned tests against the files that now exist. A
+duplicate test name is a build failure.
+
 Dispatch the `builder` agent with the approved plan. It implements,
 tests, and runs `make verify`. Its report must list changed files,
 gate output, coverage, and deviations. A silent deviation invalidates
@@ -44,6 +49,12 @@ re-runs `make verify` itself and hunts confirmed bugs only.
   FIX rounds, stop and escalate to the user.
 
 ## Stage 5: Verify and commit
+
+Stage 5 runs against a tree that may hold unrelated uncommitted work.
+Read `git diff --cached` before committing: every hunk must belong to
+this change. `git add <file>` sweeps in foreign edits that share the
+file. When unrelated work blocks a full-tree `make verify`, verify the
+staged tree in a throwaway worktree first.
 
 Run `make verify` one final time yourself. Commit with
 `type(scope): imperative subject`. The pre-commit hook re-runs every

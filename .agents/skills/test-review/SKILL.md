@@ -158,6 +158,9 @@ Prefer table-driven tests when the case set grows. Name each case with
 the behavior it pins, not the code path. A table makes a new edge case a
 one-line addition.
 
+For a rule that unions or branches, pin each side with its own missing
+case. A fixture that lacks only one side lets a reduced rule pass.
+
 ### 5. Fuzz tests
 
 A fuzz test feeds random input to a decoder or a validator. It proves

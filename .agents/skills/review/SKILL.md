@@ -48,6 +48,8 @@ returns SHIP or FIX. Require its reproduction for every finding.
 Verify every reviewer finding yourself before it enters the report.
 Re-run its reproduction. Confirm each cited file:line against the
 code. An unverified subagent finding is a hypothesis, not a finding.
+For a doc claim, check provenance with `git log -S` before attributing
+it to the change under review.
 
 When the change touched a plan, `policy/layers.json`, `api/`,
 `scripts/`, `semgrep/`, the `Makefile`, or `.githooks/`, also run a

@@ -1,9 +1,11 @@
 # Phase 42: ledger durable store (modernc.org/sqlite)
 
-Status: future. Plan-only; round 1 of plan review found issues; this
-is the revision that answers them.
-`ledger` (phase 34) has shipped; see `docs/plans/ledger.md`. This
-phase extends `ledger` with a second `Store` implementation. It does
+Status: shipped. `SQLiteStore` has landed in `ledger`; see
+`docs/plans/ledger.md`'s "SQLiteStore" section and
+`docs/packages/ledger.md` for the shipped, summarized surface. This
+document stays as the detailed design record: the option comparison,
+the schema, the DSN and pragma choices, and the Semgrep and
+`go.mod`/`go.sum` mechanics behind the third-party exception. It does
 not touch `Ledger`, `TaskState`, or any existing sentinel error.
 
 This plan covers `SQLiteStore` only. A related but separate concern,

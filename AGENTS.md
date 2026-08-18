@@ -132,6 +132,10 @@ Go SDK for building AI agents. Module:
   walks a caller-chosen order through provider.RunTurn and falls
   through to the next name only when the caller's Retryable predicate
   approves the failure. Imports provider only.
+- `usage/` — the per-session running total of provider.Usage:
+  Accumulator, New, Record, Total, Reset, ErrBlankSessionID.
+  Record sums one provider.Usage call onto the session's running
+  total, guarded for concurrent use. Imports provider only.
 - `channel/` — the ask-and-wait shape: Question, Answer, Notifier. A
   leaf package; no internal imports. Ships one reference transport,
   `NewNDJSONNotifier`, speaking newline-delimited JSON over an

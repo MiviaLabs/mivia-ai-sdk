@@ -9,6 +9,7 @@ package flow_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -69,6 +70,7 @@ func TestReportMidGraphFireFailureMarksFailed(t *testing.T) {
 		{ID: "a", To: string(s1)},
 		{ID: "b", Needs: []string{"a"}, To: string(s2)},
 		{ID: "c", Needs: []string{"b"}, To: "unreachable"},
+		{ID: "d", Needs: []string{"c"}, To: string(s2)},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
@@ -92,6 +94,11 @@ func TestReportMidGraphFireFailureMarksFailed(t *testing.T) {
 	}
 	if outcome, ok := report.Outcome("c"); !ok || outcome != flow.OutcomeFailed {
 		t.Fatalf("Outcome(c) = %v, %v, want %v, true", outcome, ok, flow.OutcomeFailed)
+	}
+	// d needs c, which failed, so d is never scheduled: it must report
+	// false, not a zero-value Outcome the map happens to hold.
+	if outcome, ok := report.Outcome("d"); ok {
+		t.Fatalf("Outcome(d) = %v, %v, want false: d must stay unresolved", outcome, ok)
 	}
 }
 
@@ -157,6 +164,11 @@ func TestReportNilDAndMKeepsDError(t *testing.T) {
 	report, err := flow.Run(context.Background(), nil, nil, in, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
+	}
+	// "d must not be nil" is unique to the d check; if the m check ran
+	// first instead, the error would read "m must not be nil".
+	if !strings.Contains(err.Error(), "d must not be nil") {
+		t.Fatalf("err = %q, want it to name the d check, not the m check", err.Error())
 	}
 	if report.Record() != in {
 		t.Fatalf("Record() = %+v, want the caller's in %+v", report.Record(), in)

@@ -27,6 +27,12 @@ Go SDK for building AI agents. Module:
 - `a2a/` — the A2A v1.0 mapping: Part, Mapped, ToPart, FromPart.
   Imports envelope only. No network and no third-party import in
   phase 9; the a2a-go client is phase 10.
+- `a2aclient/` — the a2a-go client adapter: Client, New, Close,
+  TaskHandle, State, Send, Status, Result. Imports a2a and envelope.
+  Sends one task, polls its status, and fetches its result over
+  a2aproject/a2a-go's gRPC transport; re-verifies the signature after
+  every remote hop. The only package allowed to import a2a-go and its
+  google.golang.org/grpc dial dependency.
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
   Run. A leaf package; no internal imports. No caller yet; the agent
   binding is a later phase.
@@ -137,6 +143,9 @@ any stage means stop and escalate to the user.
 - The GitHub remote for this repo must be **private**. Never create a
   public remote or push to one.
 - No third-party dependencies. Standard library only.
+  Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
+  `google.golang.org/grpc`; no other package may add a third-party
+  import without its own plan review.
 - Comments are a machine-read API surface. Keep them short: one line of
   what, plus invariants and cross-references (`See X`, file names) where
   they exist. No prose paragraphs, no restating the signature.

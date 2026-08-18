@@ -2,7 +2,7 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, tools, and agent. Each package
+heartbeat, identity, discovery, a2a, a2aclient, tools, and agent. Each package
 covers one concern and composes through its exported API. This doc
 tree covers the wire protocol, the module map, every package's
 exported surface, and runnable-style walkthroughs.
@@ -23,6 +23,7 @@ exported surface, and runnable-style walkthroughs.
 - [packages/room.md](packages/room.md) — standing groups for messages: the roster, the roles, and message admission.
 - [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, and the runner.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
+- [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter: send a message as a remote task, poll its status, and fetch its result.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 

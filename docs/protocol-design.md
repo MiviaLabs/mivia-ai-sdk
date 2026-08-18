@@ -235,7 +235,12 @@ not the transport, registry, or session manager.
 - **Streaming, push, task lifecycle (A2A).** Transport and session
   concerns. Task state ownership stays outside this protocol's scope.
   The `a2a` package maps an envelope message onto an A2A v1.0 message
-  part and back, with no task-lifecycle or transport claim.
+  part and back, with no task-lifecycle or transport claim. The
+  `a2aclient` package sends that mapped part to a remote agent as a
+  task and polls its status, over `a2aproject/a2a-go`'s gRPC
+  transport. It adds no message-semantics rule: `Result` re-verifies
+  the signature this protocol already defines, and does not change
+  what a valid envelope looks like.
 - **Voting and dissent preservation.** Governance-layer primitives.
   `challenge` and `escalate` cover the two-party case; multi-party
   preference aggregation is out of scope.

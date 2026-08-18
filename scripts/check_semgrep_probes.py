@@ -114,6 +114,13 @@ PROBES = [
         "clean_good_names.go",
         'package p\n\nfunc panelBuild() {}\nfunc testHelper() {}\nfunc allocMeasure() {}\nfunc parseIPv4() {}\n',
     ),
+    (
+        "sdk.go.stdlib-only-imports",
+        "viol_other_import_outside.go",
+        'package p\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n',
+        "clean_other_import_outside.go",
+        'package p\n\nimport "encoding/json"\n\nvar _ = json.RawMessage(nil)\n',
+    ),
 ]
 
 FIXTURES = {
@@ -149,6 +156,19 @@ def main() -> int:
         (tmp / "d5clean").mkdir()
         (tmp / "d5clean" / "clean.txt").write_text("nothing\n")
 
+        # a2aclient-scoped rule pair: proves the stdlib-only exclude and
+        # the new scoped rule fire together, in a path-scoped directory
+        # the flat PROBES loop above cannot exercise.
+        a2aclient_rid = "sdk.go.a2aclient-scoped-third-party-import"
+        a2aclient_dir = tmp / "a2aclient"
+        a2aclient_dir.mkdir()
+        (a2aclient_dir / "viol_other_import.go").write_text(
+            'package a2aclient\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n'
+        )
+        (a2aclient_dir / "clean_a2a_import.go").write_text(
+            'package a2aclient\n\nimport "github.com/a2aproject/a2a-go/a2aclient"\n\nvar _ = a2aclient.Config{}\n'
+        )
+
         data = scan(tmp)
         if data.get("errors"):
             print("semgrep probe scan errors:", data["errors"])
@@ -157,6 +177,8 @@ def main() -> int:
         for rid, vfile, _v, cfile, _c in PROBES:
             expected[vfile] = rid
             expected[cfile] = rid
+        expected["viol_other_import.go"] = a2aclient_rid
+        expected["clean_a2a_import.go"] = a2aclient_rid
         hits = {}
         for r in data.get("results", []):
             name = Path(r["path"]).name
@@ -175,6 +197,22 @@ def main() -> int:
                 extra = hits.get(name, set()) - {rid}
                 if extra:
                     problems.append(f"{name}: unexpected rules fired: {sorted(extra)}")
+
+        # Explicit a2aclient-scoped assertions, parallel to the PROBES
+        # loop above: the scoped rule fires on the violation, stays
+        # silent on the clean import, and the scoped exclude keeps
+        # stdlib-only-imports out of both.
+        viol_hits = hits.get("viol_other_import.go", set())
+        clean_hits = hits.get("clean_a2a_import.go", set())
+        if a2aclient_rid not in viol_hits:
+            problems.append(f"{a2aclient_rid}: violation file viol_other_import.go did not fire")
+        if a2aclient_rid in clean_hits:
+            problems.append(f"{a2aclient_rid}: clean file clean_a2a_import.go fired")
+        if "sdk.go.stdlib-only-imports" in viol_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
+        if "sdk.go.stdlib-only-imports" in clean_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
+
         for name in hits:
             if name not in expected and not name.startswith("d5"):
                 problems.append(f"{name}: unlisted probe file fired rules {sorted(hits[name])}")

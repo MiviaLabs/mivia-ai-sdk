@@ -8,12 +8,14 @@ the invariants the architecture enforces. See
 [packages/machine.md](packages/machine.md),
 [packages/flow.md](packages/flow.md),
 [packages/identity.md](packages/identity.md),
-[packages/events.md](packages/events.md), and
-[packages/a2a.md](packages/a2a.md) for the exported API references.
+[packages/events.md](packages/events.md),
+[packages/a2a.md](packages/a2a.md), and
+[packages/a2aclient.md](packages/a2aclient.md) for the exported API
+references.
 
 ## Package map
 
-The diagram shows the eleven packages and the import edges between
+The diagram shows the twelve packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `discovery`, `envelope`, `events`, and `tools` are leaves: they
 import no other package in this module.
@@ -35,6 +37,8 @@ flowchart LR
     room --> envelope
     room --> heartbeat
     a2a --> envelope
+    a2aclient --> a2a
+    a2aclient --> envelope
     discovery[discovery]
     envelope[envelope]
     events[events]
@@ -124,6 +128,17 @@ flowchart LR
   a `Message`, with the caller-supplied `ContextID`/`MessageID`
   overriding any value embedded in the part. `a2a` imports `envelope`
   only; it carries no network call. See [packages/a2a.md](packages/a2a.md).
+- `a2aclient/` — the a2a-go client adapter. It provides `Client`,
+  `New`, `Close`, `TaskHandle`, `State`, and `Send`, `Status`, and
+  `Result`. `Send` maps a signed message through `a2a.ToPart` and
+  sends it as a remote task; `Status` polls the task's state; `Result`
+  maps the output back through `a2a.FromPart` and re-verifies the
+  signature. `a2aclient` imports `a2a` and `envelope`. It is the only
+  package in this module allowed to import the third-party
+  `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
+  dial dependency `a2a-go`'s gRPC transport needs; this is the
+  module's first external network call.
+  See [packages/a2aclient.md](packages/a2aclient.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
   a named action; a `Registry` resolves one by name and runs it. `Add`
@@ -138,6 +153,9 @@ package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
 The identity package imports envelope only; it wraps `envelope.Sign`.
 The a2a package imports envelope only; it holds no other edge.
+The a2aclient package imports a2a and envelope. It also imports the
+third-party github.com/a2aproject/a2a-go, the one exception to this
+module's standard-library-only rule; see AGENTS.md's Rules section.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import

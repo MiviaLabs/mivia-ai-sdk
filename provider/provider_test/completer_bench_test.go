@@ -52,3 +52,57 @@ func TestRunTurnAllocBudget(t *testing.T) {
 		t.Fatalf("RunTurn allocated %v times per call; budget is 1", alloc)
 	}
 }
+
+// streamBenchChunks builds a fresh chunk slice per call: drainStream
+// only reads, but fakeCompleter's goroutine ranges over the slice
+// concurrently with the next call's setup, so each iteration gets its
+// own backing array.
+func streamBenchChunks() []provider.Chunk {
+	return []provider.Chunk{
+		{Delta: "Hel"},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},
+		{Delta: "lo, "},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, Arguments: []byte(`"cats"}`)}},
+		{Delta: "world", Done: true, FinishReason: "tool_calls"},
+	}
+}
+
+// BenchmarkRunTurnStream benchmarks RunTurn against a fake Completer
+// in streaming mode, draining plain-text deltas merged with one
+// tool-call fragment. This exercises drainStream, mergeToolCallDelta,
+// and buildResponse, the allocation-heavy half of RunTurn that
+// BenchmarkRunTurnNonStream does not reach.
+// Target: under ten microseconds per call.
+// Measured: ~1.5 us/op, ~1264 B/op, 16 allocs/op (the goroutine, map,
+// slice, and strings.Builder growth for the merged tool call and
+// content).
+func BenchmarkRunTurnStream(b *testing.B) {
+	req := provider.Request{Model: "bench-model", Stream: true}
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		f := &fakeCompleter{name: "bench", streamChunks: streamBenchChunks()}
+		if _, err := provider.RunTurn(ctx, f, req); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// TestRunTurnStreamAllocBudget guards the allocation floor for
+// RunTurn's streaming path over fifty sequential drains, each with one
+// merged tool call. The measured baseline is 16 allocations per call.
+// The budget of 22 allows a margin of six to absorb a small,
+// legitimate change without masking a real regression.
+func TestRunTurnStreamAllocBudget(t *testing.T) {
+	req := provider.Request{Model: "bench-model", Stream: true}
+	ctx := context.Background()
+	alloc := testing.AllocsPerRun(50, func() {
+		f := &fakeCompleter{name: "bench", streamChunks: streamBenchChunks()}
+		if _, err := provider.RunTurn(ctx, f, req); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if alloc > 22 {
+		t.Fatalf("RunTurn streaming path allocated %v times per call; budget is 22", alloc)
+	}
+}

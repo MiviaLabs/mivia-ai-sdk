@@ -1,8 +1,7 @@
 # Plan: mcp
 
 Status: shipped. Builds on the shipped `tools` package
-(`docs/plans/tools.md`). See `docs/plans/agents/phase35_mcp.md` for
-the full design record this plan formalizes.
+(`docs/plans/tools.md`).
 
 ## Goal
 
@@ -68,6 +67,21 @@ a maintained, spec-current SDK exists. This mirrors the tradeoff phase
 `a2aclient` does for `a2a-go`: opening a connection lifecycle around
 the SDK's client, and mapping the SDK's `Tool` and `CallToolResult`
 types onto this repository's `tools.Tool` and `tools.Registry`.
+
+### The official MCP Go SDK, not a stdlib reimplementation
+
+`github.com/modelcontextprotocol/go-sdk` (package path
+`.../go-sdk/mcp`) is the official Go SDK for MCP, maintained in
+collaboration with Google. Reimplementing MCP's JSON-RPC framing and
+chasing every future spec revision inside this repository is wasted
+effort once a maintained, spec-current SDK exists. This is the same
+tradeoff `a2aclient` makes against `a2a-go`: `a2aclient` does not
+reimplement A2A's gRPC transport by hand, and `mcp` does not
+reimplement MCP's JSON-RPC transport by hand either. This package's
+job narrows to what `a2aclient`'s plan states for its own relationship
+to `a2a-go`: opening a connection lifecycle around the SDK's client,
+and mapping the SDK's `Tool` and `CallToolResult` types onto this
+repository's `tools.Tool` and `tools.Registry`.
 
 ### One package, not a mapping-leaf-plus-client split
 
@@ -392,12 +406,11 @@ Design notes:
   `map[string]any` on the client side, the SDK's own default JSON
   marshaling of the server's schema. Converting that to raw bytes
   would need a `json.Marshal` call this package has no other reason
-  to make. `SchemaTool` earns its place through a future caller
-  (`docs/plans/agents/phase29_provider.md`)
+  to make. `SchemaTool` earns its place through a future caller, such
+  as a `provider.ToolDefinition` builder (`docs/plans/provider.md`),
   that does the raw-byte conversion itself, following the
-  optional-interface pattern phase 31 already set for
-  `tools.ProfiledTool`, `tools.ResultBudgetTool`, and
-  `tools.PrivilegedTool`.
+  optional-interface pattern `tools.ProfiledTool`,
+  `tools.ResultBudgetTool`, and `tools.PrivilegedTool` already set.
 - `ContentBlock.Raw` is filled by calling the SDK's own
   `Content.MarshalJSON` method on a block this package's `Type` switch
   does not otherwise decompose, for example `EmbeddedResource` or

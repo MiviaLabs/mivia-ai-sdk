@@ -884,3 +884,37 @@ builder edits only agent/agent_test/translator_test.go.
   code.
 - This phase adds no conformance vector. `Limits` defines no wire
   schema, and `agent.Run`'s budget check changes no byte on the wire.
+
+### System integration: tests
+
+`agent/agent_test/exchange_integration_test.go` and
+`exchange_bench_test.go` prove every shipped block composes into one
+real two-agent exchange, with no mock at the trust boundary: two real
+`identity.Identity` values, a real `room.Room`, a real
+`tools.Registry`, a real `memory.Store`, and a real `events.Bus`. The
+request routes through `a2a.ToPart`/`a2a.FromPart` once, standing in
+for a transport hop. `TestExchangeSignedRequestConfirmedAck` runs the
+full path: Agent A sends a signed request; the test's `AckWait`
+closure represents Agent B, verifying the round-tripped signature,
+checking room admission through `Room.Accepts`, running a tool,
+writing the result to the shared `memory.Store`, and confirming an
+`envelope.Ack`. It asserts `Run` returns `machine.Status("fulfilled")`,
+the captured message passes `envelope.VerifyThread` from the test's
+own vantage point, the shared context landed in Agent B's store, and
+the bus recorded `MessageDeliveredEvent`, `MessageAckedEvent`,
+`StepCompletedEvent`, then `ThreadVerifiedEvent`, in order.
+`TestExchangeRejectsUnadmittedReceiver` proves the trust boundary is
+real: with Agent B's signer never admitted to the room, `Accepts`
+rejects the message, `Run` returns a non-nil error, and neither the
+tool nor the memory store is ever called. `BenchmarkExchange` times
+`a.Run` alone, with a fresh thread ID per iteration; a companion
+`TestExchangeAllocBudget` pins the allocation ceiling.
+
+### System integration: verification
+
+`make verify` passes. `go test -race ./agent/...` passes, including
+`BenchmarkExchange` under `go test -bench`. This work adds no exported
+symbol and no new package, so no `api/*.txt` file and no
+`policy/layers.json` row changes. It adds no conformance vector: it
+composes `envelope.Message`, `envelope.Ack`, and `a2a.Mapped`, each
+already vector-covered in its own package.

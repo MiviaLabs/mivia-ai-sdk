@@ -1,19 +1,19 @@
 # Phase 36: tool approval gating
 
 Status: future. Depends on phase 31 (tools execution profile markers,
-plan-only, already passed three review rounds) landing first. Extends
-the `tools` package again, the same additive way phase 31 extends
-phase 14. It adds no new package and no new import edge.
+shipped; see docs/plans/tools.md), extending the `tools` package again
+the same additive way phase 31 extended phase 14. It adds no new
+package and no new import edge.
 
 ## Why a new phase, not a phase 31 revision
 
-Phase 31 already passed three plan-review rounds as written. Reopening
-that plan to add approval gating risks unrelated churn on a design
-that already cleared review. `PHASES.md` already has this pattern:
-phase 33 builds on phase 34, phase 30 builds on phases 21 through 23,
-each as its own phase file layered on a landed or reviewed dependency.
-This plan follows the same shape: a phase that builds on phase 31's
-`Scope` and `RunScoped`, once phase 31 lands, instead of amending
+Phase 31 passed three plan-review rounds as written and has since
+shipped. Reopening that design to add approval gating risks unrelated
+churn on a design that already cleared review. `PHASES.md` already has
+this pattern: phase 33 builds on phase 34, phase 30 builds on phases
+22 and 23, each as its own phase file layered on a landed or reviewed
+dependency. This plan follows the same shape: a phase that builds on
+phase 31's shipped `Scope` and `RunScoped`, instead of amending
 phase 31 itself.
 
 ## Goal
@@ -53,7 +53,7 @@ phase 31 already use. No internal import is added.
 
 ### Where the hook lives: `ScopeOptions`, not a new `RunScoped` parameter
 
-`RunScoped`'s signature, once phase 31 lands, is
+`RunScoped`'s shipped signature is
 `(ctx context.Context, name string, in InOut, scope *Scope) (Out, error)`.
 Adding a fifth parameter for an approval function would break that
 signature the moment it locks. `Scope` already narrows which tools a
@@ -194,9 +194,9 @@ caller can already cover through the function value it supplies.
 
 ## API
 
-The additions below extend phase 31's locked shape once phase 31
-lands. Every entry lands in `api/tools.txt` via `make api-update` in
-this phase's own change.
+The additions below extend phase 31's shipped, locked shape. Every
+entry lands in `api/tools.txt` via `make api-update` in this phase's
+own change.
 
 - `type ToolCall struct { Name string; In InOut; Profile ExecutionProfile }`
   — describes one call `RunScoped` is about to make, passed to

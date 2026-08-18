@@ -120,11 +120,13 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depends on phase 14 (tools) landing first.
 
-Phases 29 and 30 passed plan review in three rounds. Phase 31 and 33
-passed in three rounds each. Phase 32 passed in four rounds. Phase 34
-passed in five rounds. Every phase in this group is ready to build.
-Phase 36 and phase 37 are plan-only; neither has gone through plan
-review yet.
+Phases 29, 31, 32, and 35 have shipped; see docs/plans/provider.md,
+docs/plans/tools.md, docs/plans/contextbudget.md, and
+docs/plans/mcp.md. Phase 30 passed plan review in three rounds and
+depends on phases 22 and 23 landing first. Phase 33 passed in three
+rounds and depends on phase 34, which passed in five rounds; both are
+ready to build. Phase 36 and phase 37 are plan-only; neither has gone
+through plan review yet.
 
 ## Gate interactions
 

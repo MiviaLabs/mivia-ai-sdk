@@ -1,10 +1,9 @@
 # Plan: trigger
 
-Status: planned (phase 40). Adds one new package, `trigger`, with zero
-internal import edges. It ships independently of phase 38 (flow loop).
-It composes with phase 39 (scheduler) and phase 37 (channel) only
-through caller-owned closures. See `docs/plans/agents/phase40_trigger.md`
-for the full design rationale.
+Status: shipped. One new package, `trigger`, with zero internal import
+edges. It ships independently of phase 38 (flow loop). It composes
+with phase 39 (scheduler) and `channel` only through caller-owned
+closures.
 
 An architecture review flagged a risk before this plan: one interface
 spanning several invocable kinds, with no single caller shape, matches
@@ -95,7 +94,7 @@ matching `tools`, `discovery`, and `envelope`.
 
 ## API
 
-The surface below lands in `api/trigger.txt` once this plan builds.
+The surface below lands in `api/trigger.txt`.
 
 - `type Condition func(ctx context.Context) (bool, error)` — reports
   whether a named trigger's `Action` should run. A nil `Condition`
@@ -191,11 +190,10 @@ Test files live in `trigger/trigger_test/`, an external test package.
 
 ## Verification
 
-`make verify` passes, once this plan's code lands. The coverage floor
-for `trigger` holds at 85 percent or above. `api/trigger.txt` is
-created by `make api-update` in the same change, locking `Condition`,
-`Action`, `Registry`, `New`, `Add`, `Remove`, `Fire`, and the five
-sentinel errors.
+`make verify` passes. The coverage floor for `trigger` holds at 85
+percent or above. `api/trigger.txt` locks `Condition`, `Action`,
+`Registry`, `New`, `Add`, `Remove`, `Fire`, and the five sentinel
+errors.
 
 `policy/layers.json` carries a `trigger` row set to `[]`, added by
 this plan ahead of the code, matching the gate's rule that a new

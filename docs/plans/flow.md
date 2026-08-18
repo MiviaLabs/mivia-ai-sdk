@@ -1,17 +1,16 @@
 # Plan: flow
 
 Status: the step graph, the sequential runner, the parallel panel
-waves, chaining, per-step outcomes, the admission rule, and branch
-routing ship. Two more phases are planned: failure routing and the
-checkpoint pause/resume pair. This plan expands the earlier step-list
+waves, chaining, per-step outcomes, the admission rule, branch
+routing, and the checkpoint pause/resume pair ship. One more phase is
+planned: failure routing. This plan expands the earlier step-list
 design into a step runner for v1. Rationale in
 docs/research-state-machine.md. `Run` returns a `Report` holding every
 step's terminal `Outcome`, replacing the boolean done map. Phase 22
 shipped the admission rule, the skip semantics, and the branch step.
-Phase 23 owns the fallback path and the failure context; see
-docs/plans/agents/phase23_flow_fallback.md. Phase 25 owns the
-checkpoint, the pause rule, and `Resume`; see
-docs/plans/agents/phase25_flow_checkpoint.md.
+Phase 25 shipped the checkpoint, the pause rule, and `Resume`. Phase
+23 owns the fallback path and the failure context; see
+docs/plans/agents/phase23_flow_fallback.md.
 
 ## Goal
 
@@ -42,12 +41,11 @@ through executed steps. A skipped step never fires a transition.
 Planned for phase 23: failure routing. A fallback step admits on a
 failed need and receives the failure context.
 
-Inside, from phase 25: a `Checkpoint` of the current status, the
+Shipped in phase 25: a `Checkpoint` of the current status, the
 record, and the completed step IDs; a pause rule keyed on context
 cancellation; and `Resume`, which restarts a walk from a stored
 checkpoint. Persistence stays a caller concern: `flow` reports a
-checkpoint through a hook and never writes storage itself. See
-docs/plans/agents/phase25_flow_checkpoint.md.
+checkpoint through a hook and never writes storage itself.
 
 Outside: retries, compensation, scheduling, and history replay. A
 future version adds these only when that consumer asks. A caller
@@ -143,10 +141,55 @@ pattern sources.
   `FailureFrom(ctx)` as the failure context a fallback step reads.
   These land in phase 23.
 - `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string }`
-  with `Validate`, `Encode`, and `Decode`, as the resumable run state.
-  `Run` gains a trailing `onCheckpoint func(Checkpoint)` parameter.
-  `Resume(ctx, d, m, checkpoint, confirm, bus, onCheckpoint)` restarts
-  a walk from a stored checkpoint. These land in phase 25.
+  — shipped in phase 25, the full resumable state of a run. `Done`
+  lists the lexicographically sorted step IDs of every
+  `OutcomeSucceeded` entry at the moment the checkpoint is built; the
+  sort is not a completion order. `(Checkpoint).Validate() error`
+  rejects an empty `Status`; `Encode` and `Decode` both call it.
+  `Encode` marshals with `encoding/json`; a caller whose `Input` or
+  `Output` must survive the round-trip is responsible for
+  JSON-primitive-compatible types or its own re-hydration after
+  `Decode`, since `encoding/json` decodes an `any` field back to
+  `map[string]interface{}`, never the original concrete type. `flow`
+  performs no type-fidelity handling and no registry lookup.
+- `Run` gains a trailing `onCheckpoint func(Checkpoint)` parameter,
+  shipped in phase 25: `Run(ctx, d, m, in, confirm, bus, onCheckpoint) (Report, error)`.
+  `onCheckpoint` is nil-safe, matching the existing nil-tolerant `bus`
+  parameter, and fires only after a step's or wave's outcome is marked
+  `OutcomeSucceeded`, so a checkpoint never captures a step mid-flight.
+  A nil `onCheckpoint` skips the call; the loop pays no cost building
+  the checkpoint value when the hook is nil. A chained step's inner
+  `Run` call passes a nil `onCheckpoint`; a chained step's child
+  workflow is not independently resumable, only the parent step's
+  completion is captured.
+- `func Resume(ctx, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)`
+  — shipped in phase 25. Seeds `outcomes` from `checkpoint.Done` (every
+  listed ID set to `OutcomeSucceeded`), `cur` from `checkpoint.Status`,
+  and `rec` from `checkpoint.Record`, then continues the same graph
+  walk `Run` uses. `Resume` never re-runs a step already in `Done`,
+  since `nextReadyGroup` skips any step ID already present in the
+  seeded `outcomes`. `Resume` runs five entry checks in order before
+  seeding any state, the first failing check returning immediately
+  with no step run: `d` nil, `m` nil, `confirm` nil (matching `Run`'s
+  own nil-check order), `checkpoint.Validate()` failing, and
+  `checkpoint.Done` naming a step ID absent from `d`'s steps. `Resume`
+  performs no topology check across `Done` beyond that: a
+  topologically-inconsistent checkpoint surfaces indirectly, when the
+  seeded walk's `pickTransition` or `machine.Fire` call fails against
+  a status the walk can no longer reach that step from. `Resume` on an
+  all-done checkpoint returns the checkpoint's status and record
+  without calling `confirm` or `onCheckpoint` again; there is no
+  remaining work.
+
+  A caller pauses a run by canceling `ctx`: at the top of each loop
+  iteration, before the next step or wave starts, the loop checks
+  `ctx.Err()` and returns the `Report` built so far alongside a
+  wrapped pause error when it is non-nil. The check sits between
+  steps, not inside one; a step already running keeps running to its
+  own completion or failure. The last checkpoint `onCheckpoint`
+  delivered is the resume point; `flow` adds no separate pause API.
+  `Run` and `Resume` share one internal loop, differing only in how
+  they seed `cur`, `rec`, and `outcomes`.
 
 The machine instance passes by pointer. The input and output records
 come from the machine package. Run may pass any in and out through the
@@ -199,7 +242,8 @@ The policy/layers.json row for flow is `"flow": ["events", "machine"]`.
 The `events` import carries the step outcome bus emit.
 `flow` never imports `envelope`. The audit thread stays caller-owned.
 The runner enforces the gate; the caller provides the transport.
-Outcomes and phase 22 added no import edge; phase 23 adds none either.
+Outcomes, phase 22, and phase 25 added no import edge; phase 23 adds
+none either. `Checkpoint` uses only `encoding/json`, which is stdlib.
 The failure context travels through `context.Context`, which is
 stdlib.
 
@@ -254,10 +298,47 @@ Phase 22's routing tests live in `flow/flow_test/`:
 
 Phase 23 covers the fallback: a handled failure lets the run
 complete, the fallback reads the failure context, and an unhandled
-failure still aborts. Phase 25 covers the checkpoint: the hook fires
-once per completed step or wave, a paused run returns cleanly on
-context cancellation, and `Resume` reaches the same final status a
-plain `Run` reaches.
+failure still aborts.
+
+The checkpoint tests, shipped in phase 25, live in `flow/flow_test/`:
+
+- `checkpoint_test.go` — red-green cases: `Checkpoint.Validate` rejects
+  an empty `Status`; `Encode` then `Decode` round-trips `Status`,
+  `Record`, and `Done`, and a decoded `Record.Input` comes back as
+  `map[string]interface{}`, not the original struct type; `Decode`
+  rejects malformed JSON and runs `Validate` on the parsed result; a
+  zero-step `Definition` with a non-nil `onCheckpoint` never calls it;
+  `onCheckpoint` fires once per singleton step and once per wave, with
+  `Done` holding exactly the sorted IDs completed so far (a
+  non-alphabetical fixture proves the sort, not completion order); a
+  nil `onCheckpoint` behaves exactly as before the phase; `Run` returns
+  the pinned pause error when `ctx` is already canceled, and again
+  mid-graph after at least one checkpoint fired; `Resume` seeds
+  `outcomes`, `cur`, and `rec` from a mid-graph checkpoint and reaches
+  the same final `Report` an uninterrupted `Run` would; `Resume` on an
+  all-done checkpoint, including the one-step short-circuit case,
+  returns the checkpoint's status and record and calls neither
+  `confirm` nor `onCheckpoint`; `Resume` rejects a nil `d`, `m`, or
+  `confirm`, in that order, then an invalid checkpoint, then a
+  `Done` entry naming a step absent from `d`, matching the five-check
+  entry order; a `Done` entry naming a real step whose own `Needs`
+  entry is absent from `Done` surfaces as an error through the
+  seeded walk's own transition check, not a dedicated `Resume` check.
+- `checkpoint_integration_test.go` — a multi-step graph end to end with
+  a real `onCheckpoint` that appends `Encode`d bytes to an in-memory
+  slice, standing in for caller-owned storage. Cancel `ctx` after the
+  first checkpoint lands, decode the last stored checkpoint, and call
+  `Resume`; assert the resumed run reaches the same final `Report` a
+  plain, uninterrupted `Run` reaches, and that the step before the
+  pause point runs exactly once. Repeats the pause-and-resume sequence
+  across a wave boundary. A chained-step case captures a checkpoint
+  right after the chained step's parent transition fires, cancels,
+  resumes, and asserts the child's `confirm` closure is not invoked
+  again and the chained step's ID appears once in `Done`.
+- `checkpoint_bench_test.go` — benchmarks `Run` with a non-nil
+  `onCheckpoint` against a nil one, on the same graph the chaining
+  benchmark uses, and reports the allocs/op ratio rather than a fixed
+  budget, since goroutine and closure overhead vary.
 
 A logic review added three tests: the table-driven
 TestNewPanelStepNamedInTwoPanels in flow/flow_test/panel_new_test.go,
@@ -297,6 +378,12 @@ already pins the nil-bus behavior.
 rationale lives in docs/research-state-machine.md. `api/flow.txt`
 lands via make api-update. Phase 22 extended `api/flow.txt` with
 `Admission`, its two constants, the `Route` type, and the two new
-`Step` fields, via make api-update, leaving `api/machine.txt` and
-`policy/layers.json` unchanged. Phases 23 and 25 each extend
-`api/flow.txt` the same way, in their own change.
+`Step` fields. Phase 25 extended it with `Checkpoint`, its `Validate`,
+`Encode`, and `Decode`, `Resume`, and the changed seven-argument `Run`
+signature. Both left `api/machine.txt` and `policy/layers.json`
+unchanged. Phase 23 extends `api/flow.txt` the same way, in its own
+change.
+
+No conformance-vector change from phase 25: `Checkpoint` carries no
+signed or threaded wire form, so `envelope/testdata/vectors/` and
+`docs/protocol-design.md` stay untouched.

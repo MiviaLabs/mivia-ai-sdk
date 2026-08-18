@@ -13,9 +13,9 @@ supplies the shape only. It sends no bytes over any real transport.
 
 Three call sites already converge on this shape. `agent.AckWait`
 blocks `agent.Run` until a caller-supplied function resolves one step.
-Phase 36 (plan-only) adds `ScopeOptions.Approve`, a second
-caller-supplied function with the same blocking shape, to gate one
-tool call. `envelope.IntentQuery` names "ask for information" as a
+Phase 36 shipped `ScopeOptions.Approve`, a second caller-supplied
+function with the same blocking shape, to gate one tool call.
+`envelope.IntentQuery` names "ask for information" as a
 message intent, but nothing in this module carries a typed answer
 back to a query. A real consumer at three call sites, not speculative
 generality, earns `channel` its place under this SDK's Building
@@ -98,8 +98,7 @@ already-shipped shape when a caller appears.
 
 ## API
 
-Every entry lands in `api/channel.txt` via `make api-update` once this
-package builds.
+Every entry lands in `api/channel.txt` via `make api-update`.
 
 - `type Question struct { ID string; Recipient string; Payload string }`
   — one thing being asked. `ID` names the question so an `Answer` can
@@ -180,14 +179,15 @@ Test files live in `channel/channel_test/`, an external test package.
   `channel.Notifier`-backed closure satisfies `agent.AckWait`'s exact
   signature, proving the composition claim against the real type, not
   a hand-copied stand-in. This test covers `agent.AckWait` only.
-  Phase 36 has not landed yet, so `tools.ScopeOptions.Approve` does
-  not exist as an importable field; a future change adds a matching
-  `tools`-side case once phase 36 ships.
+  Phase 36 has since shipped `tools.ScopeOptions.Approve`; no test in
+  this package yet proves a `channel.Notifier`-backed closure against
+  that field's signature. A future change closes that gap the same
+  way this test closes it for `agent.AckWait`.
 
 ## Verification
 
-`make verify` passes, once this package's code lands. The coverage
-floor for `channel` holds at 85 or above. `api/channel.txt` is created
+`make verify` passes. The coverage floor for `channel` holds at 85 or
+above. `api/channel.txt` is created
 by `make api-update` in this package's own change, locking `Question`,
 `Answer`, `Notifier`, both `Validate` methods, and the four sentinel
 errors. `policy/layers.json`'s `channel` row stays `[]`.

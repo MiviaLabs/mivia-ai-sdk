@@ -1,19 +1,17 @@
 # Plan: tools
 
-Status: in progress (phase 36). `Registry.Remove` was added for
-symmetry with `room.Room.Admit`/`Remove`, agreed in architecture
-review. `ExecutionClass`, `ExecutionProfile`, `ProfiledTool`,
+Status: shipped. `Registry.Remove` was added for symmetry with
+`room.Room.Admit`/`Remove`, agreed in architecture review.
+`ExecutionClass`, `ExecutionProfile`, `ProfiledTool`,
 `ResultBudgetTool`, `PrivilegedTool`, `Scope`, `ScopeOptions`,
 `NewScope`, `ExecutionProfileOf`, `ResultBudgetOf`, `IsPrivileged`,
 `RunScoped`, and `ErrScopeDenied` extend the execution-risk surface,
 shipped in phase 31: optional markers a `Tool` may implement, and a
-`Scope` that narrows which tools a run may invoke. Phase 36 extends
+`Scope` that narrows which tools a run may invoke. Phase 36 extended
 `RunScoped` again, the same additive way phase 31 extended phase 14:
 `ToolCall`, `ScopeOptions.Approve`, `ScopeOptions.ApprovalThreshold`,
 and `ErrToolDeclined` add a synchronous approval gate `RunScoped` runs
-after `Allowed` passes. See
-`docs/plans/agents/phase36_tool_approval.md` for the full design
-rationale.
+after `Allowed` passes.
 
 ## Goal
 
@@ -371,7 +369,7 @@ Test files live in `tools/tools_test/`, an external test package.
   registry of one hundred tools behind a `Scope` with a fifty-name
   allowlist. State the allocation budget next to `registry_bench_test.go`.
 
-### Approval gating tests (phase 36)
+### Approval gating tests
 
 - `tool_call_test.go` — red-green cases proving `RunScoped` builds
   `ToolCall` with the resolved tool's name, the caller's `In` value

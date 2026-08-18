@@ -2,7 +2,7 @@
 // Eight agent.Run calls share one memory.Store, one tools.Registry,
 // one ledger.Ledger, one events.Bus, and one heartbeat.Monitor. It
 // proves the shared blocks stay correct under real contention.
-// See docs/plans/agents/phase47_concurrency_integration_suite.md.
+// See docs/plans/agents/PHASES.md's phase 47 paragraph.
 package agent_test
 
 import (

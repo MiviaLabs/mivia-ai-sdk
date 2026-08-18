@@ -164,8 +164,8 @@ composition comes last.
   the `ledger` Renew-Complete race, `mcp` concurrent calls, and a
   loopback `a2a-go` server round trip. It depends on phase 46 and on
   already-shipped packages, adds no exported symbol, and needs no new
-  `policy/layers.json` row. See
-  docs/plans/agents/phase47_concurrency_integration_suite.md.
+  `policy/layers.json` row. It has shipped; its plan folded into this
+  file on shipping.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
@@ -180,7 +180,9 @@ own plan folded into docs/plans/channel.md on shipping; no standalone
 phase 43 plan file remains. Phase 45's own plan folded into
 docs/packages/agent.md and docs/examples/agent-composition.md on
 shipping; no standalone phase 45 plan file remains. It depended only
-on already-shipped packages and added no code to any package.
+on already-shipped packages and added no code to any package. Phase
+47's own plan folded into this file's phase 47 paragraph on shipping;
+no standalone phase 47 plan file remains.
 
 Phase 42 (ledger durable store) has shipped: `SQLiteStore` landed
 behind the `ledger_sqlite` build tag, backed by the pure-Go

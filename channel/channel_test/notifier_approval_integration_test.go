@@ -2,7 +2,7 @@
 // It wires the shipped NewNDJSONNotifier into
 // tools.ScopeOptions.Approve, closing the gap
 // notifier_integration_test.go left open for that field. See
-// docs/plans/agents/phase47_concurrency_integration_suite.md.
+// docs/plans/agents/PHASES.md's phase 47 paragraph.
 package channel_test
 
 import (

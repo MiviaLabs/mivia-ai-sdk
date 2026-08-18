@@ -284,6 +284,15 @@ the SDK's blocks, and a signed-message mailbox carries both
 directions between orchestrators, subagents, and humans. Its
 package plan lives at docs/plans/subagent.md.
 
+Phase 60 is plan-only and not scheduled. It changes no package
+surface: a loop child that ends every iteration on one status becomes
+representable, because the parent re-enters without a transition row
+when its standing already matches the child final. The parity
+workaround stays valid but stops being required. The mivia-agent
+parity scenarios surfaced the gap; see
+docs/plans/agents/phase60_same_final_loops.md and the disclosed
+limits in docs/plans/e2e.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

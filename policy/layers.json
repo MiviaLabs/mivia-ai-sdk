@@ -16,17 +16,21 @@
     "events": [],
     "flow": ["events", "machine"],
     "heartbeat": ["events"],
+    "hooks": [],
     "identity": ["envelope"],
     "ledger": ["machine", "events"],
     "machine": ["events"],
     "mcp": ["tools"],
     "memory": ["envelope"],
     "provider": [],
+    "providerregistry": ["provider"],
     "room": ["envelope", "heartbeat"],
     "scheduler": ["events"],
     "subagent": ["agent", "agentrun", "channel", "discovery", "envelope", "events", "flow", "heartbeat", "identity", "ledger", "machine", "memory", "provider", "room", "scheduler", "taskrun", "tools", "trigger"],
     "taskrun": ["ledger"],
     "tools": [],
-    "trigger": []
+    "trace": [],
+    "trigger": [],
+    "usage": ["provider"]
   }
 }

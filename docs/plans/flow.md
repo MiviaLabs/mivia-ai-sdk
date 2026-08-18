@@ -474,7 +474,7 @@ combination.
 phase. `flow`'s existing row, `["events", "machine"]`, already covers
 every edge this phase needs.
 
-### Phase 48 (shipped): run-time payloads, graph accessors, and derived transitions
+### Phase 48: run-time payloads, graph accessors, and derived transitions
 
 Phase 48 widens `flow` in three ways. `Step.PayloadFrom` derives a
 step's payload from the live record at run time. `Definition.Steps`
@@ -495,24 +495,47 @@ Both follow `Roots`: value receivers, fresh backing arrays, and no
 way for a caller to mutate the stored graph.
 
 `TransitionsFor(d *Definition, initial machine.Status)`
-`([]machine.Transition, error)` derives the transition rows a walk of
-`d` needs. Each plain step contributes one row per predecessor
-status, with the step ID as trigger. A root's predecessor set is
-`{initial}`. A need contributes its effective final statuses: its
-`To` when it has no `Sub`, its child graph's final statuses
-otherwise. A chained step, looped or not, targets its child's final
-statuses; its own `To` stays unused. A panel of two or more members
-contributes one shared row per predecessor, triggered by the first
-member's ID. A fallback step also gains each failed need's
-predecessor statuses, because a failed `Fire` leaves the pre-fire
-status.
+`([]machine.Transition, error)` derives the transition rows a walk
+of `d` fires. The runner keeps one shared current status through the
+walk and scans for ready groups in declaration order, so the machine
+table linearizes that execution order. `TransitionsFor` simulates
+the same scan under an all-run assumption, tracking the set of
+statuses the walk can stand on at each group.
+
+Each plain step contributes one row per current status in its set,
+with the step ID as trigger, targeting the step's `To`. A panel of
+two or more members contributes one shared row per current status,
+triggered by the first member's ID, targeting the members' shared
+`To`. A chained step recurses into its child first; the child `Run`
+starts from the machine's initial status with a fresh record. The
+parent then targets its child's simulated final status, and its own
+`To` stays unused.
+
+A fallback step, admitted through `AdmissionOnFailed`, never runs on
+the happy path, so the simulation derives its rows from its needs'
+recorded statuses: each need's pre-fire set, for a failed `Fire`,
+and its post-fire set, for a failed `Route`. The simulation forks
+the tracked set at two points: after a step with a fallback
+dependent, and after the fallback's own slot, so later steps gain
+rows for both branches.
 
 `TransitionsFor` rejects a nil definition, an empty initial status,
-and a step that needs a target status but carries none. It rejects
-two derived rows that share one `From` and `To`, because
-`pickTransition` matches on `To` alone. It rejects a self loop. The
-derived table models the declared happy path; route-excluded paths
-stay the caller's own rows.
+a step with a non-nil `Loop` (a looped parent fires per iteration
+and needs continuation rows the simulator cannot derive honestly;
+`flow/flow_test/loop_test.go` builds such tables by hand), and a
+step that needs a target status but carries none. It rejects two
+derived rows that share one `From` and `To`, because
+`pickTransition` matches on `To` alone. It rejects a self loop and a
+duplicate `From` and `Trigger` pair, both of which `machine.New`
+refuses. A child whose simulation ends on more than one status hits
+those checks and fails with the parent named.
+
+The derived table models the all-run walk and the fallback forks.
+Route-excluded branches and skipped-need cascades can strand the
+live status outside the derived set; those rows stay the caller's
+own. `docs/examples/_agentcomposition` and the derivation
+integration test consume the helper today; phase 49's matrix check
+succeeds it.
 
 ## Tests
 
@@ -768,7 +791,7 @@ Test files land in `flow/flow_test/`:
   ratio, since `LoopState` construction per iteration varies the
   allocation count.
 
-### Phase 48 (shipped) tests
+### Phase 48 tests
 
 `flow/flow_test/payload_test.go` holds the red-green cases for
 `PayloadFrom`. `New` rejects both fields set, admits the func with
@@ -867,7 +890,7 @@ vocabulary next to outcome, admission, route, fallback, and retry. No
 conformance-vector change: `LoopPolicy` carries no signed or threaded
 wire form.
 
-### Phase 48 (shipped) verification
+### Phase 48 verification
 
 `make verify` passes, and the `flow` coverage floor holds.
 `api/flow.txt` gains `Step.PayloadFrom`, `Definition.Steps`,

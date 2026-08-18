@@ -59,3 +59,20 @@ func (a *Agent) Name() string {
 func (a *Agent) Capabilities() []string {
 	return a.card.Capabilities
 }
+
+// Plan returns the step plan New bound to a. The returned pointer is
+// the same one New stored; read it through flow's accessors and never
+// mutate it.
+func (a *Agent) Plan() *flow.Definition {
+	return a.plan
+}
+
+// Signer returns the hex signer string of the identity New bound to
+// a. It matches identity.Signer exactly. A nil Agent, or one bound to
+// a nil identity, returns "".
+func (a *Agent) Signer() string {
+	if a == nil || a.id == nil {
+		return ""
+	}
+	return a.id.Signer()
+}

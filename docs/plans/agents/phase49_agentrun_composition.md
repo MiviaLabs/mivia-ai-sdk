@@ -1,8 +1,9 @@
 # Phase 49: agentrun composition layer
 
-Status: future. Plan-only; it has not gone through plan review yet.
+Status: shipped. The plan folded into docs/plans/agentrun.md on
+shipping; see docs/plans/agents/PHASES.md.
 Depends on phase 48, which has shipped. It adds one new top-level
-package. Its four accessors shipped with phase 48.
+package and four accessors to the agent and flow packages, same change.
 
 ## Why this phase exists
 
@@ -46,7 +47,7 @@ Inside:
   `PayloadFrom` closures read a prior step's result without captured
   pointers.
 - `ValidateMatrix`, exported: the static plan-versus-machine check.
-- Accessors the validator needs, already shipped with phase 48:
+- Accessors the validator needs, added in this same change:
   `flow.Definition.Steps`, `flow.Definition.Panels`, `agent.Plan`,
   and `agent.Signer`, the signer hex for the default ack `From`.
 
@@ -80,7 +81,7 @@ type Options struct {
 	Room     string
 	Budget   *contextbudget.Limits
 	Monitor  *heartbeat.Monitor
-	Wait     agent.AckWait      // overrides the built chain
+	Wait     agent.AckWait      // ack resolver; mutually exclusive with Tools
 }
 
 func New(opts Options) (*Runner, error)
@@ -106,7 +107,8 @@ func PayloadOf(step string, a *Artifacts) func(machine.InOut) string
 var (
 	ErrNoAgent        = errors.New("agentrun: agent is required")
 	ErrNoMachine      = errors.New("agentrun: machine is required")
-	ErrAmbiguousWait  = errors.New("agentrun: Wait overrides Tools; set one")
+	ErrNoResolver     = errors.New("agentrun: Wait or Tools is required")
+	ErrAmbiguousWait  = errors.New("agentrun: Wait and Tools both set; set one")
 	ErrNoTools        = errors.New("agentrun: Scope, Store, Ask, or Artifacts needs Tools")
 	ErrNoRecipient    = errors.New("agentrun: Ask needs AskTo")
 	ErrResultNotText  = errors.New("agentrun: tool result is not a string")
@@ -130,7 +132,11 @@ chain, when `Tools` is set, resolves each gated step:
    step with `ErrResultNotText`, naming the tool.
 3. `Store.Put` of the result, when `Store` is set.
 4. `Artifacts.Set(step.ID, result)`, when `Artifacts` is set.
-5. `NewAck(msg, receiver, result)` and `Confirm`.
+5. `envelope.NewAck(msg, receiver, result)` and `Confirm`.
+
+A tool returning the empty string is a runtime fault: `NewAck`
+rejects an empty restatement (envelope/ack.go:36). It never becomes
+`ErrResultNotText`.
 
 A chain error wrapping `agent.ErrEscalated`, with `Ask` set, becomes
 one `Ask` round trip. An approved answer confirms the ack with the
@@ -144,13 +150,16 @@ the budget and matrix rules return their own wrapped errors.
 
 - `Agent` non-nil; `Machine` non-nil.
 - `Wait` and `Tools` are mutually exclusive.
+- `Wait` or `Tools` must be set; neither one returns `ErrNoResolver`.
 - `Scope`, `Store`, `Ask`, and `Artifacts` each require `Tools`.
 - `Ask` requires a non-empty `AskTo`.
 - `Budget`, when set, must pass its own `Validate`.
 - `ValidateMatrix(Agent.Plan(), Machine)` must pass.
-- With `Tools` set, every step ID in `Agent.Plan().Steps()`, recursing
-  into `Sub` definitions, must resolve in the registry. A missing
-  name fails at `New`, not mid-run.
+- With `Tools` set, New resolves every step ID that `flow.Run` gates
+  behind `Confirm`. A wave of two or more members never calls Confirm
+  (flow/runner.go:136-166), so New skips those panel members and their
+  nested Subs. Each remaining step ID must resolve in the registry. A
+  missing name fails at `New`, not mid-run.
 
 `ValidateMatrix` is the transition-matrix check. It walks
 `Plan().Steps()` and `Plan().Panels()` and computes each step's
@@ -184,7 +193,9 @@ predecessors. It does not model route-excluded or skipped-need
 paths, where a `Route` or `AdmissionOnFinished` shifts the live
 status outside every need's `To`. The caller's table owns those
 rows. The guarantee is: every declared predecessor has exactly one
-row. It is not a proof the walk never aborts.
+row. It is not a proof the walk never aborts. A forward-type
+mismatch, a `Route` exclusion, or a skipped need can still abort the
+walk mid-run after `New` passes.
 
 `New` subscribes one no-op handler to each of `MessageDeliveredEvent`,
 `MessageAckedEvent`, and `ThreadVerifiedEvent` on the resolved bus,
@@ -194,13 +205,19 @@ then returns it through `Bus()` for caller additions.
 
 `agentrun/agentrun_test/`, one external test package:
 
-- `options_test.go`, table-driven: every `New` rejection above, plus
-  the accept path.
+- `options_test.go`, table-driven: every `New` rejection above,
+  including a case with neither `Wait` nor `Tools` returning
+  `ErrNoResolver`; plus the accept path.
 - `matrix_test.go`, table-driven: a root step missing its row; a
-  dependent missing its row; a fallback step needing both the failed
-  need's predecessors and its final statuses; a `Sub` need checked
-  against the child's final statuses, not the parent's `To`; an
-  ambiguous pair of rows for one predecessor; the accept path.
+  dependent missing its row; a two-member panel wave unioning its
+  members' predecessor sets; a fallback step needing both the failed
+  need's predecessors and its final statuses; a fallback mixing failed
+  and succeeded needs; a `Sub` need checked against the child's final
+  statuses, not the parent's `To`; a `Loop` need checked against the
+  child's final statuses; a deep multi-level `Sub` chain; an ambiguous
+  pair of rows for one predecessor; the scope-limit case where
+  validation passes but a route-excluded walk would abort; the accept
+  path.
 - `run_integration_test.go`: a real two-step agent over real blocks.
   Step one runs a tool; step two's `PayloadFrom` reads step one's
   artifact through `PayloadOf`. Assert the ack restatements, the
@@ -219,6 +236,10 @@ the existing composition example and shrinks the same wiring to one
 
 - `policy/layers.json` gains
   `"agentrun": ["agent", "channel", "contextbudget", "envelope", "events", "flow", "heartbeat", "identity", "machine", "memory", "tools"]`.
+- One file per concern, flat: `options.go` holds the `Options` struct
+  and `New`; `matrix.go` holds `ValidateMatrix`; `wire.go` holds
+  `Runner`, the ack chain, `Artifacts`, and `PayloadOf`. No file passes
+  500 lines; no function passes 80.
 - `make api-update` lands `api/agentrun.txt`, the `agent.Plan` and
   `agent.Signer` lines in `api/agent.txt`, and the `flow.Definition`
   `Steps` and `Panels` lines in `api/flow.txt`, in the same change.

@@ -8,7 +8,9 @@ package flow
   const StepCompletedEvent = "flow.step_completed"
   func (c Checkpoint) Encode() ([]byte, error)
   func (c Checkpoint) Validate() (error)
+  func (d Definition) Panels() ([]Panel)
   func (d Definition) Roots() ([]string)
+  func (d Definition) Steps() ([]Step)
   func (e *failureError) Error() (string)
   func (e *failureError) Unwrap() (error)
   func (p LoopPolicy) Validate() (error)

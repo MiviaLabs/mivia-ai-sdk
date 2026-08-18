@@ -1,0 +1,35 @@
+package agentrun
+  func (a *Artifacts) Get(step string) (string, bool)
+  func (a *Artifacts) Set(step, value string)
+  func (r *Runner) Bus() (*events.Bus)
+  func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (machine.Status, machine.InOut, error)
+  func New(opts Options) (*Runner, error)
+  func PayloadOf(step string, a *Artifacts) (func(machine.InOut) string)
+  func ValidateMatrix(plan *flow.Definition, m *machine.Definition) (error)
+  type Artifacts struct {
+}
+  type Options struct {
+  Agent *agent.Agent
+  Machine *machine.Definition
+  Receiver *identity.Identity
+  Bus *events.Bus
+  Tools *tools.Registry
+  Scope *tools.Scope
+  Store *memory.Store
+  Ask channel.Notifier
+  AskTo string
+  Artifacts *Artifacts
+  Room string
+  Budget *contextbudget.Limits
+  Monitor *heartbeat.Monitor
+  Wait agent.AckWait
+}
+  type Runner struct {
+}
+  var ErrAmbiguousWait
+  var ErrNoAgent
+  var ErrNoMachine
+  var ErrNoRecipient
+  var ErrNoResolver
+  var ErrNoTools
+  var ErrResultNotText

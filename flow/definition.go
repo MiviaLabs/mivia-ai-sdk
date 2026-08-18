@@ -156,6 +156,21 @@ func (d Definition) Roots() []string {
 	return append([]string(nil), d.roots...)
 }
 
+// Steps returns a shallow copy of the step slice. A step's Sub child
+// nests: the copy shares the child Definition, so callers read deeper
+// levels through the returned Step's Sub field. The slice copy keeps
+// the definition immutable; mutating the returned slice cannot change
+// the internal graph.
+func (d Definition) Steps() []Step {
+	return append([]Step(nil), d.steps...)
+}
+
+// Panels returns a copy of the panel slice. The copy keeps the
+// definition immutable; callers cannot mutate the internal slice.
+func (d Definition) Panels() []Panel {
+	return append([]Panel(nil), d.panels...)
+}
+
 // copyPanels copies the panel slice for immutability.
 func copyPanels(panels []Panel) []Panel {
 	out := make([]Panel, len(panels))

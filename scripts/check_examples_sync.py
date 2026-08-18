@@ -19,6 +19,11 @@ PAIRS = [
         "## SQLiteStore variant",
         "docs/examples/_agentcompositionsqlite/main.go",
     ),
+    (
+        "docs/examples/agentrun.md",
+        "## The program",
+        "docs/examples/_agentrun/main.go",
+    ),
 ]
 
 FENCE_OPEN = "```go"

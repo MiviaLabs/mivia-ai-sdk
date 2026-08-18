@@ -238,10 +238,14 @@ work execution, and completion with the mapped status. It depends only
 on the shipped `ledger` package and adds one `policy/layers.json`
 edge. Its package plan lives at docs/plans/taskrun.md.
 
-Phases 49, 51, and 52 are plan-only; none has gone through plan
-review yet. Phase 49 adds `agentrun`; its accessors already shipped
-with phase 48. It depends on phase 48, because its artifact flow reads
-`PayloadFrom`.
+Phase 49 (`agentrun`) has shipped. It adds the config-struct
+composition layer over `agent.Run` as one top-level package, with
+up-front validators including the plan-versus-machine transition-matrix
+check. It depends on phase 48 and adds one `policy/layers.json` edge.
+Its package plan lives at docs/plans/agentrun.md.
+
+Phases 51 and 52 are plan-only; none has gone through plan
+review yet.
 Phases 51 and 52 each add one package and depend on no unshipped
 phase; they ship independently of each other and of phase 49.
 

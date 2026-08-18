@@ -151,16 +151,15 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
-shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
+Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, and 40
+have shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
 docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
 docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
-loop) is plan-only; it has not gone through plan review yet, but is
-independently buildable now that phase 23 has shipped. Phase 45 (agent composition example) is
-plan-only; it has not gone through plan review yet. It depends only on
-already-shipped packages and adds no code, so it is independently
-buildable now.
+loop) shipped; see docs/plans/flow.md's Phase 38 subsection. Phase 45
+(agent composition example) is plan-only; it has not gone through plan
+review yet. It depends only on already-shipped packages and adds no
+code, so it is independently buildable now.
 
 Phase 42 (ledger durable store), phase 43 (channel reference
 transport), and phase 44 (provider token estimation) are plan-only;

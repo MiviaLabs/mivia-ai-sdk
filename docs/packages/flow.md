@@ -13,11 +13,13 @@ The exported surface below mirrors `api/flow.txt`.
 - `Step` — one node in a workflow graph. A step has an ID, a list of
   prerequisite step IDs, a target status string, a payload, an
   optional nested `Definition`, an `Admission` rule, an optional
-  `Route`, and an optional `Retry`. A step with no prerequisites is a
-  root. For a chained step, `To` is ignored by `Run` and may be empty;
-  the child final status supplies the target status. A step with a
-  non-nil `Route` is a branch step. A step with a non-nil `Retry`
-  retries its own `Fire` call. See Retry below.
+  `Route`, an optional `Retry`, and an optional `Loop`. A step with no
+  prerequisites is a root. For a chained step, `To` is ignored by `Run`
+  and may be empty; the child final status supplies the target status.
+  A step with a non-nil `Route` is a branch step. A step with a
+  non-nil `Retry` retries its own `Fire` call. See Retry below. A step
+  with a non-nil `Loop` repeats its `Sub` child workflow before its own
+  transition and `Confirm` fire. See Loop below.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -60,6 +62,13 @@ The exported surface below mirrors `api/flow.txt`.
 - `RetryPolicy` — a step's retry rule for its own `Fire` call:
   `MaxAttempts`, `BaseDelay`, `MaxDelay`, `Retryable`, `Jitter`, and
   `Sleep`. See Retry below.
+- `LoopPolicy` — a step's loop rule for its `Sub` child workflow:
+  `Guard` (a `machine.Guard`; nil means always continue) and `Max` (the
+  iteration cap; zero means unbounded). See Loop below.
+- `LoopState` — the loop context a `Guard` closure reads: `Iteration`
+  (completed iterations, starting at zero before the first `Guard`
+  call) and `Record` (the most recent child workflow's output). See
+  Loop below.
 
 ## Functions and methods
 
@@ -129,6 +138,10 @@ The exported surface below mirrors `api/flow.txt`.
   retry attempt, one-indexed from the first retry. Doubles from
   `BaseDelay`, clamped at `MaxDelay`, then applies `Jitter` when
   non-nil. See Retry below.
+- `LoopPolicy.Validate()` — rejects a negative `Max`.
+- `LoopStateFrom(ctx)` — reads the `LoopState` `Run` injects before
+  each `Guard` call of a loop step. The boolean is false outside a
+  loop step's `Guard` evaluation.
 
 ## Invariants
 
@@ -184,6 +197,9 @@ The exported surface below mirrors `api/flow.txt`.
 - A non-nil `Retry` passes `RetryPolicy.Validate()`. `New` rejects a
   `Retry` combined with a non-nil `Sub`, and a `Retry` on a panel
   member. See Retry below.
+- A non-nil `Loop` passes `LoopPolicy.Validate()`. `New` rejects a
+  `Loop` combined with a nil `Sub`, and a `Loop` on a panel member. See
+  Loop below.
 
 `Run` enforces the rules below.
 
@@ -384,6 +400,47 @@ follow. A step that exhausts its retries reports `OutcomeFailed`,
 carrying the last attempt's error, exactly like a single-attempt
 failure; a declared `AdmissionOnFailed` fallback still catches it, and
 `FailureFrom` returns the last attempt's error inside the fallback.
+
+## Loop
+
+A step's `Loop` field runs its `Sub` child workflow more than once,
+gated by `LoopPolicy.Guard`, before the step's own transition and
+`Confirm` fire. `Max`, the iteration cap, defaults to zero, meaning
+explicitly unbounded: the loop runs until `Guard` clears or `ctx` is
+canceled or expires, bounded only by the caller's own `ctx`. `Loop`
+requires a non-nil `Sub`; `New` rejects the combination of `Loop` and a
+nil `Sub`, and a `Loop` on a panel member.
+
+The loop reuses `Step.Sub`, the chaining mechanism, in place of a graph
+cycle: `flow.Definition` stays a DAG, and `New`'s cycle rejection is
+unchanged. Each iteration runs the child workflow from the previous
+iteration's output record, except the first iteration, which threads
+the parent step's own incoming record; a non-looped `Sub` step is
+unaffected and keeps starting its child from a fresh `machine.InOut{}`.
+Each iteration then fires the parent's own transition from the current
+status to the child's final status, the same way a non-looped chained
+step's single fire does.
+
+Before every iteration, including the first, the loop checks `ctx` for
+cancellation; a non-nil error stops the loop at once, with zero child
+workflow runs if this is the first check, and fails the step wrapped
+`flow: step %q: %w`. This check runs in the loop driver itself, so an
+unbounded loop still terminates even when `Guard`, `OnEntry`, or
+`OnExit` never inspect `ctx`. After each iteration fires, the loop
+injects a `LoopState`, readable through `LoopStateFrom`, into `ctx`
+before the next `Guard` call. `Max`, when non-zero, stops the loop
+once reached, without a further `Guard` call. Otherwise the loop
+evaluates `Guard`: a nil `Guard` reads as true, matching
+`machine.Guard`'s own nil convention; a `Guard` error stops the loop
+and fails the step the same way a `ctx` error does; a false result
+stops the loop as a normal, successful exit, and a true result repeats.
+
+A step that exhausts `ctx` or whose `Guard` errors reports
+`OutcomeFailed`, exactly like any other `Fire` or `Confirm` failure; a
+declared `AdmissionOnFailed` fallback still catches it, reading the
+loop step's failure through `FailureFrom`. `Loop` and `Retry` are
+already mutually exclusive: `Retry` requires a nil `Sub`, and `Loop`
+requires a non-nil `Sub`.
 
 ## Attaching work to a step
 

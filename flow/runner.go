@@ -201,20 +201,28 @@ func runSingleton(
 	}
 
 	if step.Sub != nil {
-		child, err := runChild(ctx, step.Sub, m, confirm)
-		if err != nil {
-			// The child Run already exhausted its own continue rule, so
-			// any *failureError tag here is the child frame's, not this
-			// one; strip it so it never matches a parent-level fallback.
-			var fe *failureError
-			for errors.As(err, &fe) {
-				err = fe.err
+		if step.Loop != nil {
+			var err error
+			cur, rec, err = runLoopedChild(ctx, fireCtx, m, cur, rec, step, confirm)
+			if err != nil {
+				return cur, rec, err
 			}
-			return cur, rec, err
-		}
-		cur, rec, err = fireFromChild(fireCtx, m, cur, rec, step, child)
-		if err != nil {
-			return cur, rec, err
+		} else {
+			child, err := runChild(ctx, step.Sub, m, confirm)
+			if err != nil {
+				// The child Run already exhausted its own continue rule, so
+				// any *failureError tag here is the child frame's, not this
+				// one; strip it so it never matches a parent-level fallback.
+				var fe *failureError
+				for errors.As(err, &fe) {
+					err = fe.err
+				}
+				return cur, rec, err
+			}
+			cur, rec, err = fireFromChild(fireCtx, m, cur, rec, step, child)
+			if err != nil {
+				return cur, rec, err
+			}
 		}
 		if err := confirmStep(ctx, confirm, step); err != nil {
 			return cur, rec, err
@@ -239,17 +247,6 @@ func runSingleton(
 	}
 	emitStep(ctx, bus, step.ID)
 	return cur, rec, nil
-}
-
-// runChild runs a chained step's child workflow to completion, with
-// the same machine definition, a fresh InOut, and the same confirm.
-// A chained step's own child workflow reports no checkpoint; nested
-// resumability is a future phase's concern.
-func runChild(
-	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
-) (machine.Status, error) {
-	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil, nil)
-	return report.Status(), err
 }
 
 // fireFromChild picks the parent transition row from cur to child and

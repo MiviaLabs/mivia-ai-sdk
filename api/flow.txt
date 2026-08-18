@@ -11,6 +11,7 @@ package flow
   func (d Definition) Roots() ([]string)
   func (e *failureError) Error() (string)
   func (e *failureError) Unwrap() (error)
+  func (p LoopPolicy) Validate() (error)
   func (p RetryPolicy) NextDelay(attempt int) (time.Duration)
   func (p RetryPolicy) Validate() (error)
   func (r Report) Outcome(id string) (Outcome, bool)
@@ -19,6 +20,7 @@ package flow
   func (r Report) Status() (machine.Status)
   func Decode(data []byte) (Checkpoint, error)
   func FailureFrom(ctx context.Context) (Failure, bool)
+  func LoopStateFrom(ctx context.Context) (LoopState, bool)
   func New(steps []Step, panels []Panel) (*Definition, error)
   func Resume(ctx context.Context, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
   func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
@@ -36,6 +38,14 @@ package flow
   type Failure struct {
   Step string
   Err error
+}
+  type LoopPolicy struct {
+  Guard machine.Guard
+  Max int
+}
+  type LoopState struct {
+  Iteration int
+  Record machine.InOut
 }
   type Outcome int
   type Panel []string
@@ -59,4 +69,5 @@ package flow
   When Admission
   Route Route
   Retry *RetryPolicy
+  Loop *LoopPolicy
 }

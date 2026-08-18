@@ -66,10 +66,17 @@ func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID
 // failed key and sets StatusBlocked on every dependent. It touches
 // Store in exactly two passes: one Range call that copies every
 // record into an in-memory list, then one CompareAndSwap per affected
-// key. Between the two passes, an in-memory step computes transitive
-// Needs membership from the list; it makes no further Store calls. A
-// key whose loaded record already carries StatusBlocked is skipped,
-// so an earlier failure's BlockedBy is never overwritten.
+// key, plus any Load needed to retry a losing CompareAndSwap within
+// that same second pass. Between the two passes, an in-memory step
+// computes transitive Needs membership from the list; it makes no
+// further Store calls. A key whose loaded record already carries
+// StatusBlocked is skipped, so an earlier failure's BlockedBy is never
+// overwritten. On a losing CompareAndSwap for a dependent key,
+// blockDependents reloads the record and re-evaluates the same
+// StatusBlocked check against the fresh value, retrying until the
+// write lands, the fresh record is already StatusBlocked, or ctx is
+// canceled, per the retry-and-reclassify contract every other
+// mutating method in this package follows.
 func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) error {
 	var list []TaskState
 	if err := l.store.Range(ctx, func(t TaskState) bool {
@@ -88,18 +95,44 @@ func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) err
 		if !ok || cur.Status == StatusBlocked {
 			continue
 		}
-		next := cur
-		next.Status = StatusBlocked
-		next.BlockedBy = failed
-		ok2, err := l.store.CompareAndSwap(ctx, k, cur, next)
-		if err != nil {
+		if err := l.blockOne(ctx, k, cur, failed); err != nil {
 			return err
-		}
-		if ok2 {
-			l.emit(ctx, BlockedEvent, fmt.Sprintf("key %s blocked by %s", k, failed))
 		}
 	}
 	return nil
+}
+
+// blockOne CompareAndSwaps a single dependent key to StatusBlocked,
+// retrying against a fresh Load on a losing compare. It skips the key
+// once a fresh Load shows StatusBlocked already, matching pass one's
+// own skip rule, so a concurrent write to the dependent between the
+// Range snapshot and this call never leaves the key silently
+// unblocked.
+func (l *Ledger) blockOne(ctx context.Context, k IdempotencyKey, cur TaskState, failed IdempotencyKey) error {
+	for {
+		next := cur
+		next.Status = StatusBlocked
+		next.BlockedBy = failed
+		ok, err := l.store.CompareAndSwap(ctx, k, cur, next)
+		if err != nil {
+			return err
+		}
+		if ok {
+			l.emit(ctx, BlockedEvent, fmt.Sprintf("key %s blocked by %s", k, failed))
+			return nil
+		}
+		fresh, found, err := l.store.Load(ctx, k)
+		if err != nil {
+			return err
+		}
+		if !found || fresh.Status == StatusBlocked {
+			return nil
+		}
+		cur = fresh
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
 }
 
 // transitiveDependents scans list for every key that transitively

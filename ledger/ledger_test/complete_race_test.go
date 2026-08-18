@@ -77,3 +77,67 @@ func TestCompleteRaceExactlyOneWinner(t *testing.T) {
 		t.Fatalf("CompletedEvent fired %d times, want 1", completed)
 	}
 }
+
+// rangeTriggerStore wraps a ledger.Store and runs trigger once, right
+// after the first Range call returns, before its caller observes the
+// result. This reproduces a write racing between blockDependents' Range
+// snapshot and its later per-key CompareAndSwap deterministically,
+// instead of relying on incidental goroutine timing.
+type rangeTriggerStore struct {
+	ledger.Store
+	mu      sync.Mutex
+	trigger func()
+}
+
+func (r *rangeTriggerStore) Range(ctx context.Context, fn func(ledger.TaskState) bool) error {
+	err := r.Store.Range(ctx, fn)
+	r.mu.Lock()
+	trigger := r.trigger
+	r.trigger = nil
+	r.mu.Unlock()
+	if trigger != nil {
+		trigger()
+	}
+	return err
+}
+
+// TestCompleteFailedBlocksDependentAfterConcurrentClaim proves
+// blockDependents retries a losing CompareAndSwap against a dependent
+// whose record changed after the Range snapshot but before pass two
+// reaches it. A concurrent Claim on the dependent, fired right after
+// the Range snapshot, must not leave the dependent silently unblocked.
+func TestCompleteFailedBlocksDependentAfterConcurrentClaim(t *testing.T) {
+	ctx := context.Background()
+	store := &rangeTriggerStore{Store: ledger.NewMemStore()}
+	l, err := ledger.New(store, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mustAdmit(t, l, ctx, "A", 1)
+	mustAdmit(t, l, ctx, "B", 1, "A")
+	fence := mustClaim(t, l, ctx, "A", "owner-a")
+
+	store.trigger = func() {
+		if _, err := l.Claim(ctx, "B", "owner-b", fixedLease, fixedNow); err != nil {
+			t.Errorf("concurrent Claim(B): %v", err)
+		}
+	}
+
+	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	st, found, err := l.State(ctx, "B")
+	if err != nil {
+		t.Fatalf("State(B): %v", err)
+	}
+	if !found {
+		t.Fatalf("B: want found")
+	}
+	if st.Status != ledger.StatusBlocked {
+		t.Fatalf("B: Status = %q, want StatusBlocked", st.Status)
+	}
+	if st.BlockedBy != "A" {
+		t.Fatalf("B.BlockedBy = %q, want A", st.BlockedBy)
+	}
+}

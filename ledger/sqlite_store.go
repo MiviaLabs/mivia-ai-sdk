@@ -92,9 +92,9 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 // migrateAuditColumns adds any of auditColumns absent from an
 // already-existing ledger_tasks table, backfilling the empty string
 // for every pre-existing row. A fresh table already declares all four
-// columns through createLedgerTasksTable, so this runs zero ALTER
-// TABLE statements on first open; running it again against an
-// already-migrated file is equally a no-op.
+// columns through createLedgerTasksTable, so it has nothing to add on
+// first open; calling this again against an already-migrated file
+// adds no duplicate column and returns no error.
 func migrateAuditColumns(db *sql.DB) error {
 	rows, err := db.Query("PRAGMA table_info(ledger_tasks)")
 	if err != nil {

@@ -84,6 +84,43 @@ func TestCompareAndSwapUpdateChangesUpdatedAuditOnly(t *testing.T) {
 	}
 }
 
+// TestLedgerAdmitSetsAuditFieldsOnInsertAndRebaseOverSQLiteStore proves
+// Ledger.Admit's created-vs-updated audit rule holds through a real
+// SQLiteStore-backed Ledger, not only MemStore: CreatedBy/CreatedAt
+// carry forward from the first Admit call across a later rebase, while
+// UpdatedBy/UpdatedAt reflect the rebase call's own actor/now.
+func TestLedgerAdmitSetsAuditFieldsOnInsertAndRebaseOverSQLiteStore(t *testing.T) {
+	ctx := context.Background()
+	store := newSQLiteStoreT(t, ":memory:")
+	l, err := New(store, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	firstActor := Actor("actor-first")
+	firstNow := fixedSQLiteNow
+	if ok, err := l.Admit(ctx, firstActor, "k1", 1, "task-v1", firstNow); err != nil || !ok {
+		t.Fatalf("first Admit: ok=%v err=%v", ok, err)
+	}
+
+	secondActor := Actor("actor-second")
+	secondNow := fixedSQLiteNow.Add(time.Hour)
+	if ok, err := l.Admit(ctx, secondActor, "k1", 2, "task-v2", secondNow); err != nil || !ok {
+		t.Fatalf("second Admit (rebase): ok=%v err=%v", ok, err)
+	}
+
+	ts, found, err := l.State(ctx, "k1")
+	if err != nil || !found {
+		t.Fatalf("State: found=%v err=%v", found, err)
+	}
+	if ts.CreatedBy != firstActor || !ts.CreatedAt.Equal(firstNow) {
+		t.Fatalf("CreatedBy/CreatedAt = %v/%v, want %v/%v", ts.CreatedBy, ts.CreatedAt, firstActor, firstNow)
+	}
+	if ts.UpdatedBy != secondActor || !ts.UpdatedAt.Equal(secondNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %v/%v, want %v/%v", ts.UpdatedBy, ts.UpdatedAt, secondActor, secondNow)
+	}
+}
+
 // readAuditColumns reads the four audit columns for key through a raw
 // query, bypassing scanTaskState so a test can assert the exact
 // stored text independent of TaskState's own parse round trip.

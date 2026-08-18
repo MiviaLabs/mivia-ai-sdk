@@ -114,12 +114,16 @@ func TestNewSQLiteStoreMigratesPreexistingSchema(t *testing.T) {
 	if createdAt != "" || updatedAt != "" || createdBy != "" || updatedBy != "" {
 		t.Fatalf("migrated row audit columns = %q/%q/%q/%q, want all empty", createdAt, updatedAt, createdBy, updatedBy)
 	}
+
+	if !ts.CreatedAt.IsZero() || !ts.UpdatedAt.IsZero() || ts.CreatedBy != "" || ts.UpdatedBy != "" {
+		t.Fatalf("migrated row audit fields via Load = %+v, want all zero", ts)
+	}
 }
 
 // TestNewSQLiteStoreMigrationIsIdempotent proves a second
 // NewSQLiteStore open against an already-migrated file succeeds and
-// leaves the schema unchanged: migrateAuditColumns runs zero ALTER
-// TABLE statements the second time.
+// leaves the schema unchanged: migrateAuditColumns adds no duplicate
+// column and returns no error the second time.
 func TestNewSQLiteStoreMigrationIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ledger.db")
 

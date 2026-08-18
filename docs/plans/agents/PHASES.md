@@ -133,6 +133,17 @@ composition comes last.
   docs/plans/agents/phase42_ledger_durable_store.md,
   docs/plans/agents/phase43_channel_reference_transport.md, and
   docs/plans/agents/phase44_provider_token_estimation.md.
+- Verification: phase 46, a system integration suite: two new
+  `agent/agent_test/` files proving the current, widened package
+  surface composes end to end, using `ledger.MemStore` and a
+  test-local `channel.Notifier`-shaped closure in place of the
+  still-plan-only phase 42 and phase 43 backends. It depends only on
+  already-shipped packages, adds no exported symbol, and needs no new
+  `policy/layers.json` row. It widens
+  `agent/agent_test/exchange_integration_test.go`'s existing coverage
+  without changing that file, and stays separate from phase 45's doc
+  walkthrough. See
+  docs/plans/agents/phase46_system_integration_suite.md.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
@@ -156,6 +167,12 @@ states two backend options and recommends the stdlib-only one; the
 other option needs a user decision on a new third-party exception
 before any phase builds it. Phase 43 ships as a `docs/examples/`
 walkthrough, not new `channel` package code.
+
+Phase 46 (system integration suite) is plan-only; it has not gone
+through plan review yet. It is independently buildable now: every
+package it exercises has already shipped, and it needs neither phase
+42's durable backend nor phase 43's reference transport, using
+`ledger.MemStore` and a test-local closure in their place.
 
 ## Gate interactions
 

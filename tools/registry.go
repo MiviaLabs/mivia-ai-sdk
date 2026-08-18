@@ -9,8 +9,11 @@ import (
 
 // Sentinel errors for Registry operations; test with errors.Is.
 var (
-	// ErrNilTool is Add's error for a nil Tool. Add checks t == nil
-	// before it calls any method on t, so a nil Tool never panics.
+	// ErrNilTool is Add's error for a nil Tool interface value, the
+	// t == nil case. Add checks t == nil before it calls any method
+	// on t. A typed nil pointer that implements Tool is not nil as an
+	// interface value; Add cannot detect it without reflection, which
+	// this module forbids in packages. Passing one is caller error.
 	ErrNilTool = errors.New("tools: tool must not be nil")
 	// ErrBlankName is Add's error when t.Name() is empty after
 	// strings.TrimSpace. A tool needs a real name to register under
@@ -34,10 +37,11 @@ func New() *Registry {
 	return &Registry{tools: make(map[string]Tool)}
 }
 
-// Add registers t under t.Name(). Rejects a nil t with ErrNilTool,
-// before it calls t.Name(). Rejects a blank name (empty after
-// strings.TrimSpace) with ErrBlankName. Rejects a duplicate name with
-// ErrDuplicateName.
+// Add registers t under t.Name(). Rejects a nil t (t == nil) with
+// ErrNilTool, before it calls t.Name(). A typed nil pointer that
+// implements Tool is caller error; see ErrNilTool. Rejects a blank
+// name (empty after strings.TrimSpace) with ErrBlankName. Rejects a
+// duplicate name with ErrDuplicateName.
 func (r *Registry) Add(t Tool) error {
 	if t == nil {
 		return ErrNilTool

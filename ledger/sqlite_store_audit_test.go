@@ -121,6 +121,35 @@ func TestLedgerAdmitSetsAuditFieldsOnInsertAndRebaseOverSQLiteStore(t *testing.T
 	}
 }
 
+// TestSQLiteStoreLoadRejectsMalformedAuditTimestamp proves Load
+// returns a wrapped error, not a silently zeroed time.Time, when a
+// stored created_at column value fails time.Parse.
+func TestSQLiteStoreLoadRejectsMalformedAuditTimestamp(t *testing.T) {
+	ctx := context.Background()
+	store := newSQLiteStoreT(t, ":memory:")
+
+	in := TaskState{
+		Key:       "k1",
+		Status:    StatusPending,
+		Sequence:  1,
+		CreatedBy: Actor("actor-insert"),
+		CreatedAt: fixedSQLiteNow,
+		UpdatedBy: Actor("actor-insert"),
+		UpdatedAt: fixedSQLiteNow,
+	}
+	if ok, err := store.CompareAndSwap(ctx, "k1", TaskState{}, in); err != nil || !ok {
+		t.Fatalf("insert: ok=%v err=%v", ok, err)
+	}
+	if _, err := store.db.Exec("UPDATE ledger_tasks SET created_at = ? WHERE key = ?", "not-a-timestamp", "k1"); err != nil {
+		t.Fatalf("corrupt created_at: %v", err)
+	}
+
+	_, _, err := store.Load(ctx, "k1")
+	if err == nil {
+		t.Fatalf("Load with malformed created_at: want error, got nil")
+	}
+}
+
 // readAuditColumns reads the four audit columns for key through a raw
 // query, bypassing scanTaskState so a test can assert the exact
 // stored text independent of TaskState's own parse round trip.

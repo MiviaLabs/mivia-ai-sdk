@@ -1,6 +1,7 @@
 # Phase 42c: ledger audit metadata (actor and timestamps)
 
-Status: plan only. Follow-on to phase 42 (`SQLiteStore`, shipped at
+Status: shipped at commit `4a27abf`, test gaps closed at `4bac7be`.
+Follow-on to phase 42 (`SQLiteStore`, shipped at
 commit 2d6e1cb, merged at dddd8dc; see `docs/packages/ledger.md`'s
 "SQLiteStore" section). This document supersedes
 `docs/plans/agents/phase42c_sqlite_store_timestamps.md`, an
@@ -250,11 +251,34 @@ A fresh database never enters the `ALTER TABLE` branch: the base
 `ALTER TABLE` statements. Opening an already-migrated file a second
 time is equally a no-op, proving idempotency.
 
-Concurrent open safety: `sqlite_store.go` already sets `PRAGMA
-busy_timeout=5000` on every connection, so a second process opening
-the same file mid-migration blocks on the first process's write lock
-for up to five seconds and then sees the fully migrated schema,
-never a torn, partially-altered one.
+Concurrent open safety: `migrateAuditColumns` runs its `PRAGMA
+table_info` check and its `ALTER TABLE` statements inside one `BEGIN
+IMMEDIATE` transaction, on one reserved connection. `BEGIN IMMEDIATE`
+takes SQLite's write lock up front, before the check runs, so a
+second `NewSQLiteStore` call against the same pre-migration file
+cannot read "column absent" while the first call's migration is still
+in flight: it blocks (per the existing `busy_timeout=5000`) until the
+first call commits, then its own `PRAGMA table_info` check sees the
+column already present and adds nothing. An earlier version of this
+migration ran the check and each `ALTER TABLE` as separate,
+unguarded statements; that shape let two concurrent opens both read
+"absent" before either committed, so the second `ALTER TABLE ADD
+COLUMN` failed with SQLite's "duplicate column name" error. The
+transaction wrap closes that race; a plain `busy_timeout` alone does
+not, since it only makes a second writer wait for a lock a first
+writer already holds, not force the read-then-write sequence to
+happen as one atomic step.
+
+### Timestamp encoding
+
+`CreatedAt`/`UpdatedAt` round-trip through `SQLiteStore` as
+`time.RFC3339Nano` text, the same convention `LeaseUntil` already
+uses. An empty column (never written, or backfilled by the
+migration) parses to the zero `time.Time`, no error. A non-empty
+column that fails `time.Parse` is a hard `Load` error, wrapped with
+the offending field name (`parseAuditTime` in `sqlite_store.go`): a
+malformed audit timestamp is corruption, not a value `Load` should
+silently zero and hide.
 
 Backfill value for a pre-existing row: the empty string, for all
 four columns, matching the superseded draft's reasoning for
@@ -273,7 +297,10 @@ touches) reads as the zero value until that row's next successful
 Every direct caller of `Admit`, `Claim`, `Renew`, `Release`,
 `Takeover`, or `Complete` inside this module needs a new `actor`
 argument, and a new `now` argument where the method gained one. The
-full list, found by grep across the module:
+list below is a point-in-time inventory, found by grep across the
+module as of this phase's landing commit; a test file added later
+(for example `ledger/ledger_test/mem_store_options_test.go`, phase
+42b) is not retrofitted into it:
 
 - `ledger/ledger_test/admit_test.go`
 - `ledger/ledger_test/admit_race_test.go`

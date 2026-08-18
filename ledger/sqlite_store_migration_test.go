@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -202,4 +203,87 @@ func TestNewSQLiteStoreMigratesPartialSchema(t *testing.T) {
 	if updatedAt != "" || updatedBy != "" {
 		t.Fatalf("updated_at/updated_by = %q/%q, want both empty", updatedAt, updatedBy)
 	}
+}
+
+// TestNewSQLiteStoreMigrationIsConcurrencySafe proves two concurrent
+// NewSQLiteStore opens against the same pre-audit-schema file both
+// succeed, because migrateAuditColumns's BEGIN IMMEDIATE transaction
+// takes the write lock before its PRAGMA table_info check runs, so
+// the two opens cannot both observe a column absent and both add it.
+// Both resulting schemas list each audit column exactly once.
+func TestNewSQLiteStoreMigrationIsConcurrencySafe(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "concurrent.db")
+
+	seed := openRawSQLite(t, path)
+	if _, err := seed.Exec(preAuditLedgerTasksTable); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatalf("close seed db: %v", err)
+	}
+
+	var (
+		wg     sync.WaitGroup
+		stores [2]*SQLiteStore
+		errs   [2]error
+	)
+	wg.Add(2)
+	for i := range 2 {
+		go func(i int) {
+			defer wg.Done()
+			stores[i], errs[i] = NewSQLiteStore(path)
+		}(i)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("NewSQLiteStore goroutine %d: %v", i, err)
+		}
+	}
+	defer func() {
+		for i, store := range stores {
+			if err := store.Close(); err != nil {
+				t.Errorf("close store %d: %v", i, err)
+			}
+		}
+	}()
+
+	for i, store := range stores {
+		counts := columnCounts(t, store.db)
+		for _, name := range auditColumns {
+			if counts[name] != 1 {
+				t.Fatalf("store %d: column %q appears %d times, want 1", i, name, counts[name])
+			}
+		}
+	}
+}
+
+// columnCounts returns, for each column PRAGMA table_info(ledger_tasks)
+// reports, the number of times its name appears in that output. A
+// duplicated column from a torn migration would report a count above
+// one for its name.
+func columnCounts(t *testing.T, db *sql.DB) map[string]int {
+	t.Helper()
+	rows, err := db.Query("PRAGMA table_info(ledger_tasks)")
+	if err != nil {
+		t.Fatalf("table_info: %v", err)
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var (
+			cid, notNull, primaryKey int
+			name, typ                string
+			dfltValue                any
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &primaryKey); err != nil {
+			t.Fatalf("scan table_info row: %v", err)
+		}
+		counts[name]++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("table_info rows: %v", err)
+	}
+	return counts
 }

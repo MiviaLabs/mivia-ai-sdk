@@ -78,7 +78,7 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ledger: create ledger_tasks table: %w", err)
 	}
-	if err := migrateAuditColumns(db); err != nil {
+	if err := migrateAuditColumns(context.Background(), db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -95,8 +95,32 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 // columns through createLedgerTasksTable, so it has nothing to add on
 // first open; calling this again against an already-migrated file
 // adds no duplicate column and returns no error.
-func migrateAuditColumns(db *sql.DB) error {
-	rows, err := db.Query("PRAGMA table_info(ledger_tasks)")
+//
+// The check (PRAGMA table_info) and the add (ALTER TABLE) run inside
+// one BEGIN IMMEDIATE transaction on a single reserved connection, so
+// two concurrent NewSQLiteStore calls against the same pre-migration
+// file cannot both observe a column absent and both add it: BEGIN
+// IMMEDIATE takes SQLite's write lock up front, so the second caller
+// blocks (per busy_timeout) until the first commits, then sees the
+// column already present and adds nothing.
+func migrateAuditColumns(ctx context.Context, db *sql.DB) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("ledger: sqlite migration conn: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("ledger: sqlite begin immediate: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+
+	rows, err := conn.QueryContext(ctx, "PRAGMA table_info(ledger_tasks)")
 	if err != nil {
 		return fmt.Errorf("ledger: sqlite table_info: %w", err)
 	}
@@ -126,10 +150,14 @@ func migrateAuditColumns(db *sql.DB) error {
 			continue
 		}
 		stmt := "ALTER TABLE ledger_tasks ADD COLUMN " + name + " TEXT NOT NULL DEFAULT ''"
-		if _, err := db.Exec(stmt); err != nil {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("ledger: sqlite add column %q: %w", name, err)
 		}
 	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("ledger: sqlite commit migration: %w", err)
+	}
+	committed = true
 	return nil
 }
 

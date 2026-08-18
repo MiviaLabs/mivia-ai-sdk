@@ -136,7 +136,8 @@ composition comes last.
   phase 29 `provider`) and ships independently of the others and of
   phase 45. See docs/plans/agents/phase42b_memstore_bounded_cap.md
   and docs/plans/channel.md (phase 43's plan folded in on shipping).
-  Phase 42c is a follow-on to phase 42: it adds an `Actor` type and
+  Phase 42c is a follow-on to phase 42 (shipped; see
+  docs/plans/ledger.md): it adds an `Actor` type and
   `CreatedBy`/`CreatedAt`/`UpdatedBy`/`UpdatedAt` fields to
   `TaskState`, threaded through every `Ledger` mutating method, plus
   matching `SQLiteStore` columns and a startup migration for a

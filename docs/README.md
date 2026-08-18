@@ -3,10 +3,10 @@
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, tools, mcp, ledger,
-memory, provider, channel, trigger, and agent. Each package covers one concern
-and composes through its exported API. This doc tree covers the wire
-protocol, the module map, every package's exported surface, and
-runnable-style walkthroughs.
+memory, provider, channel, trigger, scheduler, and agent. Each package
+covers one concern and composes through its exported API. This doc
+tree covers the wire protocol, the module map, every package's
+exported surface, and runnable-style walkthroughs.
 
 ## Start here
 
@@ -32,6 +32,7 @@ runnable-style walkthroughs.
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, and the request and response types.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
 - [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.
+- [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive: a `Job`, a `Schedule`, and a `Scheduler` that fires each due job on its own timer.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 
 ## Examples

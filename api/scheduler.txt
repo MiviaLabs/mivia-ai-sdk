@@ -1,0 +1,21 @@
+package scheduler
+  const JobFailedEvent = "scheduler.job_failed"
+  func (a atSchedule) Next(after time.Time) (time.Time)
+  func (e everySchedule) Next(after time.Time) (time.Time)
+  func (neverSchedule) Next(after time.Time) (time.Time)
+  func (s *Scheduler) Add(id string, sched Schedule, job Job) (error)
+  func (s *Scheduler) Remove(id string) (bool)
+  func (s *Scheduler) Run(ctx context.Context, bus *events.Bus) (error)
+  func At(times ...time.Time) (Schedule)
+  func Every(d time.Duration) (Schedule)
+  func New() (*Scheduler)
+  type Job func(ctx context.Context) error
+  type Schedule interface {
+	Next(after time.Time) time.Time
+}
+  type Scheduler struct {
+}
+  var ErrBlankID
+  var ErrDuplicateID
+  var ErrNilJob
+  var ErrNilSchedule

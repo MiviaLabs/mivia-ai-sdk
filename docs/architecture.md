@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the nineteen packages and the import edges between
+The diagram shows the twenty-one packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
 `provider`, `tools`, and `trigger` are leaves: they import no other
@@ -48,6 +48,7 @@ flowchart LR
     a2aclient --> a2a
     a2aclient --> envelope
     mcp --> tools
+    scheduler --> events
     contextbudget[contextbudget]
     discovery[discovery]
     durablefence[durablefence]
@@ -269,10 +270,17 @@ flowchart LR
   and `ErrConditionNotMet`. A `Registry` maps a name to one `Condition`
   and one `Action`; `Fire` evaluates the named `Condition` and, when
   true, calls the `Action`. `Condition` matches `machine.Guard`'s
-  signature; `Action` is shaped to match a planned scheduler package's
-  job signature once that package lands. `trigger` imports no other
-  package in this module. See
+  signature; `Action` is shaped to match `scheduler.Job`'s signature.
+  `trigger` imports no other package in this module. See
   [packages/trigger.md](packages/trigger.md).
+- `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
+  `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
+  `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,
+  `ErrNilSchedule`, `ErrNilJob`, and `ErrDuplicateID`. `Run` fires each
+  due `Job` in its own goroutine on a wake-channel sleep loop and
+  emits `JobFailedEvent` on a caller-supplied `*events.Bus` when a
+  `Job` fails. `scheduler` imports `events`. See
+  [packages/scheduler.md](packages/scheduler.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

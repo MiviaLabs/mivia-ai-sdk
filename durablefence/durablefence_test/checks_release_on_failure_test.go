@@ -23,6 +23,7 @@ var releaseOnFailureChecks = map[string]func(testing.TB, context.Context, durabl
 	"CheckClaimRejectsWhileHeld":          durablefence.CheckClaimRejectsWhileHeld,
 	"CheckTakeoverFencesPreviousOwner":    durablefence.CheckTakeoverFencesPreviousOwner,
 	"CheckTakeoverFencesConcurrentMutate": durablefence.CheckTakeoverFencesConcurrentMutate,
+	"CheckMutateSucceedsForCurrentOwner":  durablefence.CheckMutateSucceedsForCurrentOwner,
 }
 
 // releaseOnFailureCases lies on one Scenario field per case, chosen
@@ -73,6 +74,18 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 		build: func(r *referenceClaim) durablefence.Scenario {
 			s := r.scenario()
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, nil }
+			return s
+		},
+	},
+	{
+		name:  "CheckMutateSucceedsForCurrentOwner/Mutate lies error",
+		check: "CheckMutateSucceedsForCurrentOwner",
+		build: func(r *referenceClaim) durablefence.Scenario {
+			s := r.scenario()
+			// Lies about the current, non-fenced owner's Mutate call
+			// failing, without touching the real reference state, so the
+			// eventual deferred Release still targets the real owner.
+			s.Mutate = func(context.Context, string) error { return errAlwaysErrorsMutate }
 			return s
 		},
 	},

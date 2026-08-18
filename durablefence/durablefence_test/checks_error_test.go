@@ -207,6 +207,7 @@ func TestChecksFailOnIncompleteScenario(t *testing.T) {
 		{"CheckTakeoverFencesPreviousOwner", durablefence.CheckTakeoverFencesPreviousOwner},
 		{"CheckTakeoverFencesConcurrentMutate", durablefence.CheckTakeoverFencesConcurrentMutate},
 		{"CheckIsFencedFalseForUnknownToken", durablefence.CheckIsFencedFalseForUnknownToken},
+		{"CheckMutateSucceedsForCurrentOwner", durablefence.CheckMutateSucceedsForCurrentOwner},
 	}
 	for _, c := range cases {
 		c := c

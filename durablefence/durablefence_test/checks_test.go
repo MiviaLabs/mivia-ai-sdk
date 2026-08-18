@@ -54,6 +54,13 @@ func TestCheckTakeoverFencesPreviousOwner(t *testing.T) {
 	assertUnheld(t, ctx, r)
 }
 
+func TestCheckMutateSucceedsForCurrentOwner(t *testing.T) {
+	ctx := context.Background()
+	r := newReferenceClaim()
+	durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, r.scenario())
+	assertUnheld(t, ctx, r)
+}
+
 // TestCheckTakeoverFencesConcurrentMutate proves the reference's mutex
 // guard fences a concurrent Mutate(A) against an overlapping
 // Takeover(B), not only a sequential one. Run under go test -race.

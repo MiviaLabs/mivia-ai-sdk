@@ -140,10 +140,9 @@ func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scena
 // a goroutine that calls Mutate(A) in a loop against a goroutine that
 // calls Takeover once the first goroutine has issued at least one
 // Mutate(A) call, synchronized over a channel. It asserts every
-// Mutate(A) call that completed after Takeover returned observed a
-// fencing error, and asserts IsFenced reports true for token A. It
-// releases the hold under the Takeover-returned token before
-// returning.
+// Mutate(A) call that completed after Takeover returned a non-nil
+// error, and asserts IsFenced reports true for token A. It releases
+// the hold under the Takeover-returned token before returning.
 func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Scenario) {
 	t.Helper()
 	if err := s.Validate(); err != nil {
@@ -217,6 +216,27 @@ func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Sc
 	}
 }
 
+// CheckMutateSucceedsForCurrentOwner claims a fresh resource with
+// token A and calls Mutate(A) before any Takeover, asserting the call
+// returns nil. It proves the legitimate, currently held owner can
+// mutate at all, closing a gap a Mutate that always errors, even for
+// the correct owner, would otherwise slip past every other check in
+// this kit. It releases the hold under token A before returning.
+func CheckMutateSucceedsForCurrentOwner(t testing.TB, ctx context.Context, s Scenario) {
+	t.Helper()
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	tokenA, err := s.Claim(ctx)
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	defer releaseHold(t, ctx, s, &tokenA)
+	if err := s.Mutate(ctx, tokenA); err != nil {
+		t.Fatalf("Mutate(A) = %v, want nil for the current, non-fenced owner", err)
+	}
+}
+
 // CheckIsFencedFalseForUnknownToken calls IsFenced with a token the
 // Scenario never issued through Claim or Takeover, and asserts the
 // result is false, proving IsFenced reports the fenced state of a
@@ -250,6 +270,7 @@ func RunAll(t testing.TB, ctx context.Context, s Scenario) {
 		{"CheckClaimGrantsHold", CheckClaimGrantsHold},
 		{"CheckClaimRejectsWhileHeld", CheckClaimRejectsWhileHeld},
 		{"CheckIsFencedFalseForUnknownToken", CheckIsFencedFalseForUnknownToken},
+		{"CheckMutateSucceedsForCurrentOwner", CheckMutateSucceedsForCurrentOwner},
 		{"CheckReleaseClearsHold", CheckReleaseClearsHold},
 		{"CheckTakeoverFencesConcurrentMutate", CheckTakeoverFencesConcurrentMutate},
 		{"CheckTakeoverFencesPreviousOwner", CheckTakeoverFencesPreviousOwner},

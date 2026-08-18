@@ -3,6 +3,7 @@ package durablefence
   func CheckClaimGrantsHold(t testing.TB, ctx context.Context, s Scenario)
   func CheckClaimRejectsWhileHeld(t testing.TB, ctx context.Context, s Scenario)
   func CheckIsFencedFalseForUnknownToken(t testing.TB, ctx context.Context, s Scenario)
+  func CheckMutateSucceedsForCurrentOwner(t testing.TB, ctx context.Context, s Scenario)
   func CheckReleaseClearsHold(t testing.TB, ctx context.Context, s Scenario)
   func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Scenario)
   func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scenario)

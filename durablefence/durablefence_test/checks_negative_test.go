@@ -2,10 +2,16 @@ package durablefence_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
 )
+
+// errAlwaysErrorsMutate is the error a broken Mutate returns for
+// every call, including one made by the correct, currently held,
+// non-fenced owner.
+var errAlwaysErrorsMutate = errors.New("mutate always fails")
 
 // runIsolated runs a check under a real *testing.T, in a test
 // hierarchy detached from the caller's own *testing.T, so a check's
@@ -160,6 +166,29 @@ func TestCheckIsFencedFalseForUnknownTokenCatchesBrokenIsFenced(t *testing.T) {
 	})
 	if ok {
 		t.Fatal("check passed against an IsFenced that always reports true")
+	}
+}
+
+// TestCheckMutateSucceedsForCurrentOwnerCatchesBrokenMutate proves
+// CheckMutateSucceedsForCurrentOwner fails against a Mutate that
+// always returns an error, even for the correct, currently held,
+// non-fenced owner. This is the exact reproduction the logic review
+// used to prove the pre-amendment kit certified a broken backend as
+// conformant: this broken Mutate still passed all six original
+// checks, since none of them ever asserted Mutate succeeds outside a
+// fencing scenario.
+func TestCheckMutateSucceedsForCurrentOwnerCatchesBrokenMutate(t *testing.T) {
+	ctx := context.Background()
+	r := newReferenceClaim()
+	s := r.scenario()
+	s.Mutate = func(context.Context, string) error {
+		return errAlwaysErrorsMutate
+	}
+	ok := runIsolated("CheckMutateSucceedsForCurrentOwner", func(t *testing.T) {
+		durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
+	})
+	if ok {
+		t.Fatal("check passed against a Mutate that always errors, even for the current owner")
 	}
 }
 

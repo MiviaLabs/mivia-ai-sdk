@@ -4,6 +4,18 @@ Status: ready to build. Phase contract:
 `docs/plans/agents/phase33_durablefence_kit.md`. Sequenced after
 `ledger` (phase 34; see `docs/plans/agents/phase34_ledger.md`).
 
+### Amendment: close the missing happy-path Mutate check
+
+A post-ship logic review found a real gap. No `Check*` function ever
+asserted `Mutate` succeeds for a legitimate, non-fenced, currently held
+token. Every existing check that calls `Mutate` only asserts a non-nil
+error after a `Takeover` (`CheckTakeoverFencesPreviousOwner`,
+`CheckTakeoverFencesConcurrentMutate`). A `Scenario` whose `Mutate`
+field always returns an error, even for the correct current owner,
+passed all six existing `RunAll` subtests. This section adds
+`CheckMutateSucceedsForCurrentOwner` to close the gap, and reconciles
+one doc-comment overclaim the same review found.
+
 ## Goal
 
 Give `ledger` a shared, storage-agnostic conformance kit that proves
@@ -182,14 +194,26 @@ The surface below lands in `api/durablefence.txt` via
   until a barrier releases it, the other calls `Takeover` for token B
   once the first goroutine has issued at least one `Mutate(A)` call
   (synchronized through a channel, not a sleep). After both goroutines
-  finish, asserts every `Mutate(A)` call that returned after the
-  `Takeover` call observably succeeded returned a fencing error, and
-  asserts `IsFenced` reports true for token A. A correct implementation
-  may let an in-flight `Mutate(A)` that was already committed before
-  `Takeover` won the race succeed; the check only asserts no
-  `Mutate(A)` call completing after `Takeover` returns success.
-  Releases the hold under token B before returning, so the resource is
-  unheld for the next check.
+  finish, asserts every `Mutate(A)` call that completed after
+  `Takeover` returned success returned a non-nil error, and asserts
+  `IsFenced` reports true for token A. The check asserts a non-nil
+  error, not a fencing-specific one: `Scenario` carries no generic
+  fencing-error sentinel a caller-supplied `Mutate` can be checked
+  against, since the token type and the error type are both opaque to
+  this kit. A correct implementation may let an in-flight `Mutate(A)`
+  that was already committed before `Takeover` won the race succeed;
+  the check only asserts no `Mutate(A)` call completing after
+  `Takeover` returns success. Releases the hold under token B before
+  returning, so the resource is unheld for the next check.
+- `func CheckMutateSucceedsForCurrentOwner(t testing.TB, ctx context.Context, s Scenario)`
+  — claims a fresh resource with token A and calls `Mutate(A)` before
+  any `Takeover`, asserting the call returns nil. This proves the
+  legitimate, currently held owner can mutate at all, closing the gap
+  a `Mutate` that always errors, even for the correct owner, would
+  otherwise slip past every other check in this kit: the other checks
+  that call `Mutate` only assert it fails after a fencing event, never
+  that it succeeds before one. Releases the hold under token A before
+  returning, so the resource is unheld for the next check.
 - `func CheckClaimRejectsWhileHeld(t testing.TB, ctx context.Context, s Scenario)`
   — claims a fresh resource with token A, then calls `Claim` again on
   the same resource and asserts the second call returns a non-nil
@@ -202,10 +226,15 @@ The surface below lands in `api/durablefence.txt` via
   `IsFenced` reports the fenced state of a real prior owner, not a
   default "yes" for any token it does not recognize.
 - `func RunAll(t testing.TB, ctx context.Context, s Scenario)` — runs
-  every check function above, in the order listed, under `t.Run` with
-  the check's own name as the subtest name. A caller wanting the full
-  suite calls `RunAll` once; a caller wanting one invariant calls that
-  check function directly. `RunAll` relies on every `Check*` function
+  every `Check*` function in alphabetical order by function name,
+  under `t.Run` with the check's own name as the subtest name:
+  `CheckClaimGrantsHold`, `CheckClaimRejectsWhileHeld`,
+  `CheckIsFencedFalseForUnknownToken`,
+  `CheckMutateSucceedsForCurrentOwner`, `CheckReleaseClearsHold`,
+  `CheckTakeoverFencesConcurrentMutate`,
+  `CheckTakeoverFencesPreviousOwner`. A caller wanting the full suite
+  calls `RunAll` once; a caller wanting one invariant calls that check
+  function directly. `RunAll` relies on every `Check*` function
   releasing its own hold before returning; that contract is why a
   fixed check order composes safely over one `Scenario` value.
 
@@ -214,20 +243,26 @@ text; the block below is the plan's best-effort rendering, matching
 the field-declaration-order convention `api/flow.txt` already uses
 for `Step`'s exported fields. The builder runs `make api-update` and
 treats its output as the real lock, then reconciles this plan's block
-with it if the two differ only in formatting.
+with it if the two differ only in formatting. This amendment adds one
+new exported function, `CheckMutateSucceedsForCurrentOwner`, so
+`api/durablefence.txt` gains exactly one new line versus the currently
+committed lock. The builder must run `make api-update` and commit the
+`api/` diff in the same change, per the enforcement ladder in
+`AGENTS.md`.
 
 The expected lock content:
 
 ```text
 package durablefence
+  func (s Scenario) Validate() (error)
   func CheckClaimGrantsHold(t testing.TB, ctx context.Context, s Scenario)
   func CheckClaimRejectsWhileHeld(t testing.TB, ctx context.Context, s Scenario)
   func CheckIsFencedFalseForUnknownToken(t testing.TB, ctx context.Context, s Scenario)
+  func CheckMutateSucceedsForCurrentOwner(t testing.TB, ctx context.Context, s Scenario)
   func CheckReleaseClearsHold(t testing.TB, ctx context.Context, s Scenario)
   func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Scenario)
   func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scenario)
   func RunAll(t testing.TB, ctx context.Context, s Scenario)
-  func (s Scenario) Validate() (error)
   type Scenario struct {
   Claim func(context.Context) (string, error)
   Takeover func(context.Context) (string, error)
@@ -245,8 +280,9 @@ package durablefence
   its first paragraph, plus a file map.
 - `durablefence/scenario.go` — `Scenario`, `Validate`,
   `ErrIncompleteScenario`.
-- `durablefence/checks.go` — the six `Check*` functions and `RunAll`.
-  Split into a second file if the 500-line structure cap requires it.
+- `durablefence/checks.go` — the seven `Check*` functions and
+  `RunAll`. Split into a second file if the 500-line structure cap
+  requires it.
 
 ## Tests
 
@@ -289,6 +325,10 @@ correct, not that a runtime feature works.
     guard fences a concurrent `Mutate(A)` against an overlapping
     `Takeover(B)`, not only a sequential one; asserts the reference is
     unheld after the check returns.
+  - `CheckMutateSucceedsForCurrentOwner` against a fresh reference
+    claim; proves `Mutate(A)` returns nil for the current, non-fenced
+    owner before any `Takeover`; asserts the reference is unheld after
+    the check returns.
 - `checks_negative_test.go` — proves each check function fails loud
   against a deliberately broken reference, not just that it passes on
   a correct one. Each case wraps the reference so one function field
@@ -316,6 +356,13 @@ correct, not that a runtime feature works.
     for a truly unknown one: the `CheckClaimGrantsHold` subtest fails,
     since that check now asserts `IsFenced` is false for the token it
     just claimed.
+  - A broken `Mutate` that always returns an error, even for the
+    correct, currently held, non-fenced owner: the
+    `CheckMutateSucceedsForCurrentOwner` subtest fails. This is the
+    exact reproduction the logic review used to prove the pre-amendment
+    kit certified a broken backend as conformant: this broken
+    `Mutate` still passed all six original checks, since none of them
+    ever asserted `Mutate` succeeds outside a fencing scenario.
 - `runall_integration_test.go` — calls `RunAll` once against the
   reference implementation and asserts no subtest failed, proving the
   full suite composes over one `Scenario` value with no field reused
@@ -340,8 +387,22 @@ measure the reference fixture, not a shipped feature.
 - No other package's `policy/layers.json` row changes. No package
   gains `durablefence` as an allowed import.
 - `api/durablefence.txt` lands through `make api-update` in the same
-  change as the code, matching the API section's lock content.
+  change as the code, matching the API section's lock content. This
+  amendment adds one new line for `CheckMutateSucceedsForCurrentOwner`
+  versus the lock committed before this amendment; the builder runs
+  `make api-update` and commits the diff.
 - `go test -race ./durablefence/...` passes.
+- `durablefence/checks.go`'s doc comment on
+  `CheckTakeoverFencesConcurrentMutate` changes from "observed a
+  fencing error" to the reconciled non-nil-error wording in the API
+  section above, in the same change as the new check.
+- `checks_test.go` and `checks_negative_test.go` both gain coverage
+  for `CheckMutateSucceedsForCurrentOwner`, proving it passes against
+  the correct reference implementation and fails against a reference
+  whose `Mutate` always errors, even for the current, non-fenced
+  owner. This is the reproduction the logic review used to find the
+  gap; the negative case must exist so a future regression on this
+  check is caught the same way.
 - This phase adds no conformance vector under
   `envelope/testdata/vectors/`. `durablefence` carries no wire format;
   it drives an in-memory claim implementation through function calls

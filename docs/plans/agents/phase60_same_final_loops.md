@@ -1,7 +1,7 @@
 # Phase 60: same-final loop re-entry
 
-Status: plan only, unassigned. Depends on no unshipped phase. It
-changes `flow` and `agentrun` semantics; no new package.
+Status: shipped. Depends on no unshipped phase. It changes `flow`
+and `agentrun` semantics; no new package.
 
 ## Why this plan exists
 

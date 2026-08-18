@@ -54,24 +54,13 @@ func (v verdictTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
 
 // bugfixAuditPlan mirrors the bug-fix workflow's hunt-and-triage core:
 // a bounded refinement loop around hunt and triage, then a gate step
-// routing on the triage verdict. The triage branch alternates its
-// final status, so the audit loop's re-entry rows never self-pair.
-func bugfixAuditPlan(t *testing.T, script *verdictScript, parity *int) *flow.Definition {
+// routing on the triage verdict. The child ends every iteration on
+// one final; the equal-standing re-entry needs no self-row.
+func bugfixAuditPlan(t *testing.T, script *verdictScript) *flow.Definition {
 	t.Helper()
 	child, err := flow.New([]flow.Step{
 		{ID: "hunt", To: "hunted", Payload: "hunt-scope"},
-		{
-			ID: "triage", To: "triaging", Needs: []string{"hunt"}, Payload: "triage-findings",
-			Route: func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error) {
-				*parity++
-				if *parity%2 == 1 {
-					return []string{"tA"}, nil
-				}
-				return []string{"tB"}, nil
-			},
-		},
-		{ID: "tA", To: "triagedA", Needs: []string{"triage"}, Payload: "settle-a"},
-		{ID: "tB", To: "triagedB", Needs: []string{"triage"}, Payload: "settle-b"},
+		{ID: "triage", To: "triaged", Needs: []string{"hunt"}, Payload: "triage-findings"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New audit child: %v", err)
@@ -110,27 +99,21 @@ func bugfixAuditPlan(t *testing.T, script *verdictScript, parity *int) *flow.Def
 }
 
 // bugfixAuditMachine carries every row the audit walk can fire: the
-// child rows, the loop's re-entry rows between the two distinct
-// finals, and both gate branches.
+// child rows, the parent's first fire, and both gate branches. The
+// same-final re-entry needs no row.
 func bugfixAuditMachine(t *testing.T) *machine.Definition {
 	t.Helper()
 	m, err := machine.New("queued",
 		machine.Transition{From: "queued", To: "hunted", Trigger: "r01"},
-		machine.Transition{From: "hunted", To: "triaging", Trigger: "r02"},
-		machine.Transition{From: "triaging", To: "triagedA", Trigger: "r03"},
-		machine.Transition{From: "triaging", To: "triagedB", Trigger: "r04"},
-		machine.Transition{From: "queued", To: "triagedA", Trigger: "r05"},
-		machine.Transition{From: "queued", To: "triagedB", Trigger: "r06"},
-		machine.Transition{From: "triagedA", To: "triagedB", Trigger: "r07"},
-		machine.Transition{From: "triagedB", To: "triagedA", Trigger: "r08"},
-		machine.Transition{From: "triagedA", To: "gated", Trigger: "r09"},
-		machine.Transition{From: "triagedB", To: "gated", Trigger: "r10"},
-		machine.Transition{From: "gated", To: "planned", Trigger: "r11"},
-		machine.Transition{From: "planned", To: "implemented", Trigger: "r12"},
-		machine.Transition{From: "gated", To: "clean", Trigger: "r13"},
+		machine.Transition{From: "hunted", To: "triaged", Trigger: "r02"},
+		machine.Transition{From: "queued", To: "triaged", Trigger: "r03"},
+		machine.Transition{From: "triaged", To: "gated", Trigger: "r04"},
+		machine.Transition{From: "gated", To: "planned", Trigger: "r05"},
+		machine.Transition{From: "planned", To: "implemented", Trigger: "r06"},
+		machine.Transition{From: "gated", To: "clean", Trigger: "r07"},
 		// The validator walks branch siblings in declaration order, so
 		// the clean-exit branch needs a row from the fix path's final.
-		machine.Transition{From: "implemented", To: "clean", Trigger: "r14"},
+		machine.Transition{From: "implemented", To: "clean", Trigger: "r08"},
 	)
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
@@ -156,8 +139,8 @@ func TestBugfixTriageRoutes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			script := &verdictScript{verdicts: tc.verdicts}
-			hunt, parity := 0, 0
-			plan := bugfixAuditPlan(t, script, &parity)
+			hunt := 0
+			plan := bugfixAuditPlan(t, script)
 			m := bugfixAuditMachine(t)
 			if err := agentrun.ValidateMatrix(plan, m); err != nil {
 				t.Fatalf("ValidateMatrix = %v, want nil", err)
@@ -167,8 +150,6 @@ func TestBugfixTriageRoutes(t *testing.T) {
 				huntTool{calls: &hunt},
 				verdictTool{name: "triage", script: script},
 				e2e.PrefixTool{ToolName: "audit", Prefix: "audit:"},
-				e2e.PrefixTool{ToolName: "tA", Prefix: "tA:"},
-				e2e.PrefixTool{ToolName: "tB", Prefix: "tB:"},
 				e2e.PrefixTool{ToolName: "gate", Prefix: "gate:"},
 				e2e.PrefixTool{ToolName: "fix_plan", Prefix: "plan:"},
 				e2e.PrefixTool{ToolName: "implement", Prefix: "fix:"},

@@ -284,14 +284,22 @@ the SDK's blocks, and a signed-message mailbox carries both
 directions between orchestrators, subagents, and humans. Its
 package plan lives at docs/plans/subagent.md.
 
-Phase 60 is plan-only and not scheduled. It changes no package
-surface: a loop child that ends every iteration on one status becomes
-representable, because the parent re-enters without a transition row
-when its standing already matches the child final. The parity
-workaround stays valid but stops being required. The mivia-agent
-parity scenarios surfaced the gap; see
-docs/plans/agents/phase60_same_final_loops.md and the disclosed
-limits in docs/plans/e2e.md.
+Phase 56 (`providerregistry`) has shipped. It adds one package:
+`Registry` holds named `provider.Completer` values, and `Route`
+walks a caller-chosen order of names through `provider.RunTurn`.
+`Route` falls through to the next name only when the caller's
+`Retryable` predicate approves the failure. It depends on the
+shipped `provider` package and one `policy/layers.json` edge. Its
+package plan lives at docs/plans/providerregistry.md; see
+docs/plans/agents/phase56_provider_registry.md for the design
+rationale.
+
+Phase 60 has shipped. It changes no package surface: a loop child
+that ends every iteration on one status is representable, because
+the parent re-enters without a transition row when its standing
+already matches the child final. The parity workaround stays valid
+but is no longer required. See
+docs/plans/agents/phase60_same_final_loops.md.
 
 Phase 61 is plan-only and not scheduled. It swaps the admission
 zero value: a step runs only when every need succeeded, and skip

@@ -57,7 +57,8 @@ const (
 // Loop, when non-nil, runs Sub more than once, gated by
 // LoopPolicy.Guard, before this step's own transition and Confirm
 // fire; New rejects a non-nil Loop combined with a nil Sub or panel
-// membership.
+// membership. A same-final child re-enters without a row; see
+// LoopPolicy.
 type Step struct {
 	ID          string
 	Needs       []string

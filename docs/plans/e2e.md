@@ -211,10 +211,6 @@ Mapping, workflow-engine shape to SDK block:
 
 Disclosed limits these scenarios pin:
 
-- A loop child that always ends on one status cannot re-enter: the
-  parent's re-entry row would be a self-row, which `machine.New`
-  forbids. Loops must alternate child finals. Phase 60 plans the
-  fix.
 - Route exclusion propagates only through `AdmissionOnSucceeded`.
   The default admission lets a step run after a skipped need.
 - An ack rejection stays fatal. A gate that must route to repair
@@ -222,13 +218,15 @@ Disclosed limits these scenarios pin:
 - Engine restart through checkpoint resume is not reachable through
   `agentrun`; only `flow.Run` exposes the checkpoint hook today.
 
-One limit the scenarios surfaced is already fixed: a step repeated
+Two limits the scenarios surfaced are already fixed. A step repeated
 inside a loop overwrites its bare-ID artifact with the latest
-result. The suffixed message IDs stay on the thread only. Guards and
-`PayloadOf` read the bare key for the latest result. Every run also
-appends to `Artifacts.History`, so a repair loop can read the
-earlier rejections it is repairing, the sibling repo's
-`prior_findings` pattern.
+result, and every run appends to `Artifacts.History`, so a repair
+loop can read the earlier rejections it is repairing, the sibling
+repo's `prior_findings` pattern. A loop child that ends every
+iteration on one status now re-enters without a self-row: the
+parent's standing already matches the child final, so the re-entry
+fires no transition. The delivery budget case runs three same-final
+repair cycles before its terminal failure.
 
 ## Tests
 

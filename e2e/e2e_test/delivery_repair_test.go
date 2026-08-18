@@ -184,13 +184,12 @@ func TestDeliveryMetadataRepairLoopRecovers(t *testing.T) {
 }
 
 // TestDeliveryBudgetExhaustedFailsTerminal pins the terminal edge:
-// a stubborn host outlasts a one-repair budget, the second repair
-// fails hard, and the run settles terminal with the budget note. A
-// longer budget cannot be expressed here: every stubborn iteration
-// ends on the same final, and a same-final re-entry row is
-// unrepresentable.
+// a stubborn host outlasts a three-repair budget. Three repair
+// iterations re-enter on the same final without a row, the fourth
+// repair fails hard, and the run settles terminal with the budget
+// note.
 func TestDeliveryBudgetExhaustedFailsTerminal(t *testing.T) {
-	_, _, err := runDelivery(t, true, 1)
+	_, _, err := runDelivery(t, true, 3)
 	if err == nil {
 		t.Fatal("Run succeeded, want the budget-exhausted failure")
 	}

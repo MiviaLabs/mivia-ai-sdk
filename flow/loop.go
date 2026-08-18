@@ -11,7 +11,9 @@ import (
 // Guard reuses machine.Guard's exact type; a nil Guard means "always
 // continue," matching machine's own nil convention. Max caps the
 // iteration count; zero means unbounded, bounded only by the
-// caller's own ctx. A negative Max is invalid.
+// caller's own ctx. A negative Max is invalid. A child may end every
+// iteration on one status: when the parent's standing already equals
+// the child final, the re-entry fires no transition row.
 type LoopPolicy struct {
 	Guard machine.Guard
 	Max   int

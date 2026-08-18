@@ -21,9 +21,9 @@ import (
 // same way. A Loop step that can run a second iteration also needs a
 // re-entry row between every pair of distinct child finals. It is a
 // static check; it does not prove the walk never aborts. Route
-// exclusions, skipped needs, forward-type mismatches, and a loop
-// landing the same final twice (machine.New forbids the self row
-// that needs) can still abort mid-run after New passes.
+// exclusions, skipped needs, and forward-type mismatches can still
+// abort mid-run after New passes. A loop landing the same final
+// twice cannot: the equal-standing re-entry needs no row.
 func ValidateMatrix(plan *flow.Definition, m *machine.Definition) error {
 	if plan == nil {
 		return fmt.Errorf("agentrun: plan must not be nil")
@@ -243,10 +243,10 @@ func simPanelOf(id string, panels []flow.Panel) (flow.Panel, bool) {
 }
 
 // checkLoopReentry requires a row between every pair of distinct child
-// finals when s's loop policy can run a second iteration. machine.New
-// forbids a From-equals-To row, so a child that lands the same final
-// twice always faults at runtime; that limit stays disclosed in
-// ValidateMatrix's comment, not checked here.
+// finals when s's loop policy can run a second iteration. A
+// From-equals-To pair needs no row: fireFromChild treats a standing
+// equal to the child final as a satisfied re-entry, so a child that
+// lands the same final twice stays representable.
 func (w *walker) checkLoopReentry(s flow.Step) error {
 	if s.Loop == nil || s.Loop.Max == 1 || s.Sub == nil {
 		return nil

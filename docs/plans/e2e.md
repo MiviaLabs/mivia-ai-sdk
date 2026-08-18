@@ -138,21 +138,27 @@ below land with it.
 
 ## System scenarios
 
-These scenarios exercise the whole system once phase 55 ships. Each
-lands as its own file, in this order:
+These scenarios exercise the whole system over the shipped
+`subagent` package. The first five have landed:
 
-- `subagent_parallel_test.go` — one orchestrator holds two subagent
-  tools in a panel wave. Both spawn concurrently, both artifacts
-  feed a joining step, and the parent thread verifies.
+- `subagent_parallel_test.go` — one orchestrator step's tool fans
+  several subagents out through `RunAll`. A panel wave cannot do
+  this: waves never reach the ack chain where tools run.
 - `subagent_tools_test.go` — one subagent's registry holds
   `FlowTool`, `LedgerTool`, and `MemoryTool`. It runs a child flow,
-  reports its outcome, completes ledger work, and exchanges a
-  memory ref with the parent.
-- `subagent_observe_test.go` — the parent's bus receives a spawned
-  run's delivered, acked, and verified events live; a failing
-  subagent surfaces its error through the parent's step.
-- `subagent_depth_test.go` — a self-spawning subagent stops at the
+  completes ledger work, and stores a memory ref the orchestrator
+  reads back.
+- `subagent_observe_test.go` — the orchestrator's bus receives the
+  spawned run's delivered, acked, and verified events live.
+- `subagent_depth_test.go` — a self-spawning chain stops at the
   depth bound with `ErrMaxDepth`.
+- `subagent_messaging_test.go` — the orchestrator and a human both
+  send into the subagent's mailbox, the subagent drains both and
+  replies into the orchestrator's, and the orchestrator admits the
+  subagent's signer into a room on the way.
+
+Still on the backlog:
+
 - `subagent_remote_test.go` — a remote subagent composed from
   `a2aack` behind `AsTool`, then a `dispatch`-backed variant; the
   orchestrator step completes over the real transport.

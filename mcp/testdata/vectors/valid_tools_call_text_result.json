@@ -1,0 +1,13 @@
+{
+  "result": {
+    "content": [
+      {"type": "text", "text": "hello vector"}
+    ]
+  },
+  "expected": {
+    "content": [
+      {"type": "text", "text": "hello vector"}
+    ],
+    "isError": false
+  }
+}

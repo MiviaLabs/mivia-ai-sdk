@@ -169,6 +169,19 @@ def main() -> int:
             'package a2aclient\n\nimport "github.com/a2aproject/a2a-go/a2aclient"\n\nvar _ = a2aclient.Config{}\n'
         )
 
+        # mcp-scoped rule pair: proves the stdlib-only exclude and the
+        # new scoped rule fire together, in a path-scoped directory the
+        # flat PROBES loop above cannot exercise.
+        mcp_rid = "sdk.go.mcp-scoped-third-party-import"
+        mcp_dir = tmp / "mcp"
+        mcp_dir.mkdir()
+        (mcp_dir / "viol_mcp_other_import.go").write_text(
+            'package mcp\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n'
+        )
+        (mcp_dir / "clean_go_sdk_import.go").write_text(
+            'package mcp\n\nimport mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"\n\nvar _ = mcpsdk.Transport(nil)\n'
+        )
+
         data = scan(tmp)
         if data.get("errors"):
             print("semgrep probe scan errors:", data["errors"])
@@ -179,6 +192,8 @@ def main() -> int:
             expected[cfile] = rid
         expected["viol_other_import.go"] = a2aclient_rid
         expected["clean_a2a_import.go"] = a2aclient_rid
+        expected["viol_mcp_other_import.go"] = mcp_rid
+        expected["clean_go_sdk_import.go"] = mcp_rid
         hits = {}
         for r in data.get("results", []):
             name = Path(r["path"]).name
@@ -212,6 +227,25 @@ def main() -> int:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
         if "sdk.go.stdlib-only-imports" in clean_hits:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
+
+        # Explicit mcp-scoped assertions, parallel to the a2aclient
+        # block above: the scoped rule fires on the violation, stays
+        # silent on the clean import, and the scoped exclude keeps
+        # stdlib-only-imports out of both. viol_mcp_other_import.go
+        # uses a name distinct from viol_other_import.go: the hits and
+        # expected dicts above key by basename alone, so reusing the
+        # a2aclient probe's basename here would silently overwrite its
+        # expected-rule entry instead of adding a second one.
+        mcp_viol_hits = hits.get("viol_mcp_other_import.go", set())
+        mcp_clean_hits = hits.get("clean_go_sdk_import.go", set())
+        if mcp_rid not in mcp_viol_hits:
+            problems.append(f"{mcp_rid}: violation file viol_mcp_other_import.go did not fire")
+        if mcp_rid in mcp_clean_hits:
+            problems.append(f"{mcp_rid}: clean file clean_go_sdk_import.go fired")
+        if "sdk.go.stdlib-only-imports" in mcp_viol_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded mcp/ directory")
+        if "sdk.go.stdlib-only-imports" in mcp_clean_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded mcp/ directory")
 
         for name in hits:
             if name not in expected and not name.startswith("d5"):

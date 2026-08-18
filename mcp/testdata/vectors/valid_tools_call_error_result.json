@@ -1,0 +1,14 @@
+{
+  "result": {
+    "content": [
+      {"type": "text", "text": "boom"}
+    ],
+    "isError": true
+  },
+  "expected": {
+    "content": [
+      {"type": "text", "text": "boom"}
+    ],
+    "isError": true
+  }
+}

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Gate: go.mod and go.sum carry no dependency outside a named, closed
-allowlist. The SDK is standard library only, with one deliberate
-exception: a2aclient wraps github.com/a2aproject/a2a-go (see
-docs/plans/a2aclient.md). ALLOWED_MODULES is that module's verified
-dependency closure, reconciled against real `go mod tidy` output; a
-require or go.sum line for any other module path fails the gate.
-`replace`, `exclude`, and `retract` directives stay fully rejected, no
+allowlist. The SDK is standard library only, with two deliberate
+exceptions: a2aclient wraps github.com/a2aproject/a2a-go (see
+docs/plans/a2aclient.md), and mcp wraps
+github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md).
+ALLOWED_MODULES is the union of both modules' verified dependency
+closures, reconciled against real `go mod tidy` output; a require or
+go.sum line for any other module path fails the gate. `replace`,
+`exclude`, and `retract` directives stay fully rejected, no
 exception."""
 import re
 import sys
@@ -15,16 +17,23 @@ BLOCKED_DIRECTIVES = ("replace", "exclude", "retract")
 DIRECTIVE = re.compile(r"^(require|replace|exclude|retract)\b")
 REQUIRE_LINE = re.compile(r"^([A-Za-z0-9._/-]+)\s+v")
 
-# The module a2aclient wraps, plus its resolved dependency closure. Kept
-# in sync with go.mod's require block and go.sum's module set by
-# `go mod tidy`; trim an entry when a future tidy stops adding it.
+# The modules a2aclient and mcp wrap, plus their resolved dependency
+# closures. Kept in sync with go.mod's require block and go.sum's
+# module set by `go mod tidy`; trim an entry when a future tidy stops
+# adding it.
 ALLOWED_MODULES = {
     "github.com/a2aproject/a2a-go",
     "github.com/go-logr/logr",
     "github.com/go-logr/stdr",
+    "github.com/golang-jwt/jwt/v5",
     "github.com/golang/protobuf",
     "github.com/google/go-cmp",
+    "github.com/google/jsonschema-go",
     "github.com/google/uuid",
+    "github.com/modelcontextprotocol/go-sdk",
+    "github.com/segmentio/asm",
+    "github.com/segmentio/encoding",
+    "github.com/yosida95/uritemplate/v3",
     "go.opentelemetry.io/auto/sdk",
     "go.opentelemetry.io/otel",
     "go.opentelemetry.io/otel/metric",
@@ -32,9 +41,12 @@ ALLOWED_MODULES = {
     "go.opentelemetry.io/otel/sdk/metric",
     "go.opentelemetry.io/otel/trace",
     "golang.org/x/net",
+    "golang.org/x/oauth2",
     "golang.org/x/sync",
     "golang.org/x/sys",
     "golang.org/x/text",
+    "golang.org/x/time",
+    "golang.org/x/tools",
     "google.golang.org/genproto/googleapis/api",
     "google.golang.org/genproto/googleapis/rpc",
     "google.golang.org/grpc",

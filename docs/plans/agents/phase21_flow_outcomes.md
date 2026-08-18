@@ -1,6 +1,6 @@
 # Phase 21: flow step outcomes and run report
 
-Status: ready to build. Builds on phases 5 through 7. Phase 21 extends
+Status: shipped. Builds on phases 5 through 7. Phase 21 extends
 the same runner path; this phase must keep phase 7 behavior intact. This
 phase replaces
 the boolean done map with per-step outcomes. `Run` returns a `Report`.

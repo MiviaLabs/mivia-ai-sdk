@@ -2,10 +2,11 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, a2aclient, tools, ledger, memory,
-and agent. Each package covers one concern and composes through its
-exported API. This doc tree covers the wire protocol, the module map,
-every package's exported surface, and runnable-style walkthroughs.
+heartbeat, identity, discovery, a2a, a2aclient, tools, mcp, ledger,
+memory, and agent. Each package covers one concern and composes
+through its exported API. This doc tree covers the wire protocol, the
+module map, every package's exported surface, and runnable-style
+walkthroughs.
 
 ## Start here
 
@@ -25,6 +26,7 @@ every package's exported surface, and runnable-style walkthroughs.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
 - [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter: send a message as a remote task, poll its status, and fetch its result.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name.
+- [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.

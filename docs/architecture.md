@@ -17,7 +17,7 @@ references.
 
 ## Package map
 
-The diagram shows the fourteen packages and the import edges between
+The diagram shows the fifteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `discovery`, `envelope`, `events`, and `tools` are leaves: they
 import no other package in this module.
@@ -44,6 +44,7 @@ flowchart LR
     a2a --> envelope
     a2aclient --> a2a
     a2aclient --> envelope
+    mcp --> tools
     discovery[discovery]
     envelope[envelope]
     events[events]
@@ -174,6 +175,18 @@ flowchart LR
   oldest-inserted blobs, in insertion order, until it fits. `memory`
   imports `envelope` only, for `ContextRef`. See
   [packages/memory.md](packages/memory.md).
+- `mcp/` — the MCP tool-calling client. It provides `Transport`,
+  `NewStdioTransport`, `NewStreamableHTTPTransport`, `ClientInfo`,
+  `ProgressHandler`, `ClientOptions`, `Client`, `Connect`, `Close`,
+  `ListTools`, `CallTool`, `CallToolWithProgress`, `SchemaTool`,
+  `ContentBlock`, `CallResult`, `RegisterAll`, and `ErrClosed`.
+  `Connect` opens a session over a local subprocess or a remote
+  streamable HTTP endpoint, through the official MCP Go SDK's own
+  client; `ListTools` and `CallTool` map the server's tools and
+  results onto `tools.Tool` and `tools.Out`. `mcp` imports `tools`
+  internally. It is the second package, after `a2aclient`, allowed to
+  carry a third-party import: `github.com/modelcontextprotocol/go-sdk`,
+  the official MCP Go SDK. See [packages/mcp.md](packages/mcp.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

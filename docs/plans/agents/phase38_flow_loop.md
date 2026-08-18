@@ -5,9 +5,9 @@ Status: shipped. `LoopPolicy`, `LoopPolicy.Validate`, `LoopState`,
 API; see `docs/plans/flow.md`'s Phase 38 subsection. Phases 21, 22,
 and 23 shipped first: `Outcome`, `Report`, `Admission`, `Route`,
 `Failure`, and `FailureFrom` all exist in `flow`'s code and locked
-API. Phase 30 (flow retry, `docs/plans/agents/phase30_flow_retry.md`,
-ready to build) touches disjoint step fields and neither blocks the
-other.
+API. Phase 30 (flow retry, `docs/plans/agents/phase30_flow_retry.md`)
+shipped first and touches disjoint step fields, so neither phase
+blocked the other.
 
 ## Why repeated chaining, not a graph cycle
 

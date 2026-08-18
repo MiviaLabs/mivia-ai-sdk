@@ -1,11 +1,12 @@
 # Phase 30: flow retry
 
-Status: ready to build. Phases 21, 22, and 23 have all shipped:
-`Outcome`, `Report`, `Admission`, `Route`, `Failure`, and
-`FailureFrom` all exist in `flow`'s code and locked API; see
-`docs/plans/flow.md`. This phase is now independently buildable. This
-phase must keep every one of `Admission`, `Route`, and `FailureFrom`'s
-behaviors intact.
+Status: shipped. `RetryPolicy`, `RetryPolicy.Validate`,
+`RetryPolicy.NextDelay`, and `Step.Retry` all exist in `flow`'s code
+and locked API; see `docs/plans/flow.md`'s Phase 30 subsection.
+Phases 21, 22, and 23 shipped first: `Outcome`, `Report`, `Admission`,
+`Route`, `Failure`, and `FailureFrom` all exist in `flow`'s code and
+locked API. This phase kept every one of `Admission`, `Route`, and
+`FailureFrom`'s behaviors intact.
 
 ## Goal
 

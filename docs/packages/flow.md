@@ -11,10 +11,12 @@ The exported surface below mirrors `api/flow.txt`.
 ## Types
 
 - `Step` — one node in a workflow graph. A step has an ID, a list of
-  prerequisite step IDs, a target status string, a payload, and an
-  optional nested `Definition`. A step with no prerequisites is a root.
-  For a chained step, `To` is ignored by `Run` and may be empty; the
-  child final status supplies the target status.
+  prerequisite step IDs, a target status string, a payload, an
+  optional nested `Definition`, an `Admission` rule, and an optional
+  `Route`. A step with no prerequisites is a root. For a chained step,
+  `To` is ignored by `Run` and may be empty; the child final status
+  supplies the target status. A step with a non-nil `Route` is a
+  branch step.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -23,9 +25,19 @@ The exported surface below mirrors `api/flow.txt`.
 - `Confirm` — the ack gate a caller supplies to `Run`. It signs the
   form `func(ctx context.Context, step Step) error`. A nil return
   means the ack confirmed.
+- `Admission` — the rule that admits a step once every one of its
+  needs is terminal. `AdmissionOnFinished`, the zero value, admits
+  when every need ended `OutcomeSucceeded` or `OutcomeSkipped`.
+  `AdmissionOnSucceeded` admits only when every need ended
+  `OutcomeSucceeded`.
+- `Route` — the routing function of a branch step. It signs the form
+  `func(ctx context.Context, cur machine.Status, rec machine.InOut)
+  ([]string, error)`. It receives the branch step's post-fire status
+  and record, and returns the IDs of the direct dependents the run
+  keeps; every other direct dependent skips at once.
 - `Outcome` — the terminal state of one step: `OutcomeSucceeded`,
-  `OutcomeFailed`, or `OutcomeSkipped`. No producer of `OutcomeSkipped`
-  exists yet; a later phase adds one.
+  `OutcomeFailed`, or `OutcomeSkipped`. Admission, route exclusion, and
+  a whole-panel skip each produce `OutcomeSkipped`.
 - `Report` — the result `Run` returns: the final status, the final
   record, and every resolved step's `Outcome`. The fields are
   unexported. Callers read them through `Status`, `Record`, `Outcome`,
@@ -53,7 +65,15 @@ The exported surface below mirrors `api/flow.txt`.
   `OutcomeFailed` first. A wave error marks no member of that wave.
   When `bus` is non-nil, `Run` emits a `StepCompletedEvent` to it
   after each step completes; a chained step's child sub-workflow runs
-  with a nil bus, so only the parent step emits.
+  with a nil bus, so only the parent step emits. A skipped step fires
+  no transition, calls no `Confirm`, and emits no
+  `StepCompletedEvent`.
+  Once every one of a step's needs is terminal, `Run` evaluates the
+  step's `Admission` rule: `OutcomeSkipped` for a failed admission,
+  otherwise the step runs. After a branch step runs, `Run` calls its
+  `Route` with the post-fire status and record, then skips every
+  direct dependent `Route` did not name. A panel resolves the same
+  way, as one atomic unit: one unadmitted member skips every member.
 - `Report.Status()` — the run's final `machine.Status`.
 - `Report.Record()` — the run's final `machine.InOut`.
 - `Report.Outcome(id)` — one step's `Outcome`, and whether it
@@ -95,6 +115,17 @@ The exported surface below mirrors `api/flow.txt`.
 - `New` copies the input slices. A `Definition` is immutable after
   `New`. The fields are unexported, so the invariant is enforced.
   `Roots` returns a copy of the root list.
+- A step may not combine a non-nil `Sub` and a non-nil `Route`. `New`
+  rejects the shape.
+- A branch step must have at least one direct dependent. `New` rejects
+  a `Route` no step could ever select.
+- No panel names a branch step. A wave fires every member concurrently,
+  so per-member routing has no defined meaning. `New` rejects the
+  shape.
+- No panel names a direct dependent of a branch step. A route
+  exclusion mid-panel would stall that panel forever, since a panel
+  resolves only once every member's needs are terminal. `New` rejects
+  the shape.
 
 `Run` enforces the rules below.
 
@@ -183,6 +214,38 @@ appear.
 `Step.Sub` is the one `Step` field that carries this second mechanism.
 No third attachment field belongs on `Step`, such as a `Handler` or an
 `Executor` field. New work runs through an action closure instead.
+
+`Step.Route` is not a third attachment mechanism. `Route` is
+scheduling: it fires no transition and runs no step work. It only
+picks which of a branch step's direct dependents the run keeps. The
+work those dependents run still attaches only through an action
+closure or a nested `Definition`.
+
+## Admission and branch routing
+
+`When` and `Route` decide whether a step runs, not what it runs.
+
+A step admits once every one of its needs is terminal.
+`AdmissionOnFinished`, the zero value, admits a step whose needs ended
+`OutcomeSucceeded` or `OutcomeSkipped`; a skipped prerequisite passes
+through, so a skipped branch never deadlocks a downstream join.
+`AdmissionOnSucceeded` admits only when every need ended
+`OutcomeSucceeded`; a skipped need skips this step too, and that skip
+can cascade to the step's own dependents in turn.
+
+A step with a non-nil `Route` is a branch step. It fires its own
+transition and confirms its ack like any other step. `Run` then calls
+`Route` with the post-fire status and record. `Route` returns the IDs
+of the direct dependents the run keeps; every other direct dependent
+skips at once, even if that dependent has another, still-pending
+need. An empty return skips every direct dependent. A duplicate ID in
+the return collapses to one admission. A return that names a step
+that is not a direct dependent, or a `Route` error, aborts the run: the
+branch step is marked `OutcomeFailed`, exactly like a `Fire` failure.
+
+A panel resolves as one atomic unit. It runs its wave only once every
+member admits; one unadmitted member skips every member, even a
+member whose own needs would otherwise admit it.
 
 ## Usage
 

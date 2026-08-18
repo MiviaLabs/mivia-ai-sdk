@@ -1,4 +1,6 @@
 package flow
+  const AdmissionOnFinished = iota
+  const AdmissionOnSucceeded
   const OutcomeFailed
   const OutcomeSkipped
   const OutcomeSucceeded = iota
@@ -10,6 +12,7 @@ package flow
   func (r Report) Status() (machine.Status)
   func New(steps []Step, panels []Panel) (*Definition, error)
   func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (Report, error)
+  type Admission int
   type Confirm func(ctx context.Context, step Step) error
   type Definition struct {
 }
@@ -17,10 +20,13 @@ package flow
   type Panel []string
   type Report struct {
 }
+  type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error)
   type Step struct {
   ID string
   Needs []string
   To string
   Payload string
   Sub *Definition
+  When Admission
+  Route Route
 }

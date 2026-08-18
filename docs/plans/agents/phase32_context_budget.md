@@ -258,10 +258,16 @@ skips `contextbudget_bench_test.go` for that reason.
   ever called (a spy `AckWait` records zero calls).
 - `Run` with a budget whose `MaxEvents` is smaller than the plan's
   gated step count returns `ErrOverBudget` on the step that exceeds
-  it, `built` (observed indirectly through `bus`'s recorded
-  `MessageDeliveredEvent`s) holding exactly the steps built before the
-  failing one, and no `ThreadVerifiedEvent`, proving `Run` stops
-  mid-plan rather than completing over budget.
+  it, `bus`'s recorded `MessageAckedEvent` count equal to the number
+  of steps built before the failing one, and no `ThreadVerifiedEvent`,
+  proving `Run` stops mid-plan rather than completing over budget. The
+  failing step still fires `MessageDeliveredEvent` (the `Fits` check
+  runs after `EmitMessageDelivered`, per the ordering in API above)
+  but never reaches `EmitMessageAcked`, so `MessageAckedEvent` count,
+  not `MessageDeliveredEvent` count, is the proof that the step never
+  committed, matching the wait-error precedent in
+  `TestRunOneStepWaitErrorWithValidAck`
+  (`agent/agent_test/run_test.go`).
 - `Run` with a generous `MaxEvents` (above the plan's step count) and
   a `MaxBytes` cap that no single step's payload exceeds alone, but
   that the sum of the first two steps' payloads does exceed: `Run`

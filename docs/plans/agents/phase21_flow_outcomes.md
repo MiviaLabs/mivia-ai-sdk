@@ -58,6 +58,14 @@ not marked `OutcomeSucceeded`. The failing member is not marked
 `OutcomeFailed` either. The wave-level error is attributed at the
 wave level, not per member.
 
+A chained step (`Step.Sub != nil`) has three failure points in
+`runSingleton`: the child workflow's own run, the parent's
+post-child `Fire`, and the parent's `Confirm`. All three mark the
+chain step's own ID `OutcomeFailed`, the same as a non-chained
+`Fire` failure. The child workflow runs with no `bus` of its own and
+reports no outcomes of its own; only the parent step's ID appears in
+the parent's outcomes map.
+
 The nil-argument contract keeps its pinned messages. A nil `d` or a
 nil `m` returns a `Report` holding the zero `Status` and the caller's
 original `in` as the `Record`. This is not a zero-value `InOut`; the
@@ -86,6 +94,19 @@ one `Run` call site; it moves to the `Report` API with the rest.
 `TestEmitNoneOnConfirmFailure`, the confirm-rejection abort case;
 its six `Run` call sites move to the `Report` API too.
 
+`agent/run.go:92` is the one production caller of `flow.Run` outside
+`flow` itself. `Agent.Run` calls `status, rec, err := flow.Run(...)`
+and returns those three values unchanged. This phase changes that
+line to `report, err := flow.Run(...)`, then unwraps `report.Status()`
+and `report.Record()` into the existing local `status, rec` variables
+before the rest of the function runs unchanged. `Agent.Run`'s own
+exported three-value signature
+(`(machine.Status, machine.InOut, error)`) does not change, so
+`api/agent.txt` stays unchanged. No file in `agent/agent_test/` calls
+`flow.Run` directly; grep confirms the only other match is a comment
+in `lifecycle_integration_test.go`. No agent test file needs a change
+for this phase.
+
 - `outcomes_test.go` — the red-green cases. Red step: the file
   does not compile on the empty phase, because `Report` and `Outcome`
   do not exist. Record the compiler error as the red. Cases:
@@ -105,6 +126,9 @@ its six `Run` call sites move to the `Report` API too.
     initial status and the incoming record.
   - Mutating the map `Outcomes` returns never changes a later
     `Outcome` call on the same report.
+  - A chained step whose child workflow fails reports the chain
+    step's own ID `OutcomeFailed`. The parent's outcomes map holds
+    no entry for any step inside the child.
 - `outcomes_integration_test.go` — rerun the phase 5 diamond graph
   through the new signature. Assert the outcome of every step. Assert
   the declaration-order tie-break still holds. The diamond graph is
@@ -121,15 +145,25 @@ its six `Run` call sites move to the `Report` API too.
 
 ## Verification
 
-`make verify` passes. The coverage floor for `flow` holds.
+`make verify` passes, including the `agent` package build: `agent/run.go`
+must compile against the new `flow.Run` signature in the same change.
+The coverage floor for `flow` holds.
 `api/flow.txt` gains `Outcome`, its constants, `Report`, its methods,
 and the new `Run` signature via `make api-update`. Commit the `api/`
 diff in the same change. `policy/layers.json` is unchanged.
-`api/machine.txt` is unchanged; the machine package is untouched.
+`api/machine.txt` and `api/agent.txt` are unchanged; `Agent.Run`'s
+exported signature does not change.
 
 `docs/architecture.md` and `docs/packages/flow.md` update the flow
 sections in the same change. Name `Outcome` and `Report` next to
-`Run` and `Confirm`.
+`Run` and `Confirm`. `docs/packages/flow.md`'s existing runnable
+example (around line 201) uses the stale
+`status, out, err := flow.Run(...)` form; rewrite it to
+`report, err := flow.Run(...)` plus `report.Status()` and
+`report.Record()` calls in the same change.
+`docs/examples/flow-runner.md`'s walkthrough (around line 51) has the
+same stale three-value form; rewrite it the same way, in the same
+change.
 
 `flow/doc.go` updates in the same change. Its package map already
 names `runner.go`. Add the file that holds `Outcome` and `Report`.

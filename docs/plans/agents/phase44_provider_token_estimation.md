@@ -1,7 +1,9 @@
 # Phase 44: provider token estimation
 
-Status: future. Plan-only; it has not yet gone through plan review.
-`provider` (see `docs/plans/provider.md`) and `contextbudget` (see
+Status: shipped. `TokenEstimator` has landed in `provider`; see
+`docs/plans/provider.md`'s API section and `docs/packages/provider.md`
+for the shipped, summarized surface. `provider` (see
+`docs/plans/provider.md`) and `contextbudget` (see
 `docs/plans/contextbudget.md`) have both shipped. This phase extends
 `provider` only; it does not require `contextbudget` to change, per
 the decision below.

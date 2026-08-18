@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -183,6 +184,86 @@ func TestSQLiteStoreCompareAndSwapRejectsUnencodableTask(t *testing.T) {
 	}
 	if _, found, _ := store.Load(ctx, "k1"); found {
 		t.Fatalf("a rejected CompareAndSwap must not create a record")
+	}
+}
+
+// TestSQLiteStoreRoundTripsOwnerNeedsAndBlockedBy proves Owner, Needs,
+// and BlockedBy each round-trip through CompareAndSwap and Load
+// unchanged, catching a swapped bind order or a discarded decode
+// result in insertLedgerTask, updateLedgerTask, or scanTaskState.
+func TestSQLiteStoreRoundTripsOwnerNeedsAndBlockedBy(t *testing.T) {
+	ctx := context.Background()
+	store := newSQLiteStoreT(t, ":memory:")
+
+	claimed := TaskState{
+		Key:        "k1",
+		Status:     StatusClaimed,
+		Sequence:   1,
+		Owner:      "owner-1",
+		LeaseUntil: fixedSQLiteNow,
+		Needs:      []IdempotencyKey{"dep1", "dep2"},
+	}
+	if ok, err := store.CompareAndSwap(ctx, "k1", TaskState{}, claimed); err != nil || !ok {
+		t.Fatalf("insert claimed: ok=%v err=%v", ok, err)
+	}
+	stored, found, err := store.Load(ctx, "k1")
+	if err != nil || !found {
+		t.Fatalf("Load: found=%v err=%v", found, err)
+	}
+	if stored.Owner != "owner-1" {
+		t.Fatalf("Owner = %q, want %q", stored.Owner, "owner-1")
+	}
+	if !reflect.DeepEqual(stored.Needs, []IdempotencyKey{"dep1", "dep2"}) {
+		t.Fatalf("Needs = %v, want %v", stored.Needs, []IdempotencyKey{"dep1", "dep2"})
+	}
+
+	blocked := TaskState{
+		Key:       "k2",
+		Status:    StatusBlocked,
+		Sequence:  1,
+		BlockedBy: "dep1",
+	}
+	if ok, err := store.CompareAndSwap(ctx, "k2", TaskState{}, blocked); err != nil || !ok {
+		t.Fatalf("insert blocked: ok=%v err=%v", ok, err)
+	}
+	storedBlocked, found, err := store.Load(ctx, "k2")
+	if err != nil || !found {
+		t.Fatalf("Load: found=%v err=%v", found, err)
+	}
+	if storedBlocked.BlockedBy != "dep1" {
+		t.Fatalf("BlockedBy = %q, want %q", storedBlocked.BlockedBy, "dep1")
+	}
+
+	// A second write via updateLedgerTask, to also cover its bind
+	// order for Owner and BlockedBy, plus a Needs change.
+	updatedClaimed := stored
+	updatedClaimed.Owner = "owner-2"
+	updatedClaimed.Needs = []IdempotencyKey{"dep3"}
+	if ok, err := store.CompareAndSwap(ctx, "k1", stored, updatedClaimed); err != nil || !ok {
+		t.Fatalf("update claimed: ok=%v err=%v", ok, err)
+	}
+	afterUpdate, found, err := store.Load(ctx, "k1")
+	if err != nil || !found {
+		t.Fatalf("Load: found=%v err=%v", found, err)
+	}
+	if afterUpdate.Owner != "owner-2" {
+		t.Fatalf("Owner after update = %q, want %q", afterUpdate.Owner, "owner-2")
+	}
+	if !reflect.DeepEqual(afterUpdate.Needs, []IdempotencyKey{"dep3"}) {
+		t.Fatalf("Needs after update = %v, want %v", afterUpdate.Needs, []IdempotencyKey{"dep3"})
+	}
+
+	updatedBlocked := storedBlocked
+	updatedBlocked.BlockedBy = "dep2"
+	if ok, err := store.CompareAndSwap(ctx, "k2", storedBlocked, updatedBlocked); err != nil || !ok {
+		t.Fatalf("update blocked: ok=%v err=%v", ok, err)
+	}
+	afterBlockedUpdate, found, err := store.Load(ctx, "k2")
+	if err != nil || !found {
+		t.Fatalf("Load: found=%v err=%v", found, err)
+	}
+	if afterBlockedUpdate.BlockedBy != "dep2" {
+		t.Fatalf("BlockedBy after update = %q, want %q", afterBlockedUpdate.BlockedBy, "dep2")
 	}
 }
 

@@ -2,14 +2,16 @@
 
 Status: the step graph, the sequential runner, the parallel panel
 waves, chaining, per-step outcomes, the admission rule, branch
-routing, the checkpoint pause/resume pair, and failure routing ship.
-This plan expands the earlier step-list design into a step runner for
-v1. Rationale in docs/research-state-machine.md. `Run` returns a
+routing, the failure fallback path, the checkpoint pause/resume pair,
+and a bounded retry loop around a step's `Fire` call all ship. This
+plan expands the earlier step-list design into a step runner for v1.
+Rationale in docs/research-state-machine.md. `Run` returns a
 `Report` holding every step's terminal `Outcome`, replacing the
 boolean done map. Phase 22 shipped the admission rule, the skip
 semantics, and the branch step. Phase 23 shipped the fallback path and
 the failure context. Phase 25 shipped the checkpoint, the pause rule,
-and `Resume`.
+and `Resume`. Phase 30 shipped a retry loop; see
+docs/plans/agents/phase30_flow_retry.md.
 
 ## Goal
 
@@ -60,11 +62,14 @@ cancellation; and `Resume`, which restarts a walk from a stored
 checkpoint. Persistence stays a caller concern: `flow` reports a
 checkpoint through a hook and never writes storage itself.
 
-Outside: retries, compensation, scheduling, and history replay. A
-future version adds these only when that consumer asks. A caller
-retries by calling `Resume` again on the same checkpoint after a step
-failure. A caller schedules a resume from a cron job, a queue, or a
-webhook, since `Resume` is a plain resumable function call. History
+Outside: compensation, scheduling, and history replay. A future
+version adds these only when that consumer asks. Phase 30 shipped a
+bounded, in-process retry of a single step's `Fire` call; see
+docs/plans/agents/phase30_flow_retry.md and the Phase 30 subsection
+below. A caller who needs a run-level retry still calls `Resume` again
+on the same checkpoint after a step failure. A caller schedules a
+resume from a cron job, a queue, or a webhook, since `Resume` is a
+plain resumable function call. History
 replay is rejected: a caller who persists every checkpoint already
 holds a replayable log, and `flow` does not build an event log. See
 docs/research-state-machine.md:236-238. Compensation has no named
@@ -161,26 +166,31 @@ pattern sources.
   whose wave failed still becomes `OutcomeFailed`; a fallback that
   needs such a member receives the joined wave error through
   `Failure.Err`.
-- `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string; Skipped []string }`
-  — shipped in phase 25, extended after ship to add `Skipped`, the full
-  resumable state of a run. `Done` lists the lexicographically sorted
-  step IDs of every `OutcomeSucceeded` entry at the moment the
-  checkpoint is built; `Skipped` lists the lexicographically sorted
-  step IDs of every `OutcomeSkipped` entry at the same moment. Neither
-  list's order is a completion order. A route exclusion
-  (`flow/routing.go`'s `applyRoute`) or an admission skip
-  (`flow/runner.go`'s `nextReadyGroup`) is final regardless of the
-  excluding step's later outcome; `Skipped` preserves that decision
-  across a pause and a `Resume` the same way `Done` preserves a
-  success. `(Checkpoint).Validate() error` rejects an empty `Status`
-  and a step ID named in both `Done` and `Skipped`; `Encode` and
-  `Decode` both call it. `Encode` marshals with `encoding/json`; a
-  caller whose `Input` or `Output` must survive the round-trip is
-  responsible for JSON-primitive-compatible types or its own
-  re-hydration after `Decode`, since `encoding/json` decodes an `any`
-  field back to `map[string]interface{}`, never the original concrete
-  type. `flow` performs no type-fidelity handling and no registry
-  lookup.
+- `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string; Skipped []string; Failed []string }`
+  — shipped in phase 25, extended after ship to add `Skipped`, then
+  extended again in phase 23 to add `Failed`, the full resumable state
+  of a run. `Done` lists the lexicographically sorted step IDs of every
+  `OutcomeSucceeded` entry at the moment the checkpoint is built;
+  `Skipped` lists the lexicographically sorted step IDs of every
+  `OutcomeSkipped` entry at the same moment; `Failed` lists the
+  lexicographically sorted step IDs of every `OutcomeFailed` entry a
+  fallback already handled. Neither list's order is a completion
+  order. A route exclusion (`flow/routing.go`'s `applyRoute`) or an
+  admission skip (`flow/runner.go`'s `nextReadyGroup`) is final
+  regardless of the excluding step's later outcome; `Skipped`
+  preserves that decision across a pause and a `Resume` the same way
+  `Done` preserves a success. A pending, not-yet-resolved fallback's
+  bookkeeping does not survive a pause and a `Resume`; only an already
+  -caught failure's outcome does, through `Failed`.
+  `(Checkpoint).Validate() error` rejects an empty `Status` and a step
+  ID named in more than one of `Done`, `Skipped`, and `Failed`;
+  `Encode` and `Decode` both call it. `Encode` marshals with
+  `encoding/json`; a caller whose `Input` or `Output` must survive the
+  round-trip is responsible for JSON-primitive-compatible types or its
+  own re-hydration after `Decode`, since `encoding/json` decodes an
+  `any` field back to `map[string]interface{}`, never the original
+  concrete type. `flow` performs no type-fidelity handling and no
+  registry lookup.
 - `Run` gains a trailing `onCheckpoint func(Checkpoint)` parameter,
   shipped in phase 25: `Run(ctx, d, m, in, confirm, bus, onCheckpoint) (Report, error)`.
   `onCheckpoint` is nil-safe, matching the existing nil-tolerant `bus`
@@ -277,6 +287,83 @@ The runner enforces the gate; the caller provides the transport.
 Outcomes, phase 22, phase 23, and phase 25 added no import edge.
 `Checkpoint` uses only `encoding/json`, which is stdlib. The failure
 context travels through `context.Context`, which is stdlib.
+
+### Phase 30 (shipped): a bounded retry of a step's Fire call
+
+See docs/plans/agents/phase30_flow_retry.md for the full contract.
+This subsection states the shape the plan locks.
+
+A step retries its own `Fire` call a bounded number of times, with
+exponential backoff, before the run treats it as failed. The retry
+loop wraps only `Fire`. It never wraps `Confirm` or `Route`. Phase
+23's fallback stays the outer safety net for a step that exhausts its
+retries; `FailureFrom` reads the last attempt's error, unchanged.
+
+Retry state lives only in the call stack of the run in progress. No
+ledger field, no checkpoint field, and no cross-run persistence. A
+retried step rejects two shapes at `New` time, the same way phase 22
+and phase 23 already reject unsafe shapes for `Route` and
+`AdmissionOnFailed`: a step with both `Retry` and `Sub` non-nil, and a
+retried step named in a panel. A panel wave shares one clock tick
+across its members; a per-member retry loop would desynchronize that
+shared transition. A chained step's `Fire` call sits behind a whole
+child workflow; retrying it would silently re-run that child
+workflow.
+
+New exported surface, landing in `api/flow.txt` via `make
+api-update`:
+
+- `type RetryPolicy struct { MaxAttempts int; BaseDelay time.Duration; MaxDelay time.Duration; Retryable func(error) bool; Jitter func(time.Duration) time.Duration; Sleep func(context.Context, time.Duration) }`
+  — a step's retry rule. `MaxAttempts` counts every attempt, including
+  the first; a value of 1 disables retry. `BaseDelay` is the first
+  retry's backoff; `MaxDelay` clamps every computed backoff.
+  `Retryable`, when non-nil, gates each failure before the next
+  attempt; a nil `Retryable` retries every error. `Jitter` and `Sleep`
+  are determinism hooks: a nil `Jitter` leaves `NextDelay` fully
+  deterministic; a nil `Sleep` uses a context-aware default sleep. A
+  test supplies a recording or no-op `Sleep`, so a retry test never
+  blocks on real wall-clock time.
+- `func (p RetryPolicy) Validate() error` — enforces `MaxAttempts >= 1`
+  and `MaxDelay > 0`. `New` calls this for every step whose `Retry` is
+  non-nil.
+- `func (p RetryPolicy) NextDelay(attempt int) time.Duration` — the
+  backoff before the given retry attempt, one-indexed from the first
+  retry. Pure: no field mutation, no sleep. Clamps before doubling, so
+  `delay` never exceeds `MaxDelay` at the start of a doubling step and
+  the multiply never overflows `time.Duration`'s range. `Jitter`, when
+  non-nil, applies to the clamped result last.
+- `Step` gains `Retry *RetryPolicy`. Nil means no retry, matching
+  today's single-attempt behavior exactly.
+
+`New` gains four validations, with pinned messages: a `RetryPolicy`
+with `MaxAttempts < 1`; a `RetryPolicy` with `MaxDelay <= 0`; a step
+with both `Retry` and `Sub` non-nil; and `Retry` set on a panel
+member.
+
+`runSingleton` calls a new unexported helper, `fireWithRetry`,
+unconditionally in place of its former direct `fireStep` call. The
+helper's signature is
+`fireWithRetry(ctx, m, cur, rec, step, row) (machine.Status, machine.InOut, error)`,
+matching `fireStep`'s argument and return shape. A nil `step.Retry`
+calls `fireStep` once and returns its result unchanged, matching the
+no-retry behavior exactly. The loop wraps `fireStep`, not `m.Fire`
+directly: `fireStep` tags a `Fire` error `failureKindFire`, and
+`resolveCatchable` requires that tag to route an exhausted retry into
+a declared `AdmissionOnFailed` fallback. On a `fireStep` error the
+loop checks the completed attempt count against `MaxAttempts` before
+it checks `Retryable`, so a `MaxAttempts` of 1 never calls `Retryable`
+or `Sleep`. A canceled `ctx`, during `Fire` or during a pending
+`Sleep`, aborts the loop at once with the context error, the same way
+a canceled `ctx` aborts `Fire` today. A retry that succeeds continues
+exactly like today's single-attempt success; `Report` records no
+attempt count. A step that exhausts its retries reports
+`OutcomeFailed` with the last attempt's error, and phase 23's fallback
+admission applies unchanged.
+
+`policy/layers.json` gains no new row and no changed row for this
+phase. `flow`'s existing row, `["events", "machine"]`, already covers
+every edge this phase needs; `time` and `context` are standard-library
+imports inside `flow` itself, not new internal package edges.
 
 ## Tests
 
@@ -447,6 +534,46 @@ events. Run wraps the confirm error and names the failing step. The
 chained-step bus sentence needs no new test. TestEmitOnChainedStep
 already pins the nil-bus behavior.
 
+### Phase 30 (shipped) tests
+
+Full case list in docs/plans/agents/phase30_flow_retry.md. Test files
+live in `flow/flow_test/`:
+
+- `retry_test.go` — `RetryPolicy.Validate` rejects a `MaxAttempts`
+  below 1 and a non-positive `MaxDelay`, each with its pinned message.
+  `RetryPolicy.NextDelay` returns `BaseDelay` for attempt 1, doubles
+  per later attempt, clamps at `MaxDelay`, and applies a non-nil
+  `Jitter` last. A large-attempt case proves the clamp-before-double
+  order never overflows `time.Duration`, where a naive
+  multiply-then-clamp implementation would wrap to a negative value.
+  `New` rejects a retried step with a sub-workflow and a retried panel
+  member, each with its pinned message, and accepts a retried step
+  with neither shape. A step whose guard fails twice then succeeds,
+  under `MaxAttempts` of 3, ends `OutcomeSucceeded`; the guard,
+  `OnExit`, and `OnEntry` each ran exactly three times, and the
+  recording `Sleep` ran exactly twice. A step whose guard always
+  fails, under `MaxAttempts` of 3, ends `OutcomeFailed` after exactly
+  three guard calls. A `Retryable` predicate returning false stops the
+  loop after the first failure. A step with `Retry` nil keeps today's
+  single-attempt behavior. A `ctx` canceled during a pending `Sleep`
+  call aborts the loop with the context error, short of `MaxAttempts`.
+  The default `Sleep` returns before its full duration when its `ctx`
+  cancels mid-wait. A step that exhausts its retries with a phase 23
+  fallback declared continues down the fallback path, and
+  `FailureFrom` returns the last attempt's error.
+- `retry_integration_test.go` — a three-step linear graph where the
+  middle step's guard fails twice then succeeds, under `MaxAttempts`
+  of 3 and a recording `Sleep`; asserts every step's outcome, the
+  final status and record, and the recorded sleep durations in order.
+  A second case repeats the graph with a guard that never succeeds and
+  a fallback step; asserts the fallback's `Failure.Err` wraps the last
+  guard error.
+- `retry_bench_test.go` — benchmarks a single-step run whose guard
+  always succeeds on the first attempt, with a `RetryPolicy` present
+  but never triggered, against the same step with `Retry` nil.
+  Measures the `Retry`-nil baseline on the phase 23 code, before this
+  phase lands, and records both in the file's leading comment.
+
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
@@ -454,13 +581,32 @@ rationale lives in docs/research-state-machine.md. `api/flow.txt`
 lands via make api-update. Phase 22 extended `api/flow.txt` with
 `Admission`, its two constants, the `Route` type, and the two new
 `Step` fields. Phase 23 extended it with `AdmissionOnFailed`, the
-`Failure` type, and `FailureFrom`; every helper `flow/failure.go`
-defines to implement the continue rule stays unexported and does not
-appear in the lock. Phase 25 extended it with `Checkpoint`, its
-`Validate`, `Encode`, and `Decode`, `Resume`, and the changed
-seven-argument `Run` signature. All three left `api/machine.txt` and
+`Failure` type, `FailureFrom`, and the `Failed` field on `Checkpoint`;
+every helper `flow/failure.go` defines to implement the continue rule
+stays unexported and does not appear in the lock. Phase 25 extended it
+with `Checkpoint`, its `Validate`, `Encode`, and `Decode`, `Resume`,
+and the changed seven-argument `Run` signature. Phase 22, phase 23,
+and phase 25 each left `api/machine.txt` and
 `policy/layers.json` unchanged.
 
-No conformance-vector change from phase 25: `Checkpoint` carries no
-signed or threaded wire form, so `envelope/testdata/vectors/` and
-`docs/protocol-design.md` stay untouched.
+No conformance-vector change from phase 22, phase 23, or phase 25:
+`Checkpoint` and `Failure` carry no signed or threaded wire form, so
+`envelope/testdata/vectors/` and `docs/protocol-design.md` stay
+untouched.
+
+### Phase 30 (shipped) verification
+
+`make verify` passes, and the `flow` coverage floor holds. `api/flow.txt`
+gains `RetryPolicy`, its `Validate` and `NextDelay` methods, and
+`Step.Retry`, via `make api-update`; commit the `api/` diff in the
+same change. `policy/layers.json` stays unchanged: `flow`'s allowed
+imports, `["events", "machine"]`, already cover every edge this phase
+needs. `api/machine.txt` stays unchanged; the `machine` package is
+untouched. `docs/architecture.md` and `docs/packages/flow.md` update
+their flow sections in the same change as the code, describing
+`RetryPolicy`, `NextDelay`, and the retry loop's place between a
+`Fire` failure and the phase 23 fallback admission. `AGENTS.md`
+updates its `flow/` layout bullet in the same change, naming the retry
+vocabulary next to outcome, admission, route, and fallback. No
+conformance-vector change: `RetryPolicy` carries no signed or threaded
+wire form.

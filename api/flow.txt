@@ -11,6 +11,8 @@ package flow
   func (d Definition) Roots() ([]string)
   func (e *failureError) Error() (string)
   func (e *failureError) Unwrap() (error)
+  func (p RetryPolicy) NextDelay(attempt int) (time.Duration)
+  func (p RetryPolicy) Validate() (error)
   func (r Report) Outcome(id string) (Outcome, bool)
   func (r Report) Outcomes() (map[string]Outcome)
   func (r Report) Record() (machine.InOut)
@@ -39,6 +41,14 @@ package flow
   type Panel []string
   type Report struct {
 }
+  type RetryPolicy struct {
+  MaxAttempts int
+  BaseDelay time.Duration
+  MaxDelay time.Duration
+  Retryable func(error) bool
+  Jitter func(time.Duration) time.Duration
+  Sleep func(context.Context, time.Duration)
+}
   type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error)
   type Step struct {
   ID string
@@ -48,4 +58,5 @@ package flow
   Sub *Definition
   When Admission
   Route Route
+  Retry *RetryPolicy
 }

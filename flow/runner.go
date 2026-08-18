@@ -229,7 +229,7 @@ func runSingleton(
 		return cur, rec, err
 	}
 
-	cur, rec, err = fireStep(fireCtx, m, cur, rec, step, row)
+	cur, rec, err = fireWithRetry(fireCtx, m, cur, rec, step, row)
 	if err != nil {
 		return cur, rec, err
 	}

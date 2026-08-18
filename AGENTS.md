@@ -13,19 +13,23 @@ Go SDK for building AI agents. Module:
   Fire, and the JSON wire form.
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves: Step, Panel, Definition, Run, Confirm, Outcome,
-  Admission, Route, Failure, FailureFrom. A step named in a panel runs
-  as part of that panel's wave, in a goroutine, once every member is
-  ready. A step's Admission rule decides whether it runs once its
-  needs are terminal; a branch step's Route then picks which direct
-  dependents the run keeps. A step admitted through a failed need
-  (AdmissionOnFailed) is a fallback: it catches a dependency's Fire or
-  Route failure and lets the run continue, reading the failed step's
-  Failure through FailureFrom. Checkpoint, pause, and resume: Run's
-  onCheckpoint hook, Checkpoint, Encode, Decode, and Resume let a
-  caller pause a run by canceling ctx and resume it later from the
-  last checkpoint; Checkpoint's Failed field preserves an
-  already-caught failure's outcome across the pause, though a still-
-  pending fallback's bookkeeping does not survive the round trip.
+  Admission, Route, Failure, FailureFrom, RetryPolicy. A step named in
+  a panel runs as part of that panel's wave, in a goroutine, once
+  every member is ready. A step's Admission rule decides whether it
+  runs once its needs are terminal; a branch step's Route then picks
+  which direct dependents the run keeps. A step's Retry field, when
+  non-nil, retries its own Fire call with exponential backoff through
+  RetryPolicy.NextDelay, up to MaxAttempts; New rejects Retry on a
+  step with Sub or on a panel member. A step admitted through a failed
+  need (AdmissionOnFailed) is a fallback: it catches a dependency's
+  Fire (including one that exhausted its retries) or Route failure and
+  lets the run continue, reading the failed step's Failure through
+  FailureFrom. Checkpoint, pause, and resume: Run's onCheckpoint hook,
+  Checkpoint, Encode, Decode, and Resume let a caller pause a run by
+  canceling ctx and resume it later from the last checkpoint;
+  Checkpoint's Failed field preserves an already-caught failure's
+  outcome across the pause, though a still-pending fallback's
+  bookkeeping does not survive the round trip.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
 - `heartbeat/` — liveness tracking: Monitor records a beat per id and
   reports ids that have gone silent past a fixed timeout.

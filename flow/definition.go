@@ -24,8 +24,9 @@ type Definition struct {
 // that names a branch step, and a panel that names a direct
 // dependent of a branch step. It rejects an AdmissionOnFailed step
 // with no needs, and an AdmissionOnFailed step named in a panel. It
-// deep-copies the input slices so later caller mutation cannot
-// change the built graph.
+// rejects an invalid Retry policy, a Retry policy combined with Sub,
+// and a Retry policy on a panel member. It deep-copies the input
+// slices so later caller mutation cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),
@@ -42,6 +43,9 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 		return nil, err
 	}
 	if err := validateFailureAdmission(d.steps, d.panels, ids); err != nil {
+		return nil, err
+	}
+	if err := validateRetry(d.steps, d.panels, ids); err != nil {
 		return nil, err
 	}
 	if err := validatePanelChains(d.panels, d.steps, ids); err != nil {

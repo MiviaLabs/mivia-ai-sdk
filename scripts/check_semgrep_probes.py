@@ -47,9 +47,9 @@ PROBES = [
     (
         "sdk.go.no-enum-string-literals",
         "viol_enum.go",
-        'package p\n\ntype Intent string\n\nfunc f() {\n\t_ = Intent("x")\n\t_ = Intent( "y")\n\t_ = Intent(`z`)\n\tm := struct{ Intent string }{Intent: "w"}\n\t_ = m\n}\n',
+        'package p\n\ntype Intent string\n\ntype ExecutionClass string\n\nfunc f() {\n\t_ = Intent("x")\n\t_ = Intent( "y")\n\t_ = Intent(`z`)\n\tm := struct{ Intent string }{Intent: "w"}\n\t_ = m\n\t_ = ExecutionClass("x")\n}\n',
         "clean_enum.go",
-        'package p\n\nconst IntentRequest = "request"\n\nfunc f() {\n\tm := struct{ Intent string }{}\n\t_ = m\n}\n',
+        'package p\n\nconst IntentRequest = "request"\n\nconst ExecutionClassRead ExecutionClass = "read"\n\ntype ExecutionClass string\n\nfunc f() {\n\tm := struct{ Intent string }{}\n\t_ = m\n\t_ = ExecutionClassRead\n}\n',
     ),
     (
         "sdk.go.hash-prefix-centralized",

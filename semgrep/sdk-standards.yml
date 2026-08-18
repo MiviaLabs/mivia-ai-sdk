@@ -70,17 +70,17 @@ rules:
   - id: sdk.go.no-enum-string-literals
     languages: [go]
     severity: ERROR
-    message: Use the declared Intent/Epistemic/AckStatus/Role constants; never construct enum values from string literals. Tests may construct invalid values on purpose.
+    message: Use the declared Intent/Epistemic/AckStatus/Role/ExecutionClass constants; never construct enum values from string literals. Tests may construct invalid values on purpose.
     paths:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go", "/scripts/**"]
     pattern-either:
-      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\(\s*"'
-      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role)\(\s*`'
-      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*"'
-      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role):\s*`'
-      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role)\s*=\s*"'
-      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role)\s*=\s*`'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role|ExecutionClass)\(\s*"'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role|ExecutionClass)\(\s*`'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role|ExecutionClass):\s*"'
+      - pattern-regex: '\b(Intent|Epistemic|AckStatus|Role|ExecutionClass):\s*`'
+      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role|ExecutionClass)\s*=\s*"'
+      - pattern-regex: '\.(Intent|Epistemic|AckStatus|Role|ExecutionClass)\s*=\s*`'
 
   - id: sdk.go.hash-prefix-centralized
     languages: [go]

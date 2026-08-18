@@ -4,6 +4,10 @@
 // agent. See ../docs/plans/tools.md for the rationale.
 //
 // Map: tool.go = Tool, InOut, Out; registry.go = Registry, New, Add,
-// Get, Remove, Run, and the sentinel errors ErrNilTool, ErrBlankName,
-// ErrDuplicateName, ErrUnknownName. Contribution rules: ../AGENTS.md.
+// Get, Remove, Run, RunScoped, and the sentinel errors ErrNilTool,
+// ErrBlankName, ErrDuplicateName, ErrUnknownName, ErrScopeDenied;
+// execution_profile.go = ExecutionClass, ExecutionProfile,
+// ProfiledTool, ResultBudgetTool, PrivilegedTool, ExecutionProfileOf,
+// ResultBudgetOf, IsPrivileged; scope.go = ScopeOptions, Scope,
+// NewScope. Contribution rules: ../AGENTS.md.
 package tools

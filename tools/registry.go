@@ -23,6 +23,9 @@ var (
 	ErrDuplicateName = errors.New("tools: tool name already registered")
 	// ErrUnknownName is Run's error when Get reports false for name.
 	ErrUnknownName = errors.New("tools: unknown tool name")
+	// ErrScopeDenied is RunScoped's error when scope.Allowed returns
+	// false for the resolved tool.
+	ErrScopeDenied = errors.New("tools: tool denied by scope")
 )
 
 // Registry holds tools by name. Built only through New. Safe for
@@ -86,6 +89,22 @@ func (r *Registry) Run(ctx context.Context, name string, in InOut) (Out, error) 
 	t, ok := r.Get(name)
 	if !ok {
 		return Out{}, ErrUnknownName
+	}
+	return t.Run(ctx, in)
+}
+
+// RunScoped resolves name through Get, checks scope.Allowed when
+// scope is non-nil, then calls the tool the same way Run does.
+// Returns ErrUnknownName for an unresolved name and ErrScopeDenied
+// for a name the scope excludes. A nil scope allows every resolved
+// tool, matching Run's behavior.
+func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error) {
+	t, ok := r.Get(name)
+	if !ok {
+		return Out{}, ErrUnknownName
+	}
+	if scope != nil && !scope.Allowed(name, t) {
+		return Out{}, ErrScopeDenied
 	}
 	return t.Run(ctx, in)
 }

@@ -1,0 +1,63 @@
+package tools_test
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+)
+
+// buildFiftyNameAllowlistScope builds a Scope allowlisting the first
+// fifty of buildHundredToolRegistry's tool names.
+func buildFiftyNameAllowlistScope() *tools.Scope {
+	allow := make([]string, 0, 50)
+	for i := 0; i < 50; i++ {
+		allow = append(allow, fmt.Sprintf("tool-%03d", i))
+	}
+	return tools.NewScope(tools.ScopeOptions{Allowlist: allow})
+}
+
+// BenchmarkRunScopedHundredTools benchmarks RunScoped against a
+// Registry of one hundred tools behind a Scope with a fifty-name
+// allowlist.
+// Target: under one microsecond per call, next to Run's baseline in
+// registry_bench_test.go.
+// Measured: ~20 ns/op, 0 B/op, 0 allocs/op (map lookup, a map-membership
+// check in Scope.Allowed, and a stub's Run, no allocation in any
+// path).
+func BenchmarkRunScopedHundredTools(b *testing.B) {
+	r := buildHundredToolRegistry()
+	scope := buildFiftyNameAllowlistScope()
+	ctx := context.Background()
+	in := tools.InOut{Value: "fixed"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := r.RunScoped(ctx, "tool-025", in, scope); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// TestRunScopedAllocBudget guards the allocation floor for RunScoped
+// over a registry of one hundred tools behind a fifty-name allowlist
+// Scope. The measured baseline is zero allocations: the map lookup,
+// the Scope.Allowed check, and the stub's Run all allocate nothing
+// for this InOut/Out shape. The budget allows one allocation above
+// the baseline, matching Run's budget in registry_bench_test.go, to
+// absorb a small, legitimate change without masking a real
+// regression.
+func TestRunScopedAllocBudget(t *testing.T) {
+	r := buildHundredToolRegistry()
+	scope := buildFiftyNameAllowlistScope()
+	ctx := context.Background()
+	in := tools.InOut{Value: "fixed"}
+	alloc := testing.AllocsPerRun(100, func() {
+		if _, err := r.RunScoped(ctx, "tool-025", in, scope); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if alloc > 1 {
+		t.Fatalf("RunScoped allocated %v times per call; budget is 1", alloc)
+	}
+}

@@ -169,6 +169,61 @@ Still on the backlog:
   `a2aack` behind `AsTool`, then a `dispatch`-backed variant; the
   orchestrator step completes over the real transport.
 
+## mivia-agent parity scenarios
+
+The mivia-agent repo drives real delivery workflows over its own
+engine. These scenarios prove this SDK's composition layer can carry
+the same shapes. Four files landed:
+
+- `bugfix_flow_test.go` — mirrors `bug-fix.toml`'s hunt and triage. A
+  bounded refinement loop re-enters the hunt on an
+  insufficient-evidence verdict. A gate step routes on the triage
+  verdict across confirmed, no_bug, and refine outcomes. The second
+  test mirrors the evidence gates: a failed gate routes to its
+  repair, and the loop re-enters the gate until it passes.
+- `panel_review_test.go` — mirrors the `agent_panel` step with
+  `allow_partial`. Three reviewer subagents run through `RunAll`
+  inside one step's tool. One member fails, synthesis proceeds over
+  the survivors, and the gate approves. Every member failing fails
+  the run.
+- `delivery_repair_test.go` — mirrors the delivery contract. A
+  rejected title routes to the metadata repair, the loop retries
+  delivery, and the second attempt opens. A stubborn host drains a
+  one-repair budget and settles the run terminal.
+- `feature_delivery_test.go` — mirrors `feature-delivery.toml`'s
+  review loop and merge policy. The review loop reworks once, the
+  evidence step runs, and delivery escalates to a human over the
+  channel transport.
+
+Mapping, workflow-engine shape to SDK block:
+
+- Agent step — `flow.Step` with a tool in the ack chain.
+- Gate output matching — `Route` reading the gate's recorded result.
+- Bounded loop with `max_iterations` — `Loop` on a parent step over
+  the repeated child; the guard reads live state.
+- `on_failure` re-entry — `Retry` on Fire, or the repair Route.
+- Panel with `allow_partial` — one step's tool fanning members out
+  through `subagent.RunAll` and joining the verdicts.
+- Context bindings with `max_bytes` — `PayloadFrom` chaining plus
+  `contextbudget`'s per-call check.
+- `delivery.on_pr_metadata_failure` — the delivery repair loop.
+- `merge_policy = "approve"` — `Ask` over a channel transport.
+
+Disclosed limits these scenarios pin:
+
+- A loop child that always ends on one status cannot re-enter: the
+  parent's re-entry row would be a self-row, which `machine.New`
+  forbids. Loops must alternate child finals.
+- A step repeated inside a loop records later results under
+  `#N`-suffixed IDs. Guards read live tool state, not the
+  unsuffixed artifact key.
+- Route exclusion propagates only through `AdmissionOnSucceeded`.
+  The default admission lets a step run after a skipped need.
+- An ack rejection stays fatal. A gate that must route to repair
+  reports failure as output, never as a tool error.
+- Engine restart through checkpoint resume is not reachable through
+  `agentrun`; only `flow.Run` exposes the checkpoint hook today.
+
 ## Tests
 
 The scenarios are the tests. They live in `e2e/e2e_test/`, one

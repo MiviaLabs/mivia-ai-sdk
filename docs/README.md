@@ -2,9 +2,9 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, a2aclient, tools, contextbudget,
-mcp, ledger, durablefence, memory, provider, channel, trigger,
-scheduler, agent, agentrun, and taskrun. Each package covers one
+heartbeat, identity, discovery, a2a, a2aclient, a2aack, tools,
+contextbudget, mcp, ledger, durablefence, memory, provider, channel,
+trigger, scheduler, agent, agentrun, and taskrun. Each package covers one
 concern and composes through its exported API. This doc tree covers
 the module map, the
 wire-protocol rationale, every package's exported surface, and
@@ -28,6 +28,7 @@ runnable-style walkthroughs.
 - [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, and the runner.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
 - [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter: send a message as a remote task, poll its status, and fetch its result.
+- [packages/a2aack.md](packages/a2aack.md) — the remote step ack: turn a remote A2A task round trip into an `agent.AckWait` through one send, poll, result, verify, and ack loop.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
 - [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
@@ -70,6 +71,7 @@ runnable-style walkthroughs.
 - [examples/a2a-mapping-roundtrip.md](examples/a2a-mapping-roundtrip.md) — a signed message mapped to an A2A `Part` and back, verified bit-for-bit.
 - [examples/agentrun.md](examples/agentrun.md) — a two-step plan run through the `agentrun` composition layer with a tool, an artifact, and a store.
 - [examples/taskrun.md](examples/taskrun.md) — the `taskrun` ledger ceremony: a successful build, a failed build, and a replay sentinel.
+- [examples/a2aack.md](examples/a2aack.md) — one gated step resolved through a remote A2A task via `a2aack.Wait`, confirmed by the caller's own key.
 
 ## Internal records
 

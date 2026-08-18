@@ -23,6 +23,10 @@ this phase. `a2aclient` imports `a2a` for the mapping functions; it
 adds no new exported symbol to `a2a` and no new import to `a2a`. Also
 outside: Agent Card discovery (a later phase) and running a server
 (`a2aclient` is a client only, never a server, in this version).
+Phase 51 adds one exported exception: a `Loopback` gRPC test-fixture
+server in non-test source, compelled by the `/a2aclient/*.go`
+Semgrep exception. This is a reviewed scope extension for tests only,
+not a server feature.
 
 The original phase 10 sketch proposed putting `Client`, `Send`,
 `Status`, `Result`, and `TaskHandle` inside the `a2a` package itself.

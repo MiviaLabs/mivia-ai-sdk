@@ -1,0 +1,17 @@
+package a2aack
+  func (o Options) Validate() (error)
+  func Wait(c Remote, opts Options) (agent.AckWait, error)
+  type Options struct {
+  Poll time.Duration
+  Timeout time.Duration
+}
+  type Remote interface {
+	Send(ctx context.Context, msg envelope.Message) (a2aclient.TaskHandle, error)
+	Status(ctx context.Context, h a2aclient.TaskHandle) (a2aclient.State, error)
+	Result(ctx context.Context, h a2aclient.TaskHandle) (envelope.Message, error)
+}
+  var ErrNoClient
+  var ErrNoPoll
+  var ErrRemoteFailed
+  var ErrShortTimeout
+  var ErrTimeout

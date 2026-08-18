@@ -9,11 +9,14 @@ package a2aclient
   func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, error)
   func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, error)
   func (c *Client) Status(ctx context.Context, h TaskHandle) (State, error)
+  func (e *loopbackExecutor) Cancel(ctx context.Context, reqCtx *a2asrv.RequestContext, queue eventqueue.Queue) (error)
+  func (e *loopbackExecutor) Execute(ctx context.Context, reqCtx *a2asrv.RequestContext, queue eventqueue.Queue) (error)
   func (g *grpcTransport) Close() (error)
   func (g *grpcTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, error)
   func (g *grpcTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, error)
   func (g *grpcTransport) State(ctx context.Context, taskID string) (State, error)
   func (s State) String() (string)
+  func Loopback() (addr string, stop func() error, err error)
   func New(baseURL string) (*Client, error)
   type Client struct {
 }

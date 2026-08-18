@@ -33,12 +33,21 @@ Run the full suite. Record every result. A single failure is a finding.
 - A short fuzz pass. Run each `Fuzz*` target for a fixed time.
   `go test -fuzz=<name> -fuzztime=15s ./<pkg>/`
 
+The working tree may hold uncommitted work outside the review scope.
+When it blocks `make verify`, review inside a throwaway worktree:
+`git worktree add /tmp/<name> <hash>`. Every gate result then belongs
+to the reviewed commits alone.
+
 ### 2. The reviewer agent
 
 Dispatch the `reviewer` subagent against the change. Follow its
 instruction in `.agents/agents/reviewer.md`. The reviewer is
 independent; never let it grade its own work. It is read-only and
 returns SHIP or FIX. Require its reproduction for every finding.
+
+Verify every reviewer finding yourself before it enters the report.
+Re-run its reproduction. Confirm each cited file:line against the
+code. An unverified subagent finding is a hypothesis, not a finding.
 
 When the change touched a plan, `policy/layers.json`, `api/`,
 `scripts/`, `semgrep/`, the `Makefile`, or `.githooks/`, also run a
@@ -59,9 +68,10 @@ Cover all of these in the report. Each is a finding source.
   (`docs/plans/<pkg>.md`)? Scope creep is a finding. A dropped Scope
   item is a finding. Every exported symbol must match `api/<pkg>.txt`.
 - **Test adequacy** — do the tests fail when the code is broken? Pick
-  an invariant and mentally mutate the code. If no test catches it,
-  that is a finding. For test-quality depth, use the `test-review`
-  skill; this pass covers the basic adequacy check.
+  an invariant, apply the mutation in a throwaway copy of the package,
+  and run the suite. A mutation that survives is a finding; name the
+  test that should have caught it. For test-quality depth, use the
+  `test-review` skill; this pass covers the basic adequacy check.
 
 ## Finding discipline
 

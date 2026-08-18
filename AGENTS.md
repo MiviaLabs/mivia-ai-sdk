@@ -56,6 +56,14 @@ Go SDK for building AI agents. Module:
   a2aproject/a2a-go's gRPC transport; re-verifies the signature after
   every remote hop. The only package allowed to import a2a-go and its
   google.golang.org/grpc dial dependency.
+- `a2aack/` — the remote step ack: Options, Options.Validate, Remote,
+  Wait, and sentinels. Turns a remote A2A task round trip into an
+  `agent.AckWait`. This is an edge adapter, not an ordinary block: its
+  one purpose is to adapt a remote transport to the composition layer,
+  so it may import `agent` for the `AckWait` type, the sole exception
+  to the rule that a block never imports the agent. Imports a2aclient,
+  agent, and envelope. Carries no a2a-go import of its own; the
+  loopback test fixture is exported a2aclient surface.
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
   Run. A leaf package; no internal imports. No caller yet; the agent
   binding is a later phase.

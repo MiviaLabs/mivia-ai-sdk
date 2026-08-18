@@ -11,7 +11,7 @@ import (
 )
 
 // errMixedWaveMember is the second member's Fire failure in
-// TestReportPanelMixedResultLeavesNeitherMemberResolved.
+// TestReportPanelMixedResultMarksBothMembersFailed.
 var errMixedWaveMember = errors.New("second member failed")
 
 // TestReportDiamondGraphOutcomesAndTieBreak reruns the phase 5 diamond
@@ -68,11 +68,14 @@ func TestReportDiamondGraphOutcomesAndTieBreak(t *testing.T) {
 	}
 }
 
-// TestReportPanelMixedResultLeavesNeitherMemberResolved runs a panel
-// with one failing member and one succeeding member. It asserts the
-// wave error aborts the run and that Outcomes holds no entry for
-// either member.
-func TestReportPanelMixedResultLeavesNeitherMemberResolved(t *testing.T) {
+// TestReportPanelMixedResultMarksBothMembersFailed runs a panel with
+// one failing member and one succeeding member, and no
+// AdmissionOnFailed dependent for either. It asserts the wave error
+// aborts the run and that resolvePanelFailure marks both members
+// OutcomeFailed before it decides the failure is uncatchable: a
+// per-member Fire failure, unlike a pre-spawn shared-transition
+// failure, always marks every member of the wave.
+func TestReportPanelMixedResultMarksBothMembersFailed(t *testing.T) {
 	t.Parallel()
 	const target = machine.Status("panel-done")
 	d, err := flow.New([]flow.Step{
@@ -102,14 +105,14 @@ func TestReportPanelMixedResultLeavesNeitherMemberResolved(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if _, ok := report.Outcome("a"); ok {
-		t.Fatal("Outcome(a) resolved true, want false: a mixed wave marks no member")
+	if outcome, ok := report.Outcome("a"); !ok || outcome != flow.OutcomeFailed {
+		t.Fatalf("Outcome(a) = %v, %v, want %v, true", outcome, ok, flow.OutcomeFailed)
 	}
-	if _, ok := report.Outcome("b"); ok {
-		t.Fatal("Outcome(b) resolved true, want false: a mixed wave marks no member")
+	if outcome, ok := report.Outcome("b"); !ok || outcome != flow.OutcomeFailed {
+		t.Fatalf("Outcome(b) = %v, %v, want %v, true", outcome, ok, flow.OutcomeFailed)
 	}
 	outcomes := report.Outcomes()
-	if len(outcomes) != 0 {
-		t.Fatalf("Outcomes() = %v, want empty", outcomes)
+	if len(outcomes) != 2 {
+		t.Fatalf("Outcomes() = %v, want both members marked failed", outcomes)
 	}
 }

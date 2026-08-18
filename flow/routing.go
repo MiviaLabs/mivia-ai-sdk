@@ -22,8 +22,13 @@ const (
 // admissionVerdict evaluates s's admission rule against outcomes. It
 // returns verdictWait when any of s's needs has not yet resolved,
 // verdictAdmit when every need satisfies s.When, and verdictSkip
-// otherwise. A step with no needs always admits.
+// otherwise. A step with no needs always admits. AdmissionOnFailed is
+// an any-of rule over Needs; admissionVerdict delegates to
+// admitsOnFailed instead of running the all-of loop below.
 func admissionVerdict(s Step, outcomes map[string]Outcome) verdict {
+	if s.When == AdmissionOnFailed {
+		return admitsOnFailed(s.Needs, outcomes)
+	}
 	for _, need := range s.Needs {
 		if _, ok := outcomes[need]; !ok {
 			return verdictWait

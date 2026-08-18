@@ -22,8 +22,10 @@ type Definition struct {
 // rejects a Sub nesting depth above eight. It rejects a step that
 // combines Sub and Route, a branch step with no dependent, a panel
 // that names a branch step, and a panel that names a direct
-// dependent of a branch step. It deep-copies the input slices so
-// later caller mutation cannot change the built graph.
+// dependent of a branch step. It rejects an AdmissionOnFailed step
+// with no needs, and an AdmissionOnFailed step named in a panel. It
+// deep-copies the input slices so later caller mutation cannot
+// change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),
@@ -37,6 +39,9 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 		return nil, err
 	}
 	if err := validateRouting(d.steps, d.panels, ids); err != nil {
+		return nil, err
+	}
+	if err := validateFailureAdmission(d.steps, d.panels, ids); err != nil {
 		return nil, err
 	}
 	if err := validatePanelChains(d.panels, d.steps, ids); err != nil {

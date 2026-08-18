@@ -98,6 +98,54 @@ func TestMemStoreCompareAndSwapBumpsRevOnEveryWrite(t *testing.T) {
 	}
 }
 
+// TestMemStoreCompareAndSwapRejectsNonZeroBaselineAgainstAbsentKey
+// proves CompareAndSwap rejects an insert attempt whose old is not the
+// zero value, even when the key has no stored record: only a
+// zero-value old inserts against an absent key.
+func TestMemStoreCompareAndSwapRejectsNonZeroBaselineAgainstAbsentKey(t *testing.T) {
+	ctx := context.Background()
+	store := ledger.NewMemStore()
+
+	ok, err := store.CompareAndSwap(ctx, "ghost", ledger.TaskState{Sequence: 1}, ledger.TaskState{
+		Key: "ghost", Status: ledger.StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("CompareAndSwap: %v", err)
+	}
+	if ok {
+		t.Fatalf("CompareAndSwap with a nonzero old against an absent key: want false")
+	}
+	if _, found, _ := store.Load(ctx, "ghost"); found {
+		t.Fatalf("rejected CompareAndSwap must not create a record")
+	}
+}
+
+// TestMemStoreRangeStopsEarlyWhenFnReturnsFalse proves Range stops
+// iterating the first time fn returns false, matching its documented
+// early-stop contract.
+func TestMemStoreRangeStopsEarlyWhenFnReturnsFalse(t *testing.T) {
+	ctx := context.Background()
+	store := ledger.NewMemStore()
+	for _, k := range []ledger.IdempotencyKey{"a", "b", "c"} {
+		if ok, err := store.CompareAndSwap(ctx, k, ledger.TaskState{}, ledger.TaskState{
+			Key: k, Status: ledger.StatusPending,
+		}); err != nil || !ok {
+			t.Fatalf("insert %s: ok=%v err=%v", k, ok, err)
+		}
+	}
+	visits := 0
+	err := store.Range(ctx, func(ledger.TaskState) bool {
+		visits++
+		return false
+	})
+	if err != nil {
+		t.Fatalf("Range: %v", err)
+	}
+	if visits != 1 {
+		t.Fatalf("visits = %d, want 1 (Range must stop on the first false)", visits)
+	}
+}
+
 // TestMemStoreRangeVisitsEveryRecordOnce proves a Range call whose fn
 // populates a slice from a store with several records visits every
 // record exactly once and returns nil.

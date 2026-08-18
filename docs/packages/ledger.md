@@ -98,6 +98,12 @@ Use `errors.Is` to test these.
   genuine cycle in `Needs` routes back to it, so the failed key joins
   the blocked set too. See docs/plans/ledger.md for the worked
   example.
+- Pass two's per-dependent `CompareAndSwap` follows the same
+  retry-and-reclassify contract as every other mutating method. On a
+  losing compare, it reloads the dependent and retries against the
+  fresh record. It stops once the write lands or the fresh record is
+  already `StatusBlocked`. A concurrent write to a dependent between
+  the `Range` snapshot and pass two never drops the block silently.
 - `MemStore.CompareAndSwap` compares `old` against the stored record
   on `(Sequence, Status, Fence, Rev)`, and bumps `Rev` by one on every
   successful write, closing the blind spot two concurrent same-fence

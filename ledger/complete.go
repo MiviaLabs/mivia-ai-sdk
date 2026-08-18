@@ -69,14 +69,15 @@ func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID
 // key, plus any Load needed to retry a losing CompareAndSwap within
 // that same second pass. Between the two passes, an in-memory step
 // computes transitive Needs membership from the list; it makes no
-// further Store calls. A key whose loaded record already carries
-// StatusBlocked is skipped, so an earlier failure's BlockedBy is never
-// overwritten. On a losing CompareAndSwap for a dependent key,
-// blockDependents reloads the record and re-evaluates the same
-// StatusBlocked check against the fresh value, retrying until the
-// write lands, the fresh record is already StatusBlocked, or ctx is
-// canceled, per the retry-and-reclassify contract every other
-// mutating method in this package follows.
+// further Store calls. A key whose loaded record already carries a
+// terminal status (StatusCompleted, StatusFailed, or StatusBlocked)
+// is skipped, so a dependent's finished outcome is never overwritten.
+// On a losing CompareAndSwap for a dependent key, blockDependents
+// reloads the record and re-evaluates the same terminal-status check
+// against the fresh value, retrying until the write lands, the fresh
+// record is already terminal, or ctx is canceled, per the
+// retry-and-reclassify contract every other mutating method in this
+// package follows.
 func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) error {
 	var list []TaskState
 	if err := l.store.Range(ctx, func(t TaskState) bool {
@@ -92,7 +93,7 @@ func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) err
 	}
 	for _, k := range dependents {
 		cur, ok := byKey[k]
-		if !ok || cur.Status == StatusBlocked {
+		if !ok || isTerminalStatus(cur.Status) {
 			continue
 		}
 		if err := l.blockOne(ctx, k, cur, failed); err != nil {
@@ -104,10 +105,10 @@ func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) err
 
 // blockOne CompareAndSwaps a single dependent key to StatusBlocked,
 // retrying against a fresh Load on a losing compare. It skips the key
-// once a fresh Load shows StatusBlocked already, matching pass one's
-// own skip rule, so a concurrent write to the dependent between the
-// Range snapshot and this call never leaves the key silently
-// unblocked.
+// once a fresh Load shows a terminal status already, matching pass
+// one's own skip rule, so a concurrent write that lands the dependent
+// on StatusCompleted, StatusFailed, or StatusBlocked between the
+// Range snapshot and this call is never overwritten.
 func (l *Ledger) blockOne(ctx context.Context, k IdempotencyKey, cur TaskState, failed IdempotencyKey) error {
 	for {
 		next := cur
@@ -125,7 +126,7 @@ func (l *Ledger) blockOne(ctx context.Context, k IdempotencyKey, cur TaskState, 
 		if err != nil {
 			return err
 		}
-		if !found || fresh.Status == StatusBlocked {
+		if !found || isTerminalStatus(fresh.Status) {
 			return nil
 		}
 		cur = fresh
@@ -146,8 +147,10 @@ func (l *Ledger) blockOne(ctx context.Context, k IdempotencyKey, cur TaskState, 
 // failed, so failed is absent from the result; a genuine cycle (for
 // example A.Needs contains B, B.Needs contains A) routes back to
 // failed through a real Needs edge, and failed joins blocked exactly
-// like any other affected key. The returned slice is sorted for
-// deterministic iteration.
+// like any other affected key. blockDependents's own terminal-status
+// check then skips a write to failed, since failed already carries a
+// terminal status by the time this function runs. The returned slice
+// is sorted for deterministic iteration.
 func transitiveDependents(list []TaskState, failed IdempotencyKey) []IdempotencyKey {
 	bad := map[IdempotencyKey]bool{failed: true}
 	blocked := map[IdempotencyKey]bool{}

@@ -141,3 +141,46 @@ func TestCompleteFailedBlocksDependentAfterConcurrentClaim(t *testing.T) {
 		t.Fatalf("B.BlockedBy = %q, want A", st.BlockedBy)
 	}
 }
+
+// TestCompleteFailedSkipsDependentCompletedAfterRangeSnapshot proves
+// blockOne's terminal-status check catches a dependent that legitimately
+// finishes between blockDependents' Range snapshot and blockOne's own
+// CompareAndSwap against that dependent. A concurrent Complete on the
+// dependent, fired right after the Range snapshot, must keep the
+// dependent's finished status instead of losing it to StatusBlocked.
+func TestCompleteFailedSkipsDependentCompletedAfterRangeSnapshot(t *testing.T) {
+	ctx := context.Background()
+	store := &rangeTriggerStore{Store: ledger.NewMemStore()}
+	l, err := ledger.New(store, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mustAdmit(t, l, ctx, "A", 1)
+	mustAdmit(t, l, ctx, "B", 1, "A")
+	fenceA := mustClaim(t, l, ctx, "A", "owner-a")
+	fenceB := mustClaim(t, l, ctx, "B", "owner-b")
+
+	store.trigger = func() {
+		if err := l.Complete(ctx, "B", "owner-b", fenceB, ledger.StatusCompleted); err != nil {
+			t.Errorf("concurrent Complete(B): %v", err)
+		}
+	}
+
+	if err := l.Complete(ctx, "A", "owner-a", fenceA, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	st, found, err := l.State(ctx, "B")
+	if err != nil {
+		t.Fatalf("State(B): %v", err)
+	}
+	if !found {
+		t.Fatalf("B: want found")
+	}
+	if st.Status != ledger.StatusCompleted {
+		t.Fatalf("B: Status = %q, want unchanged StatusCompleted", st.Status)
+	}
+	if st.BlockedBy != "" {
+		t.Fatalf("B.BlockedBy = %q, want empty", st.BlockedBy)
+	}
+}

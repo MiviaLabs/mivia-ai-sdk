@@ -81,8 +81,11 @@ func TestCompleteFailedBlocksTransitively(t *testing.T) {
 }
 
 // TestCompleteFailedTwoCycleTerminates proves a two-node cycle
-// (A.Needs contains B, B.Needs contains A) terminates and both end up
-// StatusBlocked exactly once.
+// (A.Needs contains B, B.Needs contains A) terminates. A keeps its
+// own genuine StatusFailed, because the blocking walk's terminal-
+// status check protects a record already terminal, even when the
+// cycle routes the walk back to A. B, the only non-terminal member of
+// the cycle, ends up StatusBlocked.
 func TestCompleteFailedTwoCycleTerminates(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
@@ -92,7 +95,11 @@ func TestCompleteFailedTwoCycleTerminates(t *testing.T) {
 	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	for _, key := range []ledger.IdempotencyKey{"A", "B"} {
+	want := map[ledger.IdempotencyKey]machine.Status{
+		"A": ledger.StatusFailed,
+		"B": ledger.StatusBlocked,
+	}
+	for key, wantStatus := range want {
 		st, found, err := l.State(ctx, key)
 		if err != nil {
 			t.Fatalf("State(%s): %v", key, err)
@@ -100,15 +107,16 @@ func TestCompleteFailedTwoCycleTerminates(t *testing.T) {
 		if !found {
 			t.Fatalf("%s: want found", key)
 		}
-		if st.Status != ledger.StatusBlocked {
-			t.Fatalf("%s: Status = %q, want StatusBlocked", key, st.Status)
+		if st.Status != wantStatus {
+			t.Fatalf("%s: Status = %q, want %q", key, st.Status, wantStatus)
 		}
 	}
 }
 
 // TestCompleteFailedThreeHopCycleTerminates proves a three-hop cycle
-// (A->B->C->A) terminates and every node ends up StatusBlocked
-// exactly once.
+// (A->B->C->A) terminates. A keeps its own genuine StatusFailed for
+// the same reason as the two-node cycle; B and C, the non-terminal
+// members, end up StatusBlocked.
 func TestCompleteFailedThreeHopCycleTerminates(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
@@ -119,13 +127,18 @@ func TestCompleteFailedThreeHopCycleTerminates(t *testing.T) {
 	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	for _, key := range []ledger.IdempotencyKey{"A", "B", "C"} {
+	want := map[ledger.IdempotencyKey]machine.Status{
+		"A": ledger.StatusFailed,
+		"B": ledger.StatusBlocked,
+		"C": ledger.StatusBlocked,
+	}
+	for key, wantStatus := range want {
 		st, _, err := l.State(ctx, key)
 		if err != nil {
 			t.Fatalf("State(%s): %v", key, err)
 		}
-		if st.Status != ledger.StatusBlocked {
-			t.Fatalf("%s: Status = %q, want StatusBlocked", key, st.Status)
+		if st.Status != wantStatus {
+			t.Fatalf("%s: Status = %q, want %q", key, st.Status, wantStatus)
 		}
 	}
 }
@@ -259,6 +272,128 @@ func TestCompleteUnknownStatusAgainstUnknownKeyRejected(t *testing.T) {
 	err := l.Complete(ctx, "ghost", "owner-a", 0, machine.Status(""))
 	if !errors.Is(err, ledger.ErrUnknownStatus) {
 		t.Fatalf("Complete: got %v, want ErrUnknownStatus", err)
+	}
+}
+
+// TestBlockDependentsSkipsDependentAlreadyBlockedDuringRetry proves
+// blockOne's retry path skips a dependent that a concurrent write
+// already moved to StatusBlocked between the losing CompareAndSwap
+// and the reload, leaving that dependent's original BlockedBy
+// unchanged instead of overwriting it. This drives blockOne's
+// "!found || fresh.Status == StatusBlocked" reload branch directly,
+// which the concurrent-Claim regression case in complete_race_test.go
+// does not reach (that case retries into a still-unblocked record).
+func TestBlockDependentsSkipsDependentAlreadyBlockedDuringRetry(t *testing.T) {
+	ctx := context.Background()
+	store := &rangeTriggerStore{Store: ledger.NewMemStore()}
+	l, err := ledger.New(store, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mustAdmit(t, l, ctx, "A", 1)
+	mustAdmit(t, l, ctx, "B", 1, "A")
+	fence := mustClaim(t, l, ctx, "A", "owner-a")
+
+	store.trigger = func() {
+		cur, found, err := store.Store.Load(ctx, "B")
+		if err != nil || !found {
+			t.Fatalf("Load(B): found=%v err=%v", found, err)
+		}
+		next := cur
+		next.Status = ledger.StatusBlocked
+		next.BlockedBy = "other"
+		if ok, err := store.Store.CompareAndSwap(ctx, "B", cur, next); err != nil || !ok {
+			t.Fatalf("CompareAndSwap(B): ok=%v err=%v", ok, err)
+		}
+	}
+
+	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	st, found, err := l.State(ctx, "B")
+	if err != nil {
+		t.Fatalf("State(B): %v", err)
+	}
+	if !found {
+		t.Fatalf("B: want found")
+	}
+	if st.Status != ledger.StatusBlocked {
+		t.Fatalf("B: Status = %q, want StatusBlocked", st.Status)
+	}
+	if st.BlockedBy != "other" {
+		t.Fatalf("B.BlockedBy = %q, want unchanged %q", st.BlockedBy, "other")
+	}
+}
+
+// TestCompleteFailedSkipsDependentAlreadyCompleted proves a dependent
+// that legitimately reaches StatusCompleted, independent of the
+// failing key, before the failing key's blocking walk keeps its
+// StatusCompleted status. blockOne must not overwrite a terminal
+// outcome with StatusBlocked.
+func TestCompleteFailedSkipsDependentAlreadyCompleted(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	mustAdmit(t, l, ctx, "root", 1)
+	mustAdmit(t, l, ctx, "D", 1, "root")
+
+	fenceD := mustClaim(t, l, ctx, "D", "owner-d")
+	if err := l.Complete(ctx, "D", "owner-d", fenceD, ledger.StatusCompleted); err != nil {
+		t.Fatalf("Complete D: %v", err)
+	}
+
+	fenceRoot := mustClaim(t, l, ctx, "root", "owner-a")
+	if err := l.Complete(ctx, "root", "owner-a", fenceRoot, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete root: %v", err)
+	}
+
+	st, found, err := l.State(ctx, "D")
+	if err != nil {
+		t.Fatalf("State(D): %v", err)
+	}
+	if !found {
+		t.Fatalf("D: want found")
+	}
+	if st.Status != ledger.StatusCompleted {
+		t.Fatalf("D: Status = %q, want unchanged StatusCompleted", st.Status)
+	}
+	if st.BlockedBy != "" {
+		t.Fatalf("D.BlockedBy = %q, want empty", st.BlockedBy)
+	}
+}
+
+// TestCompleteFailedSkipsDependentAlreadyFailed proves a dependent
+// that legitimately reaches StatusFailed, independent of the failing
+// key, before the failing key's blocking walk keeps its StatusFailed
+// status.
+func TestCompleteFailedSkipsDependentAlreadyFailed(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	mustAdmit(t, l, ctx, "root", 1)
+	mustAdmit(t, l, ctx, "D", 1, "root")
+
+	fenceD := mustClaim(t, l, ctx, "D", "owner-d")
+	if err := l.Complete(ctx, "D", "owner-d", fenceD, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete D: %v", err)
+	}
+
+	fenceRoot := mustClaim(t, l, ctx, "root", "owner-a")
+	if err := l.Complete(ctx, "root", "owner-a", fenceRoot, ledger.StatusFailed); err != nil {
+		t.Fatalf("Complete root: %v", err)
+	}
+
+	st, found, err := l.State(ctx, "D")
+	if err != nil {
+		t.Fatalf("State(D): %v", err)
+	}
+	if !found {
+		t.Fatalf("D: want found")
+	}
+	if st.Status != ledger.StatusFailed {
+		t.Fatalf("D: Status = %q, want unchanged StatusFailed", st.Status)
+	}
+	if st.BlockedBy != "" {
+		t.Fatalf("D.BlockedBy = %q, want empty", st.BlockedBy)
 	}
 }
 

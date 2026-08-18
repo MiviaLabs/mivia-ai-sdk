@@ -79,10 +79,25 @@ terminal status (`StatusCompleted` or `StatusFailed`) set by
 `Complete`'s own primary write. A real cycle (`A.Needs` contains `B`,
 `B.Needs` contains `A`) routes back to the failed key through a real
 edge, so the failed key joins the write-target set like any other
-affected key and ends `StatusBlocked`, overwriting its own terminal
-write from the same `Complete` call. This is why the phase 34 Tests
-section's two-hop and three-hop cycle cases expect every node in the
-cycle, including the originally failed key, to end `StatusBlocked`.
+affected key. Pass two still protects it: its terminal-status check
+(see below) treats the failed key's own `StatusFailed` record the
+same as any other already-terminal record and skips it, so the
+failed key keeps its terminal status instead of being overwritten to
+`StatusBlocked`. This is why the phase 34 Tests section's two-hop and
+three-hop cycle cases expect the originally failed key to keep its
+terminal status, while every other node in the cycle ends
+`StatusBlocked`.
+
+Pass two applies the retry-and-reclassify contract per key, not once
+for the whole pass. A losing `CompareAndSwap` on one dependent reloads
+that dependent and retries against the fresh record. It skips the key
+once the fresh record already carries a terminal status
+(`StatusCompleted`, `StatusFailed`, or `StatusBlocked`), then the loop
+moves to the next key. This protects a dependent that legitimately
+completed or failed on its own, not only one already blocked, from
+being overwritten. A concurrent write to a dependent between the
+`Range` snapshot and its turn in pass two never drops the block
+silently.
 
 ## Tests
 

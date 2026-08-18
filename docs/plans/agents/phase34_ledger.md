@@ -358,12 +358,15 @@ calls `ledger.Takeover` and resumes ownership.
   contains `B`, `B.Needs` contains `A`, or a longer chain) terminates
   instead of looping, and each affected record is blocked exactly
   once. Pass two's `CompareAndSwap` skips a collected key whose loaded
-  record already has `Status` `StatusBlocked`: `BlockedBy` names
-  whichever failed key blocked the record first, and a later,
-  unrelated failure that also transitively reaches the same dependent
-  never overwrites it. The walk touches `Store` in exactly
+  record already has a terminal `Status`: `StatusCompleted`,
+  `StatusFailed`, or `StatusBlocked`. A dependent that already
+  finished on its own, and a dependent `BlockedBy` already names for
+  an earlier, unrelated failure, both keep their recorded outcome. The
+  walk touches `Store` in exactly
   two passes, per the `Store.Range` reentrancy rule above: one `Range`
-  call, then one `CompareAndSwap` call per affected key. Pass one calls
+  call, then one `CompareAndSwap` call per affected key, plus any
+  `Load` needed to retry a losing `CompareAndSwap` within that same
+  second pass. Pass one calls
   `Range` once; its `fn` makes no eligibility decision and calls no
   other `Store` method, only copies every visited record into an
   in-memory list. Between the two `Store` passes, after `Range`
@@ -372,10 +375,35 @@ calls `ledger.Takeover` and resumes ownership.
   for records naming an already-blocked key in `Needs`, adding each
   newly found key to a visited-key set, until a scan finds no new key.
   This step makes no further `Store` calls. Pass two then calls
-  `CompareAndSwap` on each key in the final visited-key set (excluding
-  `key` itself). Computing transitive membership needs the full
-  in-memory list: it cannot be decided from a single record while
-  `Range`'s callback is still iterating.
+  `CompareAndSwap` on each key in the final visited-key set. `key`
+  itself is absent from that set unless a cycle routes back to it; the
+  terminal-status skip protects `key` there instead, since `Complete`
+  already moved it to `StatusFailed` before pass two runs. Computing
+  transitive membership needs the full in-memory list: it cannot be
+  decided from a single record while `Range`'s callback is still
+  iterating.
+
+  Pass two's per-key write, extracted as the unexported `blockOne`
+  helper, follows the same retry-and-reclassify contract as `Admit`,
+  `Claim`, `Renew`, `Release`, `Takeover`, and `Complete`'s own
+  primary-key `CompareAndSwap`. A losing `CompareAndSwap` for a
+  dependent key reloads that key through `Load` and re-evaluates the
+  same terminal-status check pass one already applied to the snapshot
+  value: `StatusCompleted`, `StatusFailed`, or `StatusBlocked`.
+  `blockOne` retries `CompareAndSwap` against the fresh record when
+  the fresh record is not yet terminal, and returns immediately once
+  it is terminal, or once `ctx` is canceled. This closes two gaps a
+  single-attempt version left open. First, a concurrent write to a
+  dependent between the `Range` snapshot and pass two's visit to that
+  key, for example a `Claim` that changes the dependent's `Rev`, used
+  to make the `CompareAndSwap` lose and `blockDependents` move on to
+  the next key, leaving the dependent silently unblocked while
+  `Complete` still returned `nil`. `blockOne` closes that gap by
+  retrying instead of moving on. Second, the terminal-status check,
+  not a `StatusBlocked`-only check, protects a dependent that reaches
+  `StatusCompleted` or `StatusFailed` on its own, concurrently with or
+  before the blocking walk reaches it, from a retroactive overwrite to
+  `StatusBlocked`.
 - `func (l *Ledger) State(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)`
   — the current record for a key. The bool is a found signal: `true`
   when `key` has a record, `false` when it does not. `State` never
@@ -486,13 +514,17 @@ Test files live in `ledger/ledger_test/`:
   - A two-level dependency chain: failing the root blocks both the
     direct dependent and the dependent's own dependent, transitively.
   - A cycle case: `A.Needs` contains `B`, `B.Needs` contains `A`.
-    `Complete(A, StatusFailed)` terminates, and both `A` and `B` end
-    up `StatusBlocked` exactly once, proving the visited-key set stops
-    the walk from looping.
+    `Complete(A, StatusFailed)` terminates. `B` ends up `StatusBlocked`
+    exactly once. `A` keeps its own `StatusFailed`: the terminal-status
+    check protects the failed key's own record the same way it
+    protects any other already-terminal dependent, so the walk routing
+    back to `A` never overwrites it. This proves the visited-key set
+    stops the walk from looping.
   - A three-hop cycle case: `A.Needs` contains `B`, `B.Needs` contains
     `C`, `C.Needs` contains `A`. `Complete(A, StatusFailed)`
-    terminates, and `A`, `B`, and `C` each end up `StatusBlocked`
-    exactly once.
+    terminates. `B` and `C` each end up `StatusBlocked` exactly once.
+    `A` keeps its own `StatusFailed`, for the same reason as the
+    two-hop case.
   - A shared-dependent case: two independently admitted records, `X`
     and `Y`, both name `D` in `Needs`. `Complete(X, StatusFailed)`
     then `Complete(Y, StatusFailed)` blocks `D` exactly once, and `D`'s
@@ -593,6 +625,14 @@ Test files live in `ledger/ledger_test/`:
   fence, so a racing duplicate call can never silently flip a terminal
   record from one finished status to the other. Assert `CompletedEvent`
   fires exactly once. Run under `go test -race`.
+  `complete_race_test.go` also holds
+  `TestCompleteFailedBlocksDependentAfterConcurrentClaim`, a
+  deterministic regression test for `blockOne`'s retry. A wrapped
+  `Store` fires a concurrent `Claim` on a dependent key right after
+  `blockDependents`' `Range` snapshot returns, before pass two reaches
+  that key. Assert the dependent still ends `StatusBlocked` with
+  `BlockedBy` naming the failed key, proving the reload-and-retry
+  closes the gap the pre-fix single-attempt `CompareAndSwap` left open.
 - `admit_bench_test.go` — a benchmark measuring `Admit` throughput
   against `MemStore` under increasing key counts. Report ops/sec and
   allocs/op; no fixed allocation budget, since `MemStore`'s internal

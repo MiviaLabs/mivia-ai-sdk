@@ -120,6 +120,27 @@ func TestListToolsDrainsMultiplePages(t *testing.T) {
 	}
 }
 
+// TestListToolsPropagatesIteratorError proves ListTools returns the
+// error the SDK's own pagination iterator yields, instead of silently
+// stopping and returning whatever tools were already collected. A
+// wrong-but-passing implementation that ignored the iterator's error
+// value (the "for t, err := range ...; ok, no err check" bug) would
+// still pass every other ListTools test in this file, since none of
+// them puts the server in a state where a page fetch fails.
+func TestListToolsPropagatesIteratorError(t *testing.T) {
+	server := newFixtureServer(nil)
+	addEchoTool(server, "echo")
+	c := connectFixture(t, server, ClientOptions{})
+	defer c.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.ListTools(ctx)
+	if err == nil {
+		t.Fatal("ListTools with an already-canceled context returned a nil error")
+	}
+}
+
 func TestCallToolTextResult(t *testing.T) {
 	server := newFixtureServer(nil)
 	addEchoTool(server, "echo")

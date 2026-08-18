@@ -145,6 +145,36 @@ func TestCallToolFallsBackToSessionWideHandler(t *testing.T) {
 	wait()
 }
 
+// TestHandleProgressDropsNonStringToken proves handleProgress ignores
+// a notification whose token is not the string type mintToken always
+// produces, instead of panicking or misdelivering it to an unrelated
+// handler. A wrong-but-passing implementation that skipped the type
+// assertion entirely, and instead compared token with reflect.DeepEqual
+// or fmt.Sprint against every registered key, could still satisfy
+// every other progress test in this file, since every real call always
+// mints a string token; only a directly-constructed non-string token
+// exercises the type-assertion failure branch itself.
+func TestHandleProgressDropsNonStringToken(t *testing.T) {
+	server := newFixtureServer(nil)
+	c := connectFixture(t, server, ClientOptions{})
+	defer c.Close()
+
+	called := false
+	c.opts.OnProgress = func(context.Context, any, string, float64, float64) {
+		called = true
+	}
+	c.handleProgress(context.Background(), &mcpsdk.ProgressNotificationClientRequest{
+		Params: &mcpsdk.ProgressNotificationParams{
+			ProgressToken: 42,
+			Message:       "step",
+			Progress:      1,
+		},
+	})
+	if called {
+		t.Fatal("handleProgress invoked OnProgress for a non-string token, want it dropped")
+	}
+}
+
 func TestCallToolWithNoHandlerDropsNotifications(t *testing.T) {
 	server := newFixtureServer(nil)
 	addProgressTool(server, "progress", 2)

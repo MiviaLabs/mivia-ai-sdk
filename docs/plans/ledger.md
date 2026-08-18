@@ -25,13 +25,13 @@ dependency-driven blocking. `ledger` composes with `durablefence`'s
 `Scenario` harness (`docs/plans/durablefence.md`) to prove its claim,
 takeover, and fence invariants without a second copy of that test
 logic; `durablefence` names `ledger` as its first intended adopter.
-`ledger` is also distinct from `flow`'s retry policy
-(`docs/plans/agents/phase30_flow_retry.md`, not yet shipped): that
-plan re-runs a failed step under backoff inside one process, one graph
-walk, while `ledger.Admit` makes an out-of-process retry (a whole new
-process picking up the task) safe by rejecting the second attempt
-under the same idempotency key instead of re-running it. A caller may
-layer both: `flow` retries a step in-process, and if the process dies
+`ledger` is also distinct from `flow`'s retry policy (shipped by
+phase 30; see `docs/plans/flow.md`): `RetryPolicy` re-runs a failed
+step under backoff inside one process, one graph walk, while
+`ledger.Admit` makes an out-of-process retry (a whole new process
+picking up the task) safe by rejecting the second attempt under the
+same idempotency key instead of re-running it. A caller may layer
+both: `flow` retries a step in-process, and if the process dies
 mid-step, a second process calls `ledger.Takeover` and resumes
 ownership.
 

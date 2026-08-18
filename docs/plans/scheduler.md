@@ -49,9 +49,9 @@ Outside:
 - Retrying a failed `Job`. A `Job` failure is a fact about one firing,
   not a reason to stop or replay the schedule. See "The failure
   policy" below. A caller who wants a `Job` to retry its own internal
-  work writes retry logic inside the closure itself, or, once
-  `docs/plans/agents/phase30_flow_retry.md` ships, wraps `flow.Run`
-  and its `RetryPolicy`. That plan is roadmap-only today.
+  work writes retry logic inside the closure itself, or wraps
+  `flow.Run` and its `RetryPolicy` (shipped by phase 30; see
+  `docs/plans/flow.md`).
 
 ### Prior art: the `Schedule` interface shape
 

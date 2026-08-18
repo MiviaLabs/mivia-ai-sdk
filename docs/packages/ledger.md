@@ -12,10 +12,16 @@ surface below mirrors `api/ledger.txt`.
 - `OwnerID` — the caller-chosen identity of a claimant.
 - `Sequence` — the watermark a caller assigns per submission.
 - `FenceToken` — the monotonic counter `Claim` and `Takeover` return.
+- `Actor` — the caller-chosen identity of whoever performs a write: an
+  external user ID, an agent ID, or any other identifier the caller
+  finds meaningful. `ledger` does not validate its shape.
 - `TaskState` — the full record for one key: `Key`, `Status`,
   `Sequence`, `Owner`, `Fence`, `LeaseUntil`, `Needs`, `BlockedBy`,
-  `Task`, `Rev`. `Task` is caller-owned; `ledger` never inspects it.
-  `Rev` is a `Store`-assigned revision counter.
+  `Task`, `Rev`, `CreatedBy`, `CreatedAt`, `UpdatedBy`, `UpdatedAt`.
+  `Task` is caller-owned; `ledger` never inspects it. `Rev` is a
+  `Store`-assigned revision counter. `CreatedBy`/`CreatedAt` and
+  `UpdatedBy`/`UpdatedAt` are `Actor`/`time.Time` pairs every mutating
+  method stamps; see Invariants below.
 - `Store` — the pluggable record backend: `Load`, `CompareAndSwap`,
   `Range`.
 - `MemStore` — the shipped mutex-guarded `Store`.
@@ -43,20 +49,25 @@ surface below mirrors `api/ledger.txt`.
 - `NewMemStore()` — builds an empty, unbounded `MemStore`.
 - `NewMemStoreWithOptions(opts)` — builds a `MemStore` honoring the
   cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
-- `Ledger.Admit(ctx, key, seq, task, needs...)` — records a task once
-  per key. Returns `false, nil`, not an error, for a duplicate or a
-  post-completion resubmission.
-- `Ledger.Claim(ctx, key, owner, lease, now)` — claims a pending
-  record, or a claimed record whose lease has expired.
-- `Ledger.Renew(ctx, key, owner, fence, lease, now)` — extends the
-  lease under the current fence.
-- `Ledger.Release(ctx, key, owner, fence)` — returns a claimed record
-  to pending.
-- `Ledger.Takeover(ctx, key, owner, lease, now)` — claims a stale
-  claimed record and fences the dispossessed owner's token.
-- `Ledger.Complete(ctx, key, owner, fence, status)` — marks a claimed
-  record `StatusCompleted` or `StatusFailed`. A failed completion
-  blocks every dependent, transitively.
+- `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
+  task once per key. Returns `false, nil`, not an error, for a
+  duplicate or a post-completion resubmission. On first insert, stamps
+  `CreatedBy`/`CreatedAt` from `actor`/`now`; a rebase over an existing
+  non-terminal record carries them forward unchanged. Every successful
+  write stamps `UpdatedBy`/`UpdatedAt`.
+- `Ledger.Claim(ctx, actor, key, owner, lease, now)` — claims a pending
+  record, or a claimed record whose lease has expired. Returns
+  `ErrEmptyOwner` for a blank `owner`.
+- `Ledger.Renew(ctx, actor, key, owner, fence, lease, now)` — extends
+  the lease under the current fence.
+- `Ledger.Release(ctx, actor, key, owner, fence, now)` — returns a
+  claimed record to pending.
+- `Ledger.Takeover(ctx, actor, key, owner, lease, now)` — claims a
+  stale claimed record and fences the dispossessed owner's token.
+  Returns `ErrEmptyOwner` for a blank `owner`.
+- `Ledger.Complete(ctx, actor, key, owner, fence, status, now)` — marks
+  a claimed record `StatusCompleted` or `StatusFailed`. A failed
+  completion blocks every dependent, transitively.
 - `Ledger.State(ctx, key)` — the current record for a key.
 - `Ledger.Blocked(ctx, key)` — the blocking ancestor when a key is
   blocked.
@@ -86,6 +97,7 @@ Use `errors.Is` to test these.
 - `ErrNoKey` — the key has no admitted record.
 - `ErrUnknownStatus` — `Complete` got a `status` other than
   `StatusCompleted` or `StatusFailed`.
+- `ErrEmptyOwner` — `Claim` or `Takeover` got a blank `owner`.
 - `ErrInvalidMaxEntries` — `NewMemStoreWithOptions` got a negative
   `MaxEntries`.
 
@@ -122,6 +134,11 @@ Use `errors.Is` to test these.
   on `(Sequence, Status, Fence, Rev)`, and bumps `Rev` by one on every
   successful write, closing the blind spot two concurrent same-fence
   `Renew` calls would otherwise leave.
+- Every mutating method takes a leading `actor Actor` argument and
+  stamps `UpdatedBy`/`UpdatedAt` on every successful write; `Admit`
+  additionally stamps `CreatedBy`/`CreatedAt` on first insert only.
+  `ledger` does not validate `Actor`'s shape or require it to name a
+  real identity.
 
 ## SQLiteStore
 
@@ -166,15 +183,16 @@ if err != nil {
     // New has no error path today; still check it
 }
 ctx := context.Background()
-ok, err := l.Admit(ctx, "task-1", 1, "payload")
+now := time.Now()
+ok, err := l.Admit(ctx, "scheduler", "task-1", 1, "payload", now)
 if err != nil || !ok {
     // err on a Store failure; !ok means duplicate or terminal
 }
-fence, err := l.Claim(ctx, "task-1", "worker-a", time.Minute, time.Now())
+fence, err := l.Claim(ctx, "scheduler", "task-1", "worker-a", time.Minute, now)
 if err != nil {
-    // ErrNoKey or ErrLeaseActive
+    // ErrNoKey, ErrEmptyOwner, or ErrLeaseActive
 }
-if err := l.Complete(ctx, "task-1", "worker-a", fence, ledger.StatusCompleted); err != nil {
+if err := l.Complete(ctx, "scheduler", "task-1", "worker-a", fence, ledger.StatusCompleted, time.Now()); err != nil {
     // ErrFenced or ErrNotClaimed
 }
 ```

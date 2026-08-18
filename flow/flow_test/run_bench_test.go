@@ -51,7 +51,7 @@ func BenchmarkRun(b *testing.B) {
 	b.ReportAllocs()
 	start := time.Now()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
 			b.Fatalf("Run: %v", err)
 		}
 	}
@@ -73,7 +73,7 @@ func TestRunAllocBudget(t *testing.T) {
 	ctx := context.Background()
 	const budget = 9
 	got := testing.AllocsPerRun(10, func() {
-		if _, _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
 			t.Fatalf("Run: %v", err)
 		}
 	})

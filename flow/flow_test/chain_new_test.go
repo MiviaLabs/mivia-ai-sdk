@@ -165,7 +165,8 @@ func TestRunChainedAfterCallerMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("parent Run after caller mutation: %v", err)
 	}

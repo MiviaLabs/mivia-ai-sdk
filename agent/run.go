@@ -89,7 +89,8 @@ func (a *Agent) Run(
 	var built []envelope.Message
 	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID, room)
 
-	status, rec, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
+	report, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
+	status, rec := report.Status(), report.Record()
 	if err != nil {
 		return status, rec, err
 	}

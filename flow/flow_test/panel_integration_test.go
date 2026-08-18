@@ -52,7 +52,8 @@ func TestPanelFourMembersAllComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -94,7 +95,9 @@ func TestPanelOneFailingMemberFailsTheWave(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, out, err := flow.Run(context.Background(), d, m, machine.InOut{Input: "start"}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{Input: "start"}, noopConfirm, nil)
+	status := report.Status()
+	out := report.Record()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -151,7 +154,8 @@ func TestPanelSingletonWaitsForWholePanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -198,7 +202,8 @@ func TestPanelRaceOwnMaps(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	in := machine.InOut{Input: map[string]int{"caller": 1}}
-	status, _, err := flow.Run(context.Background(), d, m, in, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, in, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

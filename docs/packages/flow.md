@@ -23,6 +23,13 @@ The exported surface below mirrors `api/flow.txt`.
 - `Confirm` — the ack gate a caller supplies to `Run`. It signs the
   form `func(ctx context.Context, step Step) error`. A nil return
   means the ack confirmed.
+- `Outcome` — the terminal state of one step: `OutcomeSucceeded`,
+  `OutcomeFailed`, or `OutcomeSkipped`. No producer of `OutcomeSkipped`
+  exists yet; a later phase adds one.
+- `Report` — the result `Run` returns: the final status, the final
+  record, and every resolved step's `Outcome`. The fields are
+  unexported. Callers read them through `Status`, `Record`, `Outcome`,
+  and `Outcomes`.
 
 ## Functions and methods
 
@@ -40,11 +47,19 @@ The exported surface below mirrors `api/flow.txt`.
   panel's common `To`, concurrently, in its own goroutine. `Run` does
   not call `confirm` for a wave of two or more members; the ack gate
   applies to a step named in no panel, and to a one-member panel.
-  `Run` returns the final
-  `machine.Status`, the final `machine.InOut` record, and an error.
+  `Run` returns a `Report` and an error. On every abort, `Run`
+  returns the `Report` built so far, alongside the error: a step
+  whose `Fire` fails or whose ack is rejected is marked
+  `OutcomeFailed` first. A wave error marks no member of that wave.
   When `bus` is non-nil, `Run` emits a `StepCompletedEvent` to it
   after each step completes; a chained step's child sub-workflow runs
   with a nil bus, so only the parent step emits.
+- `Report.Status()` — the run's final `machine.Status`.
+- `Report.Record()` — the run's final `machine.InOut`.
+- `Report.Outcome(id)` — one step's `Outcome`, and whether it
+  resolved.
+- `Report.Outcomes()` — a copy of every resolved step's `Outcome`,
+  keyed by ID. Caller mutation cannot change the `Report`.
 
 ## Invariants
 
@@ -198,11 +213,13 @@ confirm := func(ctx context.Context, step flow.Step) error {
     return nil // the caller's ack transport confirms here
 }
 bus := events.New() // nil is also valid; Run skips emission then
-status, out, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm, bus)
+report, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm, bus)
 if err != nil {
     // a transition pick failed, a guard rejected a step, or an ack
     // did not confirm
 }
+status := report.Status()
+out := report.Record()
 _ = status
 _ = out
 ```

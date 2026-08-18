@@ -106,7 +106,7 @@ func BenchmarkRunTenStepsSequential(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
 			b.Fatalf("Run: %v", err)
 		}
 	}
@@ -121,7 +121,7 @@ func BenchmarkRunTenStepPanel(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
 			b.Fatalf("Run: %v", err)
 		}
 	}

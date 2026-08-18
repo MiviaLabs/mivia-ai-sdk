@@ -48,11 +48,13 @@ func main() {
 		return nil
 	}
 
-	status, out, err := flow.Run(context.Background(), graph, m, machine.InOut{Input: "review request"}, confirm, nil)
+	report, err := flow.Run(context.Background(), graph, m, machine.InOut{Input: "review request"}, confirm, nil)
 	if err != nil {
 		fmt.Println("run:", err)
 		return
 	}
+	status := report.Status()
+	out := report.Record()
 
 	fmt.Println("final status:", status)
 	fmt.Println("final input:", out.Input)

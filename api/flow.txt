@@ -1,12 +1,22 @@
 package flow
+  const OutcomeFailed
+  const OutcomeSkipped
+  const OutcomeSucceeded = iota
   const StepCompletedEvent = "flow.step_completed"
   func (d Definition) Roots() ([]string)
+  func (r Report) Outcome(id string) (Outcome, bool)
+  func (r Report) Outcomes() (map[string]Outcome)
+  func (r Report) Record() (machine.InOut)
+  func (r Report) Status() (machine.Status)
   func New(steps []Step, panels []Panel) (*Definition, error)
-  func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (machine.Status, machine.InOut, error)
+  func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (Report, error)
   type Confirm func(ctx context.Context, step Step) error
   type Definition struct {
 }
+  type Outcome int
   type Panel []string
+  type Report struct {
+}
   type Step struct {
   ID string
   Needs []string

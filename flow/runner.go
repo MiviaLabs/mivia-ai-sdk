@@ -37,6 +37,13 @@ type Confirm func(ctx context.Context, step Step) error
 // first, then m, then confirm, so a nil m never panics inside a
 // d-nil or m-nil check.
 //
+// Run returns a Report holding the final status, the final record,
+// and every resolved step's Outcome. On every abort, Run returns the
+// Report built so far, alongside the error. A step whose Fire fails
+// or whose Confirm is rejected is marked OutcomeFailed before the
+// return. A wave error marks no member of that wave: neither the
+// failing member nor a successful sibling.
+//
 // A panel member's Input and Output must be either an immutable
 // value, or a value the caller has already cloned per step. Run
 // copies each member's InOut struct before it fires that member's
@@ -48,31 +55,32 @@ type Confirm func(ctx context.Context, step Step) error
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	in machine.InOut, confirm Confirm, bus *events.Bus,
-) (machine.Status, machine.InOut, error) {
+) (Report, error) {
 	if d == nil {
-		return machine.Status(""), in, errorf("d must not be nil")
+		return Report{status: machine.Status(""), record: in}, errorf("d must not be nil")
 	}
 	if m == nil {
-		return machine.Status(""), in, errorf("m must not be nil")
+		return Report{status: machine.Status(""), record: in}, errorf("m must not be nil")
 	}
 	if confirm == nil {
-		return m.Initial(), in, errorf("confirm must not be nil")
+		return Report{status: m.Initial(), record: in}, errorf("confirm must not be nil")
 	}
 
 	cur := m.Initial()
 	rec := in
+	outcomes := make(map[string]Outcome)
 
 	if len(d.steps) == 0 {
-		return cur, rec, nil
+		return Report{status: cur, record: rec, outcomes: outcomes}, nil
 	}
 	if len(d.steps) == 1 {
-		return runSingleton(ctx, m, cur, rec, d.steps[0], confirm, bus)
+		var err error
+		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes)
+		return Report{status: cur, record: rec, outcomes: outcomes}, err
 	}
 
-	done := make(map[string]bool, len(d.steps))
-
-	for len(done) < len(d.steps) {
-		next, group, ok := nextReadyGroup(d.steps, d.panels, done)
+	for len(outcomes) < len(d.steps) {
+		next, group, ok := nextReadyGroup(d.steps, d.panels, outcomes)
 		if !ok {
 			// Unreachable for a same-panel Needs cycle: validatePanelIndependence
 			// rejects that shape in New. Still reachable for a cross-panel
@@ -81,33 +89,31 @@ func Run(
 			// no single panel's closure violation. New does not validate
 			// cross-panel scheduling feasibility; a future phase may close this
 			// gap.
-			return cur, rec, errorf("no ready step; graph stalled")
+			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("no ready step; graph stalled")
 		}
 
 		if group == nil {
 			var err error
-			cur, rec, err = runSingleton(ctx, m, cur, rec, next, confirm, bus)
+			cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, next, confirm, bus, outcomes)
 			if err != nil {
-				return cur, rec, err
+				return Report{status: cur, record: rec, outcomes: outcomes}, err
 			}
-			done[next.ID] = true
 			continue
 		}
 
 		if len(group) == 1 {
 			var err error
-			cur, rec, err = runSingleton(ctx, m, cur, rec, group[0], confirm, bus)
+			cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
 			if err != nil {
-				return cur, rec, err
+				return Report{status: cur, record: rec, outcomes: outcomes}, err
 			}
-			done[group[0].ID] = true
 			continue
 		}
 
 		var err error
 		cur, rec, err = runWave(ctx, m, cur, rec, group)
 		if err != nil {
-			return cur, rec, err
+			return Report{status: cur, record: rec, outcomes: outcomes}, err
 		}
 
 		// Emit event after successful wave execution
@@ -115,9 +121,27 @@ func Run(
 			emitStep(ctx, bus, step.ID)
 		}
 
-		markDone(done, group)
+		markOutcome(outcomes, group, OutcomeSucceeded)
 	}
 
+	return Report{status: cur, record: rec, outcomes: outcomes}, nil
+}
+
+// runSingletonAndMark runs step through runSingleton and marks its
+// resolution in outcomes: OutcomeSucceeded on success, OutcomeFailed
+// on error, including every chained-step failure point runSingleton
+// reports.
+func runSingletonAndMark(
+	ctx context.Context, m *machine.Definition, cur machine.Status,
+	rec machine.InOut, step Step, confirm Confirm, bus *events.Bus,
+	outcomes map[string]Outcome,
+) (machine.Status, machine.InOut, error) {
+	cur, rec, err := runSingleton(ctx, m, cur, rec, step, confirm, bus)
+	if err != nil {
+		outcomes[step.ID] = OutcomeFailed
+		return cur, rec, err
+	}
+	outcomes[step.ID] = OutcomeSucceeded
 	return cur, rec, nil
 }
 
@@ -168,8 +192,8 @@ func runSingleton(
 func runChild(
 	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
 ) (machine.Status, error) {
-	childStatus, _, err := Run(ctx, child, m, machine.InOut{}, confirm, nil)
-	return childStatus, err
+	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil)
+	return report.Status(), err
 }
 
 // fireFromChild picks the parent transition row from cur to child,
@@ -199,29 +223,29 @@ func fireFromChild(
 // returned; the scan keeps looking for another ready step so a
 // partially-ready panel never blocks the rest of the graph. Returns
 // false when no step is ready.
-func nextReadyGroup(steps []Step, panels []Panel, done map[string]bool) (Step, []Step, bool) {
+func nextReadyGroup(steps []Step, panels []Panel, outcomes map[string]Outcome) (Step, []Step, bool) {
 	for _, s := range steps {
-		if done[s.ID] {
+		if _, resolved := outcomes[s.ID]; resolved {
 			continue
 		}
-		if !needsMet(s.Needs, done) {
+		if !needsMet(s.Needs, outcomes) {
 			continue
 		}
 		p, found := panelFor(s.ID, panels)
 		if !found {
 			return s, nil, true
 		}
-		if panelReady(p, steps, done) {
+		if panelReady(p, steps, outcomes) {
 			return Step{}, panelMembers(p, steps), true
 		}
 	}
 	return Step{}, nil, false
 }
 
-// needsMet reports whether every entry of needs is already in done.
-func needsMet(needs []string, done map[string]bool) bool {
+// needsMet reports whether every entry of needs already succeeded.
+func needsMet(needs []string, outcomes map[string]Outcome) bool {
 	for _, need := range needs {
-		if !done[need] {
+		if o, ok := outcomes[need]; !ok || o != OutcomeSucceeded {
 			return false
 		}
 	}
@@ -242,13 +266,13 @@ func panelFor(id string, panels []Panel) (Panel, bool) {
 }
 
 // panelReady reports whether every member of p is ready: not already
-// done, and every entry of that member's Needs is in done.
-func panelReady(p Panel, steps []Step, done map[string]bool) bool {
+// resolved, and every entry of that member's Needs already succeeded.
+func panelReady(p Panel, steps []Step, outcomes map[string]Outcome) bool {
 	for _, id := range p {
-		if done[id] {
+		if _, resolved := outcomes[id]; resolved {
 			return false
 		}
-		if !needsMet(stepByID(steps, id).Needs, done) {
+		if !needsMet(stepByID(steps, id).Needs, outcomes) {
 			return false
 		}
 	}
@@ -278,11 +302,11 @@ func stepByID(steps []Step, id string) Step {
 	return Step{}
 }
 
-// markDone marks every member of group done, in one pass. Run calls
-// it once per successful singleton and once per successful wave.
-func markDone(done map[string]bool, group []Step) {
+// markOutcome marks every member of group with outcome o, in one
+// pass. Run calls it once per successful wave.
+func markOutcome(outcomes map[string]Outcome, group []Step, o Outcome) {
 	for _, s := range group {
-		done[s.ID] = true
+		outcomes[s.ID] = o
 	}
 }
 

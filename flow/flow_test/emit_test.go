@@ -52,7 +52,8 @@ func TestEmitStepCompletedOnLinearGraph(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -89,7 +90,8 @@ func TestEmitNilBusRunsWithoutPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -127,7 +129,7 @@ func TestEmitOnPanelWave(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -173,7 +175,8 @@ func TestEmitOnChainedStep(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 
-	status, _, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, bus)
+	report, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, bus)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -220,7 +223,7 @@ func TestEmitOnFailedGuard(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, bus)
 	if err == nil {
 		t.Fatal("expected guard rejection error, got nil")
 	}
@@ -257,7 +260,7 @@ func TestEmitNoneOnConfirmFailure(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 
-	_, _, err = flow.Run(context.Background(), d, m, machine.InOut{}, confirm, bus)
+	_, err = flow.Run(context.Background(), d, m, machine.InOut{}, confirm, bus)
 	if err == nil {
 		t.Fatal("expected confirm failure error, got nil")
 	}

@@ -123,7 +123,8 @@ func TestChainedWorkflowStatusAndAuditThread(t *testing.T) {
 	}
 	confirm, threadPtr := chainConfirm(t, priv, auditRoom, auditThread)
 
-	status, _, err := flow.Run(context.Background(), parent, m, machine.InOut{}, confirm, nil)
+	report, err := flow.Run(context.Background(), parent, m, machine.InOut{}, confirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -173,7 +174,8 @@ func TestChainedStepStatusReturnedAsParentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	status, _, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), parent, m, machine.InOut{}, noopConfirm, nil)
+	status := report.Status()
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -227,7 +229,7 @@ func TestAuditThreadJSONRoundTrip(t *testing.T) {
 		return nil
 	}
 
-	_, _, err = flow.Run(context.Background(), parent, m, machine.InOut{}, confirm, nil)
+	_, err = flow.Run(context.Background(), parent, m, machine.InOut{}, confirm, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

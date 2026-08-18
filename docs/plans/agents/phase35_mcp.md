@@ -378,11 +378,17 @@ Design notes:
   progress from the server, and only the destination of a resulting
   notification differs.
 - `CallToolWithProgress` registers `onProgress` under the minted token
-  in `Client`'s internal map before the call, and removes it after the
-  call returns, whether by success or error, so a token is never
-  reused across two different calls this package thinks of as
-  independent. A concurrent second call reusing the counter's next
-  value gets its own distinct token, so two overlapping
+  in `Client`'s internal map before the call. The entry stays in the
+  map for the `Client`'s whole lifetime; `Close` is the only call that
+  clears it. The SDK dispatches an incoming `notifications/progress`
+  message on its own goroutine, unordered against the goroutine that
+  unblocks the matching `CallTool` response, so a late notification
+  can still arrive after `CallToolWithProgress` has already returned.
+  Removing the entry synchronously on return can drop that
+  notification; retaining it until `Close` cannot, since the minted
+  token counter is monotonic and never repeats within one `Client`'s
+  lifetime. A concurrent second call reusing the counter's next value
+  gets its own distinct token, so two overlapping
   `CallToolWithProgress` calls never mix each other's notifications;
   this design's own test proves that directly.
 - Each `tools.Tool` `ListTools` returns wraps one MCP tool descriptor

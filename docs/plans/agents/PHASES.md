@@ -246,8 +246,7 @@ Its package plan lives at docs/plans/agentrun.md; no standalone
 phase 49 plan file remains.
 
 Phases 51 and 52 each add one package and depend on no unshipped
-phase; they ship independently of each other and of phase 49. Phase
-51 has shipped, so the rest of this paragraph covers phase 52.
+phase; they shipped independently of each other and of phase 49.
 
 Phase 51 (`a2aack`) has shipped. It turns a remote A2A task round
 trip into the composition layer's `AckWait` as one top-level package,
@@ -255,13 +254,26 @@ over `a2aclient`. It adds one `policy/layers.json` edge. Its package
 plan lives at docs/plans/a2aack.md; no standalone phase 51 plan file
 remains.
 
-Phase 52 is plan-only; it has not gone through plan review yet. It
-adds one package and depends on no unshipped phase.
+Phase 52 (`dispatch`) has shipped. It adds the NDJSON envelope
+endpoint and client as one top-level package: an `http.Handler` runs
+the receive ladder per line and answers with confirmed acks or
+per-line error objects; `Send` posts a batch and collects results in
+order. `EmitMessageDelivered` and `EmitMessageAcked` are best-effort
+diagnostics, not ladder stages. It depends on no unshipped phase and
+adds one `policy/layers.json` edge. Its package plan lives at
+docs/plans/dispatch.md; no standalone phase 52 plan file remains.
 
 Phase 53 is plan-only and not scheduled. It builds nothing until two
 gates open: phase 52 proving the receive ladder, and the user
 authorizing a widened `a2a-go` import exception. See
 docs/plans/agents/phase53_a2a_go_server.md.
+
+Phase 54 (`scripts/check_mutation.py`) is plan-only; it has not gone
+through plan review yet. It adds no package: one stdlib-only script
+applies text-level operator mutations per package, runs the package
+suite per mutant, and checks a kill floor. It stays a separate
+`make mutation` tier; it never joins `verify-fast`. See
+docs/plans/agents/phase54_mutation_kit.md.
 
 ## Gate interactions
 

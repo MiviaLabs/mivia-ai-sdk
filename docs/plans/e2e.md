@@ -103,20 +103,39 @@ That contract belongs to flow's own suite.
 
 ## Growth backlog
 
-Later scenarios land as their own files, one commit each. The
-backlog, in dependency order:
+Later scenarios land as their own files, one commit each. The list
+is ranked by value; each closes a confirmed gap.
 
-- Two agents over HTTP: a `dispatch` endpoint answering for one
-  agent, `Send` from the other, both buses observed. Lands with
-  phase 52.
-- A remote A2A ack: `a2aack` over `a2aclient`'s loopback transport,
-  wired as one `AckWait` in an `agentrun` run.
-- MCP tools behind the ack chain: an in-process MCP server mapped
-  into the registry, then driven by one run.
-- Scheduled liveness: a `scheduler` job feeding a `room` message
-  with `heartbeat` silence detected on timeout.
-- Budget exhaustion mid-composition: a run that trips at step two
-  and leaves step one's artifacts durable.
+- Late admission blocks: a dependent admitted after its need failed
+  returns `ErrTaskBlocked` and never runs work. The ledger now blocks
+  at admission; this scenario holds the line end to end.
+- Orchestrator over a2aack: a loopback A2A task wired as
+  `agentrun.Options.Wait`, between two local steps, with the remote
+  artifact feeding the next step through `PayloadOf`.
+- Fallback catches a Fire failure under the real chain: a machine
+  Guard fails a step with retries, a fallback reads `FailureFrom`,
+  and a sibling escalates through `Ask`.
+- Two agents over HTTP: a `dispatch` endpoint backed by one real
+  `agentrun` runner, `Send` from another, one wrong-room line
+  mid-stream. Lands with phase 52.
+- Budget trips at step two: step one's artifacts and store ref
+  survive, step two never acks.
+- Stale lease takeover around real work: the fenced loser's
+  `Complete` returns `ErrFenced`; the taker's lands.
+- A validated plan still aborts: a route-excluded dependent whose
+  row exists only for the chosen sibling; the run error names the
+  missing row. Pins the disclosed limit.
+- Scheduled liveness: a scheduler job drives a run under a heartbeat
+  monitor; a stalled ask reports dead on timeout.
+- Eviction under the chain: the store evicts step one's blob; the
+  run completes and `PayloadOf` still answers.
+
+A subagent adapter is a missing concept, not a scenario: nothing
+exposes a runner or agent as a `tools.Tool`, so an orchestrator
+cannot place a subordinate agent in its registry. `flow.Sub` covers
+in-process child graphs; `a2aack` covers one remote step. The
+adapter, discovery-driven routing, and a result contract beyond one
+string need their own phase.
 
 ## Tests
 

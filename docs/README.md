@@ -43,6 +43,7 @@ every package's exported surface, and runnable-style walkthroughs.
 - [packages/agentrun.md](packages/agentrun.md) — the config-struct composition layer: one `Options` value validated and wired into a `Runner` that drives `agent.Run`.
 - [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
 - [packages/e2e.md](packages/e2e.md) — the end-to-end scenario suite: real high-level blocks wired together, one full run per scenario, outputs asserted across the handoffs.
+- [packages/subagent.md](packages/subagent.md) — the SDK's blocks as tools: a runner becomes a spawnable subagent, `RunAll` runs several at once, internal tools expose the blocks, and a signed-message mailbox carries both directions.
 
 ## Examples
 

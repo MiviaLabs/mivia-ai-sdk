@@ -24,6 +24,7 @@
     "provider": [],
     "room": ["envelope", "heartbeat"],
     "scheduler": ["events"],
+    "subagent": ["agent", "agentrun", "channel", "discovery", "envelope", "events", "flow", "heartbeat", "identity", "ledger", "machine", "memory", "provider", "room", "scheduler", "taskrun", "tools", "trigger"],
     "taskrun": ["ledger"],
     "tools": [],
     "trigger": []

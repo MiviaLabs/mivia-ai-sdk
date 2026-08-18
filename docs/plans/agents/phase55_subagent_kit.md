@@ -1,7 +1,7 @@
 # Phase 55: subagent kit
 
-Status: future. Plan-only; it has not gone through plan review yet.
-Depends on no unshipped phase. It adds one new top-level package.
+Status: shipped. The package plan lives at docs/plans/subagent.md;
+no standalone deviation from this contract remains.
 
 ## Why this phase exists
 
@@ -35,9 +35,19 @@ Inside:
   covers callers without a flow.
 - Optional internal tools, each a plain `tools.Tool` the caller
   registers: `FlowTool` runs a `flow.Definition` against a machine
-  and reports the final status and outcomes; `LedgerTool` admits,
-  claims, and completes tasks through a bound `ledger.Ledger`;
+  and reports the final status; `LedgerTool` records one completed
+  task through the full taskrun ceremony and reports key state;
   `MemoryTool` puts and gets blobs through a bound `memory.Store`.
+- Further internal tools over the SDK's own blocks: `RoomTool`
+  manages room membership, `SchedulerTool` schedules one bound job,
+  `HeartbeatTool` reports liveness, `DiscoveryTool` matches one
+  capability card, `ProviderTool` runs one caller-supplied model
+  turn, `TriggerTool` fires a named trigger, and `ChannelTool` asks
+  a human through a Notifier.
+- The message plane: a bounded `Mailbox` of signed messages,
+  `SendTool` signing with a caller identity, and `InboxTool`
+  draining payloads. Orchestrators, sibling subagents, and human
+  wiring all use the same surface, in both directions.
 - Observation: every spawned run forwards its events onto a
   caller-supplied bus, so a parent observes subordinate runs live.
 - A spawn-depth guard: the kit carries a depth counter in ctx;
@@ -48,8 +58,9 @@ Inside:
 
 Outside:
 
-- Any scheduler of its own. Parallelism is a flow panel wave or
-  `RunAll`; no new timers, pools, or queues.
+- Any scheduler of its own. Parallelism is `RunAll`; no new timers,
+  pools, or queues. A flow panel cannot drive tools, because waves
+  never reach the ack chain.
 - Any new trust boundary. A subagent tool runs in-process under the
   parent's process; remote boundaries stay with `a2aack` and
   `dispatch`.

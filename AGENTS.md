@@ -107,6 +107,13 @@ Go SDK for building AI agents. Module:
   an event recorder, and a thread-capturing resolver. The scenarios
   in `e2e/e2e_test/` wire real high-level blocks together and assert
   each run's outputs. See docs/plans/e2e.md.
+- `subagent/` — the SDK's blocks as tools: `AsTool` wraps a built
+  runner as a spawnable subagent tool, `RunAll` joins concurrent
+  spawns behind a ctx depth guard, internal tools expose flow,
+  ledger, memory, room, scheduler, heartbeat, discovery, provider,
+  trigger, and channel blocks, and a signed-message `Mailbox` with
+  `SendTool` and `InboxTool` carries both directions between
+  orchestrators, subagents, and humans. See docs/plans/subagent.md.
 - `durablefence/` — a leaf, test-only conformance kit for claim,
   takeover, and fence invariants. Imported only from another
   package's `_test` subdirectory, for example

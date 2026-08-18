@@ -275,12 +275,12 @@ suite per mutant, and checks a kill floor. It stays a separate
 `make mutation` tier; it never joins `verify-fast`. See
 docs/plans/agents/phase54_mutation_kit.md.
 
-Phase 55 (`subagent`) is plan-only; it has not gone through plan
-review yet. It adds one package: `AsTool` wraps a built runner as a
-`tools.Tool`, `RunAll` joins concurrent spawns, and `FlowTool`,
-`LedgerTool`, and `MemoryTool` expose SDK blocks as optional
-internal tools. A ctx-carried depth guard bounds recursion. See
-docs/plans/agents/phase55_subagent_kit.md.
+Phase 55 (`subagent`) has shipped. It adds one package: `AsTool`
+wraps a built runner as a `tools.Tool`, `RunAll` joins concurrent
+spawns behind a ctx-carried depth guard, ten internal tools expose
+the SDK's blocks, and a signed-message mailbox carries both
+directions between orchestrators, subagents, and humans. Its
+package plan lives at docs/plans/subagent.md.
 
 ## Gate interactions
 

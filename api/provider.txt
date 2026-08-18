@@ -1,0 +1,68 @@
+package provider
+  const RoleAssistant = "assistant"
+  const RoleSystem = "system"
+  const RoleTool = "tool"
+  const RoleUser = "user"
+  func (c Chunk) Validate() (error)
+  func (m Message) Validate() (error)
+  func RunTurn(ctx context.Context, c Completer, req Request) (Response, error)
+  type Chunk struct {
+  Delta string
+  ToolCallDelta *ToolCall
+  Done bool
+  Usage Usage
+  FinishReason string
+  Err error
+}
+  type Completer interface {
+	Name() string
+	Chat(ctx context.Context, req Request) (Response, error)
+	ChatStream(ctx context.Context, req Request) (<-chan Chunk, error)
+}
+  type ContextAccountant interface {
+	ContextWindow() int
+}
+  type Message struct {
+  Role Role
+  Content string
+  ToolCallID string
+}
+  type ReasoningPolicy interface {
+	ReasoningEffort() string
+}
+  type Request struct {
+  Model string
+  Messages []Message
+  Tools []ToolDefinition
+  Stream bool
+}
+  type Response struct {
+  Model string
+  Message Message
+  ToolCalls []ToolCall
+  Usage Usage
+  FinishReason string
+}
+  type Role string
+  type ToolCall struct {
+  Index int
+  ID string
+  Name string
+  Arguments []byte
+}
+  type ToolDefinition struct {
+  Name string
+  Description string
+  Schema []byte
+}
+  type Usage struct {
+  PromptTokens int
+  CompletionTokens int
+  TotalTokens int
+  CachedTokens int
+}
+  var ErrChunkErrDoneConflict
+  var ErrStreamClosedEarly
+  var ErrToolCallIDRequired
+  var ErrToolCallIDUnexpected
+  var ErrUnknownRole

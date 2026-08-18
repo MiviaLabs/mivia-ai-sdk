@@ -1,20 +1,21 @@
 # Phase 30: flow retry
 
-Status: future. Depends on phases 21 through 23
-(`docs/plans/agents/phase21_flow_outcomes.md` (shipped),
-`docs/plans/agents/phase22_flow_routing.md`,
+Status: future. Depends on phases 22 and 23
+(`docs/plans/agents/phase22_flow_routing.md`,
 `docs/plans/agents/phase23_flow_fallback.md`) landing first, in phase
-order. Those phases add `Outcome`, `Report`, `Admission`, `Route`, and
-the fallback path. As of this writing, `flow`'s tree (`flow/runner.go`,
-`api/flow.txt`, `flow/flow_test/`) carries none of that vocabulary; it
-exists only in the phase 21-23 plan files, themselves marked
-"Status: ready to build", but not yet shipped. This phase is not
-independently buildable today.
+order. Phase 21 shipped: `Outcome` and `Report` already exist in
+`flow`'s code and locked API; see `docs/plans/flow.md`. Phases 22 and
+23 add `Admission`, `Route`, and the fallback path. As of this
+writing, `flow`'s tree (`flow/runner.go`, `api/flow.txt`,
+`flow/flow_test/`) carries none of that vocabulary; it exists only in
+the phase 22-23 plan files, themselves marked "Status: ready to
+build", but not yet shipped. This phase is not independently
+buildable today.
 Per `docs/plans/agents/PHASES.md`, a phase does not pull in a later
-phase, so a builder must not start this phase until phases 21, 22, and
-23 are shipped and `Outcome`, `Report`, `Admission`, `Route`, and
-`FailureFrom` exist in `flow`'s code and locked API. This phase must
-keep every one of their behaviors intact.
+phase, so a builder must not start this phase until phases 22 and 23
+are shipped and `Admission`, `Route`, and `FailureFrom` exist in
+`flow`'s code and locked API. This phase must keep every one of their
+behaviors intact.
 
 ## Goal
 

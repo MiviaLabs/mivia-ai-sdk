@@ -5,10 +5,9 @@ Status: shipped. `Registry.Remove` was added for symmetry with
 `ExecutionClass`, `ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`,
 `PrivilegedTool`, `Scope`, `ScopeOptions`, `NewScope`,
 `ExecutionProfileOf`, `ResultBudgetOf`, `IsPrivileged`, `RunScoped`, and
-`ErrScopeDenied` were added by phase 31, folded into this plan the way
-phase 14 was folded in when it shipped. See
-`docs/plans/agents/phase31_tools_capabilities.md` for the design
-history.
+`ErrScopeDenied` extend the execution-risk surface: optional markers a
+`Tool` may implement, and a `Scope` that narrows which tools a run may
+invoke.
 
 ## Goal
 
@@ -46,8 +45,8 @@ every caller existed.
 
 A tool that does not implement `ProfiledTool` is unclassified.
 `ExecutionProfileOf` reports `ExecutionClassUnclassified`, the zero
-value, for such a tool. Every tool shipped before phase 31 stays valid
-with no change.
+value, for such a tool. Every tool that predates the execution-risk
+surface stays valid with no change.
 
 `Scope` narrows only. Built once from `ScopeOptions{Allowlist,
 ExtraDenylist}` through `NewScope`. `ExtraDenylist` always removes a
@@ -145,7 +144,7 @@ caller's type assertion instead.
 - `var ErrScopeDenied` — `RunScoped` returns this when `scope.Allowed`
   returns false for the resolved tool.
 
-### Execution profile and scope (phase 31)
+### Execution profile and scope
 
 - `type ExecutionClass string` — the enum. `Validate` enforces the
   set.
@@ -240,7 +239,7 @@ Test files live in `tools/tools_test/`, an external test package.
   hundred tools. Target under one microsecond per call. State the
   allocation budget for one `Run` call.
 
-### Execution profile and scope tests (phase 31)
+### Execution profile and scope tests
 
 - `execution_profile_test.go` — red-green cases for
   `ExecutionProfileOf`, `ResultBudgetOf`, and `IsPrivileged`. A tool
@@ -319,6 +318,5 @@ extended `viol_enum.go`/`clean_enum.go` probe pair, proving the rule
 fires on an `ExecutionClass("x")` violation and stays silent on the
 declared constants, alongside the existing `Intent` case.
 
-`docs/packages/tools.md` is amended in the same change to add the
-phase 31 symbols, the concurrency contract for `RunScoped`, and a usage
-note on `Scope`.
+`docs/packages/tools.md` documents the execution-risk symbols, the
+concurrency contract for `RunScoped`, and a usage note on `Scope`.

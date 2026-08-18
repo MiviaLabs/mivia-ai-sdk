@@ -3,7 +3,7 @@
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, tools, mcp, ledger,
-memory, and agent. Each package covers one concern and composes
+memory, provider, and agent. Each package covers one concern and composes
 through its exported API. This doc tree covers the wire protocol, the
 module map, every package's exported surface, and runnable-style
 walkthroughs.
@@ -29,6 +29,7 @@ walkthroughs.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
+- [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, and the request and response types.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 
 ## Examples

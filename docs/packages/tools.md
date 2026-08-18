@@ -134,10 +134,10 @@ these fields when it wires a `Registry` into `agent.Run`.
 - [room.md](room.md) — `Room.Admit`/`Room.Remove` is the precedent
   for `Registry.Add`/`Registry.Remove`'s add-and-remove symmetry.
 - `tools` imports no other package in this module.
-- `docs/plans/agents/phase32_context_budget.md` — the future
-  `contextbudget.Limits` type bounds a whole model call's context.
-  `ResultBudgetTool.MaxResultBytes` bounds one tool call's output. The
-  two types do not import each other.
+- [contextbudget.md](../plans/contextbudget.md) — `contextbudget.Limits`
+  bounds a whole model call's context. `ResultBudgetTool.
+  MaxResultBytes` bounds one tool call's output. The two types do not
+  import each other.
 
 ## Usage
 

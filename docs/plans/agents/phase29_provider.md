@@ -4,7 +4,10 @@ Status: ready to build. Independent of every other phase. No phase
 before it ships an LLM binding; `agent` (phase 12, phase 13) composes
 identity, discovery, and flow, but calls no model. This phase closes
 that gap with an interface only. Wiring `provider` into `agent` is
-deferred to a later phase.
+deferred to a later phase. The package plan
+`scripts/check_plan.py` requires is docs/plans/provider.md; this file
+is the phase contract with the full design reasoning, the same split
+docs/plans/memory.md and docs/plans/agents/phase15_memory.md use.
 
 ## Goal
 
@@ -72,23 +75,57 @@ when true, it calls `c.ChatStream`, drains the channel, and returns
 one aggregated `Response`. `RunTurn` is a package function, not a
 `Completer` method, because its logic depends only on `Chat` and
 `ChatStream`; every implementation would otherwise hand-write the same
-dispatch and aggregation code. `provider` ships one implementation and
-becomes its own first caller of `Completer`, the same way
-`tools.Registry` is a real caller of `Tool.Run`. This shrinks
-`Completer` to two required methods plus `Name`.
+dispatch and aggregation code. `RunTurn` becomes `provider`'s own
+first caller of `Completer`, calling `Chat` and `ChatStream` the same
+way `tools.Registry.Run` calls `Tool.Run`. This shrinks `Completer`
+to two required methods plus `Name`.
 
 `RunTurn`'s aggregation step merges `Chunk` values into one `Response`
 following the same rules `Chunk.ToolCallDelta` documents below:
 `Delta` values concatenate into `Response.Message.Content`; tool-call
 deltas merge by `Index` into `Response.ToolCalls`; the final chunk's
-`Usage` becomes `Response.Usage`. `RunTurn` returns the first error
-either method returns; on error it returns the zero `Response`
-alongside that error, unwrapped. A stream can also fail after chunks
-have already flowed: when a drained `Chunk` carries a non-nil `Err`,
-`RunTurn` stops draining at that chunk and returns the zero `Response`
-alongside that `Err`, unwrapped. It discards any partial aggregation
-built from chunks drained before the failing one; a mid-stream failure
-never returns a partial `Response`.
+`Usage` becomes `Response.Usage`; the final chunk's `FinishReason`
+becomes `Response.FinishReason`. Aggregation sets
+`Response.Message.Role = RoleAssistant` unconditionally; `Chunk`
+carries no `Role` field, since every streamed chunk answers the
+caller's turn and a model never streams any role but the assistant's.
+`RunTurn` returns the first error either method returns; on error it
+returns the zero `Response` alongside that error, unwrapped. A stream
+can also fail after chunks have already flowed: when a drained
+`Chunk` carries a non-nil `Err`, `RunTurn` stops draining at that
+chunk and returns the zero `Response` alongside that `Err`,
+unwrapped. It discards any partial aggregation built from chunks
+drained before the failing one; a mid-stream failure never returns a
+partial `Response`.
+
+### `RunTurn` validates `Request.Messages` before it dispatches
+
+`RunTurn` calls `Message.Validate` on every entry of `req.Messages`,
+in order, before it calls either `Chat` or `ChatStream`. The first
+invalid entry stops validation; `RunTurn` returns the zero `Response`
+and that `Validate` error, unwrapped. `RunTurn` calls neither
+`Completer` method when validation fails, so a fake `Completer` in a
+test records no call for an invalid request. This makes `RunTurn`
+one of the callers `Message.Validate`'s doc comment above promises;
+the other caller is any concrete `Completer` implementation outside
+this SDK, which is free to call `Validate` again or trust `RunTurn`'s
+check.
+
+### `RunTurn` and context cancellation
+
+`RunTurn` selects on `ctx.Done()` while it drains `ChatStream`'s
+channel. On every iteration of the drain loop, `RunTurn` selects
+between the next `Chunk` and `ctx.Done()`; whichever is ready first
+wins. When `ctx` is done before the channel yields another `Chunk` or
+closes, `RunTurn` stops draining immediately, discards any partial
+aggregation, and returns the zero `Response` alongside `ctx.Err()`.
+This matches `agent`'s existing cancellation-respecting pattern (see
+`AckWait`): a caller-supplied `ctx` always bounds a `RunTurn` call,
+even against a `Completer` whose channel never closes. `RunTurn`
+does not call `ctx.Done()` before starting the drain of a non-nil
+channel that `ChatStream` already returned; a `Completer` that wants
+its own pre-call cancellation check performs it inside `Chat` or
+`ChatStream` before it returns.
 
 ### The optional extension interfaces
 
@@ -129,12 +166,24 @@ The surface below lands in `api/provider.txt` via `make api-update`.
   requires a non-empty `ToolCallID`, since `ToolCallID`'s only purpose
   is matching a tool reply to its call.
 - `func (m Message) Validate() error` enforces the three rules the
-  field above documents: a non-empty `ToolCallID` on a message whose
-  `Role` is not `RoleTool` is an error; an empty `ToolCallID` on a
-  `RoleTool` message is an error; a `Role` outside the four declared
-  constants is an error. `Encode`-style callers run `Validate` before
-  they trust a `Message`; `provider` defines no `Encode` of its own,
-  so `RunTurn` and any concrete `Completer` are the callers.
+  field above documents, each with its own sentinel error, following
+  the sentinel-error precedent `room` (`ErrNotMember`), `tools`
+  (`ErrNilTool`), and `memory` (`ErrBudgetExceeded`) already set:
+  `ErrToolCallIDUnexpected` when `ToolCallID` is non-empty on a
+  message whose `Role` is not `RoleTool`; `ErrToolCallIDRequired`
+  when `ToolCallID` is empty on a `RoleTool` message;
+  `ErrUnknownRole` when `Role` is outside the four declared
+  constants. `Validate` checks `Role` legality first: a `Role` outside
+  the four constants always returns `ErrUnknownRole`, regardless of
+  `ToolCallID`; only for one of the four known roles does `Validate`
+  then check the `ToolCallID` pairing rule. `Encode`-style callers run `Validate` before they trust
+  a `Message`; `provider` defines no `Encode` of its own, so
+  `RunTurn` and any concrete `Completer` are the callers. `RunTurn`
+  is a required caller: it calls `Validate` on every entry of
+  `req.Messages` before it dispatches to `Chat` or `ChatStream`. See
+  "`RunTurn` validates `Request.Messages` before it dispatches" above
+  for the exact contract. A caller checks the specific rule with
+  `errors.Is(err, provider.ErrUnknownRole)` and so on.
 - `type ToolDefinition struct { Name string; Description string; Schema []byte }`
   names one tool a model may call. `Schema` holds the tool's
   parameter schema as raw bytes; `provider` does not parse it, so it
@@ -159,16 +208,37 @@ The surface below lands in `api/provider.txt` via `make api-update`.
   actually served the request, which may differ from `Request.Model`
   on a provider that redirects to a fallback. `ToolCalls` is empty
   when the model returned plain text.
-- `type Chunk struct { Delta string; ToolCallDelta *ToolCall; Done bool; Usage Usage; Err error }`
+- `type Chunk struct { Delta string; ToolCallDelta *ToolCall; Done bool; Usage Usage; FinishReason string; Err error }`
   is one increment of a streamed response. `Done` is true only on the
-  final chunk that completes without error; `Usage` is the zero value
-  until then. `ToolCallDelta` is non-nil only on a chunk that carries
-  a tool-call fragment. `Err` is nil on every chunk except a terminal
-  chunk that reports a mid-stream failure; when a chunk carries a
-  non-nil `Err`, the channel closes after it and no further chunk
-  follows, whether or not `Done` was ever true for that stream. A
-  chunk never carries both a non-nil `Err` and `Done == true`; a
+  final chunk that completes without error; `Usage` and
+  `FinishReason` are the zero value until then, the same "zero until
+  Done" pattern. `ToolCallDelta` is non-nil only on a chunk that
+  carries a tool-call fragment. `Err` is nil on every chunk except a
+  terminal chunk that reports a mid-stream failure; when a chunk
+  carries a non-nil `Err`, the channel closes after it and no further
+  chunk follows, whether or not `Done` was ever true for that stream.
+  A chunk never carries both a non-nil `Err` and `Done == true`; a
   failure chunk reports failure instead of completion.
+- `func (c Chunk) Validate() error` enforces the rule the paragraph
+  above states: a `Chunk` with both `Err != nil` and `Done == true`
+  is invalid, and `Validate` returns `ErrChunkErrDoneConflict` for it,
+  following the same sentinel-error precedent named above. This is
+  the only rule `Validate` enforces for phase 29; `RunTurn`'s drain
+  loop calls `Validate` on every `Chunk` it reads before it applies
+  the chunk's `Err` or `Done` value, and returns a `Validate` error
+  unwrapped, in place of the zero `Response`, the same way it returns
+  a `Chat` or `ChatStream` error.
+
+  **Premature closure.** A `ChatStream` channel can close without
+  ever sending a `Chunk` with `Done == true` or a non-nil `Err`, when
+  the streaming goroutine on the `Completer` side exits early or
+  crashes. `RunTurn`'s drain loop treats that closure as a stream
+  failure, not a success: it returns the zero `Response` alongside
+  `ErrStreamClosedEarly`, discarding any `Delta` or `ToolCallDelta`
+  fragments already aggregated. This holds the principle stated
+  above: a mid-stream failure never returns a partial `Response`, and
+  a channel closing without a terminal chunk counts as a mid-stream
+  failure.
 
   **Merge rule.** A model may stream two or more tool calls
   concurrently in one turn; a vendor API disambiguates fragments by
@@ -205,9 +275,17 @@ Test files live in `provider/provider_test/`:
     non-empty `ToolCallID`; `RoleSystem` and `RoleAssistant` with
     empty `ToolCallID`; each asserts `Validate() == nil`.
   - invalid: `RoleUser` (and each non-tool role) with a non-empty
-    `ToolCallID`; `RoleTool` with an empty `ToolCallID`; a `Role`
-    value outside the four constants (a fabricated string) with any
-    `ToolCallID`; each asserts `Validate()` returns a non-nil error.
+    `ToolCallID`, asserting `errors.Is(err,
+    provider.ErrToolCallIDUnexpected)`; `RoleTool` with an empty
+    `ToolCallID`, asserting `errors.Is(err,
+    provider.ErrToolCallIDRequired)`; a `Role` value outside the four
+    constants (a fabricated string) with any `ToolCallID`, asserting
+    `errors.Is(err, provider.ErrUnknownRole)`.
+  `Chunk.Validate` cases, table-driven:
+  - valid: `Err == nil, Done == false`; `Err == nil, Done == true`;
+    `Err != nil, Done == false`; each asserts `Validate() == nil`.
+  - invalid: `Err != nil, Done == true`; asserts `errors.Is(err,
+    provider.ErrChunkErrDoneConflict)`.
 - `completer_test.go` — a fake `Completer` implemented in the test
   package. Cases:
   - `Chat` on the fake returns a fixed `Response`; assert the
@@ -226,6 +304,22 @@ Test files live in `provider/provider_test/`:
     path; the fake records which path ran, so the test asserts
     routing, not only the result.
   - `RunTurn` with `Request.Stream == true`, driven against a fake
+    whose `ChatStream` channel yields three `Delta`-only `Chunk`
+    values (no `ToolCallDelta`) terminated by a fourth `Chunk` with
+    `Done == true`: assert `Response.Message.Content` equals the
+    three `Delta` strings concatenated in order, and
+    `Response.ToolCalls` is empty. This proves plain-text streaming
+    aggregation through `RunTurn`, distinct from the tool-call merge
+    case below.
+  - `RunTurn` with `Request.Stream == true`, driven against a fake
+    whose `ChatStream` channel yields a single invalid `Chunk`
+    (`Err != nil` and `Done == true` on the same value): assert
+    `RunTurn` returns an error satisfying `errors.Is(err,
+    provider.ErrChunkErrDoneConflict)` and the zero `Response`. This
+    proves `RunTurn`'s drain loop calls `Chunk.Validate` on a chunk
+    read from a real `Completer`, not only on hand-built values in
+    `types_test.go`.
+  - `RunTurn` with `Request.Stream == true`, driven against a fake
     that streams two concurrent tool calls: the fake's `ChatStream`
     yields `Chunk` values over a real channel whose `ToolCallDelta`
     fragments interleave two `Index` values, first fragment of each
@@ -235,20 +329,50 @@ Test files live in `provider/provider_test/`:
     req)` directly — it does not drain or merge the channel itself —
     and asserts the returned `Response.ToolCalls` holds exactly two
     entries, ordered by ascending `Index`, each with concatenated
-    `Arguments` and the first-seen `ID`/`Name`. This exercises
+    `Arguments` and the first-seen `ID`/`Name`, and asserts
+    `Response.Message.Role == RoleAssistant`. This exercises
     `RunTurn`'s own merge implementation, not a copy of the rule
     written in the test.
+  - `RunTurn` with `Request.Stream == true`, driven against a fake
+    whose channel yields the same two concurrent tool calls as above
+    but with the `Index 1` fragments arriving before the `Index 0`
+    fragments: asserts the returned `Response.ToolCalls` is still
+    ordered by ascending `Index` (`[0, 1]`, not arrival order `[1,
+    0]`). This exercises the merge's explicit sort, distinct from the
+    in-order case above, which alone cannot tell a sorted result from
+    an unsorted one that happens to arrive in order.
   - `RunTurn` with `Request.Stream == true`, driven against a fake
     whose channel yields two ordinary `Delta` chunks and then a
     terminal `Chunk` with a non-nil `Err` and no further chunks
     (mid-stream failure after partial output already flowed): assert
     `RunTurn` returns that exact `Err` unwrapped and the zero
     `Response`, discarding the two `Delta` chunks already drained.
+  - `RunTurn` with `Request.Stream == true`, driven against a fake
+    whose channel yields one or two ordinary `Delta` chunks and then
+    closes without a terminal `Chunk` (no `Done == true`, no non-nil
+    `Err`): assert `RunTurn` returns an error satisfying
+    `errors.Is(err, provider.ErrStreamClosedEarly)` and the zero
+    `Response`. This proves premature channel closure is a failure,
+    not a silent partial success.
   - `RunTurn` propagates a `Chat` error and a `ChatStream`
     before-first-chunk error unchanged: same two failing fakes as in
     the `Chat`/`ChatStream` cases above, called through `RunTurn`
     with `Stream` false and true; assert the returned error equals
     the fake's sentinel and `Response` is the zero value.
+  - `RunTurn` given a `Request.Messages` entry that fails
+    `Message.Validate` (a `RoleTool` message with an empty
+    `ToolCallID`) returns that `Validate` error unwrapped and the
+    zero `Response`; the fake `Completer` records no call to `Chat`
+    or `ChatStream`, proving `RunTurn` validates before it dispatches.
+  - `RunTurn` against a fake whose `ChatStream` channel never closes
+    and never yields another `Chunk` after the first: the test builds
+    a `context.WithTimeout` (or a manually cancelled context) around
+    the `RunTurn` call, cancels it while the drain is blocked waiting
+    on the channel, and asserts `RunTurn` returns promptly with
+    `ctx.Err()` and the zero `Response`. The test itself wraps the
+    whole case in a short `time.After`-based timeout so a regression
+    in `RunTurn`'s cancellation select fails the test instead of
+    hanging the suite.
   - A second fake implements `ContextAccountant` and
     `ReasoningPolicy`; a third fake implements neither. Assert the
     type assertion succeeds on the second fake and fails cleanly
@@ -269,6 +393,13 @@ Test files live in `provider/provider_test/`:
 
 ## Verification
 
+- This phase adds `docs/plans/provider.md`, the canonical package
+  plan `scripts/check_plan.py` reads, in the same change as the code.
+  This phase doc (`docs/plans/agents/phase29_provider.md`) is the
+  phase contract with the full design reasoning; `docs/plans/memory.md`
+  and `docs/plans/agents/phase15_memory.md` are the precedent for the
+  split. `docs/plans/provider.md` must exist before `make api-update`
+  runs, matching the memory precedent's ordering.
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.
 - The coverage floor of 85 holds for `provider` and for the total.
@@ -276,12 +407,17 @@ Test files live in `provider/provider_test/`:
   list, landed with this plan before the code.
 - `api/provider.txt` lands via `make api-update` in the same change
   as the code, holding `Completer`, `RunTurn`, `Role` and its
-  constants, `Message`, `Message.Validate`, `ToolDefinition`,
-  `ToolCall` (with `Index`), `Usage`, `Request`, `Response`, `Chunk`,
+  constants, `Message`, `Message.Validate`, `ErrToolCallIDRequired`,
+  `ErrToolCallIDUnexpected`, `ErrUnknownRole`, `ToolDefinition`,
+  `ToolCall` (with `Index`), `Usage`, `Request`, `Response` (with
+  `FinishReason`), `Chunk` (with `FinishReason`), `Chunk.Validate`,
+  `ErrChunkErrDoneConflict`, `ErrStreamClosedEarly`,
   `ContextAccountant`, and `ReasoningPolicy`.
 - `docs/architecture.md` gains a `provider/` bullet describing the
   leaf interface and its zero internal imports, in the same change as
   the code.
+- `AGENTS.md`'s Layout section gains a `provider/` line describing the
+  package in one sentence, in the same change as the code.
 - `docs/packages/provider.md` documents the exported surface, matching
   the docs-maintenance convention already used for `envelope` and
   `room`.

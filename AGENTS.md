@@ -50,6 +50,10 @@ Go SDK for building AI agents. Module:
 - `memory/` — the shared context store: Store, New, Put, Get, keyed
   by `envelope.ContextRef`. A size budget evicts the oldest-inserted
   blobs. Imports envelope only.
+- `provider/` — the model provider interface: Completer, RunTurn,
+  Message, Request, Response, Chunk. A leaf package; no internal
+  imports. No concrete client ships in this SDK; a caller supplies its
+  own `Completer`.
 - `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.

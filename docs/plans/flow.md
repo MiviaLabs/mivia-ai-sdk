@@ -1,13 +1,12 @@
 # Plan: flow
 
 Status: the step graph, the sequential runner, the parallel panel
-waves, and chaining ship. Three more phases are planned: step
-outcomes, branch routing, and failure routing. This plan expands
+waves, chaining, and per-step outcomes ship. Two more phases are
+planned: branch routing and failure routing. This plan expands
 the earlier step-list design into a step runner for v1. Rationale in
-docs/research-state-machine.md. Phase 21 owns the
-per-step outcomes and the run `Report`; see
-docs/plans/agents/phase21_flow_outcomes.md. Phase 22 owns the
-admission rule, the skip semantics, and the branch step; see
+docs/research-state-machine.md. `Run` returns a `Report` holding every
+step's terminal `Outcome`, replacing the boolean done map. Phase 22
+owns the admission rule, the skip semantics, and the branch step; see
 docs/plans/agents/phase22_flow_routing.md. Phase 23 owns the fallback
 path and the failure context; see
 docs/plans/agents/phase23_flow_fallback.md. Phase 25 owns the
@@ -30,14 +29,16 @@ together. A chained step runs a nested workflow as one step. The
 runner detects cycles with Kahn's algorithm before any step runs. The
 consumer is real; another system needs these capabilities now.
 
-Inside, from phases 21 through 23: step outcomes, an admission rule,
-branch routing, and failure routing. Every step ends in one terminal
-state: succeeded, failed, or skipped. A step declares which
-prerequisite outcomes admit it. A branch step picks its successors at
-run time from its declared dependents. A fallback step admits on a
-failed need and receives the failure context. The status walk
-advances only through executed steps. A skipped step never fires a
-transition.
+Every step ends in one terminal state: succeeded, failed, or skipped.
+`Report` exposes each step's `Outcome` and the run's final status and
+record.
+
+Inside, from phases 22 and 23: an admission rule, branch routing, and
+failure routing. A step declares which prerequisite outcomes admit it.
+A branch step picks its successors at run time from its declared
+dependents. A fallback step admits on a failed need and receives the
+failure context. The status walk advances only through executed
+steps. A skipped step never fires a transition.
 
 Inside, from phase 25: a `Checkpoint` of the current status, the
 record, and the completed step IDs; a pause rule keyed on context
@@ -76,17 +77,21 @@ pattern sources.
   definition and reject cycles with Kahn's algorithm.
 - `type Confirm func(ctx context.Context, step Step) error` as the ack
   gate a caller supplies.
-- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (machine.Status, machine.InOut, error)`
-  to execute the graph and return the final status and record. Phase 21
-  changes the return to `Report`; the six parameters, including `bus`,
-  stay unchanged.
+- `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus) (Report, error)`
+  executes the graph and returns a `Report` in place of the earlier
+  status and record pair; the six parameters, including `bus`, stay
+  unchanged.
 - A chained step nests another Definition as one step, through
   `Step.Sub`.
 - `type Outcome int` with `OutcomeSucceeded`, `OutcomeFailed`, and
-  `OutcomeSkipped` as the terminal states. This lands in phase 21.
-- `type Report struct` with `Status`, `Record`, `Outcome`, and
-  `Outcomes` accessors. This lands in phase 21. `Run` returns it in
-  place of the status and record pair.
+  `OutcomeSkipped` as the terminal states. No producer of
+  `OutcomeSkipped` exists yet; it ships now because the enum is one
+  type and phase 22 needs it.
+- `type Report struct` with unexported fields, and `Status()`,
+  `Record()`, `Outcome(id string) (Outcome, bool)`, and
+  `Outcomes() map[string]Outcome` accessors. `Outcomes` returns a copy;
+  caller mutation cannot change the report. `Run` returns it in place
+  of the status and record pair.
 - `type Admission int` with `AdmissionOnFinished` as the zero-value
   default, `AdmissionOnSucceeded`, and `AdmissionOnFailed`. `Step`
   gains `When Admission`. The default admits a skipped or succeeded
@@ -154,8 +159,8 @@ The policy/layers.json row for flow is `"flow": ["events", "machine"]`.
 The `events` import carries the step outcome bus emit.
 `flow` never imports `envelope`. The audit thread stays caller-owned.
 The runner enforces the gate; the caller provides the transport.
-Phases 21 through 23 add no import edge. The failure context travels
-through `context.Context`, which is stdlib.
+Outcomes, and phases 22 and 23, add no import edge. The failure
+context travels through `context.Context`, which is stdlib.
 
 ## Tests
 
@@ -168,8 +173,8 @@ stall. Chaining runs a nested workflow and returns its status; this
 lands in phase 7. The audit thread verifies with VerifyThread after the run,
 once phase 7 lands.
 
-Phase 21 covers the report: outcomes per step, the failing step
-marked failed, and the immutable outcomes copy. Phase 22 covers
+The outcomes tests cover the report: outcomes per step, the failing
+step marked failed, and the immutable outcomes copy. Phase 22 covers
 routing: a branch keeps one alternative and skips the other, a strict
 join propagates the skip, and a panel with an unadmitted member skips
 whole. Phase 23 covers the fallback: a handled failure lets the run
@@ -215,6 +220,6 @@ already pins the nil-bus behavior.
 
 `make verify`. Conformance vectors for the definition form. The
 rationale lives in docs/research-state-machine.md. `api/flow.txt`
-lands via make api-update. Phases 21 through 23 and phase 25 each
-extend `api/flow.txt` via make api-update in their own change. They
-leave `api/machine.txt` and `policy/layers.json` unchanged.
+lands via make api-update. Phases 22, 23, and 25 each extend
+`api/flow.txt` via make api-update in their own change. They leave
+`api/machine.txt` and `policy/layers.json` unchanged.

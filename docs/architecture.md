@@ -11,16 +11,17 @@ the invariants the architecture enforces. See
 [packages/events.md](packages/events.md),
 [packages/a2a.md](packages/a2a.md),
 [packages/a2aclient.md](packages/a2aclient.md),
-[packages/ledger.md](packages/ledger.md), and
-[packages/memory.md](packages/memory.md) for the exported API
+[packages/ledger.md](packages/ledger.md),
+[packages/memory.md](packages/memory.md), and
+[packages/provider.md](packages/provider.md) for the exported API
 references.
 
 ## Package map
 
-The diagram shows the sixteen packages and the import edges between
+The diagram shows the seventeen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`contextbudget`, `discovery`, `envelope`, `events`, and `tools` are
-leaves: they import no other package in this module.
+`contextbudget`, `discovery`, `envelope`, `events`, `provider`, and
+`tools` are leaves: they import no other package in this module.
 
 ```mermaid
 flowchart LR
@@ -50,6 +51,7 @@ flowchart LR
     discovery[discovery]
     envelope[envelope]
     events[events]
+    provider[provider]
     tools[tools]
 ```
 
@@ -207,6 +209,18 @@ flowchart LR
   at or under their caps; it keeps no running total of its own.
   `contextbudget` imports no other package in this module; `agent`
   imports it for `Run`'s optional budget check.
+- `provider/` — the model provider interface. It provides `Completer`,
+  `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
+  `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Response`,
+  `Chunk`, `Chunk.Validate`, `ContextAccountant`, `ReasoningPolicy`,
+  and the sentinels `ErrToolCallIDUnexpected`, `ErrToolCallIDRequired`,
+  `ErrUnknownRole`, `ErrChunkErrDoneConflict`, and
+  `ErrStreamClosedEarly`. `Completer` has no
+  implementation in this SDK; a caller supplies its own concrete type.
+  `RunTurn` dispatches on `Request.Stream`, validates every message
+  first, and aggregates a streamed `Chunk` sequence into one
+  `Response`. `provider` imports no other package in this module. See
+  [packages/provider.md](packages/provider.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

@@ -1,8 +1,8 @@
 # Plan: memory
 
-Status: future. Phase contract at
-docs/plans/agents/phase15_memory.md. This file is the package plan
-docs/plans/TEMPLATE.md and scripts/check_plan.py require.
+Status: shipped. `memory` depends on envelope only, for
+`ContextRef`. This file is the package plan docs/plans/TEMPLATE.md
+and scripts/check_plan.py require.
 
 ## Goal
 

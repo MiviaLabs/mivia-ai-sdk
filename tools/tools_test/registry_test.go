@@ -39,6 +39,18 @@ func TestAdd(t *testing.T) {
 			t.Fatalf("Get(echo) = %v, %v, want a non-nil Tool and true", got, ok)
 		}
 	})
+	t.Run("padded name registers under the raw, untrimmed key", func(t *testing.T) {
+		r := tools.New()
+		if err := r.Add(&stubTool{name: " echo"}); err != nil {
+			t.Fatalf("Add(\" echo\") error = %v, want nil", err)
+		}
+		if _, ok := r.Get("echo"); ok {
+			t.Fatalf("Get(echo) ok = true, want false: Add must not trim before storing")
+		}
+		if _, ok := r.Get(" echo"); !ok {
+			t.Fatalf("Get(\" echo\") ok = false, want true: Add stores the raw key")
+		}
+	})
 	t.Run("duplicate name rejected", func(t *testing.T) {
 		r := tools.New()
 		if err := r.Add(&stubTool{name: "echo"}); err != nil {
@@ -105,6 +117,20 @@ func TestRun(t *testing.T) {
 		_, err := r.Run(context.Background(), "missing", tools.InOut{})
 		if !errors.Is(err, tools.ErrUnknownName) {
 			t.Fatalf("Run(missing) error = %v, want ErrUnknownName", err)
+		}
+	})
+	t.Run("forwards the caller's context to the tool", func(t *testing.T) {
+		r := tools.New()
+		if err := r.Add(ctxEchoTool{}); err != nil {
+			t.Fatalf("Add(ctx-echo) error = %v, want nil", err)
+		}
+		ctx := context.WithValue(context.Background(), ctxKey{}, "canary")
+		out, err := r.Run(ctx, "ctx-echo", tools.InOut{})
+		if err != nil {
+			t.Fatalf("Run(ctx-echo) error = %v, want nil", err)
+		}
+		if out.Value != "canary" {
+			t.Fatalf("Run(ctx-echo).Value = %v, want canary: Run must forward the caller's context unchanged", out.Value)
 		}
 	})
 }

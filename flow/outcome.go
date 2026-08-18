@@ -12,8 +12,6 @@ const (
 	// rejected.
 	OutcomeFailed
 	// OutcomeSkipped means admission or routing excluded the step.
-	// No producer exists yet; a later phase adds admission and
-	// routing rules that produce it.
 	OutcomeSkipped
 )
 

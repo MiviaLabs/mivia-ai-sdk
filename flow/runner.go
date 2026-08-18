@@ -80,51 +80,78 @@ func Run(
 	}
 
 	for len(outcomes) < len(d.steps) {
-		next, group, ok := nextReadyGroup(d.steps, d.panels, outcomes)
-		if !ok {
-			// Unreachable for a same-panel Needs cycle: validatePanelIndependence
-			// rejects that shape in New. Still reachable for a cross-panel
-			// scheduling deadlock: a member of one panel needs a member of
-			// another panel, and vice versa, with no cycle in the Needs graph and
-			// no single panel's closure violation. New does not validate
-			// cross-panel scheduling feasibility; a future phase may close this
-			// gap.
-			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("no ready step; graph stalled")
-		}
-
-		if group == nil {
-			var err error
-			cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, next, confirm, bus, outcomes)
-			if err != nil {
-				return Report{status: cur, record: rec, outcomes: outcomes}, err
-			}
-			continue
-		}
-
-		if len(group) == 1 {
-			var err error
-			cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
-			if err != nil {
-				return Report{status: cur, record: rec, outcomes: outcomes}, err
-			}
-			continue
-		}
-
+		next, group, res := nextReadyGroup(d.steps, d.panels, outcomes)
 		var err error
-		cur, rec, err = runWave(ctx, m, cur, rec, group)
+		cur, rec, err = advanceGroup(ctx, m, cur, rec, next, group, res, d.steps, confirm, bus, outcomes)
 		if err != nil {
 			return Report{status: cur, record: rec, outcomes: outcomes}, err
 		}
-
-		// Emit event after successful wave execution
-		for _, step := range group {
-			emitStep(ctx, bus, step.ID)
-		}
-
-		markOutcome(outcomes, group, OutcomeSucceeded)
 	}
 
 	return Report{status: cur, record: rec, outcomes: outcomes}, nil
+}
+
+// advanceGroup runs, skips, or rejects the group nextReadyGroup found,
+// for one loop iteration of Run. It marks every resolved step's
+// Outcome in outcomes before it returns.
+func advanceGroup(
+	ctx context.Context, m *machine.Definition, cur machine.Status,
+	rec machine.InOut, next Step, group []Step, res scanResult,
+	steps []Step, confirm Confirm, bus *events.Bus, outcomes map[string]Outcome,
+) (machine.Status, machine.InOut, error) {
+	switch res {
+	case scanNone:
+		// Unreachable for a same-panel Needs cycle: validatePanelIndependence
+		// rejects that shape in New. Still reachable for a cross-panel
+		// scheduling deadlock: a member of one panel needs a member of
+		// another panel, and vice versa, with no cycle in the Needs graph and
+		// no single panel's closure violation. New does not validate
+		// cross-panel scheduling feasibility; a future phase may close this
+		// gap.
+		return cur, rec, errorf("no ready step; graph stalled")
+
+	case scanSkipSingleton:
+		outcomes[next.ID] = OutcomeSkipped
+		return cur, rec, nil
+
+	case scanSkipPanel:
+		markOutcome(outcomes, group, OutcomeSkipped)
+		return cur, rec, nil
+
+	case scanSingleton:
+		cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, next, confirm, bus, outcomes)
+		if err != nil {
+			return cur, rec, err
+		}
+		if next.Route == nil {
+			return cur, rec, nil
+		}
+		if err := applyRoute(ctx, next, cur, rec, steps, outcomes); err != nil {
+			outcomes[next.ID] = OutcomeFailed
+			return cur, rec, err
+		}
+		return cur, rec, nil
+
+	case scanPanel:
+		if len(group) == 1 {
+			return runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
+		}
+		cur, rec, err := runWave(ctx, m, cur, rec, group)
+		if err != nil {
+			return cur, rec, err
+		}
+		for _, step := range group {
+			emitStep(ctx, bus, step.ID)
+		}
+		markOutcome(outcomes, group, OutcomeSucceeded)
+		return cur, rec, nil
+
+	default:
+		// Unreachable: nextReadyGroup returns only the five scanResult
+		// values this switch already handles. This guards against a
+		// future scanResult addition landing without a matching case.
+		return cur, rec, errorf("nextReadyGroup returned an unknown result")
+	}
 }
 
 // runSingletonAndMark runs step through runSingleton and marks its
@@ -215,41 +242,61 @@ func fireFromChild(
 	return cur, rec, nil
 }
 
-// nextReadyGroup scans steps in declaration order for the next ready
-// wave. A ready step named in no panel returns it as the singleton
-// step with a nil group: the phase 5 path. A ready step named in a
-// panel returns a zero step and the whole panel, once every member of
-// that panel is ready. A partially-ready panel is skipped, not
-// returned; the scan keeps looking for another ready step so a
-// partially-ready panel never blocks the rest of the graph. Returns
-// false when no step is ready.
-func nextReadyGroup(steps []Step, panels []Panel, outcomes map[string]Outcome) (Step, []Step, bool) {
+// scanResult describes what nextReadyGroup found for one loop
+// iteration of Run.
+type scanResult int
+
+const (
+	// scanNone means no step is ready; the graph stalled.
+	scanNone scanResult = iota
+	// scanSingleton means the returned step is ready to run alone.
+	scanSingleton
+	// scanSkipSingleton means the returned step failed admission and
+	// must skip.
+	scanSkipSingleton
+	// scanPanel means the returned group is ready to run as one wave.
+	scanPanel
+	// scanSkipPanel means one member of the returned group failed
+	// admission; every member skips.
+	scanSkipPanel
+)
+
+// nextReadyGroup scans steps in declaration order for the next group
+// to run or skip. A step named in no panel evaluates its own
+// admissionVerdict: verdictAdmit returns it as a singleton with
+// scanSingleton, verdictSkip returns it with scanSkipSingleton,
+// verdictWait moves the scan on. A step named in a panel evaluates
+// panelVerdict for the whole panel: verdictAdmit returns every member
+// with scanPanel, verdictSkip returns every member with scanSkipPanel,
+// verdictWait moves the scan on so a partially-resolved panel never
+// blocks the rest of the graph. Returns scanNone when no step is
+// ready to run or skip.
+func nextReadyGroup(steps []Step, panels []Panel, outcomes map[string]Outcome) (Step, []Step, scanResult) {
 	for _, s := range steps {
 		if _, resolved := outcomes[s.ID]; resolved {
 			continue
 		}
-		if !needsMet(s.Needs, outcomes) {
+		p, found := panelFor(s.ID, panels)
+		if found {
+			switch panelVerdict(p, steps, outcomes) {
+			case verdictAdmit:
+				return Step{}, panelMembers(p, steps), scanPanel
+			case verdictSkip:
+				return Step{}, panelMembers(p, steps), scanSkipPanel
+			default:
+				continue
+			}
+		}
+		switch admissionVerdict(s, outcomes) {
+		case verdictAdmit:
+			return s, nil, scanSingleton
+		case verdictSkip:
+			return s, nil, scanSkipSingleton
+		default:
 			continue
 		}
-		p, found := panelFor(s.ID, panels)
-		if !found {
-			return s, nil, true
-		}
-		if panelReady(p, steps, outcomes) {
-			return Step{}, panelMembers(p, steps), true
-		}
 	}
-	return Step{}, nil, false
-}
-
-// needsMet reports whether every entry of needs already succeeded.
-func needsMet(needs []string, outcomes map[string]Outcome) bool {
-	for _, need := range needs {
-		if o, ok := outcomes[need]; !ok || o != OutcomeSucceeded {
-			return false
-		}
-	}
-	return true
+	return Step{}, nil, scanNone
 }
 
 // panelFor returns the first panel in panels that names id, and
@@ -263,20 +310,6 @@ func panelFor(id string, panels []Panel) (Panel, bool) {
 		}
 	}
 	return nil, false
-}
-
-// panelReady reports whether every member of p is ready: not already
-// resolved, and every entry of that member's Needs already succeeded.
-func panelReady(p Panel, steps []Step, outcomes map[string]Outcome) bool {
-	for _, id := range p {
-		if _, resolved := outcomes[id]; resolved {
-			return false
-		}
-		if !needsMet(stepByID(steps, id).Needs, outcomes) {
-			return false
-		}
-	}
-	return true
 }
 
 // panelMembers resolves every ID in p to its Step, in p's declaration

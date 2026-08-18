@@ -19,8 +19,11 @@ type Definition struct {
 // is proven acyclic, New also rejects a panel where one member's
 // Needs closure reaches a fellow member of the same panel. It
 // rejects a chained step in a panel of two or more members. It
-// rejects a Sub nesting depth above eight. It deep-copies the input
-// slices so later caller mutation cannot change the built graph.
+// rejects a Sub nesting depth above eight. It rejects a step that
+// combines Sub and Route, a branch step with no dependent, a panel
+// that names a branch step, and a panel that names a direct
+// dependent of a branch step. It deep-copies the input slices so
+// later caller mutation cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),
@@ -31,6 +34,9 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 		return nil, err
 	}
 	if err := validatePanels(d.panels, d.steps, ids); err != nil {
+		return nil, err
+	}
+	if err := validateRouting(d.steps, d.panels, ids); err != nil {
 		return nil, err
 	}
 	if err := validatePanelChains(d.panels, d.steps, ids); err != nil {

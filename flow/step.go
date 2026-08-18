@@ -20,10 +20,14 @@ type Admission int
 const (
 	// AdmissionOnFinished admits a step when every need ended
 	// OutcomeSucceeded or OutcomeSkipped. It is the zero value, so an
-	// existing step keeps its behavior.
+	// existing step keeps its behavior. It admits through a skipped
+	// need, so route exclusion propagates only under
+	// AdmissionOnSucceeded.
 	AdmissionOnFinished Admission = iota
 	// AdmissionOnSucceeded admits a step only when every need ended
-	// OutcomeSucceeded. A skipped need skips this step.
+	// OutcomeSucceeded. A skipped need skips this step. It is the
+	// rule a route-excluded branch needs, so the skip propagates to
+	// the branch's own dependents.
 	AdmissionOnSucceeded
 	// AdmissionOnFailed admits a step once every one of its needs is
 	// terminal and at least one resolved OutcomeFailed. It is an

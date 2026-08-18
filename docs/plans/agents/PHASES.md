@@ -126,16 +126,15 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depends on phase 14 (tools) landing first.
 
-Phases 29, 31, 32, and 35 have shipped; see docs/plans/provider.md,
-docs/plans/tools.md, docs/plans/contextbudget.md, and
-docs/plans/mcp.md. Phase 30 passed plan review in three rounds and
-depends on phases 22 and 23 landing first. Phase 33 passed in three
-rounds and depends on phase 34, which passed in five rounds; both are
-ready to build. Phase 36 and phase 37 are plan-only; neither has gone
-through plan review yet. Phase 38 (flow loop), phase 39 (scheduler),
-and phase 40 (trigger) are plan-only; none has gone through plan
-review yet. Phase 38 depends on phases 22 and 23 landing first. Phase
-39 and phase 40 are each independently buildable today.
+Phases 29, 31, 32, 35, 36, and 37 have shipped; see
+docs/plans/provider.md, docs/plans/tools.md, docs/plans/contextbudget.md,
+docs/plans/mcp.md, and docs/plans/channel.md. Phase 30 passed plan
+review in three rounds and depends on phases 22 and 23 landing first.
+Phase 33 passed in three rounds and depends on phase 34, which passed
+in five rounds; both are ready to build. Phase 38 (flow loop), phase
+39 (scheduler), and phase 40 (trigger) are plan-only; none has gone
+through plan review yet. Phase 38 depends on phases 22 and 23 landing
+first. Phase 39 and phase 40 are each independently buildable today.
 
 ## Gate interactions
 

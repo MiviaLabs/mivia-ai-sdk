@@ -1,0 +1,18 @@
+package channel
+  func (a Answer) Validate() (error)
+  func (q Question) Validate() (error)
+  type Answer struct {
+  QuestionID string
+  Approved bool
+  Payload string
+}
+  type Notifier func(ctx context.Context, q Question) (Answer, error)
+  type Question struct {
+  ID string
+  Recipient string
+  Payload string
+}
+  var ErrEmptyID
+  var ErrEmptyPayload
+  var ErrEmptyQuestionID
+  var ErrEmptyRecipient

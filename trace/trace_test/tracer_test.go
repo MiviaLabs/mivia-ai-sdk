@@ -39,9 +39,10 @@ func TestStartSetsParentFromContext(t *testing.T) {
 	}
 }
 
-// TestStartIssuesDistinctIDs pins the ID rule across a growing count
-// of Start calls on one Tracer.
-func TestStartIssuesDistinctIDs(t *testing.T) {
+// TestStartIssuesSequentialIDs pins the ID rule across a growing count
+// of Start calls on one Tracer: the first ID is one, and every later
+// ID is strictly greater.
+func TestStartIssuesSequentialIDs(t *testing.T) {
 	cases := []struct {
 		name  string
 		count int
@@ -52,17 +53,20 @@ func TestStartIssuesDistinctIDs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			tr := trace.New()
-			seen := make(map[trace.SpanID]bool, tc.count)
 			ctx := context.Background()
+			var prev trace.SpanID
 			for i := 0; i < tc.count; i++ {
 				_, s := tr.Start(ctx, "span")
-				if seen[s.ID] {
-					t.Fatalf("Start issued duplicate ID %d at call %d", s.ID, i)
+				if s.ID == 0 {
+					t.Fatalf("Start at call %d issued ID 0", i)
 				}
-				seen[s.ID] = true
-			}
-			if len(seen) != tc.count {
-				t.Fatalf("distinct IDs = %d, want %d", len(seen), tc.count)
+				if i == 0 && s.ID != 1 {
+					t.Fatalf("first ID = %d, want 1", s.ID)
+				}
+				if i > 0 && s.ID <= prev {
+					t.Fatalf("ID %d at call %d not above prior %d", s.ID, i, prev)
+				}
+				prev = s.ID
 			}
 		})
 	}

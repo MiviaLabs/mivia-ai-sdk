@@ -122,13 +122,15 @@ Test files live in `trace/trace_test/`, an external test package.
   overwrites an existing key; `Attributes` returns an empty map before
   any `SetAttribute` call and a map with one entry after one call. A
   copy case mutates the map `Attributes` returns. A second
-  `Attributes` call still reports the span's values unchanged.
+  `Attributes` call still reports the span's values unchanged. A
+  multi-key case overwrites a key that is not the first stored. A
+  set after `End` still lands, and a set from before `End` survives.
 - `tracer_test.go` — red-green unit cases: `Start` on a bare `ctx`
   (no prior span) produces a root span, `ParentID` zero; `Start` on a
   `ctx` already carrying a span sets the new span's `ParentID` to the
-  parent's `ID`; two `Start` calls on the same `Tracer` produce
-  distinct `ID` values; `SpanFrom` on a `ctx` with no span returns
-  `(nil, false)`.
+  parent's `ID`; the first `Start` issues ID one, and every later
+  `Start` issues a strictly greater `ID`; `SpanFrom` on a `ctx` with
+  no span returns `(nil, false)`.
 - `nested_integration_test.go` — builds a three-level span tree: a
   root span starts a child, and the child starts a grandchild. Each
   level uses the `ctx` returned by the prior `Start` call. Asserts the
@@ -155,6 +157,9 @@ Test files live in `trace/trace_test/`, an external test package.
   `SetAttribute` call, and `End` together. Its test asserts a ceiling
   of three allocations. The extra one is the attribute slice's first
   backing array.
+- `span_fuzz_test.go` — a `Fuzz` target feeds random key-value pairs
+  into one span. It asserts the last write per key wins and the entry
+  count stays at the distinct-key count.
 
 ## Verification
 

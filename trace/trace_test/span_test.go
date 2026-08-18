@@ -66,6 +66,43 @@ func TestSetAttributeOverwritesKey(t *testing.T) {
 	}
 }
 
+// TestSetAttributeOverwriteAmongManyKeys pins the scan: an overwrite
+// must find its key among several, not just the first slot.
+func TestSetAttributeOverwriteAmongManyKeys(t *testing.T) {
+	s := newSpan(t)
+	s.SetAttribute("first", "1")
+	s.SetAttribute("second", "2")
+	s.SetAttribute("third", "3")
+	s.SetAttribute("second", "2b")
+	got := s.Attributes()
+	if len(got) != 3 {
+		t.Fatalf("len(Attributes()) = %d, want 3", len(got))
+	}
+	if got["second"] != "2b" {
+		t.Fatalf("Attributes()[%q] = %q, want %q", "second", got["second"], "2b")
+	}
+}
+
+// TestSetAttributeAfterEndStillLands pins the live-or-ended rule from
+// SetAttribute's contract: a set after End records, and a set from
+// before End survives.
+func TestSetAttributeAfterEndStillLands(t *testing.T) {
+	s := newSpan(t)
+	s.SetAttribute("before", "kept")
+	s.End()
+	s.SetAttribute("after", "recorded")
+	got := s.Attributes()
+	if len(got) != 2 {
+		t.Fatalf("len(Attributes()) = %d, want 2", len(got))
+	}
+	if got["after"] != "recorded" {
+		t.Fatalf("Attributes()[%q] = %q, want %q", "after", got["after"], "recorded")
+	}
+	if got["before"] != "kept" {
+		t.Fatalf("Attributes()[%q] = %q, want %q", "before", got["before"], "kept")
+	}
+}
+
 // TestAttributesLifecycle covers the reader across the span's life:
 // empty and non-nil before any set, one entry after one set.
 func TestAttributesLifecycle(t *testing.T) {

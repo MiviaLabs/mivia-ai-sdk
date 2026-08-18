@@ -42,7 +42,7 @@ func TestReportLinearThreeStepsAllSucceed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestReportMidGraphFireFailureMarksFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -110,7 +110,7 @@ func TestReportConfirmRejectionMarksFailed(t *testing.T) {
 	m := singleTransitionMachine(t)
 	rejectErr := errors.New("ack rejected")
 	confirm := func(ctx context.Context, step flow.Step) error { return rejectErr }
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, confirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -126,7 +126,7 @@ func TestReportNilDReturnsCallerRecord(t *testing.T) {
 	t.Parallel()
 	m := singleTransitionMachine(t)
 	in := machine.InOut{Input: "caller-value"}
-	report, err := flow.Run(context.Background(), nil, m, in, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), nil, m, in, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -144,7 +144,7 @@ func TestReportNilMReturnsCallerRecord(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
 	in := machine.InOut{Input: "caller-value"}
-	report, err := flow.Run(context.Background(), d, nil, in, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, nil, in, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -161,7 +161,7 @@ func TestReportNilMReturnsCallerRecord(t *testing.T) {
 func TestReportNilDAndMKeepsDError(t *testing.T) {
 	t.Parallel()
 	in := machine.InOut{Input: "caller-value"}
-	report, err := flow.Run(context.Background(), nil, nil, in, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), nil, nil, in, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -183,7 +183,7 @@ func TestReportNilConfirmReturnsInitialStatus(t *testing.T) {
 	d := singleStepGraph(t)
 	m := singleTransitionMachine(t)
 	in := machine.InOut{Input: "caller-value"}
-	report, err := flow.Run(context.Background(), d, m, in, nil, nil)
+	report, err := flow.Run(context.Background(), d, m, in, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -202,7 +202,7 @@ func TestReportOutcomesMapMutationIsolated(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
 	m := singleTransitionMachine(t)
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestReportChainedStepChildFailureMarksParentOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

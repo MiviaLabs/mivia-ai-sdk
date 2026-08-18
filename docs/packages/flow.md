@@ -30,36 +30,56 @@ The exported surface below mirrors `api/flow.txt`.
   record, and every resolved step's `Outcome`. The fields are
   unexported. Callers read them through `Status`, `Record`, `Outcome`,
   and `Outcomes`.
+- `Checkpoint` — the full resumable state of a `Run`: `Status`
+  (`machine.Status`), `Record` (`machine.InOut`), and `Done` (the
+  lexicographically sorted step IDs of every step that resolved
+  `OutcomeSucceeded` so far). `Done`'s order is a sort, not a
+  completion order. `Encode` and `Decode` round-trip a `Checkpoint`
+  through JSON; the caller owns storage. See `Run`'s `onCheckpoint`
+  parameter and `Resume`.
 
 ## Functions and methods
 
 - `New(steps, panels)` — builds a `Definition` and validates the graph.
 - `Definition.Roots()` — returns the root step IDs in declaration
   order. A root is a step with no prerequisites.
-- `Run(ctx, d, m, in, confirm, bus)` — walks `d` in topological order.
-  Ready steps run in declaration order. A step named in no panel fires
-  the `machine.Transition` row whose `To` matches the step's target
-  status, then waits for `confirm` before the next step runs, exactly
-  as before panels existed. A step named in a panel of one member
-  runs alone the same way, and `confirm` still gates it. A step named
-  in a panel of two or more members runs as part of that panel's
-  wave: every member fires the one shared row that matches the
-  panel's common `To`, concurrently, in its own goroutine. `Run` does
-  not call `confirm` for a wave of two or more members; the ack gate
-  applies to a step named in no panel, and to a one-member panel.
-  `Run` returns a `Report` and an error. On every abort, `Run`
-  returns the `Report` built so far, alongside the error: a step
-  whose `Fire` fails or whose ack is rejected is marked
+- `Run(ctx, d, m, in, confirm, bus, onCheckpoint)` — walks `d` in
+  topological order. Ready steps run in declaration order. A step
+  named in no panel fires the `machine.Transition` row whose `To`
+  matches the step's target status, then waits for `confirm` before
+  the next step runs, exactly as before panels existed. A step named
+  in a panel of one member runs alone the same way, and `confirm`
+  still gates it. A step named in a panel of two or more members runs
+  as part of that panel's wave: every member fires the one shared row
+  that matches the panel's common `To`, concurrently, in its own
+  goroutine. `Run` does not call `confirm` for a wave of two or more
+  members; the ack gate applies to a step named in no panel, and to a
+  one-member panel. `Run` returns a `Report` and an error. On every
+  abort, `Run` returns the `Report` built so far, alongside the
+  error: a step whose `Fire` fails or whose ack is rejected is marked
   `OutcomeFailed` first. A wave error marks no member of that wave.
   When `bus` is non-nil, `Run` emits a `StepCompletedEvent` to it
   after each step completes; a chained step's child sub-workflow runs
-  with a nil bus, so only the parent step emits.
+  with a nil bus, so only the parent step emits. When `onCheckpoint`
+  is non-nil, it fires immediately after each step or wave resolves
+  `OutcomeSucceeded`, with a fresh `Checkpoint`. Before each step or
+  wave starts, `Run` checks `ctx` for cancellation; a canceled `ctx`
+  stops the walk and returns the pinned pause error, wrapping
+  `ctx.Err()`. See "Pause and resume" below.
 - `Report.Status()` — the run's final `machine.Status`.
 - `Report.Record()` — the run's final `machine.InOut`.
 - `Report.Outcome(id)` — one step's `Outcome`, and whether it
   resolved.
 - `Report.Outcomes()` — a copy of every resolved step's `Outcome`,
   keyed by ID. Caller mutation cannot change the `Report`.
+- `Checkpoint.Validate()` — rejects an empty `Status`.
+- `Checkpoint.Encode()` — validates, then marshals the checkpoint to
+  JSON.
+- `Decode(data)` — unmarshals JSON, then validates the result.
+- `Resume(ctx, d, m, checkpoint, confirm, bus, onCheckpoint)` — seeds
+  `outcomes` from `checkpoint.Done`, `cur` from `checkpoint.Status`,
+  and `rec` from `checkpoint.Record`, then continues the same graph
+  walk `Run` uses. See "Pause and resume" below.
 
 ## Invariants
 
@@ -119,6 +139,54 @@ The exported surface below mirrors `api/flow.txt`.
   true too, stalls `Run` at runtime with the same "no ready step"
   error a `Needs` cycle would report, since neither panel's own
   independence rule catches this shape.
+
+## Pause and resume
+
+A caller pauses a run by canceling `ctx`. `Run` checks `ctx.Err()` at
+the top of each loop iteration, before the next step or wave starts.
+A step already running keeps running to its own completion; `Run`
+only refuses to start the next step after an observed cancellation.
+The last `Checkpoint` `onCheckpoint` delivered is the resume point;
+`flow` adds no separate pause API.
+
+`onCheckpoint` fires only after a step's or wave's outcome is marked
+`OutcomeSucceeded`, so a checkpoint never captures a step mid-flight.
+A zero-step `Definition` never fires `onCheckpoint`: there is no step
+to complete.
+
+`Resume` restarts the walk from a stored `Checkpoint`. It runs five
+entry checks in order, before any seeding happens: a nil `d`, a nil
+`m`, a nil `confirm`, a `checkpoint` that fails `Validate`, and a
+`checkpoint.Done` entry naming a step ID absent from `d`. The first
+failing check returns an error immediately; no step runs.
+
+`Resume` never re-runs a step already in `checkpoint.Done`, because
+`nextReadyGroup` skips any step ID already present in the seeded
+`outcomes`. `Resume` on a checkpoint whose `Done` already covers every
+step in `d` returns the checkpoint's status and record without
+calling `confirm` or `onCheckpoint`; this holds for a one-step
+`Definition` too.
+
+For a chained step: a checkpoint captured right after the chained
+step's parent transition fires already lists the chained step's ID as
+`OutcomeSucceeded`. A subsequent `Resume` skips the whole step,
+including its child workflow; the child's own internal progress is
+not a granularity a checkpoint records.
+
+`Resume` performs no topology check across `Done`: it never confirms
+that a step named in `Done` has every one of its own `Needs` also
+named in `Done`. `nextReadyGroup` treats a missing prerequisite as
+still unresolved and selects it to run again; the resulting
+`pickTransition` or `machine.Fire` call then fails, because
+`checkpoint.Status` no longer names a status the seeded walk can reach
+that step from. `Resume` returns that failure as an ordinary error.
+
+A caller whose `Record.Input` or `Record.Output` must survive a
+`Checkpoint` round-trip is responsible for using JSON-primitive-
+compatible types, or for re-hydrating its own concrete type after
+`Decode`: `encoding/json` decodes an `any` field back to
+`map[string]interface{}`, never the original concrete type. `flow`
+performs no type-fidelity handling and no registry lookup.
 
 ## Panel waves
 
@@ -213,10 +281,13 @@ confirm := func(ctx context.Context, step flow.Step) error {
     return nil // the caller's ack transport confirms here
 }
 bus := events.New() // nil is also valid; Run skips emission then
-report, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm, bus)
+onCheckpoint := func(c flow.Checkpoint) {
+    // the caller stores c.Encode() somewhere durable; nil skips checkpointing
+}
+report, err := flow.Run(ctx, graph, statusMachine, machine.InOut{}, confirm, bus, onCheckpoint)
 if err != nil {
-    // a transition pick failed, a guard rejected a step, or an ack
-    // did not confirm
+    // a transition pick failed, a guard rejected a step, an ack did
+    // not confirm, or ctx canceled and the run paused
 }
 status := report.Status()
 out := report.Record()

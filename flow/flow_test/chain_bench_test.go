@@ -102,7 +102,7 @@ func BenchmarkRunFlatThreeSteps(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil, nil); err != nil {
 			b.Fatalf("Run: %v", err)
 		}
 	}
@@ -114,7 +114,7 @@ func BenchmarkRunChainedThreeLevels(b *testing.B) {
 	ctx := context.Background()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+		if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil, nil); err != nil {
 			b.Fatalf("Run: %v", err)
 		}
 	}
@@ -128,7 +128,7 @@ func TestChainedAllocBudget(t *testing.T) {
 	ctx := context.Background()
 
 	// Warm up to stabilize any one-time allocation.
-	_, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil)
+	_, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err != nil {
 		t.Fatalf("warm-up Run: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestChainedAllocBudget(t *testing.T) {
 	start := testing.Benchmark(func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+			if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil, nil); err != nil {
 				b.Fatalf("Run: %v", err)
 			}
 		}
@@ -146,7 +146,7 @@ func TestChainedAllocBudget(t *testing.T) {
 		d, m := flatThreeGraph(b)
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil); err != nil {
+			if _, err := flow.Run(ctx, d, m, machine.InOut{}, noopConfirm, nil, nil); err != nil {
 				b.Fatalf("Run: %v", err)
 			}
 		}

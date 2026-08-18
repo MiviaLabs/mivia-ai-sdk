@@ -73,15 +73,18 @@ flowchart LR
   [packages/machine.md](packages/machine.md).
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It provides `Step`, `Panel`, `Definition`, `New`,
-  `Roots`, `Run`, `Confirm`, `Outcome`, and `Report`. `Step` carries an
-  optional `Sub *Definition` for chaining. `Run` walks the graph in
-  topological order. A step named in no panel runs alone and gates on a
-  confirmed ack. A step named in a panel runs as part of that panel's
-  wave, in a goroutine, once every member is ready; the wave joins its
-  members' errors with `errors.Join`. `Run` returns a `Report` holding
-  the final status, the final record, and every resolved step's
-  `Outcome`: `OutcomeSucceeded` or `OutcomeFailed`. See
-  [packages/flow.md](packages/flow.md).
+  `Roots`, `Run`, `Confirm`, `Outcome`, `Report`, `Checkpoint`, and
+  `Resume`. `Step` carries an optional `Sub *Definition` for chaining.
+  `Run` walks the graph in topological order. A step named in no panel
+  runs alone and gates on a confirmed ack. A step named in a panel
+  runs as part of that panel's wave, in a goroutine, once every member
+  is ready; the wave joins its members' errors with `errors.Join`.
+  `Run` returns a `Report` holding the final status, the final record,
+  and every resolved step's `Outcome`: `OutcomeSucceeded` or
+  `OutcomeFailed`. `Run`'s `onCheckpoint` hook fires a `Checkpoint`
+  after each step or wave succeeds; a caller pauses a run by canceling
+  `ctx` and resumes it later from the last checkpoint through `Resume`.
+  See [packages/flow.md](packages/flow.md).
 - `events/` — the in-process reaction bus. It provides `Name`,
   `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
   caller owns the bus; the module has no shared bus. Event names are

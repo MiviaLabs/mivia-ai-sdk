@@ -48,7 +48,7 @@ func main() {
 		return nil
 	}
 
-	report, err := flow.Run(context.Background(), graph, m, machine.InOut{Input: "review request"}, confirm, nil)
+	report, err := flow.Run(context.Background(), graph, m, machine.InOut{Input: "review request"}, confirm, nil, nil)
 	if err != nil {
 		fmt.Println("run:", err)
 		return

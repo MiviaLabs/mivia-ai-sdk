@@ -44,7 +44,7 @@ func TestReportDiamondGraphOutcomesAndTieBreak(t *testing.T) {
 		t.Fatalf("machine.New: %v", err)
 	}
 	var order []string
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order), nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, recordingConfirm(&order), nil, nil)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestReportPanelMixedResultLeavesNeitherMemberResolved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

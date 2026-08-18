@@ -37,6 +37,19 @@ type Confirm func(ctx context.Context, step Step) error
 // first, then m, then confirm, so a nil m never panics inside a
 // d-nil or m-nil check.
 //
+// onCheckpoint, when non-nil, fires immediately after each step or
+// wave resolves OutcomeSucceeded, with a fresh Checkpoint holding the
+// current status, the current record, and the sorted step IDs
+// resolved so far. A nil onCheckpoint skips the call. See Checkpoint
+// and Resume.
+//
+// Before each step or wave starts, Run checks ctx for cancellation. A
+// canceled ctx stops the walk before the next step starts and returns
+// the pinned pause error, wrapping ctx.Err(); the last Checkpoint
+// onCheckpoint delivered is the resume point. A step already running
+// keeps running to its own completion; Run only refuses to start the
+// next step after an observed cancellation.
+//
 // Run returns a Report holding the final status, the final record,
 // and every resolved step's Outcome. On every abort, Run returns the
 // Report built so far, alongside the error. A step whose Fire fails
@@ -55,6 +68,7 @@ type Confirm func(ctx context.Context, step Step) error
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	in machine.InOut, confirm Confirm, bus *events.Bus,
+	onCheckpoint func(Checkpoint),
 ) (Report, error) {
 	if d == nil {
 		return Report{status: machine.Status(""), record: in}, errorf("d must not be nil")
@@ -66,20 +80,40 @@ func Run(
 		return Report{status: m.Initial(), record: in}, errorf("confirm must not be nil")
 	}
 
-	cur := m.Initial()
-	rec := in
 	outcomes := make(map[string]Outcome)
+	return runLoop(ctx, d, m, m.Initial(), in, outcomes, confirm, bus, onCheckpoint)
+}
 
+// runLoop is the shared graph walk Run and Resume both drive. It
+// takes the seed cur, rec, and outcomes: Run seeds outcomes empty and
+// cur at m.Initial(); Resume seeds outcomes from a checkpoint's Done
+// and cur/rec from the checkpoint's Status/Record.
+func runLoop(
+	ctx context.Context, d *Definition, m *machine.Definition,
+	cur machine.Status, rec machine.InOut, outcomes map[string]Outcome,
+	confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint),
+) (Report, error) {
 	if len(d.steps) == 0 {
 		return Report{status: cur, record: rec, outcomes: outcomes}, nil
 	}
 	if len(d.steps) == 1 {
+		if _, done := outcomes[d.steps[0].ID]; done {
+			return Report{status: cur, record: rec, outcomes: outcomes}, nil
+		}
 		var err error
 		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes)
-		return Report{status: cur, record: rec, outcomes: outcomes}, err
+		if err != nil {
+			return Report{status: cur, record: rec, outcomes: outcomes}, err
+		}
+		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
+		return Report{status: cur, record: rec, outcomes: outcomes}, nil
 	}
 
 	for len(outcomes) < len(d.steps) {
+		if err := ctx.Err(); err != nil {
+			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("run paused: %w", err)
+		}
+
 		next, group, ok := nextReadyGroup(d.steps, d.panels, outcomes)
 		if !ok {
 			// Unreachable for a same-panel Needs cycle: validatePanelIndependence
@@ -98,6 +132,7 @@ func Run(
 			if err != nil {
 				return Report{status: cur, record: rec, outcomes: outcomes}, err
 			}
+			fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 			continue
 		}
 
@@ -107,6 +142,7 @@ func Run(
 			if err != nil {
 				return Report{status: cur, record: rec, outcomes: outcomes}, err
 			}
+			fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 			continue
 		}
 
@@ -122,9 +158,21 @@ func Run(
 		}
 
 		markOutcome(outcomes, group, OutcomeSucceeded)
+		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 	}
 
 	return Report{status: cur, record: rec, outcomes: outcomes}, nil
+}
+
+// fireCheckpoint calls onCheckpoint with a fresh Checkpoint built from
+// cur, rec, and the OutcomeSucceeded entries of outcomes. A nil
+// onCheckpoint skips the call; the loop pays no cost building the
+// checkpoint value when the hook is nil.
+func fireCheckpoint(onCheckpoint func(Checkpoint), cur machine.Status, rec machine.InOut, outcomes map[string]Outcome) {
+	if onCheckpoint == nil {
+		return
+	}
+	onCheckpoint(Checkpoint{Status: cur, Record: rec, Done: doneFrom(outcomes)})
 }
 
 // runSingletonAndMark runs step through runSingleton and marks its
@@ -192,7 +240,7 @@ func runSingleton(
 func runChild(
 	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
 ) (machine.Status, error) {
-	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil)
+	report, err := Run(ctx, child, m, machine.InOut{}, confirm, nil, nil)
 	return report.Status(), err
 }
 

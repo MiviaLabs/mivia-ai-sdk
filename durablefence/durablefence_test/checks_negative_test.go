@@ -41,6 +41,29 @@ func TestCheckTakeoverFencesPreviousOwnerCatchesBrokenTakeover(t *testing.T) {
 	}
 }
 
+// TestCheckTakeoverFencesPreviousOwnerCatchesBrokenMutate proves
+// CheckTakeoverFencesPreviousOwner fails against a Takeover that
+// correctly reassigns ownership and fences the previous token, paired
+// with a Mutate that never checks its token against the current
+// owner and so wrongly reports success for the fenced token A. A
+// Takeover-side bug and a Mutate-side bug are distinct failure modes;
+// this case pins the Mutate-side one, which
+// TestCheckTakeoverFencesPreviousOwnerCatchesBrokenTakeover above does
+// not exercise, since its broken Takeover still reassigns r.owner and
+// so still fences a real Mutate call.
+func TestCheckTakeoverFencesPreviousOwnerCatchesBrokenMutate(t *testing.T) {
+	ctx := context.Background()
+	r := newReferenceClaim()
+	s := r.scenario()
+	s.Mutate = func(context.Context, string) error { return nil }
+	ok := runIsolated("CheckTakeoverFencesPreviousOwner", func(t *testing.T) {
+		durablefence.CheckTakeoverFencesPreviousOwner(t, ctx, s)
+	})
+	if ok {
+		t.Fatal("check passed against a Mutate that never rejects a fenced token")
+	}
+}
+
 // TestCheckTakeoverFencesConcurrentMutateCatchesBrokenTakeover proves
 // CheckTakeoverFencesConcurrentMutate fails against a Takeover that
 // returns a fresh token without actually reassigning ownership, so a

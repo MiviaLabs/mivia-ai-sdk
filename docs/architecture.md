@@ -78,30 +78,36 @@ flowchart LR
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It provides `Step`, `Panel`, `Definition`, `New`,
   `Roots`, `Run`, `Confirm`, `Admission`, `Route`, `Outcome`, `Report`,
-  `Failure`, `FailureFrom`, `Checkpoint`, and `Resume`. `Step` carries
-  an optional `Sub *Definition` for chaining, an `Admission` rule in
-  `When`, and an optional `Route` that makes it a branch step. `Run`
-  walks the graph in topological order. A step named in no panel runs
-  alone and gates on a confirmed ack. A step named in a panel runs as
-  part of that panel's wave, in a goroutine, once every member is
-  ready; the wave joins its members' errors with `errors.Join`. Once
-  every one of a step's needs is terminal, its `Admission` rule
-  decides whether it runs or skips; a branch step's `Route` then picks
-  which of its direct dependents the run keeps, and the rest skip at
-  once. A step admitted through a need that ended `OutcomeFailed`
-  (`AdmissionOnFailed`) is a fallback: it catches a dependency's
-  `Fire` or `Route` failure and lets the run continue instead of
+  `Failure`, `FailureFrom`, `Checkpoint`, `Resume`, and `RetryPolicy`.
+  `Step` carries an optional `Sub *Definition` for chaining, an
+  `Admission` rule in `When`, an optional `Route` that makes it a
+  branch step, and an optional `Retry *RetryPolicy` that bounds and
+  paces repeated attempts of its own `Fire` call. `Run` walks the
+  graph in topological order. A step named in no panel runs alone and
+  gates on a confirmed ack. A step named in a panel runs as part of
+  that panel's wave, in a goroutine, once every member is ready; the
+  wave joins its members' errors with `errors.Join`. Once every one of
+  a step's needs is terminal, its `Admission` rule decides whether it
+  runs or skips; a branch step's `Route` then picks which of its
+  direct dependents the run keeps, and the rest skip at once. A step
+  with a non-nil `Retry` retries its `Fire` call, with exponential
+  backoff computed by `RetryPolicy.NextDelay`, until it succeeds or
+  exhausts `MaxAttempts`; `New` rejects a `Retry` combined with `Sub`
+  or panel membership. A step admitted through a need that ended
+  `OutcomeFailed` (`AdmissionOnFailed`) is a fallback: it catches a
+  dependency's `Fire` failure, including one that exhausted its
+  retries, or a `Route` failure, and lets the run continue instead of
   aborting, reading the failed step's `Failure` through `FailureFrom`.
-  A `Confirm` rejection and a missing transition row stay fatal. `Run`
-  returns a `Report` holding the final status, the final record, and
-  every resolved step's `Outcome`: `OutcomeSucceeded`, `OutcomeFailed`,
-  or `OutcomeSkipped`. `Run`'s `onCheckpoint` hook fires a `Checkpoint`
-  after each step or wave succeeds; a caller pauses a run by canceling
-  `ctx` and resumes it later from the last checkpoint through `Resume`.
-  `Checkpoint`'s `Failed` field preserves an already-caught failure's
-  outcome across the pause, but a still-pending fallback's handler
-  bookkeeping does not survive the round trip. See
-  [packages/flow.md](packages/flow.md).
+  A `Confirm` rejection and a missing transition row stay fatal, and
+  neither retries. `Run` returns a `Report` holding the final status,
+  the final record, and every resolved step's `Outcome`:
+  `OutcomeSucceeded`, `OutcomeFailed`, or `OutcomeSkipped`. `Run`'s
+  `onCheckpoint` hook fires a `Checkpoint` after each step or wave
+  succeeds; a caller pauses a run by canceling `ctx` and resumes it
+  later from the last checkpoint through `Resume`. `Checkpoint`'s
+  `Failed` field preserves an already-caught failure's outcome across
+  the pause, but a still-pending fallback's handler bookkeeping does
+  not survive the round trip. See [packages/flow.md](packages/flow.md).
 - `events/` — the in-process reaction bus. It provides `Name`,
   `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
   caller owns the bus; the module has no shared bus. Event names are

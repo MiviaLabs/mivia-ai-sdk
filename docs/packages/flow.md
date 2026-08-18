@@ -12,11 +12,12 @@ The exported surface below mirrors `api/flow.txt`.
 
 - `Step` — one node in a workflow graph. A step has an ID, a list of
   prerequisite step IDs, a target status string, a payload, an
-  optional nested `Definition`, an `Admission` rule, and an optional
-  `Route`. A step with no prerequisites is a root. For a chained step,
-  `To` is ignored by `Run` and may be empty; the child final status
-  supplies the target status. A step with a non-nil `Route` is a
-  branch step.
+  optional nested `Definition`, an `Admission` rule, an optional
+  `Route`, and an optional `Retry`. A step with no prerequisites is a
+  root. For a chained step, `To` is ignored by `Run` and may be empty;
+  the child final status supplies the target status. A step with a
+  non-nil `Route` is a branch step. A step with a non-nil `Retry`
+  retries its own `Fire` call. See Retry below.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -56,6 +57,9 @@ The exported surface below mirrors `api/flow.txt`.
   `onCheckpoint` parameter and `Resume`.
 - `Failure` — the failed step's context a fallback step receives:
   `Step` names the failed step, `Err` is its recorded error.
+- `RetryPolicy` — a step's retry rule for its own `Fire` call:
+  `MaxAttempts`, `BaseDelay`, `MaxDelay`, `Retryable`, `Jitter`, and
+  `Sleep`. See Retry below.
 
 ## Functions and methods
 
@@ -119,6 +123,12 @@ The exported surface below mirrors `api/flow.txt`.
 - `FailureFrom(ctx)` — reads the `Failure` `Run` injects into a
   fallback step's own transition context. The boolean is false outside
   a fallback firing.
+- `RetryPolicy.Validate()` — rejects a `MaxAttempts` below 1 and a
+  `MaxDelay` at or below zero.
+- `RetryPolicy.NextDelay(attempt)` — the backoff before the given
+  retry attempt, one-indexed from the first retry. Doubles from
+  `BaseDelay`, clamped at `MaxDelay`, then applies `Jitter` when
+  non-nil. See Retry below.
 
 ## Invariants
 
@@ -171,6 +181,9 @@ The exported surface below mirrors `api/flow.txt`.
 - No panel names an `AdmissionOnFailed` step. A wave shares one `ctx`
   across every member, with no per-member home for the `Failure` a
   fallback would catch. `New` rejects the shape.
+- A non-nil `Retry` passes `RetryPolicy.Validate()`. `New` rejects a
+  `Retry` combined with a non-nil `Sub`, and a `Retry` on a panel
+  member. See Retry below.
 
 `Run` enforces the rules below.
 
@@ -332,6 +345,45 @@ crosses back into the parent is treated as final.
 A checkpoint taken after a catch preserves the failed step's outcome,
 through `Checkpoint.Failed`, but not the pending-handler bookkeeping
 behind it. See "Pause and resume" above.
+
+## Retry
+
+A step's `Retry` field bounds and paces repeated attempts of its own
+`Fire` call. A nil `Retry` keeps the single-attempt behavior every
+step had before this field existed.
+
+`Run` calls `fireWithRetry`, an internal helper, in place of the
+single `Fire` attempt. `fireWithRetry` wraps `fireStep`, not
+`machine.Fire` directly, so a retried step's exhausted failure still
+carries the tag `resolveCatchable` needs to route it into a declared
+`AdmissionOnFailed` fallback. On a `Fire` failure, the loop first
+checks the completed attempt count against `MaxAttempts`: an
+exhausted budget stops the loop at once, so a `MaxAttempts` of 1 never
+calls `Retryable` or `Sleep`. When budget remains, the loop checks
+`Retryable`, when non-nil; a false result stops the loop at once.
+Otherwise it calls `Sleep(ctx, NextDelay(attempt))` and retries `Fire`
+from the same pre-step status and record the first attempt used.
+
+`NextDelay` computes each backoff as a pure function of the attempt
+number: it doubles `BaseDelay` once per attempt above 1, clamped at
+`MaxDelay`, checking the bound before each doubling so the computation
+never overflows `time.Duration`'s range. `Jitter`, when non-nil,
+perturbs the clamped result last; `NextDelay` does not re-clamp
+`Jitter`'s output. `Sleep` defaults to a context-aware wait when the
+field is nil: a canceled `ctx` returns at once, with the context's
+error, instead of waiting out the full backoff. `fireWithRetry` checks
+`ctx.Err()` after every `Sleep` call and aborts the loop the same way
+on cancellation.
+
+A retried step's `Guard`, `OnExit`, and `OnEntry` closures run once
+per attempt, with no de-duplication; a closure with a side effect that
+is not safe to repeat must guard its own idempotency. `fireWithRetry`
+wraps only `Fire`: a `Confirm` rejection and a `Route` error never
+retry, matching the fatal and scheduling-only rules those two already
+follow. A step that exhausts its retries reports `OutcomeFailed`,
+carrying the last attempt's error, exactly like a single-attempt
+failure; a declared `AdmissionOnFailed` fallback still catches it, and
+`FailureFrom` returns the last attempt's error inside the fallback.
 
 ## Attaching work to a step
 

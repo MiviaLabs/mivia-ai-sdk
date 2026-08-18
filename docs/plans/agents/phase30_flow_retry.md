@@ -1,18 +1,9 @@
 # Phase 30: flow retry
 
-Status: future. Depends on phase 23
-(`docs/plans/agents/phase23_flow_fallback.md`) landing first. Phase 21
-shipped: `Outcome` and `Report` already exist in `flow`'s code and
-locked API; see `docs/plans/flow.md`. Phase 22 shipped too:
-`Admission` and `Route` already exist in `flow`'s code and locked API;
-see `docs/plans/flow.md`. Phase 23 still owns the fallback path. As of
-this writing, `flow`'s tree (`flow/runner.go`, `api/flow.txt`,
-`flow/flow_test/`) carries no fallback vocabulary; it exists only in
-the phase 23 plan file, marked "Status: ready to build", but not yet
-shipped. This phase is not independently buildable today.
-Per `docs/plans/agents/PHASES.md`, a phase does not pull in a later
-phase, so a builder must not start this phase until phase 23 is
-shipped and `FailureFrom` exists in `flow`'s code and locked API. This
+Status: ready to build. Phases 21, 22, and 23 have all shipped:
+`Outcome`, `Report`, `Admission`, `Route`, `Failure`, and
+`FailureFrom` all exist in `flow`'s code and locked API; see
+`docs/plans/flow.md`. This phase is now independently buildable. This
 phase must keep every one of `Admission`, `Route`, and `FailureFrom`'s
 behaviors intact.
 
@@ -26,12 +17,28 @@ outer safety net for a step that exhausts its retries.
 ## Scope
 
 Inside: the `RetryPolicy` type, its `Validate` method, its
-`NextDelay` method, the `Step.Retry` field, the retry loop inside
-`runSingleton`, and the new `New` validations. This phase extends the
-existing `flow` package. It adds no new top-level package, so
-`policy/layers.json` gains no new row. The `flow` row already lists
-`events` and `machine`; this phase imports only the standard library
-`time` package inside `flow`, which needs no policy entry.
+`NextDelay` method, the `Step.Retry` field, the retry loop, and the
+new `New` validations. `RetryPolicy`, `Validate`, `NextDelay`, and
+`fireWithRetry` land in a new file, `flow/retry.go`. `flow/runner.go`
+is already at 500 lines, the structure gate's cap, so this phase adds
+no retry code to it. `runSingleton`'s only change is a one-line
+call-site swap: its existing `fireStep(fireCtx, m, cur, rec, step,
+row)` call becomes `fireWithRetry(fireCtx, m, cur, rec, step, row)`,
+the same six arguments, so the swap adds zero net lines to
+`runner.go`. `fireWithRetry` decides inside `retry.go` whether
+`step.Retry` is nil; a nil `Retry` calls `fireStep` once and returns
+its result unchanged, matching today's behavior exactly, so
+`runSingleton` calls `fireWithRetry` unconditionally and needs no
+branch of its own. If a later edit to `runner.go` in this phase needs
+even one more line than that swap, offset it by moving
+`fireFromChild` (`runner.go`, the chained-step fire helper) into
+`flow/failure.go`, next to the `fireStep` and `pickTransitionFor`
+helpers it already calls; that keeps `runner.go` at or under 500
+lines in the same change. This phase extends the existing `flow`
+package. It adds no new top-level package, so `policy/layers.json`
+gains no new row. The `flow` row already lists `events` and
+`machine`; this phase imports only the standard library `time`
+package inside `flow`, which needs no policy entry.
 
 Outside:
 
@@ -69,12 +76,13 @@ supplies a recording or no-op `Sleep` function, so a retry test never
 blocks on real wall-clock time and stays deterministic.
 
 A retried step's `Guard`, `OnExit`, and `OnEntry` closures must
-tolerate repeated invocation: `fireWithRetry` calls `m.Fire`, and so
-all three closures, once per attempt, with no de-duplication. A
-closure with a side effect that is not safe to repeat (for example, an
-un-idempotent external call) must guard its own idempotency; `flow`
-provides no dedup layer, matching the existing panel-aliasing caveat
-that pushes fan-out safety onto the caller's closures.
+tolerate repeated invocation: `fireWithRetry` calls `fireStep`
+(`flow/failure.go`), which calls `m.Fire`, and so all three closures,
+once per attempt, with no de-duplication. A closure with a side
+effect that is not safe to repeat (for example, an un-idempotent
+external call) must guard its own idempotency; `flow` provides no
+dedup layer, matching the existing panel-aliasing caveat that pushes
+fan-out safety onto the caller's closures.
 
 ### Context cancellation
 
@@ -86,8 +94,9 @@ when the field is nil, selects on `ctx.Done()` and a `time.Timer` for
 the computed duration; a canceled `ctx` returns at once with the
 context's error instead of waiting out the full backoff. A canceled
 `ctx` during a pending sleep aborts the retry loop the same way a
-canceled `ctx` aborts `m.Fire` today: `fireWithRetry` returns the
-context error without waiting for `MaxAttempts` to run out.
+canceled `ctx` aborts `fireStep`, and the `m.Fire` call inside it,
+today: `fireWithRetry` returns the context error without waiting for
+`MaxAttempts` to run out.
 
 `Jitter` follows the same shape: an optional
 `func(time.Duration) time.Duration` field. A nil `Jitter` means
@@ -122,17 +131,22 @@ The surface below lands in `api/flow.txt` via `make api-update`.
   `MaxDelay`, so `NextDelay` sets `delay` to `MaxDelay` and stops
   doubling, without ever performing the overflow-prone multiply. A
   final clamp to `MaxDelay` then covers the case where `BaseDelay`
-  itself already exceeds `MaxDelay`. `Jitter`, when non-nil, applies to
-  the clamped result last. Pure; no field mutation, no sleep, no
-  randomness of its own. This clamp-before-double order makes overflow
-  structurally impossible: `delay` never exceeds `MaxDelay` at the
-  start of a doubling step, so the doubled value never exceeds
-  `2*MaxDelay`, well inside `time.Duration`'s range for any `MaxDelay`
-  the `Validate` bound accepts.
+  itself already exceeds `MaxDelay`. This clamp-before-double order
+  makes overflow structurally impossible for the pre-`Jitter` value:
+  `delay` never exceeds `MaxDelay` at the start of a doubling step, so
+  the doubled value never exceeds `2*MaxDelay`, well inside
+  `time.Duration`'s range for any `MaxDelay` the `Validate` bound
+  accepts. Pure; no field mutation, no sleep, no randomness of its
+  own. `Jitter`, when non-nil, applies to the clamped result last, and
+  `NextDelay` does not re-clamp its output: a `Jitter` closure that
+  returns a value above `MaxDelay` passes through unclamped, by
+  design. Re-clamping after `Jitter` is the caller's responsibility if
+  the caller's `Jitter` closure needs that bound; `flow` states this
+  as a documented limit, not a gap to close in this phase.
 - `Step` gains `Retry *RetryPolicy`. Nil means no retry, matching
   today's single-attempt behavior exactly.
 
-`New` gains three validations, with pinned messages:
+`New` gains four validations, with pinned messages:
 
 - `flow: step %q retry: max attempts must be at least 1` — a
   `RetryPolicy` with `MaxAttempts < 1`.
@@ -146,20 +160,28 @@ The surface below lands in `api/flow.txt` via `make api-update`.
 
 ### The retry loop
 
-`runSingleton` wraps its existing `m.Fire` call. On a `Fire` error,
-when `step.Retry` is non-nil, `runSingleton`:
+`fireWithRetry` wraps `fireStep` (`flow/failure.go`), the same seam
+`runSingleton` already calls for a step with no `Retry`. Using
+`fireStep` instead of `m.Fire` directly matters: `fireStep` tags a
+`Fire` error `failureKindFire`, and `resolveCatchable`
+(`flow/failure.go`) requires that tag to route an exhausted retry
+into a declared `AdmissionOnFailed` fallback. A helper that called
+`m.Fire` directly would strip that tag and silently break phase 23's
+fallback catch path for every retried step. On a `fireStep` error,
+when `step.Retry` is non-nil, `fireWithRetry`:
 
-1. Checks `Retryable(err)`, when non-nil. A false result stops the
-   loop at once and reports the error through the existing failure
-   path, unchanged from today.
-2. Compares the completed attempt count against `MaxAttempts`. A count
-   already at `MaxAttempts` stops the loop and reports the last error,
-   unchanged from today.
+1. Compares the completed attempt count against `MaxAttempts`. A count
+   already at `MaxAttempts` stops the loop and returns the last
+   tagged error, unchanged from today.
+2. Checks `Retryable(err)`, when non-nil. A false result stops the
+   loop at once and returns the tagged error unchanged, so the
+   existing failure path (including a declared fallback) sees the
+   same error shape it sees today.
 3. Otherwise calls `Retry.Sleep(ctx, Retry.NextDelay(attempt))`. A
-   `ctx` canceled during that call stops the loop at once and reports
-   the context error, without retrying `m.Fire` again. Otherwise
-   `fireWithRetry` retries `m.Fire` from the same pre-step `cur` and
-   `rec` the first attempt used, and repeats from step 1.
+   `ctx` canceled during that call stops the loop at once and returns
+   the context error, without calling `fireStep` again. Otherwise
+   `fireWithRetry` retries `fireStep` from the same pre-step `cur`,
+   `rec`, and `row` the first attempt used, and repeats from step 1.
 
 A retry that succeeds continues exactly like today's single-attempt
 success: `Confirm` runs, the step emits its event, and its outcome is
@@ -171,14 +193,21 @@ exactly like today's single-attempt failure. Phase 23's fallback
 admission applies unchanged: a declared `AdmissionOnFailed` dependent
 still catches it.
 
-The builder places the loop in a small helper, so `runSingleton` stays
-inside the 80-line cap:
+The builder places the loop in a small helper in `flow/retry.go`, so
+`runSingleton` stays inside the 80-line cap and `runner.go` stays
+inside the 500-line cap:
 
-- `fireWithRetry(ctx, m, cur, rec, step) (machine.Status, machine.InOut, error)`
-  — runs the loop described above and returns the same three values
-  `m.Fire` returns. `runSingleton` calls this helper in place of its
-  direct `m.Fire` call for a step with a non-nil `Retry`, and keeps
-  calling `m.Fire` directly for a step with a nil `Retry`.
+- `fireWithRetry(ctx context.Context, m *machine.Definition, cur machine.Status, rec machine.InOut, step Step, row machine.Transition) (machine.Status, machine.InOut, error)`
+  — the same six-argument shape `fireStep` takes, so `runSingleton`
+  swaps one call for the other with no other signature change. It
+  runs the loop described above and returns the same three values
+  `fireStep` returns. A nil `step.Retry` calls `fireStep` once and
+  returns its result unchanged; `runSingleton` therefore calls
+  `fireWithRetry` unconditionally in place of its previous direct
+  `fireStep` call, and needs no branch of its own for the nil case.
+  `fireWithRetry` lives in `flow/retry.go`, next to `RetryPolicy`,
+  `Validate`, and `NextDelay`; it imports `flow/failure.go`'s
+  unexported `fireStep`, both already in the same package.
 
 ## Tests
 
@@ -193,6 +222,11 @@ Test files live in `flow/flow_test/`:
     doubles for each later attempt, clamped at `MaxDelay`.
   - `RetryPolicy.NextDelay` applies a non-nil `Jitter` to the clamped
     result; a nil `Jitter` leaves the clamped result unchanged.
+  - `RetryPolicy.NextDelay` with a `Jitter` closure that returns a
+    value above `MaxDelay` returns that above-`MaxDelay` value
+    unchanged. This pins that `NextDelay` never re-clamps `Jitter`'s
+    output, matching the documented limit in the API section: bounding
+    `Jitter`'s result is the caller's responsibility.
   - `RetryPolicy.NextDelay` called with `attempt` 50, `BaseDelay` of one
     millisecond (1,000,000 nanoseconds), and a `MaxDelay` well below
     `time.Duration`'s maximum (for example one hour) returns exactly
@@ -233,6 +267,25 @@ Test files live in `flow/flow_test/`:
     guard ran exactly once.
   - A step with `Retry` nil keeps today's single-attempt behavior:
     one guard call, one failure, one abort.
+  - A step with a non-nil `Retry` whose `MaxAttempts` is 1, and a
+    guard that always fails: one guard call, one failure, one abort,
+    the same outcome as the `Retry`-nil case above, but assert
+    `Retry.Sleep` and `Retry.Retryable`, both set to recording
+    closures, are never called. This isolates the "loop runs zero
+    extra iterations" path (`Retry` non-nil, `MaxAttempts` 1) from the
+    "no retry policy at all" path (`Retry` nil) the previous case
+    covers; the two paths produce the same outcome for a different
+    reason.
+  - A retried step (`RetryPolicy` `MaxAttempts` 3) whose `Confirm`
+    always rejects: assert the guard (`Fire`) ran exactly once, not
+    three times. `fireWithRetry` wraps only `fireStep`; `runSingleton`
+    calls `Confirm` after `fireWithRetry` returns, outside the retry
+    loop, so a `Confirm` rejection never triggers a retry.
+  - A retried branch step (`RetryPolicy` `MaxAttempts` 3, guard
+    succeeds on the first attempt) whose `Route` always returns an
+    error: assert `Route` ran exactly once. `Route` runs in the
+    runner, after the wave, never inside `fireWithRetry`; this test
+    proves the retry loop never wraps `Route`.
   - A canceled `ctx`, passed to `Run` before the second attempt's
     `Sleep` call resolves, aborts the retry loop with the context
     error. Use a `RetryPolicy` with `MaxAttempts` of 5 and a guard that

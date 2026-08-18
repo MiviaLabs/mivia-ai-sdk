@@ -1,6 +1,6 @@
 # Phase 22: flow admission and branch routing
 
-Status: ready to build. Builds on phase 21. This phase adds the
+Status: ready to build. Builds on phase 21 (shipped). This phase adds the
 admission rule and the branch step. A branch step picks its successors
 at run time. Unchosen successors become `OutcomeSkipped`. See
 `docs/plans/agents/PHASES.md`.

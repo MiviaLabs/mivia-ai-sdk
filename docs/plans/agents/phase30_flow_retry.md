@@ -1,7 +1,7 @@
 # Phase 30: flow retry
 
 Status: future. Depends on phases 21 through 23
-(`docs/plans/agents/phase21_flow_outcomes.md`,
+(`docs/plans/agents/phase21_flow_outcomes.md` (shipped),
 `docs/plans/agents/phase22_flow_routing.md`,
 `docs/plans/agents/phase23_flow_fallback.md`) landing first, in phase
 order. Those phases add `Outcome`, `Report`, `Admission`, `Route`, and

@@ -10,6 +10,7 @@
     "contextbudget": [],
     "discovery": [],
     "durablefence": [],
+    "e2e": ["agent", "discovery", "envelope", "events", "flow", "identity", "tools"],
     "envelope": [],
     "events": [],
     "flow": ["events", "machine"],

@@ -1,0 +1,23 @@
+package e2e
+  func (r *Recorder) Handler() (events.Handler)
+  func (r *Recorder) Names() ([]events.Name)
+  func (t *ThreadCapture) Messages() ([]envelope.Message)
+  func (t *ThreadCapture) Wait(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
+  func (t EscalateTool) Name() (string)
+  func (t EscalateTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t PrefixTool) Name() (string)
+  func (t PrefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func NewAgent(name string, plan *flow.Definition) (*agent.Agent, error)
+  func NewRecorder() (*Recorder)
+  func NewThreadCapture() (*ThreadCapture)
+  type EscalateTool struct {
+  ToolName string
+}
+  type PrefixTool struct {
+  ToolName string
+  Prefix string
+}
+  type Recorder struct {
+}
+  type ThreadCapture struct {
+}

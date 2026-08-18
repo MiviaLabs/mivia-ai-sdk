@@ -42,6 +42,7 @@ runnable-style walkthroughs.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 - [packages/agentrun.md](packages/agentrun.md) — the config-struct composition layer: one `Options` value validated and wired into a `Runner` that drives `agent.Run`.
 - [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
+- [packages/e2e.md](packages/e2e.md) — the end-to-end scenario suite: real high-level blocks wired together, one full run per scenario, outputs asserted across the handoffs.
 
 ## Examples
 

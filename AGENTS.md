@@ -83,6 +83,10 @@ Go SDK for building AI agents. Module:
   and events internally. `SQLiteStore`, behind the `ledger_sqlite`
   build tag, additionally imports the pure-Go `modernc.org/sqlite`
   driver externally; the default build never compiles it.
+- `e2e/` — the end-to-end scenario harness: deterministic tools,
+  an event recorder, and a thread-capturing resolver. The scenarios
+  in `e2e/e2e_test/` wire real high-level blocks together and assert
+  each run's outputs. See docs/plans/e2e.md.
 - `durablefence/` — a leaf, test-only conformance kit for claim,
   takeover, and fence invariants. Imported only from another
   package's `_test` subdirectory, for example

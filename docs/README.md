@@ -44,6 +44,7 @@ exported surface, and runnable-style walkthroughs.
 - [examples/heartbeat-liveness.md](examples/heartbeat-liveness.md) — two tracked ids, one going silent past the timeout.
 - [examples/flow-runner.md](examples/flow-runner.md) — a step graph driven end to end through the runner.
 - [examples/agent-dispatch.md](examples/agent-dispatch.md) — the full end-to-end walkthrough: an agent dispatching a plan through signed, acked messages.
+- [examples/channel-ndjson-stdio.md](examples/channel-ndjson-stdio.md) — a `channel.Notifier` speaking newline-delimited JSON over stdin and stdout, the `mivia-agent` desktop app's own wire convention.
 
 ## Internal records
 

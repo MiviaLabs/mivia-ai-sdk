@@ -20,7 +20,8 @@ mirrors `api/channel.txt`.
   response content.
 - `Notifier` — a caller-implemented func type:
   `func(ctx context.Context, q Question) (Answer, error)`. `channel`
-  ships no implementation.
+  ships one reference implementation, `NewNDJSONNotifier`; a caller
+  builds any other transport itself.
 
 ## Functions and methods
 
@@ -28,6 +29,9 @@ mirrors `api/channel.txt`.
   and an empty `Payload`, each with its own sentinel error.
 - `Answer.Validate()` — rejects an empty `QuestionID`. Rejects nothing
   else.
+- `NewNDJSONNotifier(r io.Reader, w io.Writer) Notifier` — builds a
+  `Notifier` that speaks newline-delimited JSON over `r` and `w`. See
+  the NDJSON transport section below.
 
 ## Sentinel errors
 
@@ -39,6 +43,10 @@ Use `errors.Is` to test these.
 - `ErrEmptyPayload` — `Question.Payload` is empty or whitespace-only.
 - `ErrEmptyQuestionID` — `Answer.QuestionID` is empty or
   whitespace-only.
+- `ErrAnswerMismatch` — `NewNDJSONNotifier`'s decoded answer line's
+  `question_id` does not match the sent `Question.ID`.
+- `ErrNotifierBusy` — a call arrived while another call on the same
+  `NewNDJSONNotifier` closure already held its internal lock.
 
 ## Invariants
 
@@ -56,10 +64,79 @@ Use `errors.Is` to test these.
 
 ## Wire contract
 
-`channel` defines no wire format. `Question` and `Answer` carry no
-JSON tags and cross no boundary inside this package; no conformance
-vector applies. A caller that needs a wire form wraps the fields in
-its own transport-specific type.
+`channel`'s `Question` and `Answer` types themselves carry no wire
+format: no JSON tags, no boundary crossed inside the package, no
+conformance vector. A caller that needs a wire form wraps the fields
+in its own transport-specific type. `NewNDJSONNotifier`, described
+below, is the one reference wire form `channel` ships.
+
+## NDJSON transport
+
+`NewNDJSONNotifier(r io.Reader, w io.Writer) Notifier` builds a
+`Notifier` that speaks newline-delimited JSON (NDJSON) over an
+`io.Reader`/`io.Writer` pair, matching the convention `mivia-agent`'s
+desktop app already uses for its own `--json` line mode and its
+`internal/hub` process-to-process protocol.
+
+### Wire shape
+
+Calling the returned `Notifier` writes one question line to `w`:
+
+```json
+{"type":"question","id":"q1","recipient":"reviewer","payload":"proceed?"}
+```
+
+It then blocks reading one answer line from `r`:
+
+```json
+{"type":"answer","question_id":"q1","approved":true,"payload":"ok"}
+```
+
+Both wire structs are internal to `channel`; `Question` and `Answer`
+keep zero JSON tags. The scanner that reads the answer line sizes its
+buffer 64 KB initial, 1 MB cap, matching `mivia-agent`'s own
+`hub.connection.go` and `chat_repl_linemode.go` sizing exactly.
+
+### One caller at a time
+
+The returned `Notifier` serves one call at a time, enforced with an
+internal `sync.Mutex` and `TryLock`:
+
+- A call that acquires the lock releases it only once its underlying
+  read truly finishes: a line arrives, `r` errors, or `r` closes. It
+  never releases early on `ctx` cancellation, because the read runs in
+  a background goroutine that keeps going past that point.
+- A call that fails to acquire the lock returns `ErrNotifierBusy` at
+  once, touching neither `r` nor `w`.
+
+**Permanent-lockout limit.** If the peer never answers and never
+closes or errors `r` after a call's `ctx` is canceled, the closure
+stays locked forever: every later call on that closure returns
+`ErrNotifierBusy` indefinitely, misreporting a dead peer as busy
+rather than gone. `ctx` cancellation frees the calling goroutine from
+waiting; it does not free the closure for its future callers. The one
+recourse is closing `r`: that makes the stale read return an error,
+which releases the lock and makes the closure usable again.
+
+A caller needing more than one concurrent question builds its own
+correlation layer over more than one `NewNDJSONNotifier` closure, or
+one closure per stdio pipe pair; this package does not multiplex one
+shared stream itself.
+
+### Sentinel errors
+
+- `ErrAnswerMismatch` — a decoded answer line's `question_id` does not
+  match the `Question.ID` the same call sent. Checked with
+  `errors.Is`.
+- `ErrNotifierBusy` — a call arrived while another call on the same
+  closure already held its internal lock. Checked with `errors.Is`.
+
+### NDJSON usage
+
+See
+[examples/channel-ndjson-stdio.md](../examples/channel-ndjson-stdio.md)
+for a runnable walkthrough wiring `NewNDJSONNotifier` to
+`os.Stdin`/`os.Stdout`.
 
 ## Usage
 

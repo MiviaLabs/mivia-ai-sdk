@@ -51,9 +51,16 @@ verify: verify-fast verify-ledger-sqlite
 	done; \
 	awk -v floor="$(COVERAGE_FLOOR)" '/^mode:/{next} {file=$$1; sub(/:[0-9].*$$/,"",file); sub(/\/[^\/]+$$/,"",file); tot[file]+=$$(NF-1); if ($$NF==0) unc[file]+=$$(NF-1)} END {ts=0; u=0; bad=0; for (p in tot) {ts+=tot[p]; u+=unc[p]; pct=100*(tot[p]-unc[p])/tot[p]; if (pct<floor) {printf "coverage %.1f%% for %s below the %d%% floor\n", pct, p, floor; bad=1}} t=100*(ts-u)/ts; if (t<floor) {printf "coverage %.1f%% below the %d%% floor\n", t, floor; bad=1} exit bad}' cover.out; \
 	python3 scripts/check_semgrep_probes.py
+	python3 scripts/check_mutation.py --probe
 
 bench:
 	go test -run=NONE -bench=. -benchmem ./...
+
+# mutation runs the full per-package mutation sweep on demand. It never
+# runs inside verify or verify-fast; a full sweep costs minutes, not
+# seconds. Pass PKG to name one package, e.g. `make mutation PKG=ledger`.
+mutation:
+	python3 scripts/check_mutation.py --pkg $(PKG)
 
 # verify-ledger-sqlite is the tag-gated verification command for
 # SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md).

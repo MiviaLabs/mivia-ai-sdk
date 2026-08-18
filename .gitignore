@@ -2,6 +2,7 @@ vendor/
 *.test
 *.out
 .claude/settings.local.json
+__pycache__/
 
 # ZCode session artifacts (plans, scratch)
 .zcode/

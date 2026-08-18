@@ -109,10 +109,13 @@ composition comes last.
   of each other.
 - Model and durability: model provider interface, flow retry policy,
   tools capability markers, agent context budget, durable-fence
-  conformance kit, ledger durable admission, tool approval gating.
-  Phase 30 depends on phases 21 through 23 landing first. Phase 33
-  depends on phase 34. Phase 36 depends on phase 31 landing first. The
-  rest ship independently of each other.
+  conformance kit, ledger durable admission, tool approval gating,
+  escalation and notification channel abstraction. Phase 30 depends
+  on phases 21 through 23 landing first. Phase 33 depends on phase 34.
+  Phase 36 depends on phase 31 landing first. Phase 37 ships
+  independently; it adds a new leaf package with no dependency on any
+  other phase in this group. The rest ship independently of each
+  other.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depends on phase 14 (tools) landing first.
@@ -120,7 +123,8 @@ Phase 35 depends on phase 14 (tools) landing first.
 Phases 29 and 30 passed plan review in three rounds. Phase 31 and 33
 passed in three rounds each. Phase 32 passed in four rounds. Phase 34
 passed in five rounds. Every phase in this group is ready to build.
-Phase 36 is plan-only; it has not yet gone through plan review.
+Phase 36 and phase 37 are plan-only; neither has gone through plan
+review yet.
 
 ## Gate interactions
 

@@ -4,6 +4,7 @@
     "a2a": ["envelope"],
     "a2aclient": ["a2a", "envelope"],
     "agent": ["identity", "discovery", "flow", "envelope", "events", "machine", "heartbeat", "contextbudget"],
+    "channel": [],
     "contextbudget": [],
     "discovery": [],
     "durablefence": [],

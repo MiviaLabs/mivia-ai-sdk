@@ -10,7 +10,10 @@ import (
 
 // TestQuestionValidate covers red-green cases for Question.Validate:
 // an empty ID, an empty Recipient, an empty Payload, a whitespace-only
-// ID (proving the trim rule), and a fully populated value.
+// value for each of the three fields (proving the trim rule applies
+// to all three, not just ID), a whitespace-padded but non-empty value
+// (proving Validate does not over-reject), and a fully populated
+// value.
 func TestQuestionValidate(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -33,9 +36,24 @@ func TestQuestionValidate(t *testing.T) {
 			wantErr: channel.ErrEmptyRecipient,
 		},
 		{
+			name:    "whitespace only recipient",
+			q:       channel.Question{ID: "q1", Recipient: "\t\n ", Payload: "hi"},
+			wantErr: channel.ErrEmptyRecipient,
+		},
+		{
 			name:    "empty payload",
 			q:       channel.Question{ID: "q1", Recipient: "human", Payload: ""},
 			wantErr: channel.ErrEmptyPayload,
+		},
+		{
+			name:    "whitespace only payload",
+			q:       channel.Question{ID: "q1", Recipient: "human", Payload: "\t\n "},
+			wantErr: channel.ErrEmptyPayload,
+		},
+		{
+			name:    "padded but non-empty fields pass",
+			q:       channel.Question{ID: "  q1  ", Recipient: " human ", Payload: " hi "},
+			wantErr: nil,
 		},
 		{
 			name:    "fully populated passes",

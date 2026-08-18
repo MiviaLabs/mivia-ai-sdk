@@ -84,3 +84,73 @@ func TestNotifierBacksAckWait(t *testing.T) {
 		t.Fatalf("Restatement = %q, want %q", ack.Restatement, "looks good")
 	}
 }
+
+// TestNotifierBacksAckWaitCorrected proves the same wiring on the
+// Approved: false branch: the wrapper must call envelope.Ack.Correct
+// instead of Confirm, producing AckStatus AckCorrected. Without this
+// case, TestNotifierBacksAckWait alone cannot catch a wrapper that
+// always confirms regardless of ans.Approved.
+func TestNotifierBacksAckWaitCorrected(t *testing.T) {
+	var notify channel.Notifier = func(ctx context.Context, q channel.Question) (channel.Answer, error) {
+		return channel.Answer{
+			QuestionID: q.ID,
+			Approved:   false,
+			Payload:    "needs changes",
+		}, nil
+	}
+
+	var wait agent.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+		q := channel.Question{
+			ID:        msg.ID,
+			Recipient: ackWaitFromNotifier,
+			Payload:   msg.Payload,
+		}
+		if err := q.Validate(); err != nil {
+			return envelope.Ack{}, err
+		}
+		ans, err := notify(ctx, q)
+		if err != nil {
+			return envelope.Ack{}, err
+		}
+		if err := ans.Validate(); err != nil {
+			return envelope.Ack{}, err
+		}
+		ack, err := envelope.NewAck(msg, ackWaitFromNotifier, ans.Payload)
+		if err != nil {
+			return envelope.Ack{}, err
+		}
+		if ans.Approved {
+			ack = ack.Confirm()
+		} else {
+			ack = ack.Correct(ans.Payload)
+		}
+		return ack, nil
+	}
+
+	msg := envelope.Message{
+		Version:    envelope.Version,
+		ID:         "msg-2",
+		ThreadID:   "thread-1",
+		Intent:     envelope.IntentQuery,
+		Epistemic:  envelope.EpistemicVerified,
+		Confidence: 1,
+		Payload:    "please review",
+	}
+
+	ack, err := wait(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("wait() error = %v, want nil", err)
+	}
+	if ack.MessageID != msg.ID {
+		t.Fatalf("MessageID = %q, want %q", ack.MessageID, msg.ID)
+	}
+	if ack.From != ackWaitFromNotifier {
+		t.Fatalf("From = %q, want %q", ack.From, ackWaitFromNotifier)
+	}
+	if ack.Status != envelope.AckCorrected {
+		t.Fatalf("Status = %q, want %q", ack.Status, envelope.AckCorrected)
+	}
+	if ack.Restatement != "needs changes" {
+		t.Fatalf("Restatement = %q, want %q", ack.Restatement, "needs changes")
+	}
+}

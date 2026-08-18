@@ -104,9 +104,9 @@ The surface below lands in `api/trigger.txt` once this plan builds.
 - `type Action func(ctx context.Context) error` — the invocable a
   named trigger runs once its `Condition` is satisfied. `Add` rejects
   a nil `Action`; a trigger with nothing to run has no purpose.
-- `type Registry struct` — holds named triggers. Built only through
-  `New`. Safe for concurrent `Add`, `Remove`, and `Fire`, matching
-  `tools.Registry`'s concurrency shape.
+- `type Registry struct` — holds named triggers. The zero value is
+  ready to use, the same as `New`'s result. Safe for concurrent `Add`,
+  `Remove`, and `Fire`, matching `tools.Registry`'s concurrency shape.
 - `func New() *Registry` — creates an empty `Registry`.
 - `func (r *Registry) Add(name string, c Condition, a Action) error` —
   registers `c` and `a` under `name`. Rejects a blank `name` (empty

@@ -72,6 +72,23 @@ func TestAddFullyPopulated(t *testing.T) {
 	}
 }
 
+// TestZeroValueRegistryIsReady pins that a zero-value Registry, built
+// without New, accepts Add and Fire the same way New's result does.
+func TestZeroValueRegistryIsReady(t *testing.T) {
+	var r trigger.Registry
+	called := false
+	action := func(context.Context) error { called = true; return nil }
+	if err := r.Add("zero", nil, action); err != nil {
+		t.Fatalf("Add on zero-value Registry: %v", err)
+	}
+	if err := r.Fire(context.Background(), "zero"); err != nil {
+		t.Fatalf("Fire on zero-value Registry: %v", err)
+	}
+	if !called {
+		t.Fatal("Action was not called on a zero-value Registry")
+	}
+}
+
 func TestRemove(t *testing.T) {
 	r := trigger.New()
 	action := func(context.Context) error { return nil }

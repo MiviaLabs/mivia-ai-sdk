@@ -15,9 +15,9 @@ its own. The exported surface below mirrors `api/trigger.txt`.
 - `Action` — `func(ctx context.Context) error`. The invocable a named
   trigger runs once its `Condition` is satisfied. `Add` rejects a nil
   `Action`.
-- `Registry` — holds named triggers. Built only through `New`. Safe
-  for concurrent `Add`, `Remove`, and `Fire`; a `sync.Mutex` guards the
-  map.
+- `Registry` — holds named triggers. The zero value is ready to use,
+  the same as `New`'s result. Safe for concurrent `Add`, `Remove`, and
+  `Fire`; a `sync.Mutex` guards the map.
 
 ## Functions and methods
 

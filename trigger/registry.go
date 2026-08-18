@@ -45,8 +45,9 @@ type entry struct {
 	action    Action
 }
 
-// Registry holds named triggers. Built only through New. Safe for
-// concurrent Add, Remove, and Fire; a sync.Mutex guards the map.
+// Registry holds named triggers. The zero value is ready to use, the
+// same as New's result. Safe for concurrent Add, Remove, and Fire; a
+// sync.Mutex guards the map.
 type Registry struct {
 	mu      sync.Mutex
 	entries map[string]entry
@@ -72,6 +73,9 @@ func (r *Registry) Add(name string, c Condition, a Action) error {
 	defer r.mu.Unlock()
 	if _, ok := r.entries[name]; ok {
 		return ErrDuplicateName
+	}
+	if r.entries == nil {
+		r.entries = make(map[string]entry)
 	}
 	r.entries[name] = entry{condition: c, action: a}
 	return nil

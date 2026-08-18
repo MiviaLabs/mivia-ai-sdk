@@ -52,6 +52,13 @@ var (
 // EmitMessageAcked. A nil wait error runs EmitMessageAcked and
 // requires AckConfirmed before the step counts as done.
 //
+// A step confirmed more than once in one thread keeps the thread's
+// IDs unique: the second message gets "#2" appended to the step ID,
+// the third "#3", and so on. A looped child step and two Sub
+// children sharing one step ID both hit this rule. The suffix never
+// collides with a caller step ID: the scan skips any suffix already
+// in use.
+//
 // On a successful run with one or more gated steps, Run calls
 // EmitThreadVerified once, over every step message it built, in
 // order.
@@ -140,12 +147,15 @@ func (a *Agent) Run(
 // Message.Room at the zero value. budget, when non-nil, gates the
 // Fits check; runningBytes accumulates the byte length of every
 // built step's payload and is checked, along with the step count,
-// before hb.Beat and wait.
+// before hb.Beat and wait. The closure's seen map mints one unique
+// message ID per confirmed step, suffixing repeats; see
+// uniqueStepID.
 func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string, room string, budget *contextbudget.Limits, runningBytes *int) flow.Confirm {
+	seen := map[string]bool{}
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{
 			Version:   envelope.Version,
-			ID:        step.ID,
+			ID:        uniqueStepID(seen, step.ID),
 			ThreadID:  threadID,
 			Intent:    envelope.IntentRequest,
 			Epistemic: envelope.EpistemicAssumed,
@@ -189,5 +199,23 @@ func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, buil
 			*runningBytes += len(signed.Payload)
 		}
 		return nil
+	}
+}
+
+// uniqueStepID returns id when it is unused in seen, marking it
+// used. A used id returns its first free "#N" suffix, also marked,
+// so a repeated step keeps the thread's IDs unique without ever
+// colliding with a caller step ID.
+func uniqueStepID(seen map[string]bool, id string) string {
+	if !seen[id] {
+		seen[id] = true
+		return id
+	}
+	for n := 2; ; n++ {
+		cand := fmt.Sprintf("%s#%d", id, n)
+		if !seen[cand] {
+			seen[cand] = true
+			return cand
+		}
 	}
 }

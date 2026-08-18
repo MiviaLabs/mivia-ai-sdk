@@ -74,7 +74,10 @@ Use `errors.Is` to test these.
   a re-entry row between every pair of distinct child finals. A loop
   landing the same final twice always faults at run time:
   `machine.New` forbids the self row it would need.
-- The built ack chain resolves a step's tool by `step.ID`. A non-string
+- The built ack chain resolves a step's tool by `step.ID`. A suffixed
+  repeat, which agent.Run mints for a step confirmed twice, resolves
+  the plain tool name and records its artifact under the suffixed
+  ID. A non-string
   result fails with `ErrResultNotText`, naming the tool. An empty-string
   result is a runtime fault from `envelope.NewAck`, not
   `ErrResultNotText`.

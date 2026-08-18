@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
@@ -63,12 +64,16 @@ func (r *Runner) Bus() *events.Bus {
 // chain returns the built AckWait closure for the wired tools. Per
 // gated step it runs the step's tool by ID against the signed step
 // message, stores and records the string result, then confirms a
-// NewAck. A tool result that is not a string fails with
-// ErrResultNotText naming the tool. A tool error wrapping
-// agent.ErrEscalated, when Ask is set, routes to one Ask round trip.
+// NewAck. A suffixed message ID, which agent.Run mints for a step
+// confirmed twice, resolves the plain tool name, so a looped child
+// step runs its tool every iteration. A tool result that is not a
+// string fails with ErrResultNotText naming the tool. A tool error
+// wrapping agent.ErrEscalated, when Ask is set, routes to one Ask
+// round trip.
 func (r *Runner) chain() agent.AckWait {
 	return func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
-		out, err := r.tools.RunScoped(ctx, msg.ID, tools.InOut{Value: msg.Payload}, r.scope)
+		name := toolNameFor(r.tools, msg.ID)
+		out, err := r.tools.RunScoped(ctx, name, tools.InOut{Value: msg.Payload}, r.scope)
 		if err != nil {
 			if r.ask != nil && errors.Is(err, agent.ErrEscalated) {
 				return r.askRoundTrip(ctx, msg)
@@ -93,6 +98,20 @@ func (r *Runner) chain() agent.AckWait {
 		}
 		return ack.Confirm(), nil
 	}
+}
+
+// toolNameFor resolves the tool name for one message ID. A name the
+// registry holds resolves itself, so a caller tool named with a hash
+// wins. Otherwise a "#N" suffix is stripped, resolving the plain
+// step name behind a repeated message.
+func toolNameFor(reg *tools.Registry, id string) string {
+	if _, ok := reg.Get(id); ok {
+		return id
+	}
+	if i := strings.LastIndexByte(id, '#'); i > 0 {
+		return id[:i]
+	}
+	return id
 }
 
 // askRoundTrip resolves one escalated step through a single Ask round

@@ -73,6 +73,10 @@ Use `errors.Is` to test these.
   `envelope.Message` from the step's ID, `threadID`, and payload, with
   `Version`, `Intent`, and `Epistemic` set to values that pass
   `Validate` on their own.
+- A step confirmed more than once in one thread keeps the thread's
+  IDs unique: the second message appends `#2` to the step ID, the
+  third `#3`, and so on. A looped child step and two Sub children
+  sharing one step ID both hit this rule.
 - `Run` signs the message with the agent's identity and chains it to
   the previous step message by setting `PrevHash` to that message's
   `Hash()`.

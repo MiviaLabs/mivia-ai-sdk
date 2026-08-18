@@ -1,0 +1,343 @@
+package provider_test
+
+import (
+	"context"
+	"errors"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+)
+
+func TestFakeChatReturnsFixedResponse(t *testing.T) {
+	want := provider.Response{Model: "test-model", Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}}
+	f := &fakeCompleter{name: "fake", chatResp: want}
+	req := provider.Request{Model: "test-model", Messages: []provider.Message{{Role: provider.RoleUser, Content: "hello"}}}
+
+	got, err := f.Chat(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Chat() error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Chat() = %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(f.lastRequest, req) {
+		t.Fatalf("fake recorded request = %+v, want %+v", f.lastRequest, req)
+	}
+}
+
+func TestFakeChatFails(t *testing.T) {
+	f := &fakeCompleter{name: "fake", chatErr: errFakeChat}
+
+	got, err := f.Chat(context.Background(), provider.Request{})
+	if !errors.Is(err, errFakeChat) {
+		t.Fatalf("Chat() error = %v, want errors.Is errFakeChat", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("Chat() response = %+v, want zero value", got)
+	}
+}
+
+func TestFakeChatStreamDrainOrder(t *testing.T) {
+	wantUsage := provider.Usage{PromptTokens: 3, CompletionTokens: 5, TotalTokens: 8}
+	chunks := []provider.Chunk{
+		{Delta: "a"},
+		{Delta: "b"},
+		{Delta: "c", Done: true, Usage: wantUsage, FinishReason: "stop"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+
+	ch, err := f.ChatStream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("ChatStream() error = %v, want nil", err)
+	}
+	var drained []provider.Chunk
+	for c := range ch {
+		drained = append(drained, c)
+	}
+	if len(drained) != 3 {
+		t.Fatalf("drained %d chunks, want 3", len(drained))
+	}
+	for i, c := range chunks {
+		if drained[i].Delta != c.Delta || drained[i].Done != c.Done {
+			t.Fatalf("chunk %d = %+v, want %+v", i, drained[i], c)
+		}
+	}
+	if drained[2].Usage != wantUsage {
+		t.Fatalf("final Usage = %+v, want %+v", drained[2].Usage, wantUsage)
+	}
+}
+
+func TestFakeChatStreamFails(t *testing.T) {
+	f := &fakeCompleter{name: "fake", streamErr: errFakeStream}
+
+	ch, err := f.ChatStream(context.Background(), provider.Request{})
+	if !errors.Is(err, errFakeStream) {
+		t.Fatalf("ChatStream() error = %v, want errors.Is errFakeStream", err)
+	}
+	if ch != nil {
+		t.Fatalf("ChatStream() channel = %v, want nil", ch)
+	}
+}
+
+func TestRunTurnNonStreamCallsChat(t *testing.T) {
+	want := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}}
+	f := &fakeCompleter{name: "fake", chatResp: want}
+	req := provider.Request{Stream: false, Messages: []provider.Message{{Role: provider.RoleUser, Content: "hello"}}}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if !f.chatCalled {
+		t.Fatal("RunTurn() with Stream=false did not call Chat")
+	}
+	if f.streamCalled {
+		t.Fatal("RunTurn() with Stream=false called ChatStream")
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("RunTurn() = %+v, want %+v", got, want)
+	}
+}
+
+func TestRunTurnStreamAggregatesPlainDeltas(t *testing.T) {
+	chunks := []provider.Chunk{
+		{Delta: "Hel"},
+		{Delta: "lo, "},
+		{Delta: "world"},
+		{Done: true, FinishReason: "stop"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if !f.streamCalled {
+		t.Fatal("RunTurn() with Stream=true did not call ChatStream")
+	}
+	if got.Message.Content != "Hello, world" {
+		t.Fatalf("Message.Content = %q, want %q", got.Message.Content, "Hello, world")
+	}
+	if len(got.ToolCalls) != 0 {
+		t.Fatalf("ToolCalls len = %d, want 0", len(got.ToolCalls))
+	}
+	if got.Message.Role != provider.RoleAssistant {
+		t.Fatalf("Message.Role = %v, want RoleAssistant", got.Message.Role)
+	}
+}
+
+func TestRunTurnStreamRejectsInvalidChunk(t *testing.T) {
+	chunks := []provider.Chunk{
+		{Err: errors.New("mid-stream failure"), Done: true},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrChunkErrDoneConflict) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrChunkErrDoneConflict", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnStreamMergesConcurrentToolCalls(t *testing.T) {
+	chunks := []provider.Chunk{
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 1, ID: "call-1", Name: "lookup", Arguments: []byte(`{"id":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, Arguments: []byte(`"cats"}`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 1, Arguments: []byte(`42}`)}},
+		{Done: true, FinishReason: "tool_calls"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if len(got.ToolCalls) != 2 {
+		t.Fatalf("ToolCalls len = %d, want 2", len(got.ToolCalls))
+	}
+	first, second := got.ToolCalls[0], got.ToolCalls[1]
+	if first.Index != 0 || first.ID != "call-0" || first.Name != "search" || string(first.Arguments) != `{"q":"cats"}` {
+		t.Fatalf("ToolCalls[0] = %+v", first)
+	}
+	if second.Index != 1 || second.ID != "call-1" || second.Name != "lookup" || string(second.Arguments) != `{"id":42}` {
+		t.Fatalf("ToolCalls[1] = %+v", second)
+	}
+	if got.Message.Role != provider.RoleAssistant {
+		t.Fatalf("Message.Role = %v, want RoleAssistant", got.Message.Role)
+	}
+}
+
+func TestRunTurnStreamMergesOutOfOrderToolCallIndexes(t *testing.T) {
+	chunks := []provider.Chunk{
+		{ToolCallDelta: &provider.ToolCall{Index: 1, ID: "call-1", Name: "lookup", Arguments: []byte(`{"id":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 1, Arguments: []byte(`42}`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, Arguments: []byte(`"cats"}`)}},
+		{Done: true, FinishReason: "tool_calls"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if len(got.ToolCalls) != 2 {
+		t.Fatalf("ToolCalls len = %d, want 2", len(got.ToolCalls))
+	}
+	first, second := got.ToolCalls[0], got.ToolCalls[1]
+	if first.Index != 0 || first.ID != "call-0" || first.Name != "search" || string(first.Arguments) != `{"q":"cats"}` {
+		t.Fatalf("ToolCalls[0] = %+v, want Index 0 (call-0)", first)
+	}
+	if second.Index != 1 || second.ID != "call-1" || second.Name != "lookup" || string(second.Arguments) != `{"id":42}` {
+		t.Fatalf("ToolCalls[1] = %+v, want Index 1 (call-1)", second)
+	}
+}
+
+func TestRunTurnStreamClosedEarlyReturnsZeroResponse(t *testing.T) {
+	chunks := []provider.Chunk{
+		{Delta: "partial "},
+		{Delta: "more"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrStreamClosedEarly) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrStreamClosedEarly", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnStreamMidStreamFailureDiscardsPartial(t *testing.T) {
+	failure := errors.New("connection reset")
+	chunks := []provider.Chunk{
+		{Delta: "partial "},
+		{Delta: "output"},
+		{Err: failure},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, failure) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is failure", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnPropagatesChatError(t *testing.T) {
+	f := &fakeCompleter{name: "fake", chatErr: errFakeChat}
+	req := provider.Request{Stream: false}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, errFakeChat) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is errFakeChat", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnPropagatesChatStreamBeforeFirstChunkError(t *testing.T) {
+	f := &fakeCompleter{name: "fake", streamErr: errFakeStream}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, errFakeStream) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is errFakeStream", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnValidatesMessagesBeforeDispatch(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	req := provider.Request{
+		Stream:   true,
+		Messages: []provider.Message{{Role: provider.RoleTool, ToolCallID: ""}},
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrToolCallIDRequired) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolCallIDRequired", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if f.chatCalled || f.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite an invalid message")
+	}
+}
+
+func TestRunTurnRespectsContextCancellation(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f := &fakeCompleter{
+			name:         "fake",
+			streamChunks: []provider.Chunk{{Delta: "first"}},
+			neverClose:   true,
+		}
+		req := provider.Request{Stream: true}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+
+		got, err := provider.RunTurn(ctx, f, req)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("RunTurn() error = %v, want errors.Is context.DeadlineExceeded", err)
+		}
+		if !reflect.DeepEqual(got, provider.Response{}) {
+			t.Errorf("RunTurn() response = %+v, want zero value", got)
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunTurn() did not return promptly on context cancellation")
+	}
+}
+
+func TestOptionalCapabilityInterfaces(t *testing.T) {
+	capable := &capableFake{fakeCompleter: fakeCompleter{name: "capable"}, contextWindow: 128000, reasoningEffort: "high"}
+	var c provider.Completer = capable
+
+	ca, ok := c.(provider.ContextAccountant)
+	if !ok {
+		t.Fatal("capableFake does not satisfy ContextAccountant")
+	}
+	if ca.ContextWindow() != 128000 {
+		t.Fatalf("ContextWindow() = %d, want 128000", ca.ContextWindow())
+	}
+	rp, ok := c.(provider.ReasoningPolicy)
+	if !ok {
+		t.Fatal("capableFake does not satisfy ReasoningPolicy")
+	}
+	if rp.ReasoningEffort() != "high" {
+		t.Fatalf("ReasoningEffort() = %q, want %q", rp.ReasoningEffort(), "high")
+	}
+
+	plain := &fakeCompleter{name: "plain"}
+	var pc provider.Completer = plain
+	if _, ok := pc.(provider.ContextAccountant); ok {
+		t.Fatal("plain fakeCompleter unexpectedly satisfies ContextAccountant")
+	}
+	if _, ok := pc.(provider.ReasoningPolicy); ok {
+		t.Fatal("plain fakeCompleter unexpectedly satisfies ReasoningPolicy")
+	}
+}

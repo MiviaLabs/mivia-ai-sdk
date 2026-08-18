@@ -37,4 +37,7 @@ func TestCallToolWithProgressRejectsNilHandler(t *testing.T) {
 	if err == nil {
 		t.Fatal("CallToolWithProgress with a nil onProgress returned a nil error")
 	}
+	if !errors.Is(err, ErrNilProgressHandler) {
+		t.Fatalf("CallToolWithProgress error = %v, want errors.Is ErrNilProgressHandler", err)
+	}
 }

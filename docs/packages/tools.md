@@ -92,12 +92,10 @@ Use `errors.Is` to test these.
   `Registry.RunScoped` returns it when `scope.Approve` returns
   `(false, nil)`. Pinned by
   `tools/tools_test/run_scoped_approval_test.go`.
-- `errInvalidExecutionClass` ("tools: invalid execution class") —
+- `ErrInvalidExecutionClass` ("tools: invalid execution class") —
   `ExecutionClass.Validate` returns it for a value outside the four
-  known classes. This sentinel is unexported, so a caller outside the
-  package cannot match it with `errors.Is`.
-  `tools/tools_test/execution_profile_test.go` checks only that the
-  error is non-nil or nil, a weak pin.
+  known classes. Pinned by `TestExecutionClassValidate` in
+  `tools/tools_test/execution_profile_test.go` with `errors.Is`.
 
 ## Invariants
 

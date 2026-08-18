@@ -26,6 +26,30 @@ import (
 // cannot import a2a-go directly. Both stay unexported: no caller
 // outside this package's own tests needs them. See
 // docs/plans/a2aclient.md's Verification section for the test seam.
+// ErrNoBaseURL reports a New or newFromTransport call whose baseURL
+// is empty. Test with errors.Is.
+var ErrNoBaseURL = errors.New("a2aclient: baseURL is required")
+
+// ErrNoTransport reports a newFromTransport call whose tr is nil.
+// Test with errors.Is.
+var ErrNoTransport = errors.New("a2aclient: transport is required")
+
+// ErrNoTaskID reports a Send call whose transport returned an empty
+// task id. Test with errors.Is.
+var ErrNoTaskID = errors.New("a2aclient: transport returned an empty task id")
+
+// ErrZeroTaskHandle reports a Status or Result call against the zero
+// TaskHandle. Test with errors.Is.
+var ErrZeroTaskHandle = errors.New("a2aclient: zero TaskHandle")
+
+// ErrNotTerminal reports a Result call against a task that has not
+// yet reached a terminal State. Test with errors.Is.
+var ErrNotTerminal = errors.New("a2aclient: task is not terminal")
+
+// ErrSignatureCheckFailed reports a Result call whose mapped message
+// fails VerifySignature after the remote hop. Test with errors.Is.
+var ErrSignatureCheckFailed = errors.New("a2aclient: signature check failed")
+
 type transport interface {
 	// Send creates a new remote task carrying mapped and returns its
 	// task id.
@@ -57,7 +81,7 @@ type Client struct {
 // open. The caller must call Close when done with the Client.
 func New(baseURL string) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, errors.New("a2aclient: baseURL is required")
+		return nil, ErrNoBaseURL
 	}
 	tr, err := newGRPCTransport(baseURL)
 	if err != nil {
@@ -73,10 +97,10 @@ func New(baseURL string) (*Client, error) {
 // partial Client, when baseURL is empty or tr is nil.
 func newFromTransport(baseURL string, tr transport) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, errors.New("a2aclient: baseURL is required")
+		return nil, ErrNoBaseURL
 	}
 	if tr == nil {
-		return nil, errors.New("a2aclient: transport is required")
+		return nil, ErrNoTransport
 	}
 	return &Client{baseURL: baseURL, transport: tr}, nil
 }
@@ -124,7 +148,7 @@ func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, er
 		return TaskHandle{}, err
 	}
 	if taskID == "" {
-		return TaskHandle{}, errors.New("a2aclient: transport returned an empty task id")
+		return TaskHandle{}, ErrNoTaskID
 	}
 	return TaskHandle{taskID: taskID}, nil
 }
@@ -136,7 +160,7 @@ func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, er
 // with errors.Is(err, context.Canceled) or context.DeadlineExceeded.
 func (c *Client) Status(ctx context.Context, h TaskHandle) (State, error) {
 	if h.isZero() {
-		return StateUnspecified, errors.New("a2aclient: zero TaskHandle")
+		return StateUnspecified, ErrZeroTaskHandle
 	}
 	if err := ctx.Err(); err != nil {
 		return StateUnspecified, err
@@ -153,7 +177,7 @@ func (c *Client) Status(ctx context.Context, h TaskHandle) (State, error) {
 // fails, or when ctx is canceled or its deadline expires.
 func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, error) {
 	if h.isZero() {
-		return envelope.Message{}, errors.New("a2aclient: zero TaskHandle")
+		return envelope.Message{}, ErrZeroTaskHandle
 	}
 	if err := ctx.Err(); err != nil {
 		return envelope.Message{}, err
@@ -163,7 +187,7 @@ func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, er
 		return envelope.Message{}, err
 	}
 	if !state.terminal() {
-		return envelope.Message{}, fmt.Errorf("a2aclient: task is %s, not terminal", state)
+		return envelope.Message{}, fmt.Errorf("a2aclient: task is %s, not terminal: %w", state, ErrNotTerminal)
 	}
 	mapped, err := c.transport.Result(ctx, h.taskID)
 	if err != nil {
@@ -174,7 +198,7 @@ func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, er
 		return envelope.Message{}, err
 	}
 	if err := msg.VerifySignature(); err != nil {
-		return envelope.Message{}, fmt.Errorf("a2aclient: signature check failed: %w", err)
+		return envelope.Message{}, fmt.Errorf("a2aclient: signature check failed: %w: %w", ErrSignatureCheckFailed, err)
 	}
 	return msg, nil
 }

@@ -3,6 +3,7 @@ package a2aclient
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,6 +33,9 @@ func TestNewRejectsEmptyBaseURL(t *testing.T) {
 	c, err := New("")
 	if err == nil {
 		t.Fatal("New(\"\") returned nil error")
+	}
+	if !errors.Is(err, ErrNoBaseURL) {
+		t.Fatalf("New(\"\") error = %v, want errors.Is ErrNoBaseURL", err)
 	}
 	if c != nil {
 		t.Fatal("New(\"\") returned a non-nil Client on error")
@@ -70,6 +74,9 @@ func TestNewFromTransportRejectsEmptyBaseURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("newFromTransport(\"\", ...) returned nil error")
 	}
+	if !errors.Is(err, ErrNoBaseURL) {
+		t.Fatalf("newFromTransport(\"\", ...) error = %v, want errors.Is ErrNoBaseURL", err)
+	}
 	if c != nil {
 		t.Fatal("newFromTransport(\"\", ...) returned a non-nil Client on error")
 	}
@@ -79,6 +86,9 @@ func TestNewFromTransportRejectsNilTransport(t *testing.T) {
 	c, err := newFromTransport(testBaseURL, nil)
 	if err == nil {
 		t.Fatal("newFromTransport(..., nil) returned nil error")
+	}
+	if !errors.Is(err, ErrNoTransport) {
+		t.Fatalf("newFromTransport(..., nil) error = %v, want errors.Is ErrNoTransport", err)
 	}
 	if c != nil {
 		t.Fatal("newFromTransport(..., nil) returned a non-nil Client on error")
@@ -179,6 +189,8 @@ func TestStatusRejectsZeroTaskHandle(t *testing.T) {
 	}
 	if _, err := c.Status(context.Background(), TaskHandle{}); err == nil {
 		t.Fatal("Status accepted the zero TaskHandle")
+	} else if !errors.Is(err, ErrZeroTaskHandle) {
+		t.Fatalf("Status error = %v, want errors.Is ErrZeroTaskHandle", err)
 	}
 }
 
@@ -190,6 +202,8 @@ func TestResultRejectsZeroTaskHandle(t *testing.T) {
 	}
 	if _, err := c.Result(context.Background(), TaskHandle{}); err == nil {
 		t.Fatal("Result accepted the zero TaskHandle")
+	} else if !errors.Is(err, ErrZeroTaskHandle) {
+		t.Fatalf("Result error = %v, want errors.Is ErrZeroTaskHandle", err)
 	}
 }
 
@@ -205,6 +219,8 @@ func TestResultRejectsNonTerminalState(t *testing.T) {
 	}
 	if _, err := c.Result(context.Background(), h); err == nil {
 		t.Fatal("Result accepted a non-terminal task")
+	} else if !errors.Is(err, ErrNotTerminal) {
+		t.Fatalf("Result error = %v, want errors.Is ErrNotTerminal", err)
 	}
 }
 
@@ -229,8 +245,18 @@ func TestResultRejectsTamperedSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	if _, err := c.Result(context.Background(), h); err == nil {
+	_, err = c.Result(context.Background(), h)
+	if err == nil {
 		t.Fatal("Result accepted a tampered signature")
+	}
+	if !errors.Is(err, ErrSignatureCheckFailed) {
+		t.Fatalf("Result error = %v, want errors.Is ErrSignatureCheckFailed", err)
+	}
+	// envelope.VerifySignature returns a plain, non-sentinel error, so
+	// the second %w only proves the underlying detail text survives.
+	const wantDetail = "signature does not match message content"
+	if !strings.Contains(err.Error(), wantDetail) {
+		t.Fatalf("Result error = %v, want it to contain %q", err, wantDetail)
 	}
 }
 
@@ -262,6 +288,9 @@ func TestSendRejectsEmptyTaskID(t *testing.T) {
 	h, err := c.Send(context.Background(), signedMessage(t))
 	if err == nil {
 		t.Fatal("Send accepted an empty task id from the transport")
+	}
+	if !errors.Is(err, ErrNoTaskID) {
+		t.Fatalf("Send error = %v, want errors.Is ErrNoTaskID", err)
 	}
 	if h != (TaskHandle{}) {
 		t.Fatal("Send returned a non-zero TaskHandle on error")

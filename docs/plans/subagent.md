@@ -54,7 +54,7 @@ func AsTool(name string, r *agentrun.Runner, opts ToolOptions) tools.Tool
 type Spec struct{ Name string; Runner *agentrun.Runner; In machine.InOut }
 type Result struct{ Name string; Status machine.Status; Err error }
 func RunAll(ctx context.Context, specs []Spec) []Result
-var ErrMaxDepth, ErrBadCommand, ErrMailboxFull
+var ErrMaxDepth, ErrBadCommand, ErrMailboxFull, ErrInvalidCapacity
 
 func FlowTool(name string, plan *flow.Definition, m *machine.Definition, bus *events.Bus) tools.Tool
 func LedgerTool(name string, l *ledger.Ledger, actor ledger.Actor, lease time.Duration) tools.Tool
@@ -108,3 +108,41 @@ Tests live in `subagent/subagent_test/`, one external package:
 - The e2e system scenarios in `docs/plans/e2e.md` drive the package
   end to end.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
+
+### Gap fix: export the mailbox-capacity sentinel
+
+Status: planned, not yet built. `NewMailbox` rejects a non-positive
+`capacity` with a bare `fmt.Errorf` string today, not a sentinel. No
+caller can match it with `errors.Is`, unlike `ErrMailboxFull`, which
+already is one.
+
+The build, in `subagent/mailbox.go`:
+
+```go
+// ErrInvalidCapacity reports a NewMailbox call whose capacity is not
+// positive. Test with errors.Is.
+var ErrInvalidCapacity = errors.New("subagent: mailbox capacity must be positive")
+```
+
+Call site: `NewMailbox` wraps the sentinel, keeping the capacity value
+in the message text:
+
+```go
+if capacity <= 0 {
+    return nil, fmt.Errorf("subagent: mailbox capacity %d must be positive: %w", capacity, ErrInvalidCapacity)
+}
+```
+
+`make api-update` locks `ErrInvalidCapacity` into `api/subagent.txt`,
+joining the list above. No `policy/layers.json` edit.
+
+Test: `subagent/subagent_test/mailbox_test.go`'s
+`TestNewMailboxRejectsBadCapacity` currently checks
+`strings.Contains(err.Error(), "capacity")` against `capacity == 0`
+only. Strengthen it to a table of two cases, `capacity == 0` and
+`capacity == -1`, both asserting
+`errors.Is(err, subagent.ErrInvalidCapacity)`; both hit the same
+`capacity <= 0` branch, but a negative value is a distinct input worth
+its own case. The `strings.Contains` check may stay as a secondary
+assertion on the message text, or be dropped, at the builder's
+choice.

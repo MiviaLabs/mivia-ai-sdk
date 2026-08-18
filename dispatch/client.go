@@ -40,7 +40,26 @@ func Send(ctx context.Context, url string, msgs []envelope.Message) ([]SendResul
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, requestFailure(resp.StatusCode)
+	}
 	return parseReply(reply), nil
+}
+
+// requestFailure maps a non-200 Endpoint response status to the
+// matching sentinel. Endpoint.Handler's serveHTTP only ever answers
+// 405 for ErrBadMethod and 400 for ErrBadRequest (dispatch/endpoint.go),
+// so the status code alone identifies the failure; no body read is
+// required.
+func requestFailure(status int) error {
+	switch status {
+	case http.StatusMethodNotAllowed:
+		return fmt.Errorf("dispatch: request failed with status %d: %w", status, ErrBadMethod)
+	case http.StatusBadRequest:
+		return fmt.Errorf("dispatch: request failed with status %d: %w", status, ErrBadRequest)
+	default:
+		return fmt.Errorf("dispatch: request failed with status %d", status)
+	}
 }
 
 // encodeRequest builds the NDJSON request body from msgs.

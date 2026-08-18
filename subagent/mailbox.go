@@ -19,6 +19,10 @@ import (
 // ErrMailboxFull reports a Deliver against a full mailbox.
 var ErrMailboxFull = errors.New("subagent: mailbox is full")
 
+// ErrInvalidCapacity reports a NewMailbox call whose capacity is not
+// positive. Test with errors.Is.
+var ErrInvalidCapacity = errors.New("subagent: mailbox capacity must be positive")
+
 // Mailbox holds signed messages for one recipient. It is safe for
 // concurrent use. Deliver validates and appends; Take drains.
 type Mailbox struct {
@@ -30,7 +34,7 @@ type Mailbox struct {
 // NewMailbox builds a mailbox holding at most capacity messages.
 func NewMailbox(capacity int) (*Mailbox, error) {
 	if capacity <= 0 {
-		return nil, fmt.Errorf("subagent: mailbox capacity must be positive")
+		return nil, fmt.Errorf("subagent: mailbox capacity %d must be positive: %w", capacity, ErrInvalidCapacity)
 	}
 	return &Mailbox{cap: capacity}, nil
 }

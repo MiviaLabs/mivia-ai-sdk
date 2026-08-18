@@ -57,6 +57,7 @@ package tools
 }
   var ErrBlankName
   var ErrDuplicateName
+  var ErrInvalidExecutionClass
   var ErrNilTool
   var ErrScopeDenied
   var ErrToolDeclined

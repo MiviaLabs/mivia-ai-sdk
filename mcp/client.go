@@ -33,9 +33,9 @@ type ClientOptions struct {
 // error when the Client's Close already ran. Test with errors.Is.
 var ErrClosed = errors.New("mcp: client is closed")
 
-// errNilProgressHandler is CallToolWithProgress's error for a nil
-// onProgress argument.
-var errNilProgressHandler = errors.New("mcp: onProgress must not be nil")
+// ErrNilProgressHandler is CallToolWithProgress's error for a nil
+// onProgress argument. Test with errors.Is.
+var ErrNilProgressHandler = errors.New("mcp: onProgress must not be nil")
 
 // Client is one connection to one MCP server, wrapping the official
 // MCP Go SDK's Client and ClientSession. The caller owns the Client

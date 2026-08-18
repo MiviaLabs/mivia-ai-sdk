@@ -100,8 +100,12 @@ separate planes, with `dispatch` carrying room messages over HTTP.
 - `ErrMailboxFull` ("subagent: mailbox is full") — `Mailbox.Deliver`
   returns it when the mailbox is already at capacity. Pinned by
   `subagent/subagent_test/mailbox_test.go`.
-- `NewMailbox` returns a plain, non-sentinel error when `capacity` is
-  not positive. A caller cannot match it with `errors.Is`.
+- `ErrInvalidCapacity` ("subagent: mailbox capacity must be positive")
+  — `NewMailbox` wraps it, with the offending capacity in the message,
+  when `capacity` is not positive. Pinned by
+  `TestNewMailboxRejectsBadCapacity` in
+  `subagent/subagent_test/mailbox_test.go` with `errors.Is`, for both
+  a zero and a negative capacity.
 
 ## Usage
 

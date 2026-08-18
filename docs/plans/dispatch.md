@@ -155,3 +155,97 @@ uses `httptest.NewServer` unless noted otherwise:
 - `docs/plans/dispatch.md`, `docs/packages/dispatch.md`, and a
   `docs/examples/dispatch.md` walkthrough ship with the package.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
+
+### Gap fix: Send matches ErrBadMethod and ErrBadRequest
+
+Status: planned, not yet built. `ErrBadMethod` and `ErrBadRequest` are
+already exported sentinels, but `Endpoint.Handler`'s `http.Handler`
+only ever writes them through `http.Error(w, ErrX.Error(), code)`. An
+`http.Handler` cannot return a Go `error`, so no Go caller reaches
+these sentinels through that path. `docs/packages/dispatch.md`'s
+Failure modes section already names both as weak pins for this
+reason.
+
+`Send`, the client-side function in `dispatch/client.go`, is the cheap
+fix: it already reads the whole response body but never checks
+`resp.StatusCode`, so a 405 or 400 response's plain-text body is fed
+into `parseReply`, which cannot parse it as NDJSON and returns a
+useless decode error, dropping the original message entirely.
+
+`dispatch/endpoint.go:33-40` enforces a fixed 1:1 mapping, in the same
+package that owns both sentinels: status 405 only ever means
+`ErrBadMethod`, and status 400 only ever means `ErrBadRequest`. `Send`
+can key off `resp.StatusCode` alone; it does not need to read or
+compare the response body at all. A status-code switch is simpler
+than body matching and stays correct even if a reverse proxy or other
+middleware between `Send` and the endpoint rewrites or truncates the
+plain-text body: the status code is the one signal a proxy is least
+likely to change silently.
+
+The build, in `dispatch/client.go`:
+
+- After the existing `io.ReadAll(resp.Body)` call and before calling
+  `parseReply`, check `resp.StatusCode`. When it is not `http.StatusOK`,
+  return early with a matching error instead of calling `parseReply`.
+- Add a new unexported helper, `requestFailure(status int) error`,
+  that switches on the status code and returns a wrap of the matching
+  sentinel; any other non-200 status returns a plain error carrying
+  the status code.
+
+```go
+// requestFailure maps a non-200 Endpoint response status to the
+// matching sentinel. Endpoint.Handler's serveHTTP only ever answers
+// 405 for ErrBadMethod and 400 for ErrBadRequest (dispatch/endpoint.go),
+// so the status code alone identifies the failure; no body read is
+// required.
+func requestFailure(status int) error {
+    switch status {
+    case http.StatusMethodNotAllowed:
+        return fmt.Errorf("dispatch: request failed with status %d: %w", status, ErrBadMethod)
+    case http.StatusBadRequest:
+        return fmt.Errorf("dispatch: request failed with status %d: %w", status, ErrBadRequest)
+    default:
+        return fmt.Errorf("dispatch: request failed with status %d", status)
+    }
+}
+```
+
+`Send` gains one new call, no new import:
+
+```go
+reply, err := io.ReadAll(resp.Body)
+if err != nil {
+    return nil, err
+}
+if resp.StatusCode != http.StatusOK {
+    return nil, requestFailure(resp.StatusCode)
+}
+return parseReply(reply), nil
+```
+
+This is safe against the success path: `Endpoint.Handler`'s
+per-line-error path still answers HTTP 200 with a JSON error line in
+the body (`serveHTTP` never calls `WriteHeader` for that case, so Go's
+default is 200). Only the two request-level failures, and any other
+non-2xx status a caller's own middleware might add in front of the
+endpoint, take this new branch.
+
+No exported symbol changes: `requestFailure` stays unexported, and
+`Send`'s signature is unchanged. `make api-update` produces no diff
+for `api/dispatch.txt` in this gap fix. No `policy/layers.json` edit.
+
+Test, in `dispatch/dispatch_test/client_test.go`:
+
+- `TestSendMatchesBadMethodSentinel` — build an `httptest.NewServer`
+  with a raw `http.HandlerFunc` that calls
+  `http.Error(w, dispatch.ErrBadMethod.Error(),
+  http.StatusMethodNotAllowed)`, mirroring `Endpoint.Handler`'s own
+  bad-method write. Call `dispatch.Send` against it and assert
+  `errors.Is(err, dispatch.ErrBadMethod)`.
+- `TestSendMatchesBadRequestSentinel` — same shape, with
+  `http.Error(w, dispatch.ErrBadRequest.Error(), http.StatusBadRequest)`.
+  Assert `errors.Is(err, dispatch.ErrBadRequest)`.
+- Update `docs/packages/dispatch.md`'s Failure modes entries for
+  `ErrBadMethod` and `ErrBadRequest`: each now also carries a
+  `Send`-side pin, in addition to the existing status-code pin. See
+  the docs deliverable list below.

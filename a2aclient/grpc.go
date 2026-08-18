@@ -22,6 +22,19 @@ type grpcTransport struct {
 
 var _ transport = (*grpcTransport)(nil)
 
+// ErrNoTask reports a Send call whose remote response was not a Task.
+// Test with errors.Is.
+var ErrNoTask = errors.New("a2aclient: send did not return a task")
+
+// ErrNoResultMessage reports a Result call against a task that
+// carries no status message and no history entry. Test with
+// errors.Is.
+var ErrNoResultMessage = errors.New("a2aclient: task carries no result message")
+
+// ErrNoDataPart reports a Result call whose result message carries no
+// DataPart. Test with errors.Is.
+var ErrNoDataPart = errors.New("a2aclient: result message carries no data part")
+
 // newGRPCTransport dials baseURL and wraps the resulting connection in
 // a2a-go's gRPC transport. The dial is lazy (grpc.NewClient does not
 // block), so a bad address surfaces on the first call, not here.
@@ -52,7 +65,7 @@ func (g *grpcTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, er
 	}
 	task, ok := result.(*a2acore.Task)
 	if !ok || task == nil {
-		return "", errors.New("a2aclient: send did not return a task")
+		return "", ErrNoTask
 	}
 	return string(task.ID), nil
 }
@@ -77,7 +90,7 @@ func (g *grpcTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, 
 	}
 	msg := resultMessage(task)
 	if msg == nil {
-		return a2a.Mapped{}, errors.New("a2aclient: task carries no result message")
+		return a2a.Mapped{}, ErrNoResultMessage
 	}
 	data, err := dataFromParts(msg.Parts)
 	if err != nil {
@@ -122,7 +135,7 @@ func dataFromParts(parts a2acore.ContentParts) (json.RawMessage, error) {
 			return json.Marshal(dp.Data)
 		}
 	}
-	return nil, errors.New("a2aclient: result message carries no data part")
+	return nil, ErrNoDataPart
 }
 
 // stateFromTaskState maps an a2a-go TaskState onto a State.

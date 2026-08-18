@@ -89,11 +89,10 @@ skips approval gating entirely, the same way `Registry.Run` does.
 - `ErrClosed` ("mcp: client is closed") — `CallTool`,
   `CallToolWithProgress`, and `ListTools` return it once `Close` already
   ran. Pinned by `mcp/client_test.go`.
-- `errNilProgressHandler` ("mcp: onProgress must not be nil") —
-  `CallToolWithProgress` returns it when `onProgress` is nil. This
-  sentinel is unexported, so a caller outside the package cannot match
-  it with `errors.Is`. `mcp/connect_test.go` checks only that the error
-  is non-nil, a weak pin.
+- `ErrNilProgressHandler` ("mcp: onProgress must not be nil") —
+  `CallToolWithProgress` returns it when `onProgress` is nil. Pinned by
+  `TestCallToolWithProgressRejectsNilHandler` in `mcp/connect_test.go`
+  with `errors.Is`.
 
 ## Why this shape
 

@@ -344,6 +344,10 @@ func RegisterAll(ctx context.Context, c *Client, reg *tools.Registry) error
 // ErrClosed is CallTool's, CallToolWithProgress's, and ListTools's
 // error when the Client's Close already ran. Test with errors.Is.
 var ErrClosed error
+
+// ErrNilProgressHandler is CallToolWithProgress's error for a nil
+// onProgress argument. Test with errors.Is.
+var ErrNilProgressHandler error
 ```
 
 Design notes:
@@ -565,6 +569,27 @@ expected `CallResult`. `valid_tools_call_text_result.json`,
 - No `agent` change lands in this phase. `agent`'s row in
   `policy/layers.json` stays unchanged; wiring `mcp` into `agent` is a
   later phase's own plan.
+
+### Gap fix: export the nil-progress-handler sentinel
+
+Status: planned, not yet built. `CallToolWithProgress` already returns
+a sentinel, `errNilProgressHandler` (`mcp/client.go`), for a nil
+`onProgress` argument, but it stays unexported. No caller outside this
+package can match it with `errors.Is`.
+
+The build: rename `errNilProgressHandler` to `ErrNilProgressHandler`,
+keep the message text (`"mcp: onProgress must not be nil"`) and the
+doc comment's first line, updated to start with the new name. Update
+the one call site, `mcp/tools.go:92`
+(`return tools.Out{}, ErrNilProgressHandler`). No other line changes.
+
+`make api-update` locks `ErrNilProgressHandler` into `api/mcp.txt` in
+the same change. No `policy/layers.json` edit.
+
+Test: `mcp/connect_test.go`'s `TestCallToolWithProgressRejectsNilHandler`
+currently checks only that the error is non-nil. Strengthen it to
+assert `errors.Is(err, ErrNilProgressHandler)`. No new test file: this
+is a one-line assertion change in an existing, already-red-green case.
 
 ### Semgrep: scoped stdlib-only exception
 

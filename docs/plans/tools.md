@@ -208,6 +208,9 @@ caller's type assertion instead.
 - `const ExecutionClassExternal ExecutionClass = "external"`
 - `(ExecutionClass) Validate() error` — rejects any value outside the
   four constants above.
+- `var ErrInvalidExecutionClass` — `Validate` returns this for a value
+  outside the four constants above. Test with `errors.Is`. Gap-fix
+  addition, see below.
 - `type ExecutionProfile struct { Class ExecutionClass; ResourceKey string; Timeout time.Duration }`
   — execution-risk metadata for one tool: its class, its per-turn
   dedup key, and its timeout.
@@ -456,3 +459,30 @@ same change as this phase's code.
 internal import. `ToolCall`, `Approve`, and the approval check use
 only `context` and `errors`, the same standard-library-only footprint
 phase 14 and phase 31 already use.
+
+### Gap fix: export the invalid-execution-class sentinel
+
+Status: planned, not yet built. `ExecutionClass.Validate` already
+returns a sentinel, `errInvalidExecutionClass`
+(`tools/execution_profile.go`), but it stays unexported. No caller
+outside this package can match it with `errors.Is`, and the existing
+test only checks nil-versus-non-nil.
+
+The build: rename `errInvalidExecutionClass` to
+`ErrInvalidExecutionClass`, keep the message text
+(`"tools: invalid execution class"`) and update the doc comment's
+first line and its "not exported" sentence, since the sentinel is now
+exported. Update the one call site,
+`tools/execution_profile.go:34` (`return ErrInvalidExecutionClass`).
+No other line changes.
+
+`make api-update` locks `ErrInvalidExecutionClass` into `api/tools.txt`
+in the same change, joining the list above. No `policy/layers.json`
+edit.
+
+Test: `tools/tools_test/execution_profile_test.go`'s
+`TestExecutionClassValidate` currently checks only `err == nil` versus
+`err != nil` per case (see its `wantErr` field). Strengthen the
+`true`-want cases to assert
+`errors.Is(err, tools.ErrInvalidExecutionClass)` instead of a plain
+non-nil check.

@@ -78,12 +78,19 @@ still runs the full ladder.
   `Endpoint.Handler`'s `http.Handler` writes it as an HTTP 405 body
   when the request method is not POST. The handler never returns this
   value to a Go caller, so `dispatch_test/badrequest_test.go` checks
-  the status code, not `errors.Is`. This is a weak pin.
+  the status code, not `errors.Is`. This is a weak pin. `Send`
+  recognizes a 405 response and wraps `ErrBadMethod`, so a client-side
+  caller matches it with `errors.Is`; pinned by
+  `TestSendMatchesBadMethodSentinel` in
+  `dispatch/dispatch_test/client_test.go`.
 - `ErrBadRequest` ("dispatch: request body read failed") —
   `Endpoint.Handler`'s `http.Handler` writes it as an HTTP 400 body
   when the request body fails to read. Same weak-pin note as
   `ErrBadMethod`: `dispatch_test/badrequest_test.go` checks the
-  status code only.
+  status code only. `Send` recognizes a 400 response and wraps
+  `ErrBadRequest`, so a client-side caller matches it with
+  `errors.Is`; pinned by `TestSendMatchesBadRequestSentinel` in
+  `dispatch/dispatch_test/client_test.go`.
 
 ## Scope
 

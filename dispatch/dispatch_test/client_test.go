@@ -2,6 +2,7 @@ package dispatch_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -110,5 +111,45 @@ func TestSendMalformedReplyLine(t *testing.T) {
 	}
 	if results[0].Err == nil {
 		t.Fatal("results[0].Err is nil, want a decode failure")
+	}
+}
+
+// TestSendMatchesBadMethodSentinel proves Send matches a 405 response
+// carrying ErrBadMethod's text, mirroring Endpoint.Handler's own
+// bad-method write, with errors.Is.
+func TestSendMatchesBadMethodSentinel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, dispatch.ErrBadMethod.Error(), http.StatusMethodNotAllowed)
+	}))
+	defer srv.Close()
+
+	_, key := newMember(t)
+	msg := signIn(t, key, "room-1", "m-1", "hello")
+	_, err := dispatch.Send(context.Background(), srv.URL, []envelope.Message{msg})
+	if err == nil {
+		t.Fatal("Send() error is nil, want a bad-method failure")
+	}
+	if !errors.Is(err, dispatch.ErrBadMethod) {
+		t.Fatalf("Send() error = %v, want errors.Is ErrBadMethod", err)
+	}
+}
+
+// TestSendMatchesBadRequestSentinel proves Send matches a 400
+// response carrying ErrBadRequest's text, mirroring Endpoint.Handler's
+// own bad-request write, with errors.Is.
+func TestSendMatchesBadRequestSentinel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, dispatch.ErrBadRequest.Error(), http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	_, key := newMember(t)
+	msg := signIn(t, key, "room-1", "m-1", "hello")
+	_, err := dispatch.Send(context.Background(), srv.URL, []envelope.Message{msg})
+	if err == nil {
+		t.Fatal("Send() error is nil, want a bad-request failure")
+	}
+	if !errors.Is(err, dispatch.ErrBadRequest) {
+		t.Fatalf("Send() error = %v, want errors.Is ErrBadRequest", err)
 	}
 }

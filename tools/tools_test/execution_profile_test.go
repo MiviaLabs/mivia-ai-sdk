@@ -2,6 +2,7 @@ package tools_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -112,10 +113,11 @@ func TestExecutionClassValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.class.Validate()
-			if tt.wantErr && err == nil {
-				t.Fatalf("Validate(%q) error = nil, want error", tt.class)
-			}
-			if !tt.wantErr && err != nil {
+			if tt.wantErr {
+				if !errors.Is(err, tools.ErrInvalidExecutionClass) {
+					t.Fatalf("Validate(%q) error = %v, want errors.Is ErrInvalidExecutionClass", tt.class, err)
+				}
+			} else if err != nil {
 				t.Fatalf("Validate(%q) error = %v, want nil", tt.class, err)
 			}
 		})

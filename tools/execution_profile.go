@@ -18,10 +18,9 @@ const (
 	ExecutionClassExternal     ExecutionClass = "external"
 )
 
-// errInvalidExecutionClass is Validate's error for a value outside
-// the declared ExecutionClass set. Not exported: the plan locks no
-// sentinel error for this check.
-var errInvalidExecutionClass = errors.New("tools: invalid execution class")
+// ErrInvalidExecutionClass is Validate's error for a value outside
+// the declared ExecutionClass set. Test with errors.Is.
+var ErrInvalidExecutionClass = errors.New("tools: invalid execution class")
 
 // Validate rejects any ExecutionClass value outside
 // ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite,
@@ -31,7 +30,7 @@ func (c ExecutionClass) Validate() error {
 	case ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite, ExecutionClassExternal:
 		return nil
 	default:
-		return errInvalidExecutionClass
+		return ErrInvalidExecutionClass
 	}
 }
 

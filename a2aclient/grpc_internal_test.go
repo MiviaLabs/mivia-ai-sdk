@@ -80,8 +80,12 @@ func TestGRPCTransportSendRejectsTransportFailure(t *testing.T) {
 func TestGRPCTransportSendRejectsNonTaskResult(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{sendResp: &a2acore.Message{ID: "m1"}}}
 	mapped := a2a.Mapped{Part: a2a.Part{Data: json.RawMessage(`{}`)}}
-	if _, err := g.Send(context.Background(), mapped); err == nil {
+	_, err := g.Send(context.Background(), mapped)
+	if err == nil {
 		t.Fatal("Send accepted a non-task result")
+	}
+	if !errors.Is(err, ErrNoTask) {
+		t.Fatalf("Send error = %v, want errors.Is ErrNoTask", err)
 	}
 }
 
@@ -153,8 +157,12 @@ func TestGRPCTransportResultFromHistoryFallback(t *testing.T) {
 
 func TestGRPCTransportResultRejectsNoMessage(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{taskResp: &a2acore.Task{ContextID: "ctx-3"}}}
-	if _, err := g.Result(context.Background(), "task-1"); err == nil {
+	_, err := g.Result(context.Background(), "task-1")
+	if err == nil {
 		t.Fatal("Result accepted a task with no history and no status message")
+	}
+	if !errors.Is(err, ErrNoResultMessage) {
+		t.Fatalf("Result error = %v, want errors.Is ErrNoResultMessage", err)
 	}
 }
 
@@ -166,8 +174,12 @@ func TestGRPCTransportResultRejectsNoDataPart(t *testing.T) {
 		},
 	}
 	g := &grpcTransport{tr: &fakeSDKTransport{taskResp: task}}
-	if _, err := g.Result(context.Background(), "task-1"); err == nil {
+	_, err := g.Result(context.Background(), "task-1")
+	if err == nil {
 		t.Fatal("Result accepted a message with no data part")
+	}
+	if !errors.Is(err, ErrNoDataPart) {
+		t.Fatalf("Result error = %v, want errors.Is ErrNoDataPart", err)
 	}
 }
 

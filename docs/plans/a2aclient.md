@@ -194,6 +194,106 @@ No other package may import `a2aclient`; `agent`'s row does not list
 it in this phase. A later phase adds that edge when the composition
 layer wires in a real transport.
 
+### Gap fix: exported sentinel errors
+
+Status: planned, not yet built. This package returns every error as
+an inline `errors.New` or `fmt.Errorf` string today. No caller can
+match a failure with `errors.Is`. This addendum adds one exported
+sentinel per distinct failure condition and updates the matching call
+site to wrap it, keeping the existing message text where practical.
+
+New exported vars, in `a2aclient/client.go` unless noted:
+
+```go
+// ErrNoBaseURL reports a New or newFromTransport call whose baseURL
+// is empty. Test with errors.Is.
+var ErrNoBaseURL = errors.New("a2aclient: baseURL is required")
+
+// ErrNoTransport reports a newFromTransport call whose tr is nil.
+// Test with errors.Is.
+var ErrNoTransport = errors.New("a2aclient: transport is required")
+
+// ErrNoTaskID reports a Send call whose transport returned an empty
+// task id. Test with errors.Is.
+var ErrNoTaskID = errors.New("a2aclient: transport returned an empty task id")
+
+// ErrZeroTaskHandle reports a Status or Result call against the zero
+// TaskHandle. Test with errors.Is.
+var ErrZeroTaskHandle = errors.New("a2aclient: zero TaskHandle")
+
+// ErrNotTerminal reports a Result call against a task that has not
+// yet reached a terminal State. Test with errors.Is.
+var ErrNotTerminal = errors.New("a2aclient: task is not terminal")
+
+// ErrSignatureCheckFailed reports a Result call whose mapped message
+// fails VerifySignature after the remote hop. Test with errors.Is.
+var ErrSignatureCheckFailed = errors.New("a2aclient: signature check failed")
+```
+
+In `a2aclient/grpc.go`:
+
+```go
+// ErrNoTask reports a Send call whose remote response was not a Task.
+// Test with errors.Is.
+var ErrNoTask = errors.New("a2aclient: send did not return a task")
+
+// ErrNoResultMessage reports a Result call against a task that
+// carries no status message and no history entry. Test with
+// errors.Is.
+var ErrNoResultMessage = errors.New("a2aclient: task carries no result message")
+
+// ErrNoDataPart reports a Result call whose result message carries no
+// DataPart. Test with errors.Is.
+var ErrNoDataPart = errors.New("a2aclient: result message carries no data part")
+```
+
+Call-site changes, each replacing an inline `errors.New`/`fmt.Errorf`
+with a wrap of the matching sentinel; keep every other line unchanged:
+
+- `client.go`, `New`: `return nil, ErrNoBaseURL` (was
+  `errors.New("a2aclient: baseURL is required")`).
+- `client.go`, `newFromTransport`: `return nil, ErrNoBaseURL`, then
+  `return nil, ErrNoTransport`.
+- `client.go`, `Send`, empty task id: `return TaskHandle{}, ErrNoTaskID`.
+- `client.go`, `Status`: `return StateUnspecified, ErrZeroTaskHandle`.
+- `client.go`, `Result`, zero handle: `return envelope.Message{}, ErrZeroTaskHandle`.
+- `client.go`, `Result`, non-terminal: keep the dynamic state name in
+  the text and wrap the sentinel:
+  `fmt.Errorf("a2aclient: task is %s, not terminal: %w", state, ErrNotTerminal)`.
+- `client.go`, `Result`, signature check: keep the underlying
+  `VerifySignature` error visible and wrap both sentinels. Go 1.25,
+  this module's floor, supports two `%w` verbs in one `fmt.Errorf`
+  call: `fmt.Errorf("a2aclient: signature check failed: %w: %w", ErrSignatureCheckFailed, err)`.
+  `errors.Is` then matches both `ErrSignatureCheckFailed` and the
+  original `VerifySignature` error.
+- `grpc.go`, `Send`, non-Task result: `return "", ErrNoTask`.
+- `grpc.go`, `Result`, nil `resultMessage`: `return a2a.Mapped{}, ErrNoResultMessage`.
+- `grpc.go`, `dataFromParts`, no `DataPart`: `return nil, ErrNoDataPart`.
+
+Out of scope: `loopback.go`'s two inline errors
+(`"loopback: request carries no message"`,
+`"loopback: request carries no payload"`) stay unexported plain
+errors. A real `Client.Send` call can never trigger either one: `Send`
+builds its request through `a2a.ToPart`, which calls `m.Encode()` on
+an already-`Validate`d `envelope.Message` and always produces a
+request carrying both a message and a payload. `a2a.ToPart` and
+`grpcTransport.Send` construct that request; neither has a code path
+that omits the payload. These two `loopbackExecutor.Execute` checks
+guard against a malformed request no in-module caller can produce, so
+they stay unreachable through this package's public API, not because
+of any `StateFailed` surfacing. (A failed `Execute` call does still
+propagate as a genuine error from `grpcTransport.Send` through
+`Client.Send`, not through `Status`/`Result`, but that path needs a
+request no real caller builds.) Adding a sentinel here would let a
+caller match an internal test-fixture detail that carries no
+contract.
+
+`newGRPCTransport`'s dial-failure wrap
+(`fmt.Errorf("a2aclient: open transport: %w", err)` in `New`) stays as
+is: it already wraps the underlying `grpc.NewClient` error with `%w`,
+so `errors.Is` against that underlying error already works. No new
+sentinel needed there.
+
 ## Tests
 
 Test files live directly in `a2aclient/`, not in a nested
@@ -478,3 +578,53 @@ and the new `check_semgrep_probes.py` case; and the AGENTS.md sentence
 above. `docs/architecture.md` does not change in this phase:
 `a2aclient` adds no message-semantics rule, only a transport for the
 existing envelope wire form.
+
+### Gap fix verification
+
+`make api-update` locks the nine new sentinel vars
+(`ErrNoBaseURL`, `ErrNoTransport`, `ErrNoTaskID`, `ErrZeroTaskHandle`,
+`ErrNotTerminal`, `ErrSignatureCheckFailed`, `ErrNoTask`,
+`ErrNoResultMessage`, `ErrNoDataPart`) into `api/a2aclient.txt`, in the
+same change as the code. No `policy/layers.json` edit: this addendum
+adds no import edge.
+
+`client_test.go` gains one `errors.Is` assertion per sentinel, next to
+the existing case that already exercises that failure:
+
+These test files sit in `package a2aclient` (internal, see the Tests
+section above), so every sentinel below is unqualified:
+
+- `TestNewRejectsEmptyBaseURL`: assert `errors.Is(err, ErrNoBaseURL)`.
+- `TestNewFromTransportRejectsEmptyBaseURL`: assert
+  `errors.Is(err, ErrNoBaseURL)`.
+- `TestNewFromTransportRejectsNilTransport`: assert
+  `errors.Is(err, ErrNoTransport)`.
+- `TestSendRejectsEmptyTaskID`: assert `errors.Is(err, ErrNoTaskID)`.
+- `TestStatusRejectsZeroTaskHandle`: assert
+  `errors.Is(err, ErrZeroTaskHandle)`.
+- `TestResultRejectsZeroTaskHandle`: assert
+  `errors.Is(err, ErrZeroTaskHandle)`.
+- `TestResultRejectsNonTerminalState`: assert
+  `errors.Is(err, ErrNotTerminal)`.
+- `TestResultRejectsTamperedSignature`: assert
+  `errors.Is(err, ErrSignatureCheckFailed)`. `envelope.VerifySignature`
+  (`envelope/sign.go`) returns a plain `errors.New` value with no
+  exported sentinel, so a second `errors.Is` assertion against it is
+  not possible from this package's tests. Assert instead that the
+  underlying detail text survives the wrap:
+  `strings.Contains(err.Error(), "signature does not match message content")`,
+  the exact string `VerifySignature` returns for a tampered payload.
+  This proves the double-`%w` wrap keeps the underlying error's
+  message visible, the reason this call site uses two `%w` verbs
+  instead of one, even though `errors.Is` can only reach the outer
+  sentinel here.
+
+`grpc_internal_test.go` gains, or strengthens, one case per `grpc.go`
+sentinel:
+
+- a `Send` case where the stub transport's response is not a `*Task`:
+  assert `errors.Is(err, ErrNoTask)`.
+- `TestResultRejectsUnmappableData` or a sibling case: assert
+  `errors.Is(err, ErrNoDataPart)`.
+- a case where the task carries no status message and no history:
+  assert `errors.Is(err, ErrNoResultMessage)`.

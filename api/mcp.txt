@@ -37,3 +37,4 @@ package mcp
 }
   type Transport = mcpsdk.Transport
   var ErrClosed
+  var ErrNilProgressHandler

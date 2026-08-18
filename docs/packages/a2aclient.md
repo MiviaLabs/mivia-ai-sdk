@@ -72,25 +72,50 @@ test seam.
 
 ## Failure modes
 
-This package returns plain errors, not sentinels. A caller cannot
-match them with `errors.Is`.
+Every distinct failure condition has its own exported sentinel. A
+caller matches one with `errors.Is`.
 
-- `New` fails when `baseURL` is empty. Pinned by
+- `ErrNoBaseURL` (`"a2aclient: baseURL is required"`): `New` and
+  `newFromTransport` return it when `baseURL` is empty. Pinned by
+  `TestNewRejectsEmptyBaseURL` and
+  `TestNewFromTransportRejectsEmptyBaseURL` in
   `a2aclient/client_test.go`.
-- `New` fails when the underlying gRPC transport fails to open, for
-  example on a malformed `baseURL`. Pinned by
+- `ErrNoTransport` (`"a2aclient: transport is required"`):
+  `newFromTransport` returns it when `tr` is nil. Pinned by
+  `TestNewFromTransportRejectsNilTransport` in
   `a2aclient/client_test.go`.
-- `Send` fails when `msg` fails `a2a.ToPart`'s validation, or when the
-  transport rejects the send, or when `ctx` is canceled or expired.
-  Pinned by `a2aclient/client_test.go`.
-- `Status` fails on a zero `TaskHandle`, a transport failure, or a
-  canceled or expired `ctx`. Pinned by `a2aclient/client_test.go`.
-- `Result` fails on a zero `TaskHandle`, a non-terminal task state, a
-  malformed remote data part, a tampered signature, a transport
-  failure, or a canceled or expired `ctx`. Pinned by
-  `a2aclient/client_test.go`.
-- The internal gRPC transport fails when a remote task result carries
-  no message or no data part. Pinned by
+- `ErrNoTaskID` (`"a2aclient: transport returned an empty task id"`):
+  `Send` returns it when the transport answers an empty task id.
+  Pinned by `TestSendRejectsEmptyTaskID` in `a2aclient/client_test.go`.
+- `ErrZeroTaskHandle` (`"a2aclient: zero TaskHandle"`): `Status` and
+  `Result` return it against the zero `TaskHandle`. Pinned by
+  `TestStatusRejectsZeroTaskHandle` and
+  `TestResultRejectsZeroTaskHandle` in `a2aclient/client_test.go`.
+- `ErrNotTerminal` (`"a2aclient: task is not terminal"`): `Result`
+  wraps it, with the task's current state in the message, when the
+  task has not yet reached a terminal state. Pinned by
+  `TestResultRejectsNonTerminalState` in `a2aclient/client_test.go`.
+- `ErrSignatureCheckFailed` (`"a2aclient: signature check failed"`):
+  `Result` wraps it, alongside the underlying `VerifySignature` error,
+  when the mapped message's signature fails after the remote hop.
+  Pinned by `TestResultRejectsTamperedSignature` in
+  `a2aclient/client_test.go`, which also asserts the underlying
+  `envelope.VerifySignature` error text survives the wrap; that
+  underlying error carries no sentinel of its own.
+- `ErrNoTask` (`"a2aclient: send did not return a task"`, in
+  `a2aclient/grpc.go`): the internal gRPC transport's `Send` returns
+  it when the remote response is not a `*Task`. Pinned by
+  `TestGRPCTransportSendRejectsNonTaskResult` in
+  `a2aclient/grpc_internal_test.go`.
+- `ErrNoResultMessage` (`"a2aclient: task carries no result message"`,
+  in `a2aclient/grpc.go`): the internal gRPC transport's `Result`
+  returns it when the task carries no status message and no history
+  entry. Pinned by `TestGRPCTransportResultRejectsNoMessage` in
+  `a2aclient/grpc_internal_test.go`.
+- `ErrNoDataPart` (`"a2aclient: result message carries no data part"`,
+  in `a2aclient/grpc.go`): the internal gRPC transport's `Result`
+  returns it when the result message carries no `DataPart`. Pinned by
+  `TestGRPCTransportResultRejectsNoDataPart` in
   `a2aclient/grpc_internal_test.go`.
 
 ## Why this shape

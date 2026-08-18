@@ -89,10 +89,28 @@ func TestInboxToolDrainsPayloads(t *testing.T) {
 }
 
 // TestNewMailboxRejectsBadCapacity proves a non-positive capacity
-// fails at construction.
+// fails at construction, for both zero and negative values.
 func TestNewMailboxRejectsBadCapacity(t *testing.T) {
-	if _, err := subagent.NewMailbox(0); err == nil || !strings.Contains(err.Error(), "capacity") {
-		t.Fatalf("err = %v, want the capacity fault", err)
+	tests := []struct {
+		name     string
+		capacity int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := subagent.NewMailbox(tt.capacity)
+			if err == nil {
+				t.Fatalf("NewMailbox(%d) error = nil, want error", tt.capacity)
+			}
+			if !errors.Is(err, subagent.ErrInvalidCapacity) {
+				t.Fatalf("NewMailbox(%d) error = %v, want errors.Is ErrInvalidCapacity", tt.capacity, err)
+			}
+			if !strings.Contains(err.Error(), "capacity") {
+				t.Fatalf("err = %v, want the capacity fault", err)
+			}
+		})
 	}
 }
 

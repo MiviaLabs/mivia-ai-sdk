@@ -23,3 +23,12 @@ package a2aclient
   type State int
   type TaskHandle struct {
 }
+  var ErrNoBaseURL
+  var ErrNoDataPart
+  var ErrNoResultMessage
+  var ErrNoTask
+  var ErrNoTaskID
+  var ErrNoTransport
+  var ErrNotTerminal
+  var ErrSignatureCheckFailed
+  var ErrZeroTaskHandle

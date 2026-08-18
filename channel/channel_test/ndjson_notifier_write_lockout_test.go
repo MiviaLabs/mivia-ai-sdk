@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"sync"
 	"testing"
 	"time"
 
@@ -209,10 +207,62 @@ func assertNotifyRecoversAfterLateAnswer(t *testing.T, notify channel.Notifier, 
 	}
 }
 
+// startSignalWriter wraps an io.Writer and closes started the moment
+// its first Write call begins, before delegating to w. Used by
+// TestNDJSONNotifierConcurrentCalls to prove the first call's write
+// is already in flight (and therefore its lock is held) without
+// racing a second call for the lock itself.
+type startSignalWriter struct {
+	w       io.Writer
+	started chan struct{}
+}
+
+func (s *startSignalWriter) Write(p []byte) (int, error) {
+	close(s.started)
+	return s.w.Write(p)
+}
+
+// TestNDJSONNotifierConcurrentCalls proves the one-call-at-a-time
+// invariant under real overlap. Launching two notify() calls with a
+// bare go statement and a WaitGroup does not, by itself, guarantee
+// they ever overlap: the scheduler is free to run the first call to
+// full completion (lock, write, read, unlock) before the second is
+// ever scheduled, which would make both succeed with no lock
+// contention at all and is not the scenario this test exists to
+// cover. Racing a second call against the first for the lock itself
+// does not fix this either: if the second call wins TryLock instead,
+// it blocks forever on the same undrained pw, deadlocking the test.
+// Instead, force the overlap deterministically with a one-way signal:
+// pw starts unread, so the first call's write blocks; startSignalWriter
+// proves that write is already in flight — and therefore the lock is
+// already held — before the second call ever runs, so it is
+// guaranteed to observe ErrNotifierBusy without any risk of winning
+// the lock itself. Only then does the echo reader start, letting the
+// first call's write unblock and its round trip complete.
 func TestNDJSONNotifierConcurrentCalls(t *testing.T) {
 	pr, pw := io.Pipe()
 	ar, aw := io.Pipe()
-	notify := channel.NewNDJSONNotifier(ar, pw)
+	sw := &startSignalWriter{w: pw, started: make(chan struct{})}
+	notify := channel.NewNDJSONNotifier(ar, sw)
+
+	q0 := channel.Question{ID: "q0", Recipient: "human", Payload: "hi"}
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := notify(context.Background(), q0)
+		firstDone <- err
+	}()
+
+	select {
+	case <-sw.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first notify() never reached its write phase")
+	}
+
+	q1 := channel.Question{ID: "q1", Recipient: "human", Payload: "hi"}
+	_, err := notify(context.Background(), q1)
+	if !errors.Is(err, channel.ErrNotifierBusy) {
+		t.Fatalf("second notify() error = %v, want %v", err, channel.ErrNotifierBusy)
+	}
 
 	go func() {
 		sc := bufio.NewScanner(pr)
@@ -229,31 +279,12 @@ func TestNDJSONNotifierConcurrentCalls(t *testing.T) {
 		}
 	}()
 
-	var wg sync.WaitGroup
-	results := make([]error, 2)
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			q := channel.Question{ID: fmt.Sprintf("q%d", i), Recipient: "human", Payload: "hi"}
-			_, err := notify(context.Background(), q)
-			results[i] = err
-		}(i)
-	}
-	wg.Wait()
-
-	successes, busy := 0, 0
-	for _, err := range results {
-		switch {
-		case err == nil:
-			successes++
-		case errors.Is(err, channel.ErrNotifierBusy):
-			busy++
-		default:
-			t.Fatalf("unexpected error = %v", err)
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatalf("first notify() error = %v, want nil", err)
 		}
-	}
-	if successes != 1 || busy != 1 {
-		t.Fatalf("successes = %d, busy = %d, want 1 and 1", successes, busy)
+	case <-time.After(5 * time.Second):
+		t.Fatal("first notify() did not complete after the echo reader started draining pw")
 	}
 }

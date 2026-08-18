@@ -73,6 +73,34 @@ func TestRunScopedNilScopeBehavesLikeRun(t *testing.T) {
 	}
 }
 
+// TestRunScopedPrivilegedToolGating proves RunScoped denies a
+// privileged tool through a live Scope when the tool is absent from
+// Allowlist, and runs it when the tool is present. This exercises
+// privileged-tool gating through RunScoped itself, not just through a
+// direct Scope.Allowed call.
+func TestRunScopedPrivilegedToolGating(t *testing.T) {
+	r := tools.New()
+	priv := &privilegedMarkerTool{stubTool: stubTool{name: "delete", result: "gone"}, privileged: true}
+	if err := r.Add(priv); err != nil {
+		t.Fatalf("Add(delete) error = %v, want nil", err)
+	}
+
+	deny := tools.NewScope(tools.ScopeOptions{})
+	_, err := r.RunScoped(context.Background(), "delete", tools.InOut{}, deny)
+	if !errors.Is(err, tools.ErrScopeDenied) {
+		t.Fatalf("RunScoped(delete, deny scope) error = %v, want ErrScopeDenied", err)
+	}
+
+	allow := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"delete"}})
+	out, err := r.RunScoped(context.Background(), "delete", tools.InOut{}, allow)
+	if err != nil {
+		t.Fatalf("RunScoped(delete, allow scope) error = %v, want nil", err)
+	}
+	if out.Value != "gone" {
+		t.Fatalf("RunScoped(delete, allow scope).Value = %v, want gone", out.Value)
+	}
+}
+
 // runFlagTool is a Tool that records whether Run was called.
 type runFlagTool struct {
 	name string

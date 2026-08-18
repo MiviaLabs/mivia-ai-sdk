@@ -7,6 +7,24 @@ fails admission. `Sign` sets `Message.Signer` to the hex ed25519
 public key, so the roster stores public keys, not person names. The
 program builds and runs against the module.
 
+## The admission sequence
+
+```mermaid
+sequenceDiagram
+    participant Founder
+    participant Room as room.Room
+    participant Bob
+    participant Stranger
+    Founder->>Room: New("platform-team", founderHex)
+    Founder->>Room: Admit(bobHex, founderHex)
+    Bob->>Bob: Sign(bobKey, msg To founderHex)
+    Bob->>Room: Accepts(msg)
+    Room-->>Bob: nil (signer and recipient are members)
+    Stranger->>Stranger: Sign(strangerKey, msg To bobHex)
+    Stranger->>Room: Accepts(forged)
+    Room-->>Stranger: error (signer not on roster)
+```
+
 ## The program
 
 ```go

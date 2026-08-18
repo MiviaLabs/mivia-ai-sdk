@@ -3,6 +3,29 @@
 This walkthrough follows one message: create, sign, encode, decode,
 verify, then tamper. The program builds and runs against the module.
 
+## The sign-encode-decode-verify sequence
+
+```mermaid
+sequenceDiagram
+    participant P as Program
+    participant E as envelope
+    P->>E: Sign(key, msg)
+    E-->>P: signed Message
+    P->>E: signed.Encode()
+    E-->>P: JSON bytes
+    P->>E: Decode(data)
+    E-->>P: Message
+    P->>E: got.VerifySignature()
+    E-->>P: nil (matches)
+    P->>P: got.Payload = "A different payload."
+    P->>E: got.Encode()
+    E-->>P: JSON bytes (still valid)
+    P->>E: Decode(tampered)
+    E-->>P: Message
+    P->>E: again.VerifySignature()
+    E-->>P: error (signature no longer matches)
+```
+
 ## The program
 
 ```go

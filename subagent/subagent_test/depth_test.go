@@ -2,6 +2,7 @@ package subagent_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -47,6 +48,9 @@ func TestDepthGuardStopsSelfSpawn(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), subagent.ErrMaxDepth.Error()) {
 		t.Fatalf("error %v lacks the depth sentinel", err)
+	}
+	if !errors.Is(err, subagent.ErrMaxDepth) {
+		t.Fatalf("errors.Is(err, subagent.ErrMaxDepth) = false, want true")
 	}
 }
 

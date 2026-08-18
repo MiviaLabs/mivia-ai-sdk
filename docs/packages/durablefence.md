@@ -32,10 +32,11 @@ mirrors `api/durablefence.txt`.
   order under `t.Run`, using each check's own name as the subtest
   name.
 
-## Sentinel errors
+## Failure modes
 
-- `ErrIncompleteScenario` — a `Scenario` field is nil. Test with
-  `errors.Is`.
+- `ErrIncompleteScenario` ("durablefence: scenario is incomplete") —
+  `Scenario.Validate` wraps it when any required field of a `Scenario`
+  is nil. Pinned by `durablefence_test/scenario_test.go`.
 
 ## Invariants
 

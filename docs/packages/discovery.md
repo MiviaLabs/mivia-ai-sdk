@@ -32,6 +32,22 @@ capability list. The exported surface below mirrors
   same fold comparison, so a validated card never hides a second entry
   that `Match` would treat as equal.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `Parse` fails when `data` is not well-formed JSON. Pinned by
+  `discovery_test/card_test.go`.
+- `Card.Validate` fails when `Name` is blank after trim. Pinned by
+  `discovery_test/card_test.go`.
+- `Card.Validate` fails when `Capabilities` is empty or nil. Pinned by
+  `discovery_test/card_test.go`.
+- `Card.Validate` fails when a capability entry is blank after trim.
+  Pinned by `discovery_test/card_test.go`.
+- `Card.Validate` fails when a capability entry repeats another,
+  fold-compared after trim. Pinned by `discovery_test/card_test.go`.
+
 ## Match semantics
 
 - `Match` returns an empty string and `false` when `need` is blank.

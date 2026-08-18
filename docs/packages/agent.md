@@ -35,19 +35,29 @@ messages. The exported surface below mirrors `api/agent.txt`.
 - `MessageAckedEvent` — the event kind `EmitMessageAcked` emits.
 - `ThreadVerifiedEvent` — the event kind `EmitThreadVerified` emits.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrNoIdentity` — `New` got a nil identity.
-- `ErrNoPlan` — `New` got a nil plan.
-- `ErrNoBus` — an `EmitX` function, or `Run`, got a nil bus.
-- `ErrEscalated` — an `AckWait` implementation wraps this to route a
-  step to a human instead of resolving an ack.
-- `ErrNoWait` — `Run` got a nil `wait`.
-- `ErrNoThread` — `Run` got an empty `threadID`.
-- `ErrOverBudget` — a gated step's `Fits` check against a non-nil
-  `budget` failed.
+- `ErrNoIdentity` ("agent: identity is required") — `New` returns it
+  when `id` is nil. Pinned by `agent_test/definition_test.go`.
+- `ErrNoPlan` ("agent: plan is required") — `New` returns it when
+  `plan` is nil. Pinned by `agent_test/definition_test.go`.
+- `ErrNoBus` ("agent: bus is required") — `EmitMessageDelivered`,
+  `EmitMessageAcked`, `EmitThreadVerified`, and `Run` return it when
+  `bus` is nil. Pinned by `agent_test/translator_test.go` and
+  `agent_test/run_test.go`.
+- `ErrEscalated` ("agent: step escalated") — an `AckWait`
+  implementation wraps it to route a step to a human instead of
+  resolving an ack; `Run` propagates it unchanged. Pinned by
+  `agent_test/run_test.go` and `agent_test/lifecycle_integration_test.go`.
+- `ErrNoWait` ("agent: wait is required") — `Run` returns it when
+  `wait` is nil. Pinned by `agent_test/run_test.go`.
+- `ErrNoThread` ("agent: thread id is required") — `Run` returns it
+  when `threadID` is empty. Pinned by `agent_test/run_test.go`.
+- `ErrOverBudget` ("agent: context budget exceeded") — `Run`'s
+  `confirmStep` wraps it when a gated step's `Fits` check against a
+  non-nil `budget` fails. Pinned by `agent_test/run_budget_test.go`.
 
 ## Invariants
 

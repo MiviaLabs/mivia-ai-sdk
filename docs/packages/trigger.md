@@ -28,18 +28,26 @@ its own. The exported surface below mirrors `api/trigger.txt`.
 - `Registry.Fire(ctx, name)` — resolves `name`, evaluates its
   `Condition`, and, when true, calls its `Action`.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrBlankName` — `Add`'s error when `name` is empty after
-  `strings.TrimSpace`.
-- `ErrNilAction` — `Add`'s error for a nil `Action`.
-- `ErrDuplicateName` — `Add`'s error for a `name` already registered.
-- `ErrUnknownName` — `Fire`'s error when `name` is not registered.
-- `ErrConditionNotMet` — `Fire`'s error when the named entry's
-  `Condition` evaluates false. `Fire` does not call `Action` in this
-  case.
+- `ErrBlankName` ("trigger: name must not be blank") — `Registry.Add`
+  returns it when `name` is empty after `strings.TrimSpace`. Pinned by
+  `trigger/trigger_test/registry_add_test.go`.
+- `ErrNilAction` ("trigger: action must not be nil") — `Registry.Add`
+  returns it when `Action` is nil. Pinned by
+  `trigger/trigger_test/registry_add_test.go`.
+- `ErrDuplicateName` ("trigger: name already registered") —
+  `Registry.Add` returns it on a second `Add` call with the same
+  `name`. Pinned by `trigger/trigger_test/registry_add_test.go`.
+- `ErrUnknownName` ("trigger: unknown name") — `Registry.Fire` returns
+  it when `name` is not registered. Pinned by
+  `trigger/trigger_test/registry_fire_test.go`.
+- `ErrConditionNotMet` ("trigger: condition not met") — `Registry.Fire`
+  returns it when the entry's `Condition` evaluates false. `Fire` does
+  not call `Action` in this case. Pinned by
+  `trigger/trigger_test/registry_fire_test.go`.
 
 ## Invariants
 

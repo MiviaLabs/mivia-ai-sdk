@@ -57,6 +57,19 @@ compile error, not a silent miss.
 - The zero value of `Bus` is not usable. `New` is the only sanctioned
   construction.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `Event.Validate` fails when `Name` is empty or `Data` is empty.
+  Pinned by `events_test/events_test.go`.
+- `Bus.Subscribe` fails when `name` is empty or `handler` is nil.
+  Pinned by `events_test/events_test.go`.
+- `Bus.Emit` fails when the event fails `Validate`, or when no
+  handler is subscribed for the event's name. Pinned by
+  `events_test/events_test.go`.
+
 ## Usage
 
 ```go

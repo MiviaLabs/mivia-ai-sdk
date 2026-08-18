@@ -70,6 +70,29 @@ test seam.
   message valid before the hop must still be valid after it.
 - `Close` is idempotent.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `New` fails when `baseURL` is empty. Pinned by
+  `a2aclient/client_test.go`.
+- `New` fails when the underlying gRPC transport fails to open, for
+  example on a malformed `baseURL`. Pinned by
+  `a2aclient/client_test.go`.
+- `Send` fails when `msg` fails `a2a.ToPart`'s validation, or when the
+  transport rejects the send, or when `ctx` is canceled or expired.
+  Pinned by `a2aclient/client_test.go`.
+- `Status` fails on a zero `TaskHandle`, a transport failure, or a
+  canceled or expired `ctx`. Pinned by `a2aclient/client_test.go`.
+- `Result` fails on a zero `TaskHandle`, a non-terminal task state, a
+  malformed remote data part, a tampered signature, a transport
+  failure, or a canceled or expired `ctx`. Pinned by
+  `a2aclient/client_test.go`.
+- The internal gRPC transport fails when a remote task result carries
+  no message or no data part. Pinned by
+  `a2aclient/grpc_internal_test.go`.
+
 ## Why this shape
 
 `a2aclient` is a new top-level package, not a addition to `a2a`.

@@ -33,6 +33,17 @@ exported surface below mirrors `api/contextbudget.txt`.
 - The caller owns the trim or summarize decision. `Limits` only
   reports whether content still fits.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `Limits.Validate` fails when `MaxBytes` is negative. Checked first;
+  the `MaxBytes` message wins when both fields are negative. Pinned
+  by `contextbudget_test.go`.
+- `Limits.Validate` fails when `MaxEvents` is negative and `MaxBytes`
+  is not. Pinned by `contextbudget_test.go`.
+
 ## Cross-references
 
 - [agent.md](agent.md) — `agent.Run` takes an optional

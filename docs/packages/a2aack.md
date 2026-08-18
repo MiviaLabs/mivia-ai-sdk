@@ -53,13 +53,22 @@ The ack references the sent step message, not the server reply.
 signature is re-verified on the caller's side of the transport, so a
 forged or tampered restatement never reaches the confirmed ack.
 
-## Sentinels
+## Failure modes
 
-- `ErrNoClient` — `Wait` got a nil client.
-- `ErrNoPoll` — the poll interval is not positive.
-- `ErrShortTimeout` — the timeout does not cover one poll.
-- `ErrRemoteFailed` — the remote task ended failed or canceled.
-- `ErrTimeout` — the exchange outran its deadline or `ctx`.
+- `ErrNoClient` ("a2aack: client is required") — `Wait` returns it
+  when `c` is nil. Pinned by `a2aack_test/options_test.go`.
+- `ErrNoPoll` ("a2aack: poll interval must be positive") —
+  `Options.Validate`/`Wait` returns it when `Poll` is not positive.
+  Pinned by `a2aack_test/options_test.go`.
+- `ErrShortTimeout` ("a2aack: timeout must cover one poll") —
+  `Options.Validate`/`Wait` returns it when `Timeout` is shorter than
+  `Poll`. Pinned by `a2aack_test/options_test.go`.
+- `ErrRemoteFailed` ("a2aack: remote task failed") — the returned
+  `AckWait` wraps it when the remote task reaches `StateFailed` or
+  `StateCanceled`. Pinned by `a2aack_test/failed_test.go`.
+- `ErrTimeout` ("a2aack: remote task timed out") — the returned
+  `AckWait` wraps it when the deadline or `ctx` expires before the
+  task completes. Pinned by `a2aack_test/timeout_test.go`.
 
 Retry of a failed remote task stays with `flow.Step.Retry` around
 the gated step; `a2aack` never retries on its own.

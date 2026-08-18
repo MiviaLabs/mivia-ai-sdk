@@ -526,6 +526,33 @@ A panel resolves as one atomic unit. It runs its wave only once every
 member admits; one unadmitted member skips every member, even a
 member whose own needs would otherwise admit it.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `New` fails on a malformed step graph: an empty or duplicate step
+  ID, a missing dependency, a cycle, a panel naming an unknown step
+  or one step twice, a panel whose members disagree on `To`, a step
+  named in two panels, or a chained step sharing a panel of two or
+  more members. Pinned by `flow_test/new_test.go` and
+  `flow_test/panel_test.go`.
+- `New` fails on invalid retry or loop configuration: a `Retry`
+  policy combined with `Sub` or set on a panel member, and a `Loop`
+  policy combined with a nil `Sub` or set on a panel member. Pinned
+  by `flow_test/retry_test.go` and `flow_test/loop_test.go`.
+- `New` fails on invalid admission or routing: a step combining
+  `Sub` and `Route`, a branch step with no dependent, a panel naming
+  a branch step or a branch step's direct dependent, and an
+  `AdmissionOnFailed` step with no needs or named in a panel. Pinned
+  by `flow_test/routing_test.go` and `flow_test/fallback_test.go`.
+- `Run`'s branch step fails when `Route` returns an unknown step ID
+  or a non-nil error; the branch step then reports
+  `OutcomeFailed`. Pinned by `flow_test/routing_test.go`.
+- `Run` fails when no transition or more than one transition matches
+  a step's target status in the wired `machine.Definition`. Pinned
+  by `flow_test/run_test.go` and `flow_test/chain_test.go`.
+
 ## Usage
 
 ```go

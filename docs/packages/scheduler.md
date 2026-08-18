@@ -47,15 +47,22 @@ something is. The exported surface below mirrors `api/scheduler.txt`.
   waits for every in-flight goroutine to finish before it returns. A
   nil `bus` means no event emits.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrBlankID` — `Add`'s error for a blank id (empty after
-  `strings.TrimSpace`).
-- `ErrNilSchedule` — `Add`'s error for a nil `Schedule`.
-- `ErrNilJob` — `Add`'s error for a nil `Job`.
-- `ErrDuplicateID` — `Add`'s error for an id already registered.
+- `ErrBlankID` ("scheduler: id must not be blank") — `Add` returns it
+  when `id` is empty after `strings.TrimSpace`. Pinned by
+  `scheduler/scheduler_test/scheduler_add_test.go`.
+- `ErrNilSchedule` ("scheduler: schedule must not be nil") — `Add`
+  returns it when `sched` is nil. Pinned by
+  `scheduler/scheduler_test/scheduler_add_test.go`.
+- `ErrNilJob` ("scheduler: job must not be nil") — `Add` returns it
+  when `job` is nil. Pinned by
+  `scheduler/scheduler_test/scheduler_add_test.go`.
+- `ErrDuplicateID` ("scheduler: id already registered") — `Add` returns
+  it on a second `Add` call with the same `id`. Pinned by
+  `scheduler/scheduler_test/scheduler_add_test.go`.
 
 ## Invariants
 

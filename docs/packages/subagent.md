@@ -87,6 +87,22 @@ separate planes, with `dispatch` carrying room messages over HTTP.
 - Every spawn runs on a fresh thread; repeated spawns mint new
   thread names, never reusing one.
 
+## Failure modes
+
+- `ErrMaxDepth` ("subagent: max spawn depth reached") — the spawn tool
+  wraps it when the current depth is at or over `opts.Depth`. Pinned by
+  `subagent/subagent_test/depth_test.go` (`errors.Is`).
+- `ErrBadCommand` ("subagent: bad command") — the command tools
+  (`MemoryTool`, `RoomTool`, `LedgerTool`, `SchedulerTool`, `FlowTool`,
+  `TriggerTool`, `ProviderTool`, `HeartbeatTool`, `ChannelTool`) wrap it
+  for malformed JSON or an unknown `Op`. Pinned by
+  `subagent/subagent_test/toolerrors_test.go`.
+- `ErrMailboxFull` ("subagent: mailbox is full") — `Mailbox.Deliver`
+  returns it when the mailbox is already at capacity. Pinned by
+  `subagent/subagent_test/mailbox_test.go`.
+- `NewMailbox` returns a plain, non-sentinel error when `capacity` is
+  not positive. A caller cannot match it with `errors.Is`.
+
 ## Usage
 
 ```go

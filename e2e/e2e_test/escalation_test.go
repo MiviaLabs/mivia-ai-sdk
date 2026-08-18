@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 	"testing"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
@@ -127,6 +129,30 @@ func TestEscalationDeclinedFailsRun(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "declined") || !strings.Contains(err.Error(), "human-1") {
 		t.Fatalf("Run error %q lacks the decline and the human", err)
+	}
+}
+
+// TestEscalationWithoutAskWrapsErrEscalated proves an escalated tool
+// error, with no Ask wired, reaches the caller still matching
+// agent.ErrEscalated.
+func TestEscalationWithoutAskWrapsErrEscalated(t *testing.T) {
+	ctx := context.Background()
+	plan, m := decidePlanMachine(t)
+	reg := tools.New()
+	if err := reg.Add(e2e.EscalateTool{ToolName: "decide"}); err != nil {
+		t.Fatalf("registry.Add: %v", err)
+	}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent:   e2eAgent(t, "escalation-agent", plan),
+		Machine: m,
+		Tools:   reg,
+	})
+	if err != nil {
+		t.Fatalf("agentrun.New: %v", err)
+	}
+	_, _, err = runner.Run(ctx, "thread-no-ask", machine.InOut{})
+	if !errors.Is(err, agent.ErrEscalated) {
+		t.Fatalf("Run error = %v, want agent.ErrEscalated", err)
 	}
 }
 

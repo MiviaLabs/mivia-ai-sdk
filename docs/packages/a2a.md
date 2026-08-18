@@ -58,6 +58,19 @@ sit on `Mapped`, not on `Part`, because in the real A2A wire form
 they belong to the wrapping A2A `Message`, not to an individual
 `Part`.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `ToPart` fails when `m.Validate()` fails, for example on an unset
+  `Version` or an invalid `Intent`. Pinned by `a2a_test/mapping_test.go`.
+- `FromPart` fails when `mapped.Part.Data` does not unmarshal into an
+  `envelope.Message`. Pinned by `a2a_test/mapping_test.go`.
+- `FromPart` fails when the mapped message, after the `ContextID`/
+  `MessageID` override, fails `Validate`. Pinned by
+  `a2a_test/mapping_test.go`.
+
 ## Usage
 
 ```go

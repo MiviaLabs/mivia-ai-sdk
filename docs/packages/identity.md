@@ -43,6 +43,19 @@ A zero-value Identity fails `Validate`. `Signer` returns an empty
 string for a wrong-length private key; the length guard runs before
 `key.Public()`, which would panic on a short key.
 
+## Failure modes
+
+- `ErrKeyFormat` ("malformed key file") — `Load` wraps it when the
+  key file's contents are not 128 lowercase hex characters decoding
+  to the 64-byte private key. Pinned by
+  `identity_test/new_test.go`.
+- `ErrKeyInvalid` ("identity key breaks an invariant") —
+  `Identity.Validate` wraps it when the private key length is wrong
+  or the public key does not match the seed-derived key.
+  `Identity.Sign` returns the same wrapped error, since it calls
+  `Validate` first. Pinned by `identity_test/new_test.go` and
+  `identity_test/validate_split_brain_test.go`.
+
 ## Usage
 
 ```go

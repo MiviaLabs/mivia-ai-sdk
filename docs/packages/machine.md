@@ -88,6 +88,27 @@ name registry. The exported surface below mirrors `api/machine.txt`.
   `valid_` means the vector decodes. The prefix `invalid_decode_`
   means the vector fails `Decode`.
 
+## Failure modes
+
+This package returns plain errors, not sentinels. A caller cannot
+match them with `errors.Is`.
+
+- `New` and `Definition.Validate` fail on an empty transition list, a
+  self loop, a transition whose `From` is not reachable from
+  `initial`, or a duplicate transition sharing a `From` and
+  `Trigger`. Pinned by `machine_test/status_test.go`.
+- `Definition.Fire` fails when no transition row matches the current
+  status and trigger, or when the row's `Guard` rejects the move.
+  Pinned by `machine_test/fire_test.go`.
+- `Decode` fails on malformed JSON, on a guard or action name that is
+  empty, unregistered, or resolves to a nil function in `reg`, and
+  when the decoded definition then fails `Validate`. Pinned by
+  `machine_test/wire_test.go` and the `invalid_decode_` vectors in
+  `machine/testdata/vectors/`.
+- `Encode` fails when a bound guard or action carries no name, since
+  an anonymous function cannot serialize. Pinned by
+  `machine_test/wire_test.go`.
+
 ## Usage
 
 ```go

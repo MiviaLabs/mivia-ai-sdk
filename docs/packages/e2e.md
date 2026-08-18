@@ -45,6 +45,13 @@ See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
 growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP
 tools behind the chain, and scheduled liveness.
 
+## Failure modes
+
+This package owns no sentinel error. `EscalateTool.Run` wraps
+`agent.ErrEscalated`, so a caller with no `Ask` wired sees the run
+fail with an error matching `agent.ErrEscalated`. Pinned by
+`e2e_test/escalation_test.go`.
+
 ## Invariants
 
 - A scenario composes at least two high-level blocks. A single

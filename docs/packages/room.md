@@ -28,17 +28,30 @@ and message admission. The exported surface below mirrors
 - `Room.StaleMembers(hb, now)` — returns the sorted current roster
   members that `hb.Dead(now)` also reports.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrNotMember` — the identity is not on the roster.
-- `ErrNotModerator` — the actor lacks moderator power.
-- `ErrAlreadyMember` — the identity is already on the roster.
-- `ErrLastModerator` — the last moderator cannot be removed or leave.
-- `ErrWrongRoom` — the message names a different room.
-- `ErrUnsigned` — the message is unsigned or the signature fails.
-- `ErrNoMonitor` — `StaleMembers` got a nil `*heartbeat.Monitor`.
+- `ErrNotMember` ("not a room member") — `Remove`, `Leave`, `Promote`,
+  and `Accepts` return it when the id is not on the roster. Pinned by
+  `room/room_test.go` and `room/integration_test.go`.
+- `ErrNotModerator` ("not a room moderator") — `Admit`, `Remove`, and
+  `Promote` return it when the actor is not a moderator. Pinned by
+  `room/room_test.go`.
+- `ErrAlreadyMember` ("already a room member") — `Admit` returns it
+  when the id is already on the roster. Pinned by `room/room_test.go`.
+- `ErrLastModerator` ("cannot remove the last moderator") — `Remove`
+  and `Leave` return it when the action would drop the last moderator.
+  Pinned by `room/room_test.go`.
+- `ErrWrongRoom` ("message names a different room") — `Accepts` wraps
+  it when the message names a room other than this one. Pinned by
+  `room/integration_test.go`.
+- `ErrUnsigned` ("unsigned message cannot be admitted") — `Accepts`
+  wraps it when the signer is empty or signature verification fails.
+  Pinned by `room/integration_test.go`.
+- `ErrNoMonitor` ("room: heartbeat monitor is required") —
+  `StaleMembers` returns it when `hb` is nil. Pinned by
+  `room/liveness_test.go`.
 
 ## Invariants
 

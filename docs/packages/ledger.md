@@ -86,22 +86,37 @@ surface below mirrors `api/ledger.txt`.
   `modernc.org/sqlite`-backed `Store` implementation. See
   "SQLiteStore" below.
 
-## Sentinel errors
+## Failure modes
 
-Use `errors.Is` to test these.
-
-- `ErrLeaseActive` — `Claim` found another owner's live lease.
-- `ErrFenced` — `Renew`, `Release`, or `Complete` got a stale fence.
-- `ErrNotStale` — `Takeover` found a lease that has not expired.
-- `ErrNotClaimed` — the record's `Status` is not `StatusClaimed` when
-  a claim-scoped operation needs it to be, or `Claim`/`Takeover` found
-  a status outside their own eligible set.
-- `ErrNoKey` — the key has no admitted record.
-- `ErrUnknownStatus` — `Complete` got a `status` other than
-  `StatusCompleted` or `StatusFailed`.
-- `ErrEmptyOwner` — `Claim` or `Takeover` got a blank `owner`.
-- `ErrInvalidMaxEntries` — `NewMemStoreWithOptions` got a negative
-  `MaxEntries`.
+- `ErrLeaseActive` ("ledger: lease is still active") — `Claim`
+  returns it when another owner's `LeaseUntil` is still after now.
+  Pinned by `ledger_test/claim_test.go`.
+- `ErrFenced` ("ledger: fence token is stale") — `Renew`, `Release`,
+  and `Complete` return it when the supplied fence token does not
+  match the stored one. Pinned by `ledger_test/claim_test.go`,
+  `ledger_test/complete_test.go`, and `ledger_test/takeover_test.go`.
+- `ErrNotStale` ("ledger: lease is not stale") — `Takeover` returns
+  it when the current lease has not yet expired. Pinned by
+  `ledger_test/takeover_test.go`.
+- `ErrNotClaimed` ("ledger: record is not claimed") — `Claim`,
+  `Renew`, `Release`, `Complete`, and `Takeover` return it when the
+  record's status is outside their eligible set. Pinned by
+  `ledger_test/claim_test.go`, `ledger_test/complete_test.go`, and
+  `ledger_test/takeover_test.go`.
+- `ErrNoKey` ("ledger: key has no record") — `Claim`, `Renew`,
+  `Release`, `Complete`, and `Takeover` return it when `Store.Load`
+  finds no record for the key. Pinned by `ledger_test/claim_test.go`,
+  `ledger_test/complete_test.go`, and `ledger_test/takeover_test.go`.
+- `ErrUnknownStatus` ("ledger: status must be StatusCompleted or
+  StatusFailed") — `Complete` returns it when `status` is neither
+  `StatusCompleted` nor `StatusFailed`. Pinned by
+  `ledger_test/complete_test.go`.
+- `ErrEmptyOwner` ("ledger: owner must not be empty") — `Claim` and
+  `Takeover` return it when `owner` is blank. Pinned by
+  `ledger_test/claim_test.go` and `ledger_test/takeover_test.go`.
+- `ErrInvalidMaxEntries` ("ledger: MaxEntries must not be negative")
+  — `NewMemStoreWithOptions` wraps it when `opts.MaxEntries` is
+  negative. Pinned by `ledger_test/mem_store_options_test.go`.
 
 ## Invariants
 

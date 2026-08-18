@@ -38,19 +38,31 @@ below mirrors `api/provider.txt`.
 - `Chunk.Validate()` — enforces `Err` and `Done == true` are mutually
   exclusive on one `Chunk`.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrToolCallIDUnexpected` — `ToolCallID` is non-empty on a message
-  whose `Role` is not `RoleTool`.
-- `ErrToolCallIDRequired` — `ToolCallID` is empty on a `RoleTool`
-  message.
-- `ErrUnknownRole` — `Role` is outside the four declared constants.
-- `ErrChunkErrDoneConflict` — a `Chunk` carries both a non-nil `Err`
-  and `Done == true`.
-- `ErrStreamClosedEarly` — a `ChatStream` channel closes before any
-  `Chunk` carries `Done == true` or a non-nil `Err`.
+- `ErrToolCallIDUnexpected` ("provider: tool call id unexpected outside
+  RoleTool") — `Message.Validate` returns it when `ToolCallID` is
+  non-empty on a message whose `Role` is not `RoleTool`. Pinned by
+  `provider/provider_test/types_test.go`.
+- `ErrToolCallIDRequired` ("provider: tool call id required for
+  RoleTool") — `Message.Validate` returns it when `ToolCallID` is empty
+  on a `RoleTool` message; `RunTurn` surfaces the same error unwrapped.
+  Pinned by `provider/provider_test/types_test.go` and
+  `provider/provider_test/runturn_test.go`.
+- `ErrUnknownRole` ("provider: unknown role") — `Message.Validate`
+  returns it for a `Role` outside the four declared constants. Pinned
+  by `provider/provider_test/types_test.go` and
+  `provider/provider_test/runturn_test.go`.
+- `ErrChunkErrDoneConflict` ("provider: chunk carries both Err and
+  Done") — `Chunk.Validate` returns it when a `Chunk` carries both a
+  non-nil `Err` and `Done == true`. Pinned by
+  `provider/provider_test/runturn_test.go`.
+- `ErrStreamClosedEarly` ("provider: stream closed before a terminal
+  chunk") — `RunTurn` returns it when a `ChatStream` channel closes
+  before any `Chunk` carries `Done == true` or a non-nil `Err`. Pinned
+  by `provider/provider_test/runturn_test.go`.
 
 ## Invariants
 

@@ -18,14 +18,22 @@ the store. The exported surface below mirrors `api/memory.txt`.
   returns the ref.
 - `Store.Get(ref)` — returns a copy of the blob stored under `ref`.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrNoBudget` — `New` got a non-positive `maxBytes`.
-- `ErrBudgetExceeded` — `Put` got a `content` larger than the store's
-  budget.
-- `ErrUnknownRef` — `Get` got a `ref` the store does not hold.
+- `ErrNoBudget` ("memory: maxBytes must be positive") — `New` wraps it
+  when `maxBytes` is zero or negative. Pinned by
+  `memory/memory_test/store_test.go`.
+- `ErrBudgetExceeded` ("memory: content exceeds store budget") —
+  `Store.Put` wraps it when the content's size exceeds `maxBytes`.
+  Pinned by `memory/memory_test/store_test.go` and
+  `memory/memory_test/store_integration_test.go`.
+- `ErrUnknownRef` ("memory: unknown ref") — `Store.Get` wraps it for a
+  ref the store does not hold, including a ref already evicted. Pinned
+  by `memory/memory_test/store_test.go`,
+  `memory/memory_test/store_integration_test.go`, and
+  `memory/memory_test/store_concurrent_test.go`.
 
 ## Invariants
 

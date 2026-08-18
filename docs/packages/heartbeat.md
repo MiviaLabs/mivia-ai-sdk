@@ -26,14 +26,18 @@ mirrors `api/heartbeat.txt`.
   timeout.
 - `Monitor.Forget(id)` — removes `id` from the tracked set.
 
-## Sentinel errors
+## Failure modes
 
-Use `errors.Is` to test these.
-
-- `ErrNoTimeout` — `New` got a non-positive timeout.
-- `ErrNoID` — `Beat` got a blank id, after `strings.TrimSpace`.
-- `ErrStaleBeat` — `Beat` got an `at` strictly before the id's last
-  recorded time.
+- `ErrNoTimeout` ("heartbeat: timeout must be positive") — `New`
+  returns it when `timeout` is zero or negative. Pinned by
+  `heartbeat_test/monitor_test.go`.
+- `ErrNoID` ("heartbeat: id must not be blank") — `Monitor.Beat`
+  returns it when `id` is blank after `strings.TrimSpace`. Pinned by
+  `heartbeat_test/monitor_test.go`.
+- `ErrStaleBeat` ("heartbeat: beat is older than last recorded
+  time") — `Monitor.Beat` returns it when `at` is strictly before
+  the id's last recorded time. Pinned by
+  `heartbeat_test/monitor_test.go`.
 
 ## Invariants
 

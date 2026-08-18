@@ -46,18 +46,41 @@ The flow accessors added in the same change:
 - `Definition.Panels()` — a deep copy of the panel slice; each member
   slice copies too.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrNoAgent` — `Options.Agent` was nil.
-- `ErrNoMachine` — `Options.Machine` was nil.
-- `ErrNoResolver` — neither `Wait` nor `Tools` was set.
-- `ErrAmbiguousWait` — both `Wait` and `Tools` were set.
-- `ErrNoTools` — `Scope`, `Store`, `Ask`, or `Artifacts` was set without
-  `Tools`.
-- `ErrNoRecipient` — `Ask` was set with an empty `AskTo`.
-- `ErrResultNotText` — a tool result was not a string.
+- `ErrNoAgent` ("agentrun: agent is required") — `New` returns it when
+  `Options.Agent` is nil. Pinned by `agentrun_test/options_test.go`.
+- `ErrNoMachine` ("agentrun: machine is required") — `New` returns it
+  when `Options.Machine` is nil. Pinned by
+  `agentrun_test/options_test.go`.
+- `ErrNoResolver` ("agentrun: Wait or Tools is required") — `New`
+  returns it when neither `Wait` nor `Tools` is set. Pinned by
+  `agentrun_test/options_test.go`.
+- `ErrAmbiguousWait` ("agentrun: Wait and Tools both set; set one") —
+  `New` returns it when both `Wait` and `Tools` are set. Pinned by
+  `agentrun_test/options_test.go`.
+- `ErrNoTools` ("agentrun: Scope, Store, Ask, or Artifacts needs
+  Tools") — `New` returns it when `Scope`, `Store`, `Ask`, or
+  `Artifacts` is set without `Tools`. Pinned by
+  `agentrun_test/options_test.go`.
+- `ErrNoRecipient` ("agentrun: Ask needs AskTo") — `New` returns it
+  when `Ask` is set with an empty `AskTo`. Pinned by
+  `agentrun_test/options_test.go`.
+- `ErrResultNotText` ("agentrun: tool result is not a string") — the
+  built ack chain wraps it when a gated step's tool result is not a
+  string. Pinned by `agentrun_test/run_integration_test.go`.
+- `ErrReceiverEmpty` ("agentrun: Receiver signer is empty") — `New`
+  returns it when the resolved receiver signer is empty, whether from
+  `Options.Receiver` or from `Options.Agent`. Pinned by
+  `agentrun_test/options_test.go`.
+
+`Runner.Run` also propagates two sentinels the `agent` package
+defines, through `errors.Is`: `agent.ErrNoThread`, when `threadID` is
+empty, and `agent.ErrEscalated`, when a gated step's ack resolver
+escalates to a human. Pinned by `agentrun_test/options_test.go` and
+`agentrun_test/escalation_integration_test.go`.
 
 ## Invariants
 

@@ -23,18 +23,34 @@ The exported surface below mirrors `api/taskrun.txt`.
   returns a sentinel for a task already terminal in the ledger. A
   `Complete` failure joins the returned error.
 
-## Sentinel errors
+## Failure modes
 
 The package declares eight sentinels. Each is an `errors.New` value.
 
-- `ErrNoLedger` — `Options.Ledger` is nil.
-- `ErrNoOwner` — `Options.Owner` is empty.
-- `ErrNoActor` — `Options.Actor` is empty.
-- `ErrNoLease` — `Options.Lease` is not positive.
-- `ErrNoKey` — `Task.Key` is empty.
-- `ErrTaskDone` — the key is already `StatusCompleted`.
-- `ErrTaskFailed` — the key is already `StatusFailed`.
-- `ErrTaskBlocked` — the key is already `StatusBlocked`.
+- `ErrNoLedger` ("taskrun: ledger is required") — `Run` returns it when
+  `Options.Ledger` is nil. Pinned by
+  `taskrun/taskrun_test/options_test.go`.
+- `ErrNoOwner` ("taskrun: owner is required") — `Run` returns it when
+  `Options.Owner` is empty. Pinned by
+  `taskrun/taskrun_test/options_test.go`.
+- `ErrNoActor` ("taskrun: actor is required") — `Run` returns it when
+  `Options.Actor` is empty. Pinned by
+  `taskrun/taskrun_test/options_test.go`.
+- `ErrNoLease` ("taskrun: lease must be positive") — `Run` returns it
+  when `Options.Lease` is not positive. Pinned by
+  `taskrun/taskrun_test/options_test.go`.
+- `ErrNoKey` ("taskrun: task key is required") — `Run` returns it when
+  `Task.Key` is empty. Pinned by
+  `taskrun/taskrun_test/options_test.go`.
+- `ErrTaskDone` ("taskrun: task already completed") — `Run` returns it
+  when the key is already recorded `StatusCompleted`. Pinned by
+  `taskrun/taskrun_test/replay_test.go`.
+- `ErrTaskFailed` ("taskrun: task already failed") — `Run` returns it
+  when the key is already recorded `StatusFailed`. Pinned by
+  `taskrun/taskrun_test/replay_test.go`.
+- `ErrTaskBlocked` ("taskrun: task blocked on a failed dependency") —
+  `Run` returns it when the key is recorded `StatusBlocked` on a
+  failed dependency. Pinned by `taskrun/taskrun_test/blocked_test.go`.
 
 ## Run order
 

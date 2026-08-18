@@ -33,20 +33,31 @@ mirrors `api/channel.txt`.
   `Notifier` that speaks newline-delimited JSON over `r` and `w`. See
   the NDJSON transport section below.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrEmptyID` — `Question.ID` is empty or whitespace-only.
-- `ErrEmptyRecipient` — `Question.Recipient` is empty or
-  whitespace-only.
-- `ErrEmptyPayload` — `Question.Payload` is empty or whitespace-only.
-- `ErrEmptyQuestionID` — `Answer.QuestionID` is empty or
-  whitespace-only.
-- `ErrAnswerMismatch` — `NewNDJSONNotifier`'s decoded answer line's
-  `question_id` does not match the sent `Question.ID`.
-- `ErrNotifierBusy` — a call arrived while another call on the same
-  `NewNDJSONNotifier` closure already held its internal lock.
+- `ErrEmptyID` ("channel: question id must not be empty") —
+  `Question.Validate` returns it when `ID` is empty or
+  whitespace-only. Pinned by `channel_test/question_validate_test.go`.
+- `ErrEmptyRecipient` ("channel: recipient must not be empty") —
+  `Question.Validate` returns it when `Recipient` is empty or
+  whitespace-only. Pinned by `channel_test/question_validate_test.go`.
+- `ErrEmptyPayload` ("channel: payload must not be empty") —
+  `Question.Validate` returns it when `Payload` is empty or
+  whitespace-only. Pinned by `channel_test/question_validate_test.go`.
+- `ErrEmptyQuestionID` ("channel: answer question id must not be
+  empty") — `Answer.Validate` returns it when `QuestionID` is empty
+  or whitespace-only. Pinned by `channel_test/answer_validate_test.go`.
+- `ErrAnswerMismatch` ("channel: ndjson: answer question id does not
+  match question") — the `NewNDJSONNotifier` closure returns it when
+  a decoded answer line's `question_id` does not match the sent
+  `Question.ID`. Pinned by `channel_test/ndjson_notifier_test.go`.
+- `ErrNotifierBusy` ("channel: ndjson: notifier is busy with another
+  call") — the `NewNDJSONNotifier` closure returns it when a call
+  arrives while another call on the same closure already holds its
+  internal lock. Pinned by
+  `channel_test/ndjson_notifier_lockout_test.go`.
 
 ## Invariants
 

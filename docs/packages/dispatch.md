@@ -63,13 +63,27 @@ A failing stage answers one JSON object, `{"error":"..."}`, naming the
 stage, and the stream stays open: the next line in the same request
 still runs the full ladder.
 
-## Sentinels
+## Failure modes
 
-- `ErrNoID` — `Options.ID` is blank.
-- `ErrNoRoom` — `Options.Room` is nil.
-- `ErrNoResolve` — `Options.Resolve` is nil.
-- `ErrBadMethod` — the request method is not POST.
-- `ErrBadRequest` — the request body failed to read.
+- `ErrNoID` ("dispatch: endpoint id is required") —
+  `Options.Validate`/`New` returns it when `ID` is blank. Pinned by
+  `dispatch_test/options_test.go`.
+- `ErrNoRoom` ("dispatch: room is required") —
+  `Options.Validate`/`New` returns it when `Room` is nil. Pinned by
+  `dispatch_test/options_test.go`.
+- `ErrNoResolve` ("dispatch: resolve func is required") —
+  `Options.Validate`/`New` returns it when `Resolve` is nil. Pinned
+  by `dispatch_test/options_test.go`.
+- `ErrBadMethod` ("dispatch: POST required") —
+  `Endpoint.Handler`'s `http.Handler` writes it as an HTTP 405 body
+  when the request method is not POST. The handler never returns this
+  value to a Go caller, so `dispatch_test/badrequest_test.go` checks
+  the status code, not `errors.Is`. This is a weak pin.
+- `ErrBadRequest` ("dispatch: request body read failed") —
+  `Endpoint.Handler`'s `http.Handler` writes it as an HTTP 400 body
+  when the request body fails to read. Same weak-pin note as
+  `ErrBadMethod`: `dispatch_test/badrequest_test.go` checks the
+  status code only.
 
 ## Scope
 

@@ -69,19 +69,35 @@ unknown name fails. The exported surface below mirrors
 - `Scope.Allowed(name, t)` — true when `name` passes the denylist, the
   privileged check, and the allowlist.
 
-## Sentinel errors
+## Failure modes
 
 Use `errors.Is` to test these.
 
-- `ErrNilTool` — `Add` got a nil `Tool`.
-- `ErrBlankName` — `Add` got a tool whose `Name()` is blank, after
-  `strings.TrimSpace`.
-- `ErrDuplicateName` — `Add` got a name already registered.
-- `ErrUnknownName` — `Run` or `RunScoped` got a name `Get` reports as
-  absent.
-- `ErrScopeDenied` — `RunScoped` got a name `scope.Allowed` rejects.
-- `ErrToolDeclined` — `RunScoped` got `(false, nil)` from
-  `scope.Approve`.
+- `ErrNilTool` ("tools: tool must not be nil") — `Registry.Add` returns
+  it for a nil `Tool`. Pinned by `tools/tools_test/registry_test.go`.
+- `ErrBlankName` ("tools: tool name must not be blank") —
+  `Registry.Add` returns it when the tool's `Name()` is empty after
+  `strings.TrimSpace`. Pinned by `tools/tools_test/registry_test.go`.
+- `ErrDuplicateName` ("tools: tool name already registered") —
+  `Registry.Add` returns it for a name already present. Pinned by
+  `tools/tools_test/registry_test.go`.
+- `ErrUnknownName` ("tools: unknown tool name") — `Registry.Run` and
+  `Registry.RunScoped` return it when the name is not registered.
+  Pinned by `tools/tools_test/registry_test.go` and
+  `tools/tools_test/registry_run_scoped_test.go`.
+- `ErrScopeDenied` ("tools: tool denied by scope") —
+  `Registry.RunScoped` returns it when `scope.Allowed` rejects the
+  name. Pinned by `tools/tools_test/registry_run_scoped_test.go`.
+- `ErrToolDeclined` ("tools: tool declined by approval") —
+  `Registry.RunScoped` returns it when `scope.Approve` returns
+  `(false, nil)`. Pinned by
+  `tools/tools_test/run_scoped_approval_test.go`.
+- `errInvalidExecutionClass` ("tools: invalid execution class") —
+  `ExecutionClass.Validate` returns it for a value outside the four
+  known classes. This sentinel is unexported, so a caller outside the
+  package cannot match it with `errors.Is`.
+  `tools/tools_test/execution_profile_test.go` checks only that the
+  error is non-nil or nil, a weak pin.
 
 ## Invariants
 

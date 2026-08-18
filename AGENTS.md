@@ -60,10 +60,30 @@ Go SDK for building AI agents. Module:
   Wait, and sentinels. Turns a remote A2A task round trip into an
   `agent.AckWait`. This is an edge adapter, not an ordinary block: its
   one purpose is to adapt a remote transport to the composition layer,
-  so it may import `agent` for the `AckWait` type, the sole exception
-  to the rule that a block never imports the agent. Imports a2aclient,
-  agent, and envelope. Carries no a2a-go import of its own; the
-  loopback test fixture is exported a2aclient surface.
+  so it may import `agent` for the `AckWait` type, one of two
+  exceptions to the rule that a block never imports the agent
+  (`dispatch` is the other). Imports a2aclient, agent, and envelope.
+  Carries no a2a-go import of its own; the loopback test fixture is
+  exported a2aclient surface.
+- `dispatch/` — the NDJSON envelope endpoint: Handler, Options,
+  Options.Validate, New, Endpoint, Endpoint.Handler, Send, SendResult,
+  and sentinels. `Endpoint.Handler` answers POST requests whose body
+  is newline-delimited envelope.Message JSON: it runs the receive
+  ladder per line — Decode, VerifySignature, Room.Accepts, resolve,
+  handle, NewAck, Confirm, Encode — each a fail-fast stage, and
+  answers with one newline-delimited ack or JSON error object per
+  line; the stream stays open across a per-line failure.
+  `agent.EmitMessageDelivered`, called after VerifySignature, and
+  `agent.EmitMessageAcked`, called after Confirm, are best-effort
+  diagnostics outside the ladder; their error return never fails a
+  line. `MessageDeliveredEvent` means "signature verified," not
+  "room-admitted," since it fires before Room.Accepts. `Send` posts a
+  batch of signed messages as one NDJSON request and parses the reply
+  into one SendResult per line, in order. This is an edge adapter like
+  `a2aack`: it may import `agent` for EmitMessageDelivered,
+  EmitMessageAcked, and their event-name constants. Imports agent,
+  envelope, events, and room. Stdlib-only; carries no third-party or
+  a2a-go import.
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
   Run. A leaf package; no internal imports. No caller yet; the agent
   binding is a later phase.

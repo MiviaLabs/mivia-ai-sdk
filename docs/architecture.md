@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the twenty-four packages and the import edges between
+The diagram shows the twenty-five packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
 `provider`, `tools`, and `trigger` are leaves: they import no other
@@ -52,6 +52,10 @@ flowchart LR
     a2aack --> a2aclient
     a2aack --> agent
     a2aack --> envelope
+    dispatch --> agent
+    dispatch --> envelope
+    dispatch --> events
+    dispatch --> room
     agentrun --> agent
     agentrun --> channel
     agentrun --> contextbudget
@@ -222,6 +226,21 @@ flowchart LR
   confirmed ack keyed off the sent message. `a2aack` imports
   `a2aclient`, `agent`, and `envelope`. It carries no a2a-go import of
   its own. See [packages/a2aack.md](packages/a2aack.md).
+- `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
+  `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
+  `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST
+  requests whose body is newline-delimited `envelope.Message` JSON: it
+  runs the receive ladder per line — `Decode`, `VerifySignature`,
+  `Room.Accepts`, resolve, handle, `NewAck`, `Confirm`, `Encode` — and
+  answers with one newline-delimited ack or JSON error object per
+  line. `EmitMessageDelivered` and `EmitMessageAcked` are best-effort
+  diagnostics called after their point in the ladder; their error
+  return never fails a line. `Send` posts a batch of signed messages
+  as one NDJSON request and parses the reply into one `SendResult` per
+  line, in order. `dispatch` imports `agent`, `envelope`, `events`,
+  and `room`; it carries no third-party or network-transport import
+  beyond the standard library `net/http`. See
+  [packages/dispatch.md](packages/dispatch.md).
 - `agentrun/` — the config-struct composition layer over `agent.Run`.
   See [packages/agentrun.md](packages/agentrun.md).
 - `taskrun/` — the ledger admit, claim, run, complete ceremony around

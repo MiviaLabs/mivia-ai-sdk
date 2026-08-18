@@ -1,0 +1,25 @@
+package dispatch
+  func (e *Endpoint) Handler() (http.Handler)
+  func (o Options) Validate() (error)
+  func New(opts Options) (*Endpoint, error)
+  func Send(ctx context.Context, url string, msgs []envelope.Message) ([]SendResult, error)
+  type Endpoint struct {
+}
+  type Handler interface {
+	Handle(ctx context.Context, m envelope.Message) (string, error)
+}
+  type Options struct {
+  ID string
+  Room *room.Room
+  Resolve func(ctx context.Context, m envelope.Message) (Handler, error)
+  Bus *events.Bus
+}
+  type SendResult struct {
+  Ack envelope.Ack
+  Err error
+}
+  var ErrBadMethod
+  var ErrBadRequest
+  var ErrNoID
+  var ErrNoResolve
+  var ErrNoRoom

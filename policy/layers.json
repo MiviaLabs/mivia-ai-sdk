@@ -9,6 +9,7 @@
     "channel": [],
     "contextbudget": [],
     "discovery": [],
+    "dispatch": ["agent", "envelope", "events", "room"],
     "durablefence": [],
     "e2e": ["agent", "discovery", "envelope", "events", "flow", "identity", "tools"],
     "envelope": [],

@@ -92,6 +92,12 @@ Go SDK for building AI agents. Module:
 - `trigger/` — the shared "condition fired, so run this" vocabulary:
   Condition, Action, Registry, New, Add, Remove, Fire. A leaf package;
   no internal imports.
+- `hooks/` — the named, multi-handler lifecycle-point registry:
+  Point, PointPreTool, PointPostTool, PointStop, Handler, Registry,
+  New, Add, Remove, Fire. Fire runs a point's handlers in
+  registration order and stops at the first veto. A leaf package; no
+  internal imports. No caller yet; the tools and flow wiring is a
+  later phase.
 - `mcp/` — the MCP tool-calling client: Client, Connect, Transport,
   NewStdioTransport, NewStreamableHTTPTransport, ListTools, CallTool,
   and CallToolWithProgress. Imports tools internally and the official

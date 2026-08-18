@@ -293,6 +293,15 @@ shipped `provider` package and one `policy/layers.json` edge. Its
 package plan lives at docs/plans/providerregistry.md; no
 standalone phase 56 plan file remains.
 
+Phase 57 (`hooks`) has shipped. It adds one package: a named,
+multi-handler registry for a lifecycle point. `Point` names the
+point (`PointPreTool`, `PointPostTool`, `PointStop`); `Fire` runs
+every handler at a point in registration order and stops at the
+first veto. It depends on no unshipped phase and imports no other
+package in this module. It ships with no caller, the same way
+phase 14 shipped `tools`. Its package plan lives at
+docs/plans/hooks.md; no standalone phase 57 plan file remains.
+
 Phase 60 has shipped. It changes no package surface: a loop child
 that ends every iteration on one status is representable, because
 the parent re-enters without a transition row when its standing

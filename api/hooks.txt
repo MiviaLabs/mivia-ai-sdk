@@ -1,0 +1,18 @@
+package hooks
+  const PointPostTool
+  const PointPreTool
+  const PointStop
+  func (p Point) String() (string)
+  func (p Point) Validate() (error)
+  func (r *Registry) Add(point Point, name string, h Handler) (error)
+  func (r *Registry) Fire(ctx context.Context, point Point, payload any) (error)
+  func (r *Registry) Remove(point Point, name string) (bool)
+  func New() (*Registry)
+  type Handler func(ctx context.Context, payload any) (bool, error)
+  type Point int
+  type Registry struct {
+}
+  var ErrBlankName
+  var ErrDuplicateName
+  var ErrNilHandler
+  var ErrVetoed

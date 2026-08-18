@@ -385,6 +385,16 @@ flowchart LR
   signature; `Action` is shaped to match `scheduler.Job`'s signature.
   `trigger` imports no other package in this module. See
   [packages/trigger.md](packages/trigger.md).
+- `hooks/` — a leaf primitive. It provides `Point`, `PointPreTool`,
+  `PointPostTool`, `PointStop`, `Point.Validate`, `Point.String`,
+  `Handler`, `Registry`, `New`, `Add`, `Remove`, `Fire`, and the
+  sentinels `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and
+  `ErrVetoed`. A `Registry` groups named handlers by `Point`;
+  `Fire` runs them in registration order and stops at the first
+  veto. Unlike `events.Bus`, `Fire` propagates the decision: a veto
+  or a handler error short-circuits the chain and returns to the
+  caller. `hooks` imports no other package in this module. See
+  [packages/hooks.md](packages/hooks.md).
 - `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
   `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
   `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,

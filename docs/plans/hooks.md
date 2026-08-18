@@ -1,8 +1,10 @@
-# Phase 57: hooks
+# Plan: hooks
 
-Status: ready. Plan-only; it has not gone through plan review yet.
-It depends on no unshipped phase. It is a pure leaf, the same shape
-as the shipped `trigger` package.
+Status: shipped. One new package, `hooks`, with zero internal import
+edges. It depends on no unshipped phase and ships with no caller, the
+same way `tools` shipped in phase 14. This plan folded in from
+`docs/plans/agents/phase57_hooks.md` on shipping; no standalone phase
+57 plan file remains.
 
 ## Goal
 
@@ -20,9 +22,10 @@ in this module, matching `trigger`'s row in `policy/layers.json`.
 The sibling repo `mivia-agent` runs a deterministic PreToolUse,
 PostToolUse, and Stop lifecycle-hook system today, in its own
 `internal/hooks` package. That system lets a caller register many
-named handlers per lifecycle point and lets each handler veto,
-modify, or observe an action. This SDK ships two narrower gates
-today: `tools.Scope.Approve`, one caller-supplied callback per
+named handlers per lifecycle point and lets each handler veto or
+observe an action. Its protocol denies a handler that returns a
+rewritten input instead of applying it. This SDK ships two narrower
+gates today: `tools.Scope.Approve`, one caller-supplied callback per
 `RunScoped` call, and `flow.Confirm`, one caller-supplied callback
 per step. Neither is a named registry a caller can add to and remove
 from on its own. Neither package covers a point after the action
@@ -57,6 +60,13 @@ Outside:
   matching `tools.Scope.Approve`'s existing synchronous contract. A
   caller who needs an out-of-band answer builds that flow itself,
   the same way `tools`'s plan already states for `Approve`.
+- A second, competing event system to `events.Bus`. `hooks` never
+  imports `events` and holds no `Bus`. Both run handlers in order.
+  `Fire` short-circuits on the first veto or handler error and
+  reports it through `ErrVetoed` or the wrapped error. `Emit` runs
+  every handler regardless and discards every handler error. `Fire`
+  treats a point with no handler as a no-op nil; `Emit` rejects a
+  name with no subscriber.
 - In-place payload modification. See the API section for the
   reasoning.
 - Persistence of a registered handler across a process restart. A
@@ -99,7 +109,9 @@ The surface below lands in `api/hooks.txt`.
   value outside the three named constants.
 - `func (p Point) String() string` — a short label for each named
   constant, used in `Fire`'s wrapped error messages. Returns
-  `"hooks: unknown point"` for an invalid value, never a panic.
+  `"unknown"` for an invalid value, never a panic, matching
+  `a2aclient.State.String`. `Fire`'s wraps already carry the
+  `hooks:` prefix, so a prefixed label would double it.
 - `type Handler func(ctx context.Context, payload any) (bool, error)`
   — one registered hook. `payload` is opaque to `hooks`: the caller
   that fires a point supplies whatever value that point's real
@@ -107,8 +119,8 @@ The surface below lands in `api/hooks.txt`.
   final record. `Handler` returns `true, nil` to allow the action to
   continue, `false, nil` to veto it, or a non-nil error when the
   handler itself failed to decide.
-- `type Registry struct` — holds handlers by `Point`, in
-  registration order. Unexported fields. Built only through `New`.
+- `type Registry struct` — holds handlers by `Point`, in registration
+  order. Unexported fields. Built only through `New`.
 - `func New() *Registry` — creates an empty `Registry`.
 - `func (r *Registry) Add(point Point, name string, h Handler) error`
   — registers `h` under `name`, at `point`. Rejects an invalid
@@ -129,11 +141,12 @@ The surface below lands in `api/hooks.txt`.
   handler call. A `point` with no registered handlers returns nil at
   once: a no-op success. A handler returning `true, nil` lets `Fire`
   continue to the next handler. A handler returning `false, nil`
-  stops `Fire` at once and returns `ErrVetoed`, wrapped
-  `hooks: %s: handler %q vetoed`. A handler returning a non-nil
-  error stops `Fire` at once and returns that error wrapped
-  `hooks: %s: handler %q: %w`, distinct from `ErrVetoed` so a caller
-  can tell a handler failure from an explicit veto with `errors.Is`.
+  stops `Fire` at once and returns `ErrVetoed` wrapped
+  `hooks: %s: handler %q: %w`. A handler returning a non-nil error
+  stops `Fire` at once and returns that error wrapped
+  `hooks: %s: handler %q: %w`. The veto wrap embeds `ErrVetoed`;
+  the failure wrap embeds the handler's error, so `errors.Is` tells
+  the two apart.
   `Fire` returns nil once every registered handler at `point` has
   returned `true, nil`.
 - Sentinel errors, tested with `errors.Is`: `ErrBlankName`,
@@ -149,39 +162,49 @@ stop the chain. Modify-in-place needs a third return value, a
 changed payload, which forces every existing and future `Handler` to
 decide what an unchanged payload means and forces `Fire` to thread a
 mutated value back through every remaining handler in the chain.
-No caller in this module or in `mivia-agent`'s own hook contract
-names a required payload rewrite yet; `internal/hooks`'s "modify"
-capability has no reference here to build against. Adding it now,
-ahead of a real caller, is the speculative generality AGENTS.md's
-Building blocks section forbids. A future phase can widen `Handler`
-to return a third, optional replacement payload once a real caller
-needs one; that widening is additive and does not change this
-phase's `(bool, error)` shape for a handler that only observes or
-vetoes.
+No caller in this module names a required payload rewrite. The
+sibling's own protocol denies a rewritten input, so no reference
+contract exists to build against. Adding modify now, ahead of a
+real caller, is the speculative generality AGENTS.md's Building
+blocks section forbids. A future phase that needs modification faces
+two routes. A third return value breaks `Handler`: the type changes
+and every registered literal stops compiling. The additive route is
+a mutable payload holder the caller's handlers agree on. No caller
+needs either today.
 
 ## Tests
 
 Test files live in `hooks/hooks_test/`, an external test package.
+The invalid-point cases use `Point(0)` for the zero value because an
+external test package cannot name `pointUnset`.
 
 - `registry_add_test.go` — red-green cases for `Add`: an invalid
-  `Point` returns its `Validate` error; a blank `name` returns
+  `Point` returns its `Validate` error, through both `Point(0)` and
+  the out-of-range `Point(99)`; a blank `name` returns
   `ErrBlankName`; a nil `Handler` returns `ErrNilHandler`; a
   duplicate `name` at the same `Point` returns `ErrDuplicateName`;
   the same `name` at two different points both succeed; `Remove`
   returns true for a present `(point, name)` pair and false for an
   absent one, and a following `Remove` on the same pair returns
   false.
+- `point_test.go` — `Point.String` cases: `String` returns each
+  named constant's label for `PointPreTool`, `PointPostTool`, and
+  `PointStop`; `Point(99).String()` returns `"unknown"`; no value,
+  valid or invalid, panics.
 - `registry_fire_test.go` — red-green cases for `Fire`: an invalid
-  `Point` returns its `Validate` error and calls no handler; a
-  `Point` with no registered handlers returns nil; one allowing
-  handler returns nil; a veto from a middle handler in a
-  three-handler chain stops the chain, returns `ErrVetoed`, and the
-  third handler never runs, proven by a counter; multiple handlers
-  at the same point all run, in registration order, when none veto,
-  proven by an ordered-append slice; a handler returning a non-nil
-  error stops the chain and returns that error wrapped, distinct
-  from `ErrVetoed` under `errors.Is`; a handler registered at
-  `PointPreTool` never runs on a `Fire` call for `PointPostTool`.
+  `Point` returns its `Validate` error and calls no handler, through
+  both `Point(0)` and the out-of-range `Point(99)`; a `Point` with
+  no registered handlers returns nil; one allowing handler returns
+  nil; a veto from a middle handler in a three-handler chain stops
+  the chain, returns `ErrVetoed` under `errors.Is`, and the third
+  handler never runs, proven by a counter; multiple handlers at the
+  same point all run, in registration order, when none veto, proven
+  by an ordered-append slice; every handler run receives the exact
+  payload value passed to `Fire`, proven by handlers that compare
+  against it; a handler returning a non-nil error stops the chain
+  and returns that error wrapped, distinct from `ErrVetoed` under
+  `errors.Is`; a handler registered at `PointPreTool` never runs on
+  a `Fire` call for `PointPostTool`.
 - `hooks_integration_test.go` — two handlers register at
   `PointPreTool`: the first is observational, appends to a shared
   slice, and returns `true, nil`; the second vetoes. `Fire` returns
@@ -209,11 +232,12 @@ locks `Point`, `pointUnset`'s absence (unexported), `PointPreTool`,
 `Handler`, `Registry`, `New`, `Add`, `Remove`, `Fire`,
 `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and `ErrVetoed`.
 
-`policy/layers.json` gains a `hooks` row set to `[]`, added by this
-plan ahead of the code, matching the gate's rule that a new package
-needs a row before it has code. `scripts/check_deps.py` passes with
-no edge from `hooks` to any other package, and no edge from any
-other package to `hooks`, since no caller wires it in this phase.
+The `hooks` row in `policy/layers.json` already exists, set to `[]`,
+added ahead of the code alongside the `trace` and `usage` rows. It
+carries this plan's claim: no internal imports.
+`scripts/check_deps.py` passes with no edge from `hooks` to any
+other package, and no edge from any other package to `hooks`, since
+no caller wires it in this phase.
 
 `go test -race ./hooks/...` passes for the concurrent `Add`,
 `Remove`, and `Fire` paths. `AGENTS.md`'s package layout list gains

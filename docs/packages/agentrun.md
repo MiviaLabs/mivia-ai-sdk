@@ -17,7 +17,9 @@ mirrors `api/agentrun.txt`.
 - `Runner` — the composed pipeline `New` returns. Build it with `New`;
   the fields stay unexported.
 - `Artifacts` — a record of each gated step's tool result, keyed by step
-  ID. Safe for concurrent use. Build a zero value with `&Artifacts{}`.
+  ID. A step repeated inside a loop overwrites the entry, so the bare ID
+  holds the latest iteration's result. Safe for concurrent use. Build a
+  zero value with `&Artifacts{}`.
 
 ## Functions and methods
 

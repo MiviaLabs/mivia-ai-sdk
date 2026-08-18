@@ -66,10 +66,11 @@ func (r *Runner) Bus() *events.Bus {
 // message, stores and records the string result, then confirms a
 // NewAck. A suffixed message ID, which agent.Run mints for a step
 // confirmed twice, resolves the plain tool name, so a looped child
-// step runs its tool every iteration. A tool result that is not a
-// string fails with ErrResultNotText naming the tool. A tool error
-// wrapping agent.ErrEscalated, when Ask is set, routes to one Ask
-// round trip.
+// step runs its tool every iteration, and its artifact lands under
+// the bare step ID with the latest result. A tool result that is
+// not a string fails with ErrResultNotText naming the tool. A tool
+// error wrapping agent.ErrEscalated, when Ask is set, routes to one
+// Ask round trip.
 func (r *Runner) chain() agent.AckWait {
 	return func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		name := toolNameFor(r.tools, msg.ID)
@@ -90,7 +91,7 @@ func (r *Runner) chain() agent.AckWait {
 			}
 		}
 		if r.artifacts != nil {
-			r.artifacts.Set(msg.ID, result)
+			r.artifacts.Set(name, result)
 		}
 		ack, err := envelope.NewAck(msg, r.receiver, result)
 		if err != nil {
@@ -179,9 +180,11 @@ func bigPanels(d *flow.Definition) map[string]bool {
 	return m
 }
 
-// Artifacts records each gated step's tool result by step ID. Build a
-// zero value with &Artifacts{}; Set initializes the map on first use.
-// It is safe for concurrent use.
+// Artifacts records each gated step's tool result by step ID. A
+// step repeated inside a loop overwrites the entry, so the bare ID
+// always holds the latest iteration's result. Build a zero value
+// with &Artifacts{}; Set initializes the map on first use. It is
+// safe for concurrent use.
 type Artifacts struct {
 	mu     sync.Mutex
 	values map[string]string
@@ -214,7 +217,9 @@ func (a *Artifacts) Get(step string) (string, bool) {
 
 // PayloadOf builds a flow.PayloadFrom closure that reads one step's
 // artifact from a. The closure ignores its record argument and returns
-// the stored string, or "" when a holds no value for step yet.
+// the stored string, or "" when a holds no value for step yet. For a
+// step repeated inside a loop it returns the latest iteration's
+// result.
 func PayloadOf(step string, a *Artifacts) func(machine.InOut) string {
 	return func(machine.InOut) string {
 		v, _ := a.Get(step)

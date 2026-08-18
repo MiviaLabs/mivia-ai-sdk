@@ -165,12 +165,9 @@ func TestDeliveryMetadataRepairLoopRecovers(t *testing.T) {
 	if status != "delivered" {
 		t.Fatalf("status = %q, want %q", status, "delivered")
 	}
-	if got, _ := artifacts.Get("deliver"); !strings.Contains(got, "pr-rejected") {
-		t.Errorf("first delivery artifact = %q, want the rejection", got)
-	}
-	got, ok := artifacts.Get("deliver#2")
+	got, ok := artifacts.Get("deliver")
 	if !ok || !strings.Contains(got, "pr-opened:fix: bug fix") {
-		t.Errorf("second delivery artifact = %q,%v, want the opened PR under the suffixed ID", got, ok)
+		t.Errorf("delivery artifact = %q,%v, want the latest result, the opened PR", got, ok)
 	}
 	if _, ok := artifacts.Get("repair_metadata"); !ok {
 		t.Error("the metadata repair never ran")

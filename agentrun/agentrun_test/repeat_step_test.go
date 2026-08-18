@@ -2,7 +2,7 @@ package agentrun_test
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -30,12 +30,12 @@ func (t *countingPrefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.calls++
-	return tools.Out{Value: "ran"}, nil
+	return tools.Out{Value: fmt.Sprintf("ran:%d", t.calls)}, nil
 }
 
 // TestRunLoopedChildRunsToolPerIteration proves a looped child step
 // runs its tool once per iteration under one suffixed thread, and
-// each iteration records its own artifact.
+// the bare step ID holds the latest iteration's result.
 func TestRunLoopedChildRunsToolPerIteration(t *testing.T) {
 	ctx := context.Background()
 	parity := int32(0)
@@ -105,9 +105,13 @@ func TestRunLoopedChildRunsToolPerIteration(t *testing.T) {
 	if branch.calls != 2 {
 		t.Fatalf("branch tool calls = %d, want 2", branch.calls)
 	}
-	for _, want := range []string{"branch", "branch#2"} {
-		if v, ok := artifacts.Get(want); !ok || !strings.HasPrefix(v, "ran") {
-			t.Errorf("artifact %q = %q,%v, want a recorded run", want, v, ok)
-		}
+	if v, ok := artifacts.Get("branch"); !ok || v != "ran:2" {
+		t.Errorf("artifact %q = %q,%v, want the latest iteration's result", "branch", v, ok)
+	}
+	if _, ok := artifacts.Get("branch#2"); ok {
+		t.Errorf("artifact %q exists; repeats overwrite the bare step ID", "branch#2")
+	}
+	if v, ok := artifacts.Get("toA"); !ok || v != "a:pa" {
+		t.Errorf("artifact %q = %q,%v, want the single run's result", "toA", v, ok)
 	}
 }

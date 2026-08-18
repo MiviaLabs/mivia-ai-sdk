@@ -341,10 +341,7 @@ func TestBugfixEvidenceRepairLoop(t *testing.T) {
 	if gateCalls != 2 || fixes != 1 {
 		t.Fatalf("gate calls = %d, repairs = %d, want 2 and 1", gateCalls, fixes)
 	}
-	if got, _ := artifacts.Get("test_validate"); got != "evidence:failed" {
-		t.Errorf("first gate artifact = %q, want the first failed verdict", got)
-	}
-	if got, ok := artifacts.Get("test_validate#2"); !ok || got != "evidence:passed" {
-		t.Errorf("second gate artifact = %q,%v, want the pass under the suffixed ID", got, ok)
+	if got, ok := artifacts.Get("test_validate"); !ok || got != "evidence:passed" {
+		t.Errorf("gate artifact = %q,%v, want the latest result, the pass", got, ok)
 	}
 }

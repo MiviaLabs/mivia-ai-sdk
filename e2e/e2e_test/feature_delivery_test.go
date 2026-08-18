@@ -176,8 +176,8 @@ func TestFeatureDeliveryReviewLoopThenHumanMerge(t *testing.T) {
 	if implementCalls != 2 {
 		t.Errorf("implement runs = %d, want 2 (one rework)", implementCalls)
 	}
-	if got, _ := artifacts.Get("implement#2"); got != "code:r2" {
-		t.Errorf("second implementation = %q, want code:r2 under the suffixed ID", got)
+	if got, _ := artifacts.Get("implement"); got != "code:r2" {
+		t.Errorf("implementation artifact = %q, want the latest revision code:r2", got)
 	}
 	if got, _ := artifacts.Get("verify"); got != "verified:verify-evidence" {
 		t.Errorf("verify artifact = %q, want the evidence", got)

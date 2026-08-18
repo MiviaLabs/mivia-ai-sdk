@@ -213,16 +213,19 @@ Disclosed limits these scenarios pin:
 
 - A loop child that always ends on one status cannot re-enter: the
   parent's re-entry row would be a self-row, which `machine.New`
-  forbids. Loops must alternate child finals.
-- A step repeated inside a loop records later results under
-  `#N`-suffixed IDs. Guards read live tool state, not the
-  unsuffixed artifact key.
+  forbids. Loops must alternate child finals. Phase 60 plans the
+  fix.
 - Route exclusion propagates only through `AdmissionOnSucceeded`.
   The default admission lets a step run after a skipped need.
 - An ack rejection stays fatal. A gate that must route to repair
   reports failure as output, never as a tool error.
 - Engine restart through checkpoint resume is not reachable through
   `agentrun`; only `flow.Run` exposes the checkpoint hook today.
+
+One limit the scenarios surfaced is already fixed: a step repeated
+inside a loop overwrites its bare-ID artifact with the latest
+result. The suffixed message IDs stay on the thread only. Guards and
+`PayloadOf` read the bare key for the latest result.
 
 ## Tests
 

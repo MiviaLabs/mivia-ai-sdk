@@ -156,19 +156,19 @@ func (d Definition) Roots() []string {
 	return append([]string(nil), d.roots...)
 }
 
-// Steps returns a shallow copy of the step slice. A step's Sub child
-// nests: the copy shares the child Definition, so callers read deeper
-// levels through the returned Step's Sub field. The slice copy keeps
-// the definition immutable; mutating the returned slice cannot change
-// the internal graph.
+// Steps returns a deep copy of the step slice: each step's Needs,
+// Retry, Loop, and Sub child copy recursively, at every depth. The
+// copy keeps the definition immutable; mutating the returned graph
+// cannot change the internal one.
 func (d Definition) Steps() []Step {
-	return append([]Step(nil), d.steps...)
+	return copySteps(d.steps)
 }
 
-// Panels returns a copy of the panel slice. The copy keeps the
-// definition immutable; callers cannot mutate the internal slice.
+// Panels returns a deep copy of the panel slice: each panel's member
+// slice copies too. The copy keeps the definition immutable; callers
+// cannot mutate the internal graph through it.
 func (d Definition) Panels() []Panel {
-	return append([]Panel(nil), d.panels...)
+	return copyPanels(d.panels)
 }
 
 // copyPanels copies the panel slice for immutability.

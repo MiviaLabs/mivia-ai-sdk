@@ -34,6 +34,7 @@ package ledger
   func Decode(data []byte) (Snapshot, error)
   func New(store Store, bus *events.Bus) (*Ledger, error)
   func NewMemStore() (*MemStore)
+  func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)
   func NewSQLiteStore(path string) (*SQLiteStore, error)
   type Actor string
   type FenceToken uint64
@@ -41,6 +42,9 @@ package ledger
   type Ledger struct {
 }
   type MemStore struct {
+}
+  type MemStoreOptions struct {
+  MaxEntries int
 }
   type OwnerID string
   type SQLiteStore struct {
@@ -72,6 +76,7 @@ package ledger
 }
   var ErrEmptyOwner
   var ErrFenced
+  var ErrInvalidMaxEntries
   var ErrLeaseActive
   var ErrNoKey
   var ErrNotClaimed

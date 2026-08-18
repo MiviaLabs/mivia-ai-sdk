@@ -28,3 +28,7 @@ var ErrUnknownStatus = errors.New("ledger: status must be StatusCompleted or Sta
 
 // ErrEmptyOwner is returned by Claim or Takeover when owner is empty.
 var ErrEmptyOwner = errors.New("ledger: owner must not be empty")
+
+// ErrInvalidMaxEntries is returned by NewMemStoreWithOptions when
+// MemStoreOptions.MaxEntries is negative.
+var ErrInvalidMaxEntries = errors.New("ledger: MaxEntries must not be negative")

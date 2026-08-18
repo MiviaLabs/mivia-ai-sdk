@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // e2eMember holds a postable identity for the cross-subsystem test.
@@ -185,5 +187,108 @@ func TestCrossSubsystemGuardFailure(t *testing.T) {
 	_, _, err = d.Fire(ctx, to, "stop", machine.InOut{})
 	if err == nil {
 		t.Fatal("Fire stop: expected a guard-failure error")
+	}
+}
+
+// moveReportTool reports a machine move string back through Run. It
+// proves a real tools.Tool implementation, not a fake, crosses the
+// tools.Registry boundary.
+type moveReportTool struct{}
+
+func (moveReportTool) Name() string { return "move-report" }
+
+func (moveReportTool) Run(_ context.Context, in tools.InOut) (tools.Out, error) {
+	move, _ := in.Value.(string)
+	return tools.Out{Value: "reported:" + move}, nil
+}
+
+// TestCrossSubsystemToolsCompose proves envelope, room, machine, tools,
+// and events compose through their public APIs. A member posts a signed
+// message the room admits; a real machine move fires; the move's data
+// runs through a registered tools.Tool; the tool's real output, not a
+// stand-in, reaches a caller-owned bus.
+func TestCrossSubsystemToolsCompose(t *testing.T) {
+	founder := newE2EMember(t)
+	member := newE2EMember(t)
+
+	r, err := room.New("platform-team", founder.id)
+	if err != nil {
+		t.Fatalf("new room: %v", err)
+	}
+	if err := r.Admit(member.id, founder.id); err != nil {
+		t.Fatalf("admit member: %v", err)
+	}
+
+	msg := e2eMessage(r.ID())
+	msg.ID = "e2e-tools-1"
+	msg = member.post(t, msg)
+	if err := r.Accepts(msg); err != nil {
+		t.Fatalf("room rejected a signed member message: %v", err)
+	}
+
+	d := e2eMachine()
+	reg := tools.New()
+	if err := reg.Add(moveReportTool{}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	bus := events.New()
+	var got []string
+	if err := bus.Subscribe(machine.MoveEvent, func(_ context.Context, e events.Event) error {
+		got = append(got, e.Data)
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+
+	ctx := context.Background()
+	to, _, err := d.Fire(ctx, "idle", "start", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Fire: %v", err)
+	}
+	out, err := reg.Run(ctx, "move-report", tools.InOut{Value: moveData("idle", to)})
+	if err != nil {
+		t.Fatalf("Registry.Run: %v", err)
+	}
+	if err := bus.Emit(ctx, events.Event{Name: machine.MoveEvent, Data: out.Value.(string)}); err != nil {
+		t.Fatalf("Emit: %v", err)
+	}
+	want := []string{"reported:" + moveData("idle", machine.Status("running"))}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("bus events = %v, want %v", got, want)
+	}
+}
+
+// TestCrossSubsystemToolsUnknownName returns an error for a move whose
+// report tool was never registered, while the envelope, room, and
+// machine path is healthy. The caller never emits after a failed Run,
+// so no event can reach the bus.
+func TestCrossSubsystemToolsUnknownName(t *testing.T) {
+	founder := newE2EMember(t)
+	member := newE2EMember(t)
+
+	r, err := room.New("platform-team", founder.id)
+	if err != nil {
+		t.Fatalf("new room: %v", err)
+	}
+	if err := r.Admit(member.id, founder.id); err != nil {
+		t.Fatalf("admit member: %v", err)
+	}
+	msg := e2eMessage(r.ID())
+	msg.ID = "e2e-tools-2"
+	msg = member.post(t, msg)
+	if err := r.Accepts(msg); err != nil {
+		t.Fatalf("room rejected a signed member message: %v", err)
+	}
+
+	d := e2eMachine()
+	reg := tools.New()
+	ctx := context.Background()
+	to, _, err := d.Fire(ctx, "idle", "start", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Fire: %v", err)
+	}
+	_, err = reg.Run(ctx, "move-report", tools.InOut{Value: moveData("idle", to)})
+	if !errors.Is(err, tools.ErrUnknownName) {
+		t.Fatalf("Registry.Run: got %v, want ErrUnknownName", err)
 	}
 }

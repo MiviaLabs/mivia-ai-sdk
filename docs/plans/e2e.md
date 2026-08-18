@@ -235,6 +235,17 @@ The scenarios are the tests. They live in `e2e/e2e_test/`, one
 external package. The harness itself is production code and holds
 the coverage floor like any package.
 
+Named suites for property pairs live one level down, inside each
+owning package's own test directory, not here: apply a
+transformation to a valid input, assert the outcome. Name each suite
+function `TestMetamorphic*`, table-driven, one case per row. See
+`envelope/metamorphic_test.go`, `ledger/ledger_test/metamorphic_test.go`,
+`subagent/subagent_test/metamorphic_test.go`, and
+`memory/memory_test/metamorphic_test.go` for the shipped examples,
+alongside the round-trip precedents in `a2a/mapping_test.go`,
+`agent/agent_test/exchange_integration_test.go`, and
+`identity/sign_integration_test.go`.
+
 ## Verification
 
 - `policy/layers.json` gains the `"e2e"` row listed under API.

@@ -332,6 +332,47 @@ the five `*_race_test.go` files run under `go test -race`
   error paths, and `Blocked`'s `Store.Load` error propagation.
   `helpers_test.go` holds the shared fixtures every other file reuses.
 
+## Metamorphic test suite
+
+New file `ledger/ledger_test/metamorphic_test.go`, package
+`ledger_test`, using the existing `newLedger`, `mustAdmit`,
+`mustClaim`, `testActor`, `fixedNow`, and `fixedLease` helpers from
+`helpers_test.go`. Each case is a property pair: apply a
+transformation to a valid input, assert the stated outcome.
+Table-driven; one `TestMetamorphic*` function per property. This
+change adds only new test files; no production `ledger/` code
+changes.
+
+- `TestMetamorphicAdmitIdempotentSameKey` — property: a second
+  `Admit` with the same idempotency key is idempotent. It returns the
+  same task and runs no second unit of work. Scoped narrowly to the
+  same-sequence replay case only, to stay distinct from the existing
+  `TestAdmitDuplicateSequenceRejected`
+  (`ledger/ledger_test/admit_test.go:101`), which already covers a
+  same-or-lower-sequence resubmission leaving `Task` unchanged; this
+  suite does not repeat the lower-sequence case. Table varying the
+  key and task payload shape. For each case: `Admit` once with a
+  work-counter task marker that increments a counter when a caller
+  runs the "unit of work" gated on `Admit`'s bool, then `Admit` again
+  at the same key and the same sequence with a second, distinguishable
+  marker, gating the same counter. Assert the second `Admit` returns
+  `false, nil`, the counter reads one, and `State` still reports the
+  first marker, never the second. Confirmed true against `ledger.go`:
+  `admitEligible` requires `seq > cur.Sequence`, so an equal sequence
+  never reaches `CompareAndSwap`.
+- `TestMetamorphicFencedLoserFailsWinnerLands` — property: a
+  fenced-out loser's `Complete` fails while the fence-taking winner's
+  `Complete` lands. Table varying whether the takeover happens once
+  or twice before completion, and whether the winner completes
+  `StatusCompleted` or `StatusFailed`. For each case: `Admit`,
+  `Claim` as the original owner, `Takeover` as a second owner past
+  the stale deadline, then call `Complete` with the original owner's
+  stale fence and assert `errors.Is(err, ledger.ErrFenced)`. Call
+  `Complete` with the current owner's fence and assert `err == nil`
+  and `State` reports the target status. Confirmed true against
+  `complete.go`: `Complete` checks `cur.Fence != fence` before any
+  `CompareAndSwap`.
+
 ## Verification
 
 `make verify` passes: gofmt, vet, tests, the doc gate, the structure
@@ -345,6 +386,11 @@ this change. `docs/architecture.md` gains the `ledger` package-map
 entry; `docs/packages/ledger.md` documents the exported surface;
 `AGENTS.md` gains a `ledger/` layout bullet. No conformance vector
 changes: `ledger` carries no signed or threaded wire form.
+
+The metamorphic suite above is test-only: no production `ledger/`
+file changes, no exported symbol changes, and `make api-update` must
+produce no diff for `api/ledger.txt`. `go test -race ./ledger/...`
+covers the new file.
 
 Phase 42 adds `SQLiteStore` next to `MemStore`, verified separately:
 the default `make verify` stays green unchanged, since `SQLiteStore`

@@ -136,6 +136,39 @@ Test files live in `memory/memory_test/`, an external test package.
   blob. Target under one microsecond per call. State the measured
   baseline in the file.
 
+## Metamorphic test suite
+
+New file `memory/memory_test/metamorphic_test.go`, package
+`memory_test`, distinct from the fixed-scenario cases already in
+`store_integration_test.go`. Each case is a property pair: apply a
+transformation to a valid input, assert the stated outcome.
+Table-driven; one `TestMetamorphic*` function per property.
+
+- `TestMetamorphicPutNeverExceedsBudget` — property: a `Put` that
+  triggers eviction never leaves the store's total size above its
+  configured budget. Table varying the budget and a sequence of blob
+  sizes chosen to force zero, one, and multiple evictions. For each
+  case: run the `Put` sequence, tracking every returned ref. After
+  each `Put`, call `Get` on every ref seen so far, sum the length of
+  every blob whose `Get` still succeeds, and assert the sum is at
+  most the budget. `Store.total` is unexported, so the test measures
+  the budget through the public `Get` surface, not the field.
+  Confirmed true against `store.go`: `Put` rejects an over-budget
+  blob before storing anything, and its eviction loop runs while
+  `s.total+len(content) > s.maxBytes`, so a stored blob never leaves
+  `s.total` over `s.maxBytes`.
+- `TestMetamorphicGetEvictedFailsYoungerAnswers` — property: a `Get`
+  of an evicted ref fails while a younger, non-evicted ref still
+  answers. Table varying the budget and blob sizes across single- and
+  multi-blob eviction depths, distinct from
+  `TestPutMultiBlobEviction`'s fixed case. For each case: run the
+  `Put` sequence, identify the oldest ref driven out by the budget
+  from the known insertion order, and the newest ref still within
+  budget. Assert `Get` on the evicted ref wraps `ErrUnknownRef`, and
+  `Get` on the younger ref returns its original bytes. Confirmed true
+  against `store.go`: the eviction loop drops `s.order[0]` first,
+  oldest-inserted, and never touches a later entry that already fits.
+
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
@@ -148,6 +181,9 @@ Test files live in `memory/memory_test/`, an external test package.
 - `go test -race ./memory/...` passes, covering the eviction and
   concurrency-sensitive paths in `store_integration_test.go` and
   `store_concurrent_test.go`.
+- The metamorphic suite is test-only: no exported symbol changes, so
+  `make api-update` must produce no diff for `api/memory.txt` in that
+  change. `go test -race ./memory/...` covers the new file.
 - The phase adds no conformance vectors. Memory carries no wire
   format of its own; it reuses `envelope.ContextRef` for addressing
   and stores opaque bytes.

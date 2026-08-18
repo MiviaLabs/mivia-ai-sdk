@@ -99,50 +99,55 @@ Tests live in `subagent/subagent_test/`, one external package:
 - `mailbox_test.go` — the mailbox contract and both message tools.
 - `observe_test.go` — event forwarding onto a parent bus.
 
+## Metamorphic test suite
+
+New file `subagent/subagent_test/metamorphic_test.go`, package
+`subagent_test`, using the existing `signedMessage` and `badMessage`
+helpers from `mailbox_test.go`. Each case is a property pair: apply a
+transformation to a valid input, assert the stated outcome.
+Table-driven; one `TestMetamorphic*` function per property.
+
+- `TestMetamorphicMailboxFullRejectsInInsertionOrder` — property: a
+  mailbox at capacity rejects new sends in insertion order. Table
+  varying capacity (one, two, three) and the count of overflow
+  attempts. For each case: build a `Mailbox` at the given capacity,
+  `Deliver` exactly `capacity` distinct signed messages in order,
+  assert every call returns `nil`. `Deliver` one more message, assert
+  `errors.Is(err, subagent.ErrMailboxFull)`. Call `Take`, assert the
+  drained slice equals the delivered messages, same payloads, same
+  order. Confirmed true against `mailbox.go`: `Deliver` appends only
+  when `len(m.msgs) < m.cap`, and `Take` returns `m.msgs` unmodified
+  otherwise.
+- `TestMetamorphicMailboxDeliveredMessageNeverDropped` — property: a
+  delivered message is never silently dropped. Table varying
+  capacity (two, eight, thirty-two). For each case: build a `Mailbox`
+  at the given capacity, deliver exactly `capacity` distinct signed
+  messages concurrently from `capacity` goroutines gated by a start
+  channel, so every `Deliver` call lands inside the capacity bound.
+  Assert every goroutine's `Deliver` call returns `nil`. Call `Take`
+  once and assert the drained set of payloads, compared as a set, not
+  an order, equals the set of sent payloads, with no loss and no
+  duplication. Confirmed true against `mailbox.go`: `Deliver` and
+  `Take` both hold `m.mu` for their full body, so no interleaving
+  drops an appended message.
+
 ## Verification
 
 - `make verify` passes; subagent and the module total hold the 85
   floor.
 - `go test -race ./subagent/...` passes.
 - `make api-update` lands `api/subagent.txt` in the same change.
+- The metamorphic suite is test-only: no exported symbol changes, so
+  `make api-update` must produce no diff for `api/subagent.txt` in
+  that change. `go test -race ./subagent/...` covers the new file.
 - The e2e system scenarios in `docs/plans/e2e.md` drive the package
   end to end.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
 
 ### Gap fix: export the mailbox-capacity sentinel
 
-Status: planned, not yet built. `NewMailbox` rejects a non-positive
-`capacity` with a bare `fmt.Errorf` string today, not a sentinel. No
-caller can match it with `errors.Is`, unlike `ErrMailboxFull`, which
-already is one.
-
-The build, in `subagent/mailbox.go`:
-
-```go
-// ErrInvalidCapacity reports a NewMailbox call whose capacity is not
-// positive. Test with errors.Is.
-var ErrInvalidCapacity = errors.New("subagent: mailbox capacity must be positive")
-```
-
-Call site: `NewMailbox` wraps the sentinel, keeping the capacity value
-in the message text:
-
-```go
-if capacity <= 0 {
-    return nil, fmt.Errorf("subagent: mailbox capacity %d must be positive: %w", capacity, ErrInvalidCapacity)
-}
-```
-
-`make api-update` locks `ErrInvalidCapacity` into `api/subagent.txt`,
-joining the list above. No `policy/layers.json` edit.
-
-Test: `subagent/subagent_test/mailbox_test.go`'s
-`TestNewMailboxRejectsBadCapacity` currently checks
-`strings.Contains(err.Error(), "capacity")` against `capacity == 0`
-only. Strengthen it to a table of two cases, `capacity == 0` and
-`capacity == -1`, both asserting
-`errors.Is(err, subagent.ErrInvalidCapacity)`; both hit the same
-`capacity <= 0` branch, but a negative value is a distinct input worth
-its own case. The `strings.Contains` check may stay as a secondary
-assertion on the message text, or be dropped, at the builder's
-choice.
+Status: shipped. `ErrInvalidCapacity` is declared in
+`subagent/mailbox.go`, wrapped by `NewMailbox`, locked in
+`api/subagent.txt`, and covered by
+`TestNewMailboxRejectsBadCapacity` in
+`subagent/subagent_test/mailbox_test.go`.

@@ -73,6 +73,11 @@ func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error) {
 // failure the server reports through the result's isError field
 // surfaces as CallResult.IsError, not as a Go error. See the design
 // note above.
+//
+// CallTool performs no approval check. A caller that wants an
+// MCP-discovered tool gated by tools.Scope.Approve must register it
+// into a tools.Registry through ListTools's mapping and invoke it
+// with Registry.RunScoped, not call CallTool directly.
 func (c *Client) CallTool(ctx context.Context, name string, args any) (tools.Out, error) {
 	return c.callTool(ctx, name, args, nil)
 }
@@ -80,7 +85,8 @@ func (c *Client) CallTool(ctx context.Context, name string, args any) (tools.Out
 // CallToolWithProgress behaves like CallTool, except every progress
 // notification for this specific call reaches onProgress, not
 // ClientOptions.OnProgress, for the call's whole duration. onProgress
-// must not be nil.
+// must not be nil. Like CallTool, it performs no approval check; the
+// same RunScoped composition applies.
 func (c *Client) CallToolWithProgress(ctx context.Context, name string, args any, onProgress ProgressHandler) (tools.Out, error) {
 	if onProgress == nil {
 		return tools.Out{}, errNilProgressHandler

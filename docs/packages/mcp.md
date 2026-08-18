@@ -60,6 +60,12 @@ run. The exported surface below mirrors `api/mcp.txt`.
   this call reaches `onProgress` instead of `ClientOptions.OnProgress`.
   `onProgress` must not be nil.
 
+`CallTool` and `CallToolWithProgress` perform no approval check. To
+gate an MCP-discovered tool behind `tools.Scope.Approve`, register it
+into a `tools.Registry` through `ListTools`'s mapping, then invoke it
+with `Registry.RunScoped`. A caller who calls `CallTool` directly
+skips approval gating entirely, the same way `Registry.Run` does.
+
 ## Invariants
 
 - `Connect` returns an error, not a partial `Client`, when the

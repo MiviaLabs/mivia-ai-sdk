@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Gate: doc prose follows the writing standard (AGENTS.md). Checks
 sentence length in docs/**/*.md: one idea per sentence, at most 25
-words. Code fences, headings, and list lines are exempt."""
+words. Code fences, headings, and list lines are exempt. Also rejects
+a leftover Git merge-conflict marker in any tracked docs/**/*.md
+file, so an unresolved merge never passes make verify silently."""
 import re
 import sys
 from pathlib import Path
 
 MAX_WORDS = 25
 SENTENCE = re.compile(r"[^.!?]+[.!?]")
+CONFLICT_MARKER = re.compile(r"^(<{7} |={7}$|>{7} )")
 
 
 def check_file(path: Path, rel: Path) -> list[str]:
@@ -15,6 +18,9 @@ def check_file(path: Path, rel: Path) -> list[str]:
     in_fence = False
     for n, line in enumerate(path.read_text().splitlines(), 1):
         stripped = line.strip()
+        if CONFLICT_MARKER.match(line):
+            violations.append(f"{rel}:{n}: leftover merge-conflict marker")
+            continue
         if stripped.startswith("```"):
             in_fence = not in_fence
             continue

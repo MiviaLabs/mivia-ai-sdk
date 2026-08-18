@@ -119,19 +119,43 @@ composition comes last.
   each shipped as a new leaf-shaped package with no dependency on any
   other phase in this group. The rest ship independently of each
   other.
+- Documentation: phase 45, a runnable example composing `agent.Run`
+  with `provider`, `tools`, `mcp`, `ledger`, and `memory` through their
+  existing composition seams. Depends only on already-shipped
+  packages. It adds no code and no new `policy/layers.json` edge; see
+  docs/plans/agents/phase45_agent_composition_example.md.
+- Durability and reference gaps: phase 42, a durable `ledger.Store`
+  implementation; phase 43, a reference `channel.Notifier` transport;
+  phase 44, a `provider` token-estimation capability. Each depends
+  only on its own already-shipped package (phase 34 `ledger`, phase 37
+  `channel`, phase 29 `provider`) and ships independently of the other
+  two and of phase 45. See
+  docs/plans/agents/phase42_ledger_durable_store.md,
+  docs/plans/agents/phase43_channel_reference_transport.md, and
+  docs/plans/agents/phase44_provider_token_estimation.md.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 23, 25, 29, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
+Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
 shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
 docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
-docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 30 passed
-plan review in three rounds and is ready to build, now that phase 23
-has shipped. Phase 38 (flow loop) is plan-only; it has not gone
-through plan review yet, but is independently buildable now that
-phase 23 has shipped.
+docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
+loop) is plan-only; it has not gone through plan review yet, but is
+independently buildable now that phase 23 has shipped. Phase 45 (agent composition example) is
+plan-only; it has not gone through plan review yet. It depends only on
+already-shipped packages and adds no code, so it is independently
+buildable now.
+
+Phase 42 (ledger durable store), phase 43 (channel reference
+transport), and phase 44 (provider token estimation) are plan-only;
+none has gone through plan review yet. Each is independently buildable
+now, since phase 34, phase 37, and phase 29 have all shipped. Phase 42
+states two backend options and recommends the stdlib-only one; the
+other option needs a user decision on a new third-party exception
+before any phase builds it. Phase 43 ships as a `docs/examples/`
+walkthrough, not new `channel` package code.
 
 ## Gate interactions
 

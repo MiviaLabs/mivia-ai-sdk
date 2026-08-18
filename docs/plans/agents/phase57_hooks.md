@@ -66,6 +66,17 @@ Outside:
   phase adds a point only once a real caller needs it. Shipping a
   wider point set now is speculative generality.
 
+A caller composes `hooks.Registry` with `machine.Guard` and
+`flow.Confirm` today, without a new SDK edge. A domain-specific gate,
+for example a git diff review before a step runs, is a closure a
+caller writes once and hands to `Guard`, `Confirm`, or a `hooks.
+Handler`. The SDK never names git, a diff, or a pull request; the
+caller's closure does. This mirrors `flow.RetryPolicy.Retryable`,
+which takes a caller-supplied `func(error) bool` instead of a
+built-in error taxonomy. `hooks` adds the missing piece: a named,
+multi-handler point a caller can add to and remove from at run time,
+where `Guard` and `Confirm` each hold exactly one callback.
+
 ## API
 
 The surface below lands in `api/hooks.txt`.

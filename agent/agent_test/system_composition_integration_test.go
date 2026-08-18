@@ -2,7 +2,6 @@
 // One agent.Run drives a graph with a panel wave, a retried step, a
 // caught failure, and an approval-gated tool call, over real identity,
 // room, provider, memory, ledger, heartbeat, a2a, and events values.
-// See docs/plans/agents/phase46_system_integration_suite.md.
 package agent_test
 
 import (

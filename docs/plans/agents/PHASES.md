@@ -155,8 +155,7 @@ composition comes last.
   `policy/layers.json` row. It widens
   `agent/agent_test/exchange_integration_test.go`'s existing coverage
   without changing that file, and stays separate from phase 45's doc
-  walkthrough. See
-  docs/plans/agents/phase46_system_integration_suite.md.
+  walkthrough.
 - Concurrency verification: phase 47, a concurrency integration
   suite: the race detector joins `make verify`, and five new test
   files close the gaps phase 46 leaves open: concurrent `agent.Run`

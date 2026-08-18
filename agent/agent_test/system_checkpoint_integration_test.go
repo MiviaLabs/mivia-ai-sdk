@@ -2,8 +2,7 @@
 // integration test. agent.Run passes a nil onCheckpoint to flow.Run,
 // so no checkpoint fires through it; this file drives flow.Run and
 // flow.Resume directly, with the same signed-and-chained Confirm shape
-// agent.confirmStep builds. See
-// docs/plans/agents/phase46_system_integration_suite.md.
+// agent.confirmStep builds.
 package agent_test
 
 import (

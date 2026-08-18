@@ -2,8 +2,7 @@
 // integration suite reuses: one bus that subscribes every emitted
 // name, a write-class review tool, a channel.Notifier-shaped approval
 // closure, a canned provider.Completer, and the ledger helpers. The
-// suite proves every shipped package composes as one system. See
-// docs/plans/agents/phase46_system_integration_suite.md.
+// suite proves every shipped package composes as one system.
 package agent_test
 
 import (

@@ -2,7 +2,6 @@
 // invocation test. It proves scheduler.Job and trigger.Action each
 // wrap agent.Run as a plain closure, with ledger admission around the
 // task and a channel.Notifier-shaped stub resolving the gated step.
-// See docs/plans/agents/phase46_system_integration_suite.md.
 package agent_test
 
 import (

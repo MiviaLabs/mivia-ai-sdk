@@ -45,7 +45,13 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 
 // Admit records a task once per key. It CAS-admits a StatusPending
 // record when the key is absent or the stored sequence is lower and
-// the stored Status is StatusPending or StatusClaimed. It returns
+// the stored Status is StatusPending or StatusClaimed. A need whose
+// record already holds StatusFailed or StatusBlocked lands the new
+// record StatusBlocked, with BlockedBy naming that need, so a
+// dependent that arrives after its dependency's failure never
+// claims: late admission blocks, like Complete's dependent scan. A
+// Store fault while reading a need fails Admit; admission never
+// guesses between pending and blocked. It returns
 // false, nil, not an error, when the key already holds a record at
 // or above seq, or when the stored record is terminal: a duplicate or
 // late-arriving submission is a no-op against a finished task, not a
@@ -74,6 +80,10 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 			createdBy = cur.CreatedBy
 			createdAt = cur.CreatedAt
 		}
+		blocker, blocked, err := l.blockingNeed(ctx, needsCopy)
+		if err != nil {
+			return false, err
+		}
 		next := TaskState{
 			Key:       key,
 			Status:    StatusPending,
@@ -85,11 +95,19 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 			UpdatedBy: actor,
 			UpdatedAt: now,
 		}
+		if blocked {
+			next.Status = StatusBlocked
+			next.BlockedBy = blocker
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, old, next)
 		if err != nil {
 			return false, err
 		}
 		if ok {
+			if blocked {
+				l.emit(ctx, BlockedEvent, fmt.Sprintf("key %s blocked by %s at admission", key, blocker))
+				return true, nil
+			}
 			l.emit(ctx, AdmittedEvent, fmt.Sprintf("key %s admitted at sequence %d", key, seq))
 			return true, nil
 		}
@@ -97,6 +115,23 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 			return false, err
 		}
 	}
+}
+
+// blockingNeed returns the first need whose record already holds
+// StatusFailed or StatusBlocked. A never-admitted or live need blocks
+// nothing. A Store fault while reading a need returns that error, so
+// Admit never guesses between pending and blocked.
+func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (IdempotencyKey, bool, error) {
+	for _, n := range needs {
+		st, found, err := l.store.Load(ctx, n)
+		if err != nil {
+			return "", false, err
+		}
+		if found && (st.Status == StatusFailed || st.Status == StatusBlocked) {
+			return n, true, nil
+		}
+	}
+	return "", false, nil
 }
 
 // State returns the current record for key. The bool is a found

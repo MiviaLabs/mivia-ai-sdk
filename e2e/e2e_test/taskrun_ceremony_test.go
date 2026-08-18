@@ -103,13 +103,15 @@ func TestTaskrunWrapsARun(t *testing.T) {
 	}
 
 	// A failed dependency blocks a dependent admitted before the
-	// failure. Admit the dependent first: the ledger blocks records
-	// that exist when the failure lands.
+	// failure and one admitted after it: admission blocks either way.
 	if _, err := l.Admit(ctx, "e2e-actor", "child", 1, "child", time.Now(), "dep"); err != nil {
 		t.Fatalf("Admit child: %v", err)
 	}
 	if _, err := l.Admit(ctx, "e2e-actor", "dep", 1, "dep", time.Now()); err != nil {
 		t.Fatalf("Admit dep: %v", err)
+	}
+	if _, err := l.Admit(ctx, "e2e-actor", "late", 1, "late", time.Now(), "dep"); err != nil {
+		t.Fatalf("Admit late: %v", err)
 	}
 	fence, err := l.Claim(ctx, "e2e-actor", "dep", "e2e-owner", time.Minute, time.Now())
 	if err != nil {
@@ -119,14 +121,16 @@ func TestTaskrunWrapsARun(t *testing.T) {
 		ledger.StatusFailed, time.Now()); err != nil {
 		t.Fatalf("Complete dep: %v", err)
 	}
-	blockedCalls := 0
-	err = taskrun.Run(ctx, opts,
-		taskrun.Task{Key: "child", Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
-		pipelineWork(t, &blockedCalls))
-	if !errors.Is(err, taskrun.ErrTaskBlocked) {
-		t.Fatalf("dependent = %v, want ErrTaskBlocked", err)
-	}
-	if blockedCalls != 0 {
-		t.Fatalf("blocked work calls = %d, want 0", blockedCalls)
+	for _, key := range []ledger.IdempotencyKey{"child", "late"} {
+		blockedCalls := 0
+		err = taskrun.Run(ctx, opts,
+			taskrun.Task{Key: key, Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
+			pipelineWork(t, &blockedCalls))
+		if !errors.Is(err, taskrun.ErrTaskBlocked) {
+			t.Fatalf("dependent %s = %v, want ErrTaskBlocked", key, err)
+		}
+		if blockedCalls != 0 {
+			t.Fatalf("dependent %s work calls = %d, want 0", key, blockedCalls)
+		}
 	}
 }

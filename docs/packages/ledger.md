@@ -50,6 +50,8 @@ surface below mirrors `api/ledger.txt`.
 - `NewMemStoreWithOptions(opts)` — builds a `MemStore` honoring the
   cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
 - `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
+  task once per key. A need already failed or blocked lands the new
+  record `StatusBlocked`, so a late dependent never claims.
   task once per key. Returns `false, nil`, not an error, for a
   duplicate or a post-completion resubmission. On first insert, stamps
   `CreatedBy`/`CreatedAt` from `actor`/`now`; a rebase over an existing

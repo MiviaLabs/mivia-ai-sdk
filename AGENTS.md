@@ -98,6 +98,12 @@ Go SDK for building AI agents. Module:
   registration order and stops at the first veto. A leaf package; no
   internal imports. No caller yet; the tools and flow wiring is a
   later phase.
+- `trace/` — the structured-trace primitive: Span, SpanID, Tracer,
+  New, Start, SpanFrom. Tracer.Start issues sequential SpanIDs and
+  links each new span to the span already in ctx, following flow's
+  LoopStateFrom pattern; End, SetAttribute, and Attributes are safe
+  for concurrent use on one shared Span. A leaf package; no internal
+  imports. No caller yet; the tools and trigger precedent.
 - `mcp/` — the MCP tool-calling client: Client, Connect, Transport,
   NewStdioTransport, NewStreamableHTTPTransport, ListTools, CallTool,
   and CallToolWithProgress. Imports tools internally and the official

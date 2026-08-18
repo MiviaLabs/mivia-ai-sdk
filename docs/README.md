@@ -4,9 +4,9 @@
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, a2aack, dispatch,
 tools, contextbudget, mcp, ledger, durablefence, memory, provider,
-channel, trigger, scheduler, agent, agentrun, subagent, taskrun,
-and e2e. Each package covers one concern and composes through its
-exported API.
+channel, trigger, trace, scheduler, agent, agentrun, subagent,
+taskrun, and e2e. Each package covers one concern and composes
+through its exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
 
@@ -73,6 +73,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, and the request and response types.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
 - [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.
+- [packages/trace.md](packages/trace.md) — the structured-trace primitive: a `Span` records one named operation, a `Tracer` links spans through `ctx`, and `SpanFrom` reads the current span back.
 - [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive: a `Job`, a `Schedule`, and a `Scheduler` that fires each due job on its own timer.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 - [packages/agentrun.md](packages/agentrun.md) — the config-struct composition layer: one `Options` value validated and wired into a `Runner` that drives `agent.Run`.

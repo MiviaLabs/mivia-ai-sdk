@@ -128,24 +128,22 @@ composition comes last.
   the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
   tag (shipped; see docs/plans/ledger.md); phase 42b, a
   bounded-entry-cap knob for `MemStore` in the default build, split
-  out of phase 42 to stay independently reviewable and revertible;
-  phase 43, an NDJSON-over-stdio `channel.Notifier` transport, shipped
-  as real `channel` package API; phase 44, a `provider`
-  token-estimation capability. Each depends only on its own
-  already-shipped package (phase 34 `ledger`, phase 37 `channel`,
-  phase 29 `provider`) and ships independently of the others and of
-  phase 45. See docs/plans/agents/phase42b_memstore_bounded_cap.md
-  and docs/plans/channel.md (phase 43's plan folded in on shipping).
-  Phase 42c is a follow-on to phase 42 (shipped; see
-  docs/plans/ledger.md): it adds an `Actor` type and
+  out of phase 42 to stay independently reviewable and revertible
+  (shipped; see docs/plans/ledger.md); phase 43, an NDJSON-over-stdio
+  `channel.Notifier` transport, shipped as real `channel` package API;
+  phase 44, a `provider` token-estimation capability. Each depends
+  only on its own already-shipped package (phase 34 `ledger`, phase 37
+  `channel`, phase 29 `provider`) and ships independently of the
+  others and of phase 45. See docs/plans/channel.md (phase 43's plan
+  folded in on shipping). Phase 42c is a follow-on to phase 42: it
+  adds an `Actor` type and
   `CreatedBy`/`CreatedAt`/`UpdatedBy`/`UpdatedAt` fields to
   `TaskState`, threaded through every `Ledger` mutating method, plus
   matching `SQLiteStore` columns and a startup migration for a
   database file created under the pre-42c schema. It depends only on
   phase 42, which has shipped, and is an exported-API break for
   `Ledger`'s `Admit`, `Claim`, `Renew`, `Release`, `Takeover`, and
-  `Complete`. See
-  docs/plans/agents/phase42c_ledger_audit_metadata.md.
+  `Complete` (shipped; see docs/plans/ledger.md).
 - Verification: phase 46, a system integration suite: two new
   `agent/agent_test/` files proving the current, widened package
   surface composes end to end, using `ledger.MemStore` and a

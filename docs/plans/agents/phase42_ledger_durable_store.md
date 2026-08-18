@@ -1,137 +1,189 @@
-# Phase 42: ledger durable store (Turso libsql)
+# Phase 42: ledger durable store (modernc.org/sqlite)
 
 Status: future. Plan-only; it has not yet gone through plan review.
 `ledger` (phase 34) has shipped; see `docs/plans/ledger.md`. This
 phase extends `ledger` with a second `Store` implementation. It does
 not touch `Ledger`, `TaskState`, or any existing sentinel error.
 
-## Revision note
+## Revision note (second revision)
 
-An earlier draft of this plan recommended a stdlib-only file-based
-`Store` and left a database-backed `Store` as a design sketch blocked
-on a user decision. The user has since reviewed both options and
-chosen the database-backed option, naming
-`github.com/tursodatabase/go-libsql`, the Turso-maintained Go driver
-for libSQL (a SQLite fork), specifically. This exception is now
-authorized. This revision commits to that choice and designs it in
-full. The stdlib-only option is kept below only as the declined
-alternative, for the record, the way `docs/plans/mcp.md` keeps its
-superseded stdlib-reimplementation draft on record.
+The first draft of this plan recommended a stdlib-only file-based
+`Store` and left a database-backed `Store` blocked on a user decision.
+The user chose the database-backed option and initially named
+`github.com/tursodatabase/go-libsql`. Research for that revision found
+`go-libsql` needs `CGO_ENABLED=1`, a C toolchain, and ships prebuilt
+native libraries for four platform combinations only, no Windows.
 
-## A correction from research: this driver is not cgo-free
+The user has since reconsidered, given that finding, and named
+`modernc.org/sqlite` instead: the same driver
+`/home/mac/projects/mivialabs/mivia-agent`'s own durable ledger and
+event store already use in production (`internal/storage/sqlite.go`,
+pinned at `modernc.org/sqlite v1.54.0` in that repository's `go.mod`).
+This revision drops every `go-libsql` reference and designs the store
+around `modernc.org/sqlite` instead. The stdlib-only file-based option
+stays declined, for the record, unchanged from the first revision.
 
-The task that authorized this phase described `go-libsql` as "a
-pure-Go, cgo-free libsql client." That description does not match the
-driver's real, current source. This plan verified the claim against
-the actual module before writing anything else, the same way
-`docs/plans/mcp.md` verified the MCP Go SDK's real API before its own
-plan was written, and the real facts differ from the assumption:
+## Goal
 
-- `go-libsql`'s only non-test source file, `libsql.go`, carries
-  `//go:build cgo` at its top. Under `CGO_ENABLED=0`, the package
-  compiles to zero exported symbols: no `Connector`, no
-  `NewEmbeddedReplicaConnector`, nothing. There is no `!cgo` stub
-  file. Any code that references those symbols fails to compile, not
-  merely to run, in a `CGO_ENABLED=0` build.
-- The module's own `README.md` states this directly: "`go-libsql`
-  uses `CGO` to make calls to LibSQL. You must build your binaries
-  with `CGO_ENABLED=1`."
-- The module ships precompiled, prebuilt native static libraries
-  (`.a` files) under `lib/{linux_amd64,linux_arm64,darwin_amd64,
-  darwin_arm64}/`, roughly 34 to 52 MB per platform, linked in through
-  `cgo LDFLAGS`. Only those four platform combinations are supported
-  today; the module's own `README.md` states Windows and other
-  architectures are not yet supported.
-- This was confirmed by pulling the real module (verified against a
-  probe module's `go.mod`/`go.sum` built with `go mod tidy` against
-  `github.com/tursodatabase/go-libsql`, dated pseudo-version
-  `v0.0.0-20260424063416-3051e37e6e04`) and reading `libsql.go`'s
-  build constraint and cgo preamble directly, not from documentation
-  alone.
+Give `ledger` a second, durable `Store` implementation, backed by
+`modernc.org/sqlite`, so a task record survives a process restart on
+one host. `SQLiteStore` is strictly optional. `MemStore` stays the
+default `Store` `ledger.New` falls back to when a caller passes a nil
+`Store`, exactly as it does today, and this phase changes neither
+`New`'s signature nor its nil-`Store` default. A caller who never
+constructs a `*SQLiteStore` never imports `modernc.org/sqlite`: the
+package is gated behind the `ledger_sqlite` build tag (see "The
+build-tag question" below), so `MemStore`-only code pays no
+dependency cost, no larger `go.sum`, and no larger binary, whether it
+is built inside this module or vendored as this SDK's own dependency
+by a downstream consumer.
 
-This is a real constraint this plan must design around, not a detail
-to gloss over. Left unconstrained, this dependency would force
-`CGO_ENABLED=1` and a C toolchain onto every contributor's default
-build the moment `ledger` imports it, breaking `go build ./...` and
-`make verify` for anyone without one, and would silently pull two
-platform combinations' worth of prebuilt binaries into every build
-that does have cgo, even a build that never touches the
-libsql-backed store. The design below isolates the dependency behind
-an explicit, opt-in Go build tag so the default build stays exactly
-as stdlib-only and cgo-free as it is today. See "The build-tag
-boundary" below.
+`SQLiteStore` is a thin `Store`-interface adapter over an existing,
+well-established SQL engine, not an application that owns its
+database. It ships the smallest schema `TaskState` needs, created
+idempotently on first open, and no migration tooling, no
+schema-version table, and no ORM-shaped abstraction layer. See
+"Schema and `CompareAndSwap` mapping" below for the exact, single-table
+shape and "Scope" for this boundary stated as an explicit exclusion.
 
-## Two options were weighed; Option B is now chosen
+This phase also adds one small, optional configuration knob to the
+existing `MemStore`, described in "`MemStore` configuration: a bounded
+entry cap" below, so a caller who wants only the in-memory store
+(never `SQLiteStore`) can still bound its growth. This knob ships
+unconditionally, in the default build, since it needs no third-party
+import; only `SQLiteStore` sits behind the build tag.
+
+## What `modernc.org/sqlite` actually is, verified before designing against it
+
+This plan does not carry the `go-libsql` design forward with a
+find-and-replace. It re-verified the real driver against its own
+source and against `mivia-agent`'s own working, shipped usage before
+writing anything below.
+
+- `modernc.org/sqlite` is a pure-Go transpile of SQLite's own C source
+  (via the `modernc.org/ccgo` toolchain, itself a build-time-only
+  dependency of the driver, not a runtime one). It needs no cgo and no
+  C toolchain. Confirmed directly: pulling the module (`go mod tidy`
+  against a probe importing it, pinned to `v1.54.0` to match
+  `mivia-agent`'s own pin) produces a dependency closure with zero
+  cgo-only build constraints anywhere in it, unlike `go-libsql`'s
+  `//go:build cgo` file.
+- It registers a `database/sql` driver named `"sqlite"`
+  (`sql.Register(driverName, newDriver())`, `driverName = "sqlite"`,
+  confirmed by reading the module's own `sqlite.go`), not `"libsql"`.
+  `mivia-agent`'s `internal/storage/sqlite.go` opens it with
+  `sql.Open("sqlite", sqliteDSN(path))`, confirming the driver name
+  and the DSN shape used in real, shipped code.
+- `mivia-agent`'s `internal/storage/sqlite_dsn.go` builds its DSN as
+  the file path plus a query string of `_pragma=` parameters:
+  `_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=
+  foreign_keys(1)&_pragma=busy_timeout(5000)`, with a documented
+  escape hatch (a `file:` URI form) for a path containing a literal
+  `?`, since the driver splits a DSN at the first literal `?` to
+  separate the filename from its query parameters. `internal/storage/
+  sqlite.go`'s `OpenSQLite` additionally executes the same four
+  `PRAGMA` statements explicitly after open, with a comment stating
+  this is "per-connection parity:" the DSN-level `_pragma=` params
+  apply per new pooled connection, so the explicit `PRAGMA` calls
+  after open are not redundant, they cover the first connection before
+  the pool has cycled.
+- `mivia-agent`'s `OpenSQLite` also calls `db.SetMaxOpenConns(8)` and
+  `db.SetMaxIdleConns(8)`. SQLite-family engines serialize writers
+  regardless of the Go-level connection pool size; a bounded pool plus
+  `busy_timeout` together are what keeps a concurrent writer from
+  returning `SQLITE_BUSY` immediately instead of waiting its turn.
+  This plan mirrors both settings, not only the `PRAGMA`s, since they
+  solve the same real, previously-hit problem together.
+- The real dependency closure was checked with a probe `go mod tidy`
+  pinned to `v1.54.0` (see "go.mod and go.sum" below for the full,
+  verified list): `modernc.org/libc`, `modernc.org/mathutil`,
+  `modernc.org/memory`, `github.com/dustin/go-humanize`,
+  `github.com/google/uuid` (already allowed from the `mcp` exception),
+  `github.com/mattn/go-isatty`, `github.com/ncruces/go-strftime`,
+  `github.com/remyoudompheng/bigfft`, and `golang.org/x/sys` (already
+  allowed). This is a materially different, and smaller, closure than
+  `go-libsql`'s: no `.a` files, no cgo LDFLAGS, no antlr parser.
+
+## Two options were weighed; Option B is chosen, now with a pure-Go driver
 
 ### Option A (declined): a stdlib-only file-based `Store`
 
 A `FileStore` backed by one JSON file per instance, coordinated with
 an `O_CREATE|O_EXCL` lock file for single-writer, single-host safety.
-Zero new dependency, but single-host only, no lock-staleness
-recovery, and a whole-file rewrite per write. The user reviewed this
-option and chose Option B instead; this plan does not build `FileStore`.
+Zero new dependency, but single-host only, no lock-staleness recovery,
+and a whole-file rewrite per write. The user reviewed this option and
+chose Option B; this plan does not build `FileStore`.
 
-### Option B (chosen): a `Store` backed by Turso's `go-libsql` driver
+### Option B (chosen): a `Store` backed by `modernc.org/sqlite`
 
-A new `LibsqlStore` type inside the `ledger` package, backed by
-`github.com/tursodatabase/go-libsql` through the standard
-`database/sql` package. libSQL is SQLite-compatible; `go-libsql`
-registers itself as a `database/sql` driver named `"libsql"`
-(`sql.Register("libsql", driver{})`), so `LibsqlStore` is ordinary
-`database/sql` code once the driver is imported, not a bespoke
-libsql-specific API surface.
+A new `SQLiteStore` type inside the `ledger` package, backed by
+`modernc.org/sqlite` through the standard `database/sql` package.
+`SQLiteStore` is ordinary `database/sql` code once the driver is
+blank-imported, not a bespoke API surface, the same shape
+`mivia-agent`'s own `internal/storage.SQLite` already proves in
+production. The DSN is a plain file path, or `":memory:"` for an
+in-process database with no file, both standard SQLite conventions
+this driver honors like any other SQLite-family driver.
 
-The driver's `driver.OpenConnector` (verified in `libsql.go`) already
-switches on the DSN's URL scheme, so one code path covers every mode
-the user asked about:
+## The build-tag question, reconsidered
 
-- `":memory:"` or a `file:` scheme — a local libSQL file, SQLite's own
-  on-disk format. No network. Matches "sqlite" in the user's own
-  framing.
-- `libsql:`, `https:`, or `http:` scheme, with an `authToken` query
-  parameter — a live connection to a remote Turso database. This is
-  the same driver, the same `Store` implementation, no second code
-  path.
-- A third mode, embedded replica, needs its own connector:
-  `libsql.NewEmbeddedReplicaConnector(dbPath, primaryURL, opts...)`
-  builds a local file that stays synced from a remote primary, either
-  on demand (`Connector.Sync`) or on a timer (the driver's own
-  `WithSyncInterval` option, verified against `libsql.go`'s `Option`
-  list). `sql.OpenDB(connector)` turns that into the same `*sql.DB`
-  shape the other two modes use.
+The first, `go-libsql`-based revision gated the file behind
+`//go:build ledger_libsql && cgo`, for two reasons: keeping the
+default build free of a C-toolchain requirement, and keeping the
+default build free of the driver's prebuilt native libraries. Neither
+reason applies to `modernc.org/sqlite`: it needs no cgo, ships no
+native binary, and builds identically on every platform Go itself
+supports, Windows included. Carrying the old `&& cgo` half of the
+build constraint forward would be stale rationale attached to a driver
+it no longer describes.
 
-### The build-tag boundary
+A build tag is still kept, renamed to `ledger_sqlite`, dropping the
+`&& cgo` clause entirely (`//go:build ledger_sqlite` alone), for a
+different, narrower reason than before: dependency-footprint
+isolation for a same-package addition, not cgo or platform avoidance.
 
-`ledger/libsql_store.go` and its test files carry the build
-constraint `//go:build ledger_libsql && cgo`, a custom tag combined
-with Go's own automatic `cgo` tag. This is stricter than the plain
-`//go:build cgo` `go-libsql` itself uses:
+- `ledger`'s `LibsqlStore`... now `SQLiteStore`... lives in the same
+  package as `MemStore`, not a separate importable package.
+  `a2aclient` and `mcp` never needed a build tag for their own
+  third-party imports, because each is already its own package: a
+  caller who only wants `envelope` or `tools` never imports
+  `a2aclient` or `mcp` in the first place, so their dependency cost
+  lands only on a caller who explicitly imports one of them. `ledger`
+  does not have that natural boundary for a same-package addition: a
+  caller who imports `ledger` only for `MemStore` and `Ledger` would,
+  without a build tag, still pull `modernc.org/sqlite` and its
+  transitive closure (nine modules, none of them tiny; `modernc.org/
+  libc` alone is a substantial transpiled C standard library) into
+  their `go.sum` and their binary, whether or not they ever call
+  `NewSQLiteStore`.
+- `//go:build ledger_sqlite` keeps that cost opt-in at compile time,
+  matching the opt-in-by-import property `a2aclient` and `mcp` get for
+  free from being separate packages, without moving `SQLiteStore` into
+  a new top-level package this phase does not otherwise call for. A
+  caller who wants `SQLiteStore` builds and tests with
+  `-tags ledger_sqlite`; every other caller of `ledger` never sees the
+  dependency at all, in `go build`, in `go vet`, or in `go.sum`
+  resolution for their own module once this SDK is vendored or built
+  as a dependency.
+- This is a real, considered tradeoff, not the old cgo rationale
+  copied forward unchanged: a caller who wants `SQLiteStore` pays one
+  extra `-tags` flag, a materially smaller cost than the old
+  `CGO_ENABLED=1`-plus-C-toolchain requirement, in exchange for every
+  `MemStore`-only caller keeping a smaller dependency graph.
 
-- `ledger_libsql` keeps the file out of every default `go build`,
-  `go vet`, and `go test` invocation, even on a machine where cgo is
-  available. A contributor who never asks for the libsql-backed store
-  never links the 34-to-52-MB native library and never needs a C
-  toolchain. This is the opt-in boundary a caller crosses on purpose,
-  the same way a caller crosses `MemStore` versus this store on
-  purpose today, but enforced at compile time, not only at the `Store`
-  interface level.
-- `cgo` (Go's built-in tag, true exactly when `CGO_ENABLED=1` and a C
-  toolchain was found) keeps the file from referencing undefined
-  `go-libsql` symbols on a machine that explicitly asks for
-  `-tags ledger_libsql` but has no cgo available: the file drops out
-  cleanly instead of failing with a confusing "undefined: libsql.X"
-  error two packages deep.
-
-`make verify`, `go build ./...`, and the default `go test ./...` are
-unaffected by this phase: none of them pass `-tags ledger_libsql`, so
-`libsql_store.go` never compiles into the default build, and
+`make verify`, `go build ./...`, and the default `go test ./...`
+remain unaffected: none of them pass `-tags ledger_sqlite`, so
+`sqlite_store.go` never compiles into the default build, and
 `policy/layers.json`'s existing `"ledger": ["machine", "events"]` row
 still fully describes every internal edge the default build reaches.
-Building and testing the libsql-backed store is a separate, documented
-command: `go test -tags ledger_libsql -race ./ledger/...`.
+Building and testing the SQLite-backed store is a separate, documented
+command: `go test -tags ledger_sqlite ./ledger/...` (no `-race`
+requirement beyond what the store's own race test already states
+below; SQLite's own single-writer serialization is exercised by that
+test, not worked around by it).
 
 Semgrep does not evaluate Go build tags; `semgrep/sdk-standards.yml`'s
-scoped exception below applies to `libsql_store.go` by its file path,
+scoped exception below applies to `sqlite_store.go` by its file path,
 independent of whether a given `go build` invocation would include the
 file. The two mechanisms (the Go build tag and the Semgrep path scope)
 answer different questions and both must hold: the build tag keeps the
@@ -140,7 +192,17 @@ import restricted to the one named module even when the tag is used.
 
 ### Schema and `CompareAndSwap` mapping
 
-One table, created by `LibsqlStore`'s own constructor with
+Unchanged in shape from the `go-libsql` draft: libSQL is a SQLite
+fork, and `modernc.org/sqlite` is SQLite itself, so the same table,
+the same two-statement `CompareAndSwap` mapping, and the same
+`Rev`-bump-inline approach all carry over verbatim. Neither driver
+needs a different SQL dialect for this schema; the only real
+differences are the driver name (`"sqlite"`, not `"libsql"`), the DSN
+shape (a plain path plus `_pragma=` params, not a URL-scheme-switched
+DSN), and the `PRAGMA` statements `mivia-agent`'s own usage adds for
+correctness under concurrent access, folded in below.
+
+One table, created by `SQLiteStore`'s own constructor with
 `CREATE TABLE IF NOT EXISTS`, so no external migration tool is needed:
 
 ```sql
@@ -159,17 +221,17 @@ CREATE TABLE IF NOT EXISTS ledger_tasks (
 ```
 
 `lease_until` is stored as `time.Time.Format(time.RFC3339Nano)` text,
-matching `TaskState.LeaseUntil`'s round-trip needs without a
-lossy integer conversion. `needs` is the JSON encoding of
+matching `TaskState.LeaseUntil`'s round-trip needs without a lossy
+integer conversion. `needs` is the JSON encoding of
 `[]IdempotencyKey`. `task` is the JSON encoding of `TaskState.Task`,
 `encoding/json`'s best-effort marshaling of the caller's `any` value.
 This is a real, disclosed limitation `MemStore` does not share:
 `MemStore` holds `Task` as a live Go value with no serialization
-boundary; `LibsqlStore` can only durably store a `Task` value
+boundary; `SQLiteStore` can only durably store a `Task` value
 `encoding/json.Marshal` can encode and a matching `Unmarshal` target
 can decode back into the caller's own type. A caller storing a
 channel, a function, or an unexported-field-only struct in `Task`
-cannot use `LibsqlStore`; `MemStore` stays the store for that case.
+cannot use `SQLiteStore`; `MemStore` stays the store for that case.
 
 `CompareAndSwap(ctx, key, old, new)` maps onto one of two SQL
 statements, chosen by the same zero-value-`old` check `MemStore`
@@ -203,12 +265,13 @@ already uses (`ledger/store.go:73`):
   fields last. A `RowsAffected` of 1 is `true, nil`; 0 (no row matched
   the key and the full compare tuple, whether the key is absent or the
   tuple is stale) is `false, nil`, again with no error. This is a
-  single statement; SQLite-family engines (libSQL included) serialize
-  writers at the statement level, so no explicit `BEGIN`/`COMMIT`
-  wrapper is needed around either branch: each branch is already one
-  atomic write.
+  single statement; SQLite serializes writers at the statement level,
+  so no explicit `BEGIN`/`COMMIT` wrapper is needed around either
+  branch: each branch is already one atomic write, and the `busy_
+  timeout` pragma below is what makes a concurrent writer wait its
+  turn instead of failing immediately with `SQLITE_BUSY`.
 
-This gives `LibsqlStore` the exact same `(Sequence, Status, Fence,
+This gives `SQLiteStore` the exact same `(Sequence, Status, Fence,
 Rev)` compare contract `ledger/store.go:20` documents for every
 `Store` implementation, with `Rev`'s bump happening inside the SQL
 statement itself instead of in Go, so a concurrent writer against the
@@ -225,233 +288,361 @@ no-reentrant-call rule `ledger/store.go:22` states and the same
 collect-then-iterate shape Option A's `FileStore` design already used
 for the same reason.
 
+### The DSN and the pragmas, mirrored from `mivia-agent`'s own fix
+
+`sqliteDSN(path string) string`, an unexported helper in `ledger/
+sqlite_store.go`, mirrors `mivia-agent`'s `internal/storage/
+sqlite_dsn.go` algorithm exactly, including the reason stated in that
+file's own comment: the driver splits a DSN at the first literal `?`,
+so a path containing `?` would silently truncate to the wrong
+filename without this escape:
+
+```go
+const pragmaDSNParams = "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+
+func sqliteDSN(path string) string {
+	if strings.Contains(path, "?") {
+		return "file:" + url.PathEscape(path) + "?" + pragmaDSNParams
+	}
+	return path + "?" + pragmaDSNParams
+}
+```
+
+`NewSQLiteStore`'s constructor additionally executes the same four
+`PRAGMA` statements explicitly after `sql.Open`, for the same
+per-connection-parity reason `mivia-agent`'s own comment states, and
+calls `db.SetMaxOpenConns(8)` and `db.SetMaxIdleConns(8)`, mirroring
+`OpenSQLite`'s own pool sizing. `ledger_tasks` carries no foreign-key
+relationship of its own; `foreign_keys=ON` is still set, matching
+`mivia-agent`'s exact pragma set rather than trimming one for a
+one-table schema that does not need it today.
+
 ### Connection lifecycle
 
-- `NewLibsqlStore(dsn string) (*LibsqlStore, error)` — opens `dsn`
-  through `sql.Open("libsql", dsn)` (lazy; no connection yet), runs
-  the `CREATE TABLE IF NOT EXISTS` statement, then `Ping`s once to
-  fail fast on a bad DSN, an unreachable remote host, or a rejected
-  auth token, instead of surfacing that failure on the first `Load` or
-  `CompareAndSwap` call. Covers both the local-file and the direct
-  remote-Turso modes, since the driver's own `OpenConnector` already
-  branches on `dsn`'s scheme.
-- `NewLibsqlEmbeddedReplicaStore(dbPath, primaryURL string, opts
-  ...LibsqlOption) (*LibsqlStore, error)` — builds a
-  `libsql.NewEmbeddedReplicaConnector(dbPath, primaryURL, ...)`
-  connector, translating each `LibsqlOption` into the driver's own
-  `libsql.Option` internally, then `sql.OpenDB(connector)`. Runs the
-  same `CREATE TABLE IF NOT EXISTS` and `Ping` steps as
-  `NewLibsqlStore`.
-- `(*LibsqlStore) Close() error` — closes the underlying `*sql.DB`.
+- `NewSQLiteStore(path string) (*SQLiteStore, error)` — opens `path`
+  through `sql.Open("sqlite", sqliteDSN(path))` (lazy; no connection
+  yet), sets the pool sizes and pragmas above, runs the
+  `CREATE TABLE IF NOT EXISTS` statement, then `Ping`s once to fail
+  fast on a bad path or a permissions error, instead of surfacing that
+  failure on the first `Load` or `CompareAndSwap` call. `path` may be
+  `":memory:"` for an in-process database with no file, the driver's
+  own standard SQLite convention, useful for a test that wants no
+  filesystem dependency at all.
+- `(*SQLiteStore) Close() error` — closes the underlying `*sql.DB`.
   Idempotent, matching `database/sql`'s own `Close` contract.
 
-Neither constructor's exported signature carries a `go-libsql` type.
-`LibsqlOption` is `ledger`'s own type, translated internally, the same
-discipline `docs/plans/mcp.md`'s API section states for its own SDK
-wrapping: "none re-exports an SDK type directly, so a caller of this
-package needs no import of the SDK itself." A caller of
-`NewLibsqlStore` or `NewLibsqlEmbeddedReplicaStore` needs no import of
-`github.com/tursodatabase/go-libsql`; only `ledger/libsql_store.go`
-itself does.
+`MemStore` stays the default, zero-dependency `Store`, and `New`'s
+nil-`Store` fallback is unchanged. `SQLiteStore` is an additional,
+opt-in implementation a caller builds and passes to `New` explicitly,
+behind the `ledger_sqlite` build tag.
 
-`MemStore` stays the default, zero-dependency `Store` and the default
-`New` falls back to when a nil `Store` is passed; `LibsqlStore` is an
-additional, opt-in implementation a caller builds and passes to `New`
-explicitly, behind the `ledger_libsql` build tag. This phase makes no
-change to `New`'s nil-`Store` default.
+## `MemStore` configuration: a bounded entry cap
+
+`ledger/store.go`'s real `MemStore` and `NewMemStore` today:
+
+```go
+type MemStore struct {
+	mu    sync.Mutex
+	tasks map[IdempotencyKey]TaskState
+}
+
+func NewMemStore() *MemStore {
+	return &MemStore{tasks: make(map[IdempotencyKey]TaskState)}
+}
+```
+
+No capacity or eviction knob exists. `MemStore.tasks` grows without
+bound: a long-running caller sees every admitted key stay in the map
+forever, including one whose task finished (`StatusCompleted`,
+`StatusFailed`, or `StatusBlocked`) and will never be read or mutated
+again, since `Complete` already rejects any further write to a
+terminal record (`docs/plans/ledger.md`'s API section). This is a
+real, not speculative, gap for a caller who runs `Ledger` over
+`MemStore` for the lifetime of a long-running process with no
+external `Store` durability layer at all: `memory.Store` already
+ships a matching, shipped precedent for this exact shape in this
+module — an in-memory store that evicts the oldest-inserted entry
+once a byte budget is spent (`docs/plans/memory.md`) — and this phase
+gives `MemStore` the equivalent bound for entry count.
+
+The knob is a plain, exported options struct, matching this repo's
+existing precedent (`tools.ScopeOptions`, `mcp.ClientOptions`): a
+struct of fields, no functional-options wrapper, since no package in
+this module uses that shape today.
+
+```go
+// MemStoreOptions configures NewMemStoreWithOptions.
+type MemStoreOptions struct {
+	// MaxEntries caps the number of records MemStore holds. Zero
+	// means unbounded, matching NewMemStore's existing behavior
+	// exactly.
+	MaxEntries int
+}
+
+// NewMemStoreWithOptions builds an empty MemStore honoring opts.
+func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)
+```
+
+`NewMemStore()` itself is unchanged, byte for byte: it keeps its
+existing zero-argument signature and its existing unbounded behavior,
+so no caller of the already-shipped constructor sees any difference.
+`NewMemStore()` is defined in terms of `NewMemStoreWithOptions` only
+internally (`NewMemStoreWithOptions(MemStoreOptions{})`, ignoring the
+impossible error a zero-value, non-negative `MaxEntries` can never
+produce), not as two independent implementations.
+
+`NewMemStoreWithOptions` rejects a negative `MaxEntries` with a wrapped
+error, `"ledger: MaxEntries must not be negative"`, matching
+`contextbudget.Limits.Validate`'s own negative-field rejection
+wording style.
+
+Eviction rule, scoped to stay safe under `Complete`'s own
+already-shipped invariants: only a record already at a terminal
+status (`StatusCompleted`, `StatusFailed`, `StatusBlocked`) is ever
+evicted. `CompareAndSwap` never evicts a `StatusPending` or
+`StatusClaimed` record: an active claim or an unclaimed-but-live task
+must never silently disappear out from under a caller mid-lifecycle,
+the same safety bar `Complete`'s own terminal-status immutability
+rule already sets. `MemStore` keeps a small FIFO queue of keys that
+reached a terminal status, appended to exactly once per key, on the
+same `CompareAndSwap` call that writes the terminal status (a
+terminal record is never rewritten again, by `Complete`'s own
+existing rule, so no key is ever queued twice). When `MaxEntries` is
+positive and `len(tasks)` exceeds it after a successful write, `Compare
+AndSwap` pops and deletes the oldest-queued key, repeating until the
+map is back at or under the cap, mirroring `memory.Store`'s own
+oldest-inserted eviction order. When every current record is still
+`StatusPending` or `StatusClaimed` (the queue is empty) and the cap is
+still exceeded, `MemStore` does not evict anything: `MaxEntries` bounds
+what it safely can, not a hard ceiling `CompareAndSwap` would
+otherwise have to fail against. This is a documented, deliberate
+limit, not a bug: a caller who needs a hard ceiling even over live
+claims needs a different admission-throttling layer above `Ledger`,
+outside `Store`'s own contract.
 
 ## Scope
 
-Inside: `LibsqlStore`, `NewLibsqlStore`, `NewLibsqlEmbeddedReplicaStore`,
-`LibsqlOption`, `WithLibsqlAuthToken`, `WithLibsqlSyncInterval`,
-`(*LibsqlStore) Close`, its `Store` interface implementation (`Load`,
-`CompareAndSwap`, `Range`), the `ledger_tasks` schema, and the
-`ledger_libsql` build-tag boundary.
+Inside: `SQLiteStore`, `NewSQLiteStore`, `(*SQLiteStore) Close`, its
+`Store` interface implementation (`Load`, `CompareAndSwap`, `Range`),
+the `ledger_tasks` schema, the `sqliteDSN` helper, and the
+`ledger_sqlite` build-tag boundary. Inside: `MemStoreOptions` and
+`NewMemStoreWithOptions`, the bounded-entry-cap knob described below,
+shipped in the default build with no third-party import.
 
-Outside: Option A's `FileStore`, declined above. Outside: any
-migration tool between `MemStore` and `LibsqlStore`; a caller who
-wants to move a running `MemStore`'s state onto a libsql-backed store
-uses `Snapshot` and `Restore` (`ledger/snapshot.go`), which already
-work against any `Store`, `LibsqlStore` included, with no
-`LibsqlStore`-specific code. Outside: exposing every `go-libsql`
-connector option through `LibsqlOption`; this phase covers an auth
-token and a sync interval only, the two options the embedded-replica
-mode needs to be useful; a caller needing a `go-libsql` option this
-phase does not wrap builds a `*sql.DB` against the driver directly and
-constructs `LibsqlStore` around it, a seam this phase's API section
-below states explicitly. Outside: any change to `Ledger`, `TaskState`,
-or any sentinel error.
+Outside: Option A's `FileStore`, declined above. Outside: any remote
+or replicated SQLite mode; `modernc.org/sqlite` is a local-file (or
+in-memory) driver only, unlike `go-libsql`'s remote-Turso and
+embedded-replica modes, so this phase carries no remote connection
+constructor and no `LibsqlOption`-shaped option type forward from the
+declined `go-libsql` draft. A caller who needs a remote, replicated
+`Store` builds one against a different driver, outside this phase's
+scope. Outside: any migration tool between `MemStore` and
+`SQLiteStore`; a caller who wants to move a running `MemStore`'s state
+onto a SQLite-backed store uses `Snapshot` and `Restore`
+(`ledger/snapshot.go`), which already work against any `Store`,
+`SQLiteStore` included, with no `SQLiteStore`-specific code. Outside:
+schema migration tooling, a schema-version tracking table, or any
+ORM-shaped abstraction over `database/sql`. `SQLiteStore` is a thin
+`Store`-interface adapter, one table, created idempotently with
+`CREATE TABLE IF NOT EXISTS` on first open; it is not an application
+that owns and evolves its own database over time, and this phase
+builds nothing beyond what satisfying `Store` against SQLite needs.
+Outside: any change to `Ledger`, `TaskState`, or any sentinel error.
+Outside: an eviction or capacity knob on `SQLiteStore`; a durable,
+disk-backed store has no equivalent in-process-growth concern the way
+`MemStore` does, since its cost lives on disk, not in the process's
+own heap, so this phase adds the bounded-entry-cap knob to `MemStore`
+only.
 
 ## API
 
-The surface below lands in `api/ledger.txt` via `make api-update`. It
-is compiled and locked only when the `ledger_libsql` tag is used;
+Two parts land in `api/ledger.txt`, through two different
+`make api-update` invocations, since one part is tag-gated and the
+other is not.
+
+### Default build: `MemStore` configuration
+
+Compiled and locked by a plain `make api-update`, no tag needed, since
+`MemStoreOptions` and `NewMemStoreWithOptions` add no third-party
+import:
+
+- `type MemStoreOptions struct { MaxEntries int }` — `MaxEntries` caps
+  the number of records `MemStore` holds; zero means unbounded,
+  matching `NewMemStore`'s existing behavior exactly.
+- `func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)`
+  — builds an empty `MemStore` honoring `opts`. Returns a wrapped
+  error for a negative `MaxEntries`.
+
+No change to `NewMemStore`'s existing zero-argument signature or its
+existing unbounded behavior.
+
+### Tag-gated: `SQLiteStore`
+
+Compiled and locked only when the `ledger_sqlite` tag is used;
 `make api-update`'s own invocation for this phase runs with
-`-tags ledger_libsql` so the symbols below actually appear in the
+`-tags ledger_sqlite` so the symbols below actually appear in the
 generated lock, matching how a tag-gated file's exported surface is
 captured.
 
-- `type LibsqlStore struct { ... }` (unexported fields) — a `Store`
-  backed by a libSQL database through `github.com/tursodatabase/
-  go-libsql`, reached over `database/sql`. Supports a local file, a
-  remote Turso database, or a synced embedded replica, chosen by which
-  constructor built it.
-- `func NewLibsqlStore(dsn string) (*LibsqlStore, error)` — opens
-  `dsn` (a `file:` path, `:memory:`, or a `libsql:`/`https:`/`http:`
-  remote URL with an `authToken` query parameter), creates the schema
-  if absent, and `Ping`s once to fail fast.
-- `func NewLibsqlEmbeddedReplicaStore(dbPath, primaryURL string, opts
-  ...LibsqlOption) (*LibsqlStore, error)` — opens a local embedded
-  replica at `dbPath` synced from `primaryURL`, creates the schema if
-  absent, and `Ping`s once to fail fast.
-- `type LibsqlOption` — a functional option for
-  `NewLibsqlEmbeddedReplicaStore`, translated internally into the
-  driver's own option type; no `go-libsql` type appears in its
-  signature.
-- `func WithLibsqlAuthToken(token string) LibsqlOption` — sets the
-  auth token the embedded-replica connector uses against `primaryURL`.
-- `func WithLibsqlSyncInterval(d time.Duration) LibsqlOption` — sets
-  the connector's periodic auto-sync interval; omitted means
-  sync-on-demand only (`Sync`, kept unexported: this phase does not
-  need to expose a manual sync trigger since `Store`'s own interface
-  has no such method, and every `CompareAndSwap` and `Load` already
-  reads and writes through the connection the driver keeps current).
-- `func (s *LibsqlStore) Close() error` — closes the underlying
+- `type SQLiteStore struct { ... }` (unexported fields) — a `Store`
+  backed by a local SQLite database file (or `":memory:"`) through
+  `modernc.org/sqlite`, reached over `database/sql`.
+- `func NewSQLiteStore(path string) (*SQLiteStore, error)` — opens
+  `path` (a file path, or `":memory:"`), creates the schema if absent,
+  sets the connection pool size and the WAL/synchronous/foreign-keys/
+  busy-timeout pragmas, and `Ping`s once to fail fast.
+- `func (s *SQLiteStore) Close() error` — closes the underlying
   `*sql.DB`. Idempotent.
-- `func (s *LibsqlStore) Load(ctx context.Context, key IdempotencyKey)
+- `func (s *SQLiteStore) Load(ctx context.Context, key IdempotencyKey)
   (TaskState, bool, error)` — matches `Store.Load`'s contract exactly.
-- `func (s *LibsqlStore) CompareAndSwap(ctx context.Context, key
+- `func (s *SQLiteStore) CompareAndSwap(ctx context.Context, key
   IdempotencyKey, old TaskState, new TaskState) (bool, error)` — the
   two-statement mapping described above, matching `Store.
   CompareAndSwap`'s `(Sequence, Status, Fence, Rev)` compare contract
   and its `Rev`-bump-on-every-write rule exactly.
-- `func (s *LibsqlStore) Range(ctx context.Context, fn
+- `func (s *SQLiteStore) Range(ctx context.Context, fn
   func(TaskState) bool) error` — matches `Store.Range`'s
   materialize-then-iterate, no-reentrant-call contract exactly.
 
-No change to `Store`, `MemStore`, `Ledger`, `TaskState`, `Snapshot`,
-or any existing sentinel error.
+No change to `Store`, `Ledger`, `TaskState`, `Snapshot`, or any
+existing sentinel error. No `LibsqlOption`-shaped type; this revision
+drops it along with the remote and embedded-replica modes it existed
+to configure.
 
 ## Tests
 
-Test files for `LibsqlStore` live directly in `ledger/`, as
+`ledger/ledger_test/mem_store_options_test.go` (default build, no
+tag, runs under the module's existing `go test ./...`) covers
+`MemStoreOptions`: `NewMemStoreWithOptions(MemStoreOptions{})`
+behaves identically to `NewMemStore()` (unbounded); a negative
+`MaxEntries` returns the wrapped error and a nil `*MemStore`; a
+`MemStore` built with a small positive `MaxEntries`, driven through a
+sequence of `Admit`-then-`Complete` calls (via a `Ledger`) that pushes
+the terminal-record count past the cap, evicts the oldest-terminal
+key first and never evicts a `StatusPending` or `StatusClaimed`
+record, asserted by keeping a claimed key alive throughout and
+confirming `Load` still finds it after the cap is exceeded several
+times over; a `MemStore` whose every current record is still
+`StatusPending` or `StatusClaimed` (no terminal entries to evict)
+keeps accepting further `Admit` calls past the cap, proving the
+documented "bounds what it safely can" limit rather than a hard
+failure.
+
+Test files for `SQLiteStore` live directly in `ledger/`, as
 `package ledger`, not in `ledger/ledger_test/`. This breaks from
 `ledger`'s established flat `<pkg>/<pkg>_test/` layout for the same
-reason `docs/plans/mcp.md`'s Tests section states for its own
-package: `sdk-standards.yml`'s scoped third-party-import exception
-below applies to `/ledger/*.go` only, not to a nested `ledger_test/`
-directory, so a test file that imports `go-libsql` (or that needs the
-driver registered to open a `"libsql"` DSN through `database/sql`
-directly, for a white-box assertion against the raw schema) must sit
-in the same directory the exception covers. Every file below also
-carries `//go:build ledger_libsql && cgo`, so it compiles and runs
-only under `go test -tags ledger_libsql ./ledger/...`, never under the
-module's default `go test ./...`.
+reason `docs/plans/mcp.md`'s Tests section states for its own package:
+`sdk-standards.yml`'s scoped third-party-import exception below
+applies to `/ledger/*.go` only, not to a nested `ledger_test/`
+directory, so a test file that imports `modernc.org/sqlite` (or that
+needs the driver registered to open a `"sqlite"` DSN through
+`database/sql` directly, for a white-box assertion against the raw
+schema) must sit in the same directory the exception covers. Every
+file below also carries `//go:build ledger_sqlite`, so it compiles and
+runs only under `go test -tags ledger_sqlite ./ledger/...`, never
+under the module's default `go test ./...`.
 
-- `libsql_store_test.go` — red-green cases against a local file DSN in
-  a `t.TempDir()` (no network, no Turso credentials needed): the same
-  case shape `mem_store_test.go` already runs against `MemStore`
-  (`ledger/ledger_test/mem_store_test.go`): `CompareAndSwap` rejects a
-  mismatched `(Sequence, Status, Fence, Rev)` tuple, accepts a
-  zero-value `old` against an absent key, and bumps `Rev` by one on
-  every successful write; `Range` visits every record exactly once.
-  Adds `LibsqlStore`-specific cases: `Load` against a key with no row
-  returns `found == false, err == nil`; a `Task` value
-  `encoding/json.Marshal` cannot encode (for example a value holding a
-  channel) returns a non-nil error from `CompareAndSwap`, proving the
-  disclosed JSON-serialization limit is a real, surfaced error, not a
-  silent data loss; a second `*LibsqlStore` opened against the same
-  file path after the first is `Close`d still `Load`s every prior
-  record, the same "survives past one Go value's lifetime" proxy
-  Option A's declined design used for "survives a process restart".
-- `libsql_store_race_test.go` — two goroutines call `CompareAndSwap`
-  concurrently against the same file-backed `*LibsqlStore` for the
-  same key; asserts exactly one winner, matching `ledger`'s existing
-  `*_race_test.go` convention (`ledger/ledger_test/claim_race_test.go`
-  and its four siblings) for the concurrent-write proof, run under
-  `go test -tags ledger_libsql -race ./ledger/...`.
-- `libsql_store_scenario_test.go` — reuses `durablefence.Scenario`,
-  wired against a `Ledger` constructed with `New(libsqlStore, bus)`
+- `sqlite_store_test.go` — red-green cases against a `t.TempDir()`
+  file path and against `":memory:"`: the same case shape `mem_
+  store_test.go` already runs against `MemStore` (`ledger/ledger_test/
+  mem_store_test.go`): `CompareAndSwap` rejects a mismatched
+  `(Sequence, Status, Fence, Rev)` tuple, accepts a zero-value `old`
+  against an absent key, and bumps `Rev` by one on every successful
+  write; `Range` visits every record exactly once. Adds
+  `SQLiteStore`-specific cases: `Load` against a key with no row
+  returns `found == false, err == nil`; a `Task` value `encoding/
+  json.Marshal` cannot encode (for example a value holding a channel)
+  returns a non-nil error from `CompareAndSwap`, proving the disclosed
+  JSON-serialization limit is a real, surfaced error, not a silent
+  data loss; a second `*SQLiteStore` opened against the same file path
+  after the first is `Close`d still `Load`s every prior record, the
+  same "survives past one Go value's lifetime" proxy Option A's
+  declined design used for "survives a process restart"; `sqliteDSN`
+  cases for a plain path and for a path containing a literal `?`,
+  asserting the `file:`-URI escape branch produces a DSN the driver
+  actually opens against the intended file, not a truncated one.
+- `sqlite_store_race_test.go` — two goroutines call `CompareAndSwap`
+  concurrently against the same file-backed `*SQLiteStore` for the
+  same key, run under `go test -tags ledger_sqlite -race
+  ./ledger/...`; asserts exactly one winner, matching `ledger`'s
+  existing `*_race_test.go` convention (`ledger/ledger_test/
+  claim_race_test.go` and its four siblings) for the concurrent-write
+  proof. This test is the concrete proof the `busy_timeout` pragma
+  above does its job: without it, a second writer's statement would
+  fail immediately with `SQLITE_BUSY` instead of waiting and then
+  losing the compare cleanly through `RowsAffected == 0`.
+- `sqlite_store_scenario_test.go` — reuses `durablefence.Scenario`,
+  wired against a `Ledger` constructed with `New(sqliteStore, bus)`
   instead of `New(nil, bus)`, and calls `durablefence.RunAll`. This
-  proves `LibsqlStore` satisfies every claim, takeover, and fence
+  proves `SQLiteStore` satisfies every claim, takeover, and fence
   invariant `MemStore` already proves, matching `ledger.md`'s existing
   `durablefence` composition and Option A's declined design's same
-  reuse plan.
-- `libsql_store_remote_test.go` — an integration test against a real
-  Turso database, skipped unless two environment variables are both
-  set: `LEDGER_LIBSQL_TEST_URL` and `LEDGER_LIBSQL_TEST_TOKEN`. Runs
-  the same core `CompareAndSwap`/`Load`/`Range` case shape
-  `libsql_store_test.go` runs locally, over a real remote connection,
-  proving the DSN-scheme branch this plan's Schema section states
-  ("`libsql:`, `https:`, or `http:` scheme") against a real Turso
-  endpoint, not only the driver's own claim. This test is not run in
-  this repository's own `make verify`, since it needs a live external
-  credential this repository does not provision; a caller who wants
-  to run it exports both variables and runs `go test -tags
-  ledger_libsql ./ledger/... -run TestLibsqlStoreRemote`. This mirrors
-  the environment-gated-skip pattern real-service Go driver test
-  suites commonly use.
-- `libsql_embedded_replica_test.go` — builds a
-  `NewLibsqlEmbeddedReplicaStore` against a local `t.TempDir()` file
-  and a fixture primary the test itself serves through a second,
-  in-process `*LibsqlStore` reachable over a loopback libsql URL if
-  the driver's remote scheme supports a loopback target, otherwise
-  (if it does not) this case is folded into
-  `libsql_store_remote_test.go`'s environment-gated skip instead; the
-  builder confirms which shape the driver's real, released API
-  supports before writing this file's final case list, the same
-  "verify before writing" discipline this plan's own research applied
-  to the driver's cgo requirement above.
+  reuse plan. No new `durablefence` wiring is needed beyond building a
+  `Scenario` literal against `SQLiteStore`-backed `Ledger` methods, the
+  same shape `ledger`'s own `ledger_test/scenario_test.go` already
+  builds against a `MemStore`-backed `Ledger`.
+- `sqlite_store_bench_test.go` — `CompareAndSwap` throughput against
+  `SQLiteStore` versus the existing `admit_bench_test.go` baseline
+  against `MemStore`, reporting ops/sec and allocs/op with no fixed
+  budget: `SQLiteStore`'s per-call disk I/O and pragma-driven fsync
+  behavior are the expected slower path, and this benchmark records
+  that gap rather than gating on it, the same rationale Option A's
+  declined `FileStore` design gave for its own benchmark.
 
 ## Verification
 
-- `make verify` passes unchanged for the default build: `libsql_
-  store*.go` never compiles without `-tags ledger_libsql`, so gofmt,
-  vet, the default test run, the doc gate, the structure gate, the
-  Semgrep scan and probes, and the coverage floor all run exactly as
-  they do today, with zero new lines counted into the coverage
-  computation.
+- `make verify` passes for the default build, with `MemStoreOptions`
+  and `NewMemStoreWithOptions` compiled in and covered like any other
+  default-build code: gofmt, vet, the default test run (including
+  `mem_store_options_test.go`), the doc gate, the structure gate, the
+  Semgrep scan and probes, and the coverage floor all run as they do
+  today, plus the new `MemStore`-configuration lines and their test
+  file counted into the coverage computation. `sqlite_store*.go` never
+  compiles without `-tags ledger_sqlite`, so it contributes zero lines
+  to this default coverage run.
+- The coverage floor of 85 holds for `ledger` and for the total, with
+  `mem_store_options_test.go`'s new lines counted in, under the
+  default (non-tag-gated) `go test -cover ./...` run.
 - A second, explicitly documented command verifies the tag-gated code:
-  `go test -tags ledger_libsql -race ./ledger/...`, run on a machine
-  with `CGO_ENABLED=1` and a C toolchain, covering
-  `libsql_store_test.go`, `libsql_store_race_test.go`, and
-  `libsql_store_scenario_test.go` at minimum; the remote and
-  embedded-replica test files run only when their own environment
-  gates are satisfied. This command is not part of the default
-  `make verify` target; the builder adds a separate Makefile target
-  (for example `make verify-ledger-libsql`) that runs it, documented
-  in this same change, so the command has one canonical name instead
-  of living only in a comment.
-- `python3 scripts/check_structure.py` passes: `libsql_store.go` stays
+  `go test -tags ledger_sqlite -race ./ledger/...`. Unlike the
+  `go-libsql` draft, this needs no C toolchain and no `CGO_ENABLED=1`;
+  it runs on every platform the module's default build already
+  targets. This command is not part of the default `make verify`
+  target; the builder adds a separate Makefile target (for example
+  `make verify-ledger-sqlite`) that runs it, documented in this same
+  change, so the command has one canonical name instead of living only
+  in a comment.
+- `python3 scripts/check_structure.py` passes: `sqlite_store.go` stays
   at or below 500 lines and every function at or below 80 lines, the
   same limit every other file in this module holds to, regardless of
   its build tag; the gate scans file text, not a `go build` output, so
   the tag does not exempt the file from this check.
-- `api/ledger.txt` gains `LibsqlStore`, `NewLibsqlStore`,
-  `NewLibsqlEmbeddedReplicaStore`, `LibsqlOption`,
-  `WithLibsqlAuthToken`, and `WithLibsqlSyncInterval` through
-  `make api-update -tags ledger_libsql` (or the equivalent tag-aware
-  invocation the builder adds), committed in the same change as the
-  code.
+- `api/ledger.txt` gains `MemStoreOptions` and `NewMemStoreWithOptions`
+  through a plain `make api-update`, and separately gains `SQLiteStore`,
+  `NewSQLiteStore`, and `(*SQLiteStore) Close`'s exported peers
+  (`Load`, `CompareAndSwap`, `Range`) through
+  `make api-update -tags ledger_sqlite` (or the equivalent tag-aware
+  invocation the builder adds); both invocations' results land in the
+  same `api/ledger.txt` file, committed in the same change as the code.
 - `policy/layers.json`'s `"ledger": ["machine", "events"]` row is
-  unchanged: `go-libsql` is a third-party module, not an internal
-  package edge, so it is governed by the mechanisms below, not by
-  `policy/layers.json`.
+  unchanged: `modernc.org/sqlite` is a third-party module, not an
+  internal package edge, so it is governed by the mechanisms below,
+  not by `policy/layers.json`.
 
-### AGENTS.md: the third exception, now authorized
+### AGENTS.md: the third exception, now authorized, naming the corrected module
 
-The user has explicitly authorized this exception; it is no longer
-blocked. The builder edits this exact line in `AGENTS.md`, in the same
-change as the code, extending the existing two-exception sentence to
-three:
+The user has explicitly authorized this exception, naming `modernc.org/
+sqlite` specifically, superseding the earlier `go-libsql` naming. The
+builder edits this exact line in `AGENTS.md`, in the same change as
+the code, extending the existing two-exception sentence to three:
 
 ```text
 Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
 `google.golang.org/grpc`; `mcp` may import
 `github.com/modelcontextprotocol/go-sdk`; `ledger` may import
-`github.com/tursodatabase/go-libsql`, behind the `ledger_libsql` build
-tag only; no other package may add a third-party import without its
-own plan review.
+`modernc.org/sqlite`, behind the `ledger_sqlite` build tag only; no
+other package may add a third-party import without its own plan
+review.
 ```
 
 The `ledger` bullet in `AGENTS.md`'s Layout section (currently
@@ -462,17 +653,17 @@ the shape of the existing `mcp/` bullet:
 - `ledger/` — the durable-task-admission primitive: idempotency-keyed
   admission, a leased claim with a monotonic fence, renewal, a stale
   takeover, and dependency-driven blocking on failure. Imports machine
-  and events internally. `LibsqlStore`, behind the `ledger_libsql`
-  build tag, additionally imports the Turso `go-libsql` driver
-  (`github.com/tursodatabase/go-libsql`) externally; the default build
-  never compiles it.
+  and events internally. `SQLiteStore`, behind the `ledger_sqlite`
+  build tag, additionally imports the pure-Go `modernc.org/sqlite`
+  driver externally; the default build never compiles it.
 ```
 
 ### Semgrep: scoped stdlib-only exception
 
 Mirrors `docs/plans/mcp.md`'s pattern exactly, for the same rule, with
-`ledger` in place of `mcp`. The build to implement, by the builder, in
-`semgrep/sdk-standards.yml`:
+`ledger` in place of `mcp`, naming `modernc.org/sqlite` in place of
+the earlier draft's `go-libsql` path. The build to implement, by the
+builder, in `semgrep/sdk-standards.yml`:
 
 - Add `"/ledger/*.go"` to `sdk.go.stdlib-only-imports`'s
   `paths.exclude` list, alongside the existing `a2aclient` and `mcp`
@@ -481,110 +672,142 @@ Mirrors `docs/plans/mcp.md`'s pattern exactly, for the same rule, with
   `severity: ERROR`, scoped to `paths.include: ["/ledger/*.go"]`. It
   reuses the same `pattern-regex` that finds a dotted-domain import
   string, and adds a `pattern-not-regex` permitting only
-  `"github\.com/tursodatabase/go-libsql(/[^"\n]*)?"` in addition to
-  the existing module-path exemptions the `a2aclient`- and
-  `mcp`-scoped rules each carry for their own module. Any other
-  third-party import inside `ledger/*.go` still fires this rule, so
-  the rest of `ledger`'s own files (`ledger.go`, `store.go`,
-  `task_state.go`, and so on) stay held to the same stdlib-only bar
-  they hold to today; only the one named import path is permitted
-  anywhere in the directory.
+  `"modernc\.org/sqlite(/[^"\n]*)?"` in addition to the existing
+  module-path exemptions the `a2aclient`- and `mcp`-scoped rules each
+  carry for their own module. Any other third-party import inside
+  `ledger/*.go` still fires this rule, so the rest of `ledger`'s own
+  files (`ledger.go`, `store.go`, `task_state.go`, and so on) stay
+  held to the same stdlib-only bar they hold to today; only the one
+  named import path is permitted anywhere in the directory.
 
 `scripts/check_semgrep_probes.py` gains a new probe case, parallel to
 the existing `a2aclient`- and `mcp`-scoped blocks: a `ledger/`
 subdirectory under the probe's temp root, holding
 `viol_ledger_other_import.go` (importing an unrelated third-party
-path) and `clean_go_libsql_import.go` (importing
-`github.com/tursodatabase/go-libsql`). Both basenames register in
-`expected` against `sdk.go.ledger-scoped-third-party-import`, and an
-explicit assertion block, parallel to the `mcp` one, proves: the new
-rule fires on `viol_ledger_other_import.go` and stays silent on
-`clean_go_libsql_import.go`; `sdk.go.stdlib-only-imports` fires on
-neither, proving the scoped exclude took effect; and the existing
+path) and `clean_modernc_sqlite_import.go` (importing
+`modernc.org/sqlite`). Both basenames register in `expected` against
+`sdk.go.ledger-scoped-third-party-import`, and an explicit assertion
+block, parallel to the `mcp` one, proves: the new rule fires on
+`viol_ledger_other_import.go` and stays silent on
+`clean_modernc_sqlite_import.go`; `sdk.go.stdlib-only-imports` fires
+on neither, proving the scoped exclude took effect; and the existing
 outside-the-directory probe files still prove
 `sdk.go.stdlib-only-imports` fires normally outside all three scoped
 directories.
 
-### go.mod and go.sum: the closed dependency allowlist, extended
+### go.mod and go.sum: the closed dependency allowlist, extended (re-verified)
 
 No Go-version change lands in this phase. `go.mod` already declares
-`go 1.25.0`; `go-libsql`'s own `go.mod` declares `go 1.20`, so this
-module's floor already meets it.
+`go 1.25.0`; `modernc.org/sqlite v1.54.0`'s own `go.mod` targets an
+older floor this module's own `go 1.25.0` already clears.
 
-`go.mod` gains a `require` line for
-`github.com/tursodatabase/go-libsql`, plus the indirect lines
-`go mod tidy` adds beneath it. This plan verified the actual set
-`go mod tidy` produces, against a probe module importing
-`database/sql` and `github.com/tursodatabase/go-libsql` (a blank
-import, the way a real driver registration works), the same shape
-`ledger/libsql_store.go` needs:
+`go.mod` gains a `require` line for `modernc.org/sqlite`, plus the
+indirect lines `go mod tidy` adds beneath it. This revision re-ran the
+verification against the real module, pinned to `v1.54.0` to match
+`mivia-agent`'s own pin, superseding every `go-libsql`-derived number
+the first revision recorded:
 
 ```text
-require github.com/tursodatabase/go-libsql v0.0.0-20260424063416-3051e37e6e04
+require modernc.org/sqlite v1.54.0
 
 require (
-	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
-	github.com/libsql/sqlite-antlr4-parser v0.0.0-20240327125255-dbf53b6cbf06 // indirect
-	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
-	golang.org/x/sync v0.6.0 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	modernc.org/libc v1.74.4 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 )
 ```
 
-The version pin above is the pseudo-version this plan resolved at
-research time; the builder pins whatever `go mod tidy` resolves to at
-build time and records the real version in the same change, the same
-way `docs/plans/mcp.md` pinned `v1.7.0` for its own SDK dependency.
+`go.sum` carries hash lines, several `/go.mod`-only, for the wider
+resolved build list `go mod tidy` produced beyond the `require` block
+above: `github.com/google/pprof`, `github.com/hashicorp/golang-lru/v2`,
+`golang.org/x/mod`, `golang.org/x/tools` (already allowed),
+`modernc.org/ccgo/v4`, `modernc.org/cc/v4`, `modernc.org/fileutil`,
+`modernc.org/gc/v2`, `modernc.org/gc/v3`, `modernc.org/goabi0`,
+`modernc.org/opt`, `modernc.org/sortutil`, `modernc.org/strutil`, and
+`modernc.org/token`. These are `modernc.org/libc`'s and `modernc.org/
+sqlite`'s own build-time transpilation toolchain dependencies
+(`cc`/`ccgo` generate the Go source the driver ships from C, at the
+driver's own release time, not at this module's build time), present
+in the resolved module graph `go.sum` records even though this
+module's own build does not invoke them. `golang.org/x/sync` and
+`golang.org/x/sys` are already in `ALLOWED_MODULES` from the `a2aclient`
+and `mcp` exceptions; `github.com/google/uuid` is already allowed from
+`mcp`'s own closure.
 
-`go.sum` additionally carries `/go.mod`-only hash lines for
-`github.com/pkg/errors` and `gotest.tools`, modules the resolved
-build list references but no imported package reaches at build time,
-the same shape `docs/plans/mcp.md`'s own two `/go.mod`-only entries
-took for its dependency closure. `golang.org/x/sync` and
-`github.com/google/go-cmp` are already in `ALLOWED_MODULES` from the
-`a2aclient` and `mcp` exceptions.
-
-`scripts/check_gomod.py`'s `ALLOWED_MODULES` set gains the new module
-paths this phase's dependency closure adds, beyond what `a2aclient`
-and `mcp` already permit:
+`scripts/check_gomod.py`'s `check_gosum` function checks every module
+path in `go.sum`, not only `go.mod`'s `require` block, so
+`ALLOWED_MODULES` must cover the full set above, not only the nine
+directly required modules. `ALLOWED_MODULES` gains the following,
+beyond what `a2aclient` and `mcp` already permit:
 
 ```python
 ALLOWED_MODULES |= {
-    "github.com/tursodatabase/go-libsql",
-    "github.com/antlr4-go/antlr/v4",
-    "github.com/libsql/sqlite-antlr4-parser",
-    "github.com/pkg/errors",
-    "golang.org/x/exp",
-    "gotest.tools",
+    "modernc.org/sqlite",
+    "modernc.org/libc",
+    "modernc.org/mathutil",
+    "modernc.org/memory",
+    "modernc.org/ccgo/v4",
+    "modernc.org/cc/v4",
+    "modernc.org/fileutil",
+    "modernc.org/gc/v2",
+    "modernc.org/gc/v3",
+    "modernc.org/goabi0",
+    "modernc.org/opt",
+    "modernc.org/sortutil",
+    "modernc.org/strutil",
+    "modernc.org/token",
+    "github.com/dustin/go-humanize",
+    "github.com/mattn/go-isatty",
+    "github.com/ncruces/go-strftime",
+    "github.com/remyoudompheng/bigfft",
+    "github.com/google/pprof",
+    "github.com/hashicorp/golang-lru/v2",
+    "golang.org/x/mod",
 }
 ```
 
-The builder runs `go mod tidy` once `ledger/libsql_store.go` imports
-`github.com/tursodatabase/go-libsql`, records the resulting `require`
-and `go.sum` module set, and reconciles `ALLOWED_MODULES` against that
-real output in the same change, trimming any entry above `go mod
-tidy` does not actually add, the same reconciliation step
-`docs/plans/mcp.md` records for its own allowlist. `check_gomod.py`'s
-module docstring, which today names only the `a2aclient` and `mcp`
-exceptions, gains one sentence naming the `ledger` exception too, in
-the same change, stating the `ledger_libsql` build-tag qualifier the
-other two exceptions do not carry.
+None of the `go-libsql`-derived entries the first revision recorded
+(`github.com/tursodatabase/go-libsql`, `github.com/antlr4-go/antlr/v4`,
+`github.com/libsql/sqlite-antlr4-parser`, `github.com/pkg/errors`,
+`golang.org/x/exp`, `gotest.tools`) are needed; this revision does not
+carry any of them into `ALLOWED_MODULES`.
+
+The builder runs `go mod tidy` once `ledger/sqlite_store.go` imports
+`modernc.org/sqlite`, records the resulting `require` and `go.sum`
+module set, and reconciles `ALLOWED_MODULES` against that real output
+in the same change, trimming any entry above `go mod tidy` does not
+actually add, the same reconciliation step `docs/plans/mcp.md` records
+for its own allowlist. `check_gomod.py`'s module docstring, which
+today names only the `a2aclient` and `mcp` exceptions, gains one
+sentence naming the `ledger` exception too, in the same change,
+stating the `ledger_sqlite` build-tag qualifier the other two
+exceptions do not carry and naming `modernc.org/sqlite`, not
+`go-libsql`.
 
 ### Summary
 
-`make verify` passes, unchanged, once this phase lands, because the
-tag-gated file never enters the default build. A second, explicit
-verification command
-(`go test -tags ledger_libsql -race ./ledger/...`, or the Makefile
-target that wraps it) must also pass before this phase is considered
-done, covering: the `LibsqlStore` code and its tag-gated tests; the
-`go.mod` and `go.sum` additions; the `check_gomod.py` allowlist
-extension and docstring update; the two `semgrep/sdk-standards.yml`
-rule changes and the new `check_semgrep_probes.py` case (these three
-run under the default, non-tag-gated `make verify` since Semgrep does
-not evaluate build tags); the `AGENTS.md` exception-sentence and
-`ledger/` layout-bullet edits; and the `docs/architecture.md` and
-`docs/plans/ledger.md` doc updates, naming `LibsqlStore` next to
-`MemStore` with the same documented Task-serialization and
-build-tag-boundary limits this plan states. `docs/protocol-design.md`
-does not change: this phase adds no message-semantics rule to the
-envelope wire format.
+`make verify` passes for the default build once this phase lands,
+covering `MemStoreOptions`, `NewMemStoreWithOptions`, and `mem_
+store_options_test.go` like any other default-build change, since the
+tag-gated `SQLiteStore` file never enters that build. A second,
+explicit verification command (`go test -tags ledger_sqlite -race
+./ledger/...`, or the Makefile target that wraps it) must also pass
+before this phase is considered done, covering: the `SQLiteStore` code
+and its tag-gated tests; the `go.mod` and `go.sum` additions; the
+`check_gomod.py` allowlist extension and docstring update; the two
+`semgrep/sdk-standards.yml` rule changes and the new `check_semgrep_
+probes.py` case (these three run under the default, non-tag-gated
+`make verify` since Semgrep does not evaluate build tags); the
+`AGENTS.md` exception-sentence and `ledger/` layout-bullet edits; and
+the `docs/architecture.md` and `docs/plans/ledger.md` doc updates,
+naming `SQLiteStore` next to `MemStore` with the same documented
+Task-serialization and build-tag-boundary limits this plan states, and
+naming `MemStoreOptions`'s bounded-entry-cap knob next to `MemStore`
+itself. `docs/protocol-design.md` does not change: this phase adds no
+message-semantics rule to the envelope wire format.

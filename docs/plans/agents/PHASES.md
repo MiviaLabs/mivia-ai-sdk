@@ -125,7 +125,9 @@ composition comes last.
   packages. It adds no code and no new `policy/layers.json` edge; see
   docs/plans/agents/phase45_agent_composition_example.md.
 - Durability and reference gaps: phase 42, a `ledger.Store` backed by
-  Turso's `go-libsql` driver, behind a dedicated build tag; phase 43,
+  the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
+  tag, plus a bounded-entry-cap knob for `MemStore` in the default
+  build; phase 43,
   an NDJSON-over-stdio `channel.Notifier` transport, shipped as real
   `channel` package API; phase 44, a `provider` token-estimation
   capability. Each depends only on its own already-shipped package
@@ -164,10 +166,17 @@ Phase 42 (ledger durable store), phase 43 (channel reference
 transport), and phase 44 (provider token estimation) are plan-only;
 none has gone through plan review yet. Each is independently buildable
 now, since phase 34, phase 37, and phase 29 have all shipped. Phase 42
-weighed a stdlib-only file store against a `go-libsql`-backed store;
-the user chose the `go-libsql` option, so the third-party exception it
-needs is now authorized, scoped to the `ledger_libsql` build tag so
-the default build stays cgo-free. Phase 43 ships an NDJSON-over-stdio
+weighed a stdlib-only file store against a database-backed store. The
+user chose the database-backed option, first naming `go-libsql`, then
+reconsidering, once that driver's cgo requirement and missing Windows
+build were found, and naming the pure-Go `modernc.org/sqlite` instead,
+the same driver `mivia-agent` already uses in production. The
+resulting third-party exception is authorized, scoped to the
+`ledger_sqlite` build tag; since the driver needs no cgo, the tag
+exists only to keep a `MemStore`-only caller's dependency graph free
+of it, not to gate a C-toolchain requirement. `MemStore` itself also
+gains an optional, default-build `MaxEntries` cap in the same phase.
+Phase 43 ships an NDJSON-over-stdio
 transport, matching `mivia-agent`'s own wire convention, as real
 `channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
 walkthrough only.

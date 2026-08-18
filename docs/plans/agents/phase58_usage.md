@@ -78,24 +78,31 @@ The surface below is the lock target. It lands in `api/usage.txt` via
   struct literal cannot initialize safely for a caller.
 - `func (a *Accumulator) Record(sessionID string, u provider.Usage) error`
   adds `u`'s four fields onto the running total keyed by `sessionID`.
-  Returns `ErrEmptySessionID`, wrapped, when `sessionID` is empty.
-  Creates the session's total on its first `Record` call; every later
-  call for the same `sessionID` adds onto the existing total. Safe to
-  call from more than one goroutine for the same or different
-  `sessionID` values.
+  Returns `ErrBlankSessionID`, wrapped, when `sessionID` is empty
+  after `strings.TrimSpace`. Creates the session's total on its first
+  `Record` call; every later call for the same `sessionID` adds onto
+  the existing total. Safe to call from more than one goroutine for
+  the same or different `sessionID` values.
 - `func (a *Accumulator) Total(sessionID string) (provider.Usage, bool)`
   returns the current summed `provider.Usage` for `sessionID` and
   `true`, or the zero `provider.Usage` and `false` when no `Record`
-  call has ever named that `sessionID`. The bool is a found signal,
-  not an error, matching `ledger.State`'s found-bool return shape.
+  call has ever named that `sessionID`. The bool is a plain
+  map-lookup found signal (`v, ok := map[key]`), matching the
+  found-bool half of `ledger.State`'s shape, minus the error return
+  since `Total` has no I/O path.
 - `func (a *Accumulator) Reset(sessionID string) error` clears the
   session's total back to zero, as if no `Record` call had ever
-  named it. Returns `ErrEmptySessionID`, wrapped, when `sessionID` is
-  empty. `Reset` on a `sessionID` with no prior `Record` call is a
-  no-op that returns `nil`, not an error; the caller already gets the
-  zero total from `Total`'s `false` case for that key.
-- `ErrEmptySessionID` is the sentinel `Record` and `Reset` return for
-  an empty `sessionID`, checked with `errors.Is`.
+  named it. Returns `ErrBlankSessionID`, wrapped, when `sessionID` is
+  empty after `strings.TrimSpace`. `Reset` on a `sessionID` with no
+  prior `Record` call is a no-op that returns `nil`, not an error;
+  the caller already gets the zero total from `Total`'s `false` case
+  for that key.
+- `ErrBlankSessionID` is the sentinel `Record` and `Reset` return when
+  `sessionID` is empty after `strings.TrimSpace`, checked with
+  `errors.Is`. The name and the TrimSpace-empty definition match the
+  existing blank-identifier sentinels in this codebase:
+  `tools.ErrBlankName`, `trigger.ErrBlankName`,
+  `providerregistry.ErrBlankName`, and `scheduler.ErrBlankID`.
 
 No `CostFunc` type and no `Sessions` or `List` method in this phase.
 `Record`, `Total`, and `Reset` are the full method set; a caller that
@@ -112,16 +119,18 @@ Test files live in `usage/usage_test/`:
   onto the first, checked per field
   (`PromptTokens`, `CompletionTokens`, `TotalTokens`, `CachedTokens`);
   three or more `Record` calls for the same session sum correctly in
-  order; `Record` with an empty `sessionID` returns
-  `ErrEmptySessionID`, wrapped, and leaves every existing session's
-  total unchanged. `Total` cases: an unknown `sessionID` returns the
-  zero `provider.Usage` and `false`; a known `sessionID` returns the
-  correct sum and `true`. `Reset` cases: `Reset` on a recorded session
-  zeroes its total, confirmed through a following `Total` call;
-  `Reset` on an unknown session returns `nil`; `Reset` with an empty
-  `sessionID` returns `ErrEmptySessionID`, wrapped; a `Record` call
-  after `Reset` starts a fresh sum, not one carried over from before
-  the reset.
+  order; `Record` with a `sessionID` that is empty or whitespace-only
+  after `strings.TrimSpace` (both the `""` case and a `" "` case)
+  returns `ErrBlankSessionID`, wrapped, and leaves every existing
+  session's total unchanged. `Total` cases: an unknown `sessionID`
+  returns the zero `provider.Usage` and `false`; a known `sessionID`
+  returns the correct sum and `true`. `Reset` cases: `Reset` on a
+  recorded session zeroes its total, confirmed through a following
+  `Total` call; `Reset` on an unknown session returns `nil`; `Reset`
+  with a `sessionID` that is empty or whitespace-only after
+  `strings.TrimSpace` returns `ErrBlankSessionID`, wrapped; a `Record`
+  call after `Reset` starts a fresh sum, not one carried over from
+  before the reset.
 - `accumulator_race_test.go` — run under `go test -race`. Many
   goroutines call `Record` concurrently against the same
   `sessionID`; the final `Total` equals the arithmetic sum of every
@@ -137,12 +146,31 @@ Test files live in `usage/usage_test/`:
   session recorded in the same test, with different `sessionID` and
   `provider.Usage` values, proves the first session's total is
   unaffected by the second.
-- `accumulator_bench_test.go` — benchmarks `Record` against a single
-  session, one hundred sequential calls, reporting `AllocsPerRun`.
-  `Record` does no I/O; the benchmark states the measured allocation
-  budget instead of a fixed target, matching the pattern
-  `ledger`'s `admit_bench_test.go` already sets for a lock-guarded
-  write path.
+- `accumulator_bench_test.go` — follows `tools/tools_test/registry_bench_test.go`'s
+  paired pattern: a `Benchmark`-style function for throughput
+  visibility under `go test -bench`, plus a separate `Test`-style
+  function, `TestRecordAllocBudget`, that asserts a hard allocation
+  budget. `BenchmarkRecordHundredCalls` runs `Record` against a single
+  persistent `Accumulator` and one reused `sessionID`, one hundred
+  sequential calls per `b.N` iteration, single-goroutine (no
+  concurrency, so the ledger benchmark's GOMAXPROCS-contention
+  exception does not apply here). It reports `ns/op` and `allocs/op`
+  for visibility only; it asserts no exact allocation count, since
+  only the very first call across the whole benchmark run allocates a
+  new map entry and every later call allocates zero, so `allocs/op`
+  trends toward zero as `b.N` grows and carries no fixed value to
+  assert. `TestRecordAllocBudget` uses
+  `testing.AllocsPerRun(100, func() {...})` against one persistent
+  `Accumulator` and one reused `sessionID`, matching
+  `tools.TestRunAllocBudget`'s shape: only the first of the 100 calls
+  allocates a new map entry, the other 99 allocate zero, so the
+  amortized average is at most 1/100 allocations per call. The test
+  states a budget of at most 1 allocation per call as a safe,
+  checkable upper bound, and fails when the measured average exceeds
+  1; a second case inside the same test isolates the first-call
+  allocation by measuring one `Record` call against a fresh
+  `Accumulator` (`testing.AllocsPerRun(1, func() {...})` rebuilding
+  the `Accumulator` each run) and asserts that count is exactly 1.
 
 ## Verification
 
@@ -155,7 +183,7 @@ Test files live in `usage/usage_test/`:
   with this plan before the code.
 - `api/usage.txt` lands via `make api-update` in the same change as
   the code, holding `Accumulator`, `New`, `Record`, `Total`, `Reset`,
-  and `ErrEmptySessionID`.
+  and `ErrBlankSessionID`.
 - `docs/architecture.md` gains a `usage/` bullet describing the
   package and its one import, in the same change as the code.
 - `AGENTS.md`'s Layout section gains a `usage/` line, in the same

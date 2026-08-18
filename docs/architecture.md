@@ -369,6 +369,13 @@ flowchart LR
   predicate approves the failure. `providerregistry` imports
   `provider` only. See
   [packages/providerregistry.md](packages/providerregistry.md).
+- `usage/` — the per-session usage accounting package. It provides
+  `Accumulator`, `New`, `Record`, `Total`, `Reset`, and the sentinel
+  `ErrBlankSessionID`. `Record` sums one `provider.Usage` call's four
+  fields onto the running total keyed by a caller-supplied session
+  identifier, guarded for concurrent access; `Total` reads the current
+  sum, and `Reset` clears it. `usage` imports `provider` only, for the
+  `Usage` type. See [packages/usage.md](packages/usage.md).
 - `channel/` — a leaf primitive. It provides `Question`,
   `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
   the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,

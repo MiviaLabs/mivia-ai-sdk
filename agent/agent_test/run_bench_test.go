@@ -48,7 +48,7 @@ func BenchmarkRun(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil, ""); err != nil {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil, "", nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -72,7 +72,7 @@ func BenchmarkRunWithHeartbeat(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, hb, ""); err != nil {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, hb, "", nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -93,7 +93,7 @@ func TestRunAllocBudget(t *testing.T) {
 	}
 	ctx := context.Background()
 	alloc := testing.AllocsPerRun(200, func() {
-		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil, ""); err != nil {
+		if _, _, err := a.Run(ctx, "thread-1", m, machine.InOut{}, benchRunWait, bus, nil, "", nil); err != nil {
 			t.Fatal(err)
 		}
 	})

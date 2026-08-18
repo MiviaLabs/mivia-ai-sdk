@@ -120,7 +120,7 @@ func main() {
 		return
 	}
 
-	status, _, err := a.Run(context.Background(), "thread-dispatch-1", m, machine.InOut{Input: "incoming task"}, wait, bus, mon, rm.ID())
+	status, _, err := a.Run(context.Background(), "thread-dispatch-1", m, machine.InOut{Input: "incoming task"}, wait, bus, mon, rm.ID(), nil)
 	if err != nil {
 		fmt.Println("run:", err)
 		return
@@ -143,7 +143,7 @@ sequenceDiagram
     participant Receiver as Receiver (AckWait)
     participant Room as room
     participant Bus as events.Bus
-    Agent->>Run: Run(ctx, threadID, m, in, wait, bus, hb, room)
+    Agent->>Run: Run(ctx, threadID, m, in, wait, bus, hb, room, budget)
     Run->>Run: sign step message, chain PrevHash
     Run->>Bus: EmitMessageDelivered
     Run->>HB: Beat(hbID, now)

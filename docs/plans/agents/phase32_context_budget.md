@@ -78,12 +78,15 @@ file, and an `api/contextbudget.txt` lock. Both `agent` and the future
 `provider` import `contextbudget` directly; neither imports the other
 to reach it.
 
-`policy/layers.json` gains one new row, `"contextbudget": []`, and
-`agent`'s row gains `"contextbudget"` alongside its existing entries
-(`envelope`, `events`, `machine`, `identity`, `discovery`, `flow`,
-`heartbeat`). Both edits land with this phase, before the code that
-uses them, per the layer policy's own rule: a new package needs a row
-before it has code.
+`policy/layers.json` already carries both rows this phase needs:
+`"contextbudget": []` and `"contextbudget"` inside `agent`'s row,
+alongside its existing entries (`envelope`, `events`, `machine`,
+`identity`, `discovery`, `flow`, `heartbeat`). Commit 07cddc7 ("add
+phases 29-34 for mivia-agent capability parity") landed both rows
+ahead of this phase's code, per the layer policy's own rule: a new
+package needs a row before it has code. This phase makes no further
+edit to `policy/layers.json`; it only adds the `contextbudget` package
+and the `agent.Run` change the existing rows already allow.
 
 ### Why `agent.Run` is the caller now, not a deferred `provider` hook
 
@@ -180,11 +183,19 @@ yes/no answer against the cap.
   length, and the 1-indexed count of steps built so far (including the
   step about to run); both totals are cumulative over the whole run,
   matching how `Fits` documents itself as taking "the candidate totals
-  the caller already has" rather than keeping its own running total. A
-  `Fits` failure returns `ErrOverBudget`, wrapping the step ID, without
-  calling `wait` or `EmitMessageAcked` for that step; `built` keeps
-  every message signed for steps that already fit, and `runningBytes`
-  is not incremented for the failing step's message. A panel step
+  the caller already has" rather than keeping its own running total.
+  `confirmStep` checks `Fits` before it calls `hb.Beat`: today's code
+  positions `hb.Beat` immediately before the `wait` call (see
+  `agent/run.go`'s `confirmStep`, around the lines right after
+  `EmitMessageDelivered`), and this phase inserts the `Fits` check
+  ahead of that `hb.Beat` call, not after it. A step that fails `Fits`
+  returns `ErrOverBudget` before `confirmStep` ever calls `hb.Beat`,
+  so an over-budget step records no heartbeat beat for a step that
+  will never confirm. A `Fits` failure returns `ErrOverBudget`,
+  wrapping the step ID, without calling `hb.Beat`, `wait`, or
+  `EmitMessageAcked` for that step; `built` keeps every message signed
+  for steps that already fit, and `runningBytes` is not incremented
+  for the failing step's message. A panel step
   never reaches `confirmStep`'s `wait` call at all (see `flow/runner.go`'s
   `runWave`), so a panel member's payload is never added to
   `runningBytes` and never checked against `Fits`; this mirrors the
@@ -279,6 +290,42 @@ skips `contextbudget_bench_test.go` for that reason.
   content) so the first step alone stays under `MaxBytes`, the second
   step alone also stays under `MaxBytes`, and only their sum exceeds
   it.
+- `Run` with a `MaxBytes` cap set below the very first step's own
+  payload size (not a cumulative-over-two-steps case, a single
+  oversize step): `Run` returns `ErrOverBudget` on step one, `bus`'s
+  recorded `MessageAckedEvent` count is zero, and `built` is empty,
+  proving `Fits` catches a single step that alone exceeds the cap, not
+  only a cumulative sum across steps.
+- `Run` with a budget whose `Fits` check fails on a gated step, run
+  with a non-nil `hb`: `hb.Alive` for the run's identity-plus-thread
+  beat id reads false after `Run` returns `ErrOverBudget`, proving
+  `confirmStep` checks `Fits` before `hb.Beat` and never beats an
+  id for a step that will never confirm. Add this case to
+  `run_budget_test.go`, mirroring the two-argument fixture pattern in
+  `TestLivenessFullRunLeavesDeadEmpty`
+  (`agent/agent_test/liveness_integration_test.go`), but passing a
+  budget whose `Fits` fails on the run's single gated step instead of
+  a confirming wait.
+
+### `agent/agent_test/run_panel_integration_test.go`
+
+- `TestBudgetPanelWaveReachesNoCheck` mirrors
+  `TestLivenessPanelWaveReachesNoBeat`
+  (`agent/agent_test/liveness_integration_test.go`), the test that
+  pins phase 26's disclosed heartbeat panel gap. Build a two-member
+  panel plan (`flow.New` with two steps in one `flow.Panel`, no gated
+  step), the same shape `TestLivenessPanelWaveReachesNoBeat` uses. Set
+  a budget whose `MaxBytes` or `MaxEvents` cap the panel members'
+  combined payload would exceed if `Run` checked it (for example a cap
+  smaller than the sum of both panel members' payload sizes, or a
+  `MaxEvents` of one). Run with that budget, a non-nil `hb`, and a
+  confirming `wait`. Assert `Run` returns `nil`, not `ErrOverBudget`:
+  a panel step reaches no `confirmStep` `wait` call, so `Fits` never
+  sees the panel members' payloads and the run completes as if the
+  budget were absent. This test pins the same disclosed scope limit
+  the plan states in "Disclosed scope limit: panel steps get no budget
+  check" above, the way `TestLivenessPanelWaveReachesNoBeat` pins
+  phase 26's precedent for the heartbeat beat.
 
 ## Verification
 
@@ -286,10 +333,12 @@ skips `contextbudget_bench_test.go` for that reason.
   Semgrep scan and probes, and the coverage block.
 - The coverage floor of 85 holds for `contextbudget` and for `agent`,
   and for the total, with every new line counted in.
-- `python3 scripts/check_deps.py` passes with `policy/layers.json`
-  carrying the new `"contextbudget": []` row and `"contextbudget"`
-  added to `agent`'s row, both landing before `contextbudget`'s or
-  `agent`'s code changes in the same change.
+- `python3 scripts/check_deps.py` passes against the `"contextbudget":
+  []` row and the `"contextbudget"` entry already present in `agent`'s
+  row in `policy/layers.json` (landed by commit 07cddc7, ahead of this
+  phase). This phase makes no edit to `policy/layers.json`; it only
+  needs `check_deps.py` to keep passing against the existing rows once
+  `contextbudget`'s code and `agent`'s import of it land.
 - `api/contextbudget.txt` is created and `api/agent.txt` is updated
   via `make api-update`, in the same change as the code.
 - `contextbudget/doc.go`'s file map and `agent/doc.go`'s file map each
@@ -298,6 +347,22 @@ skips `contextbudget_bench_test.go` for that reason.
 - `docs/architecture.md` gains a `contextbudget/` bullet next to the
   other leaf packages, and the `agent/` bullet gains the `budget`
   parameter and `ErrOverBudget`, in the same change as the code.
+- `docs/packages/agent.md` gains the new 9-argument `Run` signature in
+  the same change as the code. The `Run` bullet (currently `Agent.Run(ctx,
+  threadID, m, in, wait, bus, hb, room)`) and the runnable example
+  (currently `a.Run(context.Background(), "task-42", m,
+  machine.InOut{}, wait, bus, nil, "")`) both gain a trailing `budget`
+  argument, `nil` in the example, to keep the doc's call sites
+  compiling against the locked `api/agent.txt` signature.
+- `docs/examples/agent-dispatch.md` gains the new 9-argument `Run`
+  signature in the same change as the code, in two places: the
+  runnable Go code block's call (currently `a.Run(context.Background(),
+  "thread-dispatch-1", m, machine.InOut{Input: "incoming task"}, wait,
+  bus, mon, rm.ID())`) and the mermaid sequence diagram's call
+  (currently `Run(ctx, threadID, m, in, wait, bus, hb, room)`). Both
+  gain a trailing `budget` argument (`nil` in the code block, `budget`
+  spelled out in the diagram to match), so the example still compiles
+  and the diagram still matches the locked signature.
 - This phase adds no conformance vector. `Limits` defines no wire
   schema; it is an in-process accounting check with no `Encode` or
   `Decode` counterpart, and `agent.Run`'s budget check changes no byte
@@ -305,3 +370,10 @@ skips `contextbudget_bench_test.go` for that reason.
 - `docs/plans/agents/phase15_memory.md` stays unchanged: this phase
   does not alter `memory.Store` and does not depend on it. The two
   types may compose in a future caller, but neither imports the other.
+- The builder creates `docs/plans/contextbudget.md` from
+  `docs/plans/TEMPLATE.md`, restating this plan's Goal/Scope/API/
+  Tests/Verification for `scripts/check_plan.py`, in the same change
+  as the code.
+- `docs/plans/agent.md` gains the `budget` parameter and
+  `ErrOverBudget` alongside the API section it already documents, in
+  the same change as the code.

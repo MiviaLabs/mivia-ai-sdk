@@ -41,7 +41,7 @@ func TestRunRoomStampedAdmitsIntoRealRoom(t *testing.T) {
 		return confirmingWait(ctx, msg)
 	}
 
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, rm.ID())
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, rm.ID(), nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestRunRoomEmptyRejectedByRealRoom(t *testing.T) {
 		return confirmingWait(ctx, msg)
 	}
 
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}

@@ -4,7 +4,7 @@ package agent
   const ThreadVerifiedEvent = "agent.thread_verified"
   func (a *Agent) Capabilities() ([]string)
   func (a *Agent) Name() (string)
-  func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)
+  func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)
   func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) (error)
   func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) (error)
   func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) (error)
@@ -18,3 +18,4 @@ package agent
   var ErrNoPlan
   var ErrNoThread
   var ErrNoWait
+  var ErrOverBudget

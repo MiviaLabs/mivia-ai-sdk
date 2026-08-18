@@ -55,7 +55,7 @@ func oneStepFixtureWithIdentity(t *testing.T) (*agent.Agent, *identity.Identity,
 func TestRunHeartbeatNilIsInert(t *testing.T) {
 	a, _, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "")
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestRunHeartbeatBeatsBeforeWait(t *testing.T) {
 		seenAlive = hb.Alive(wantID, time.Now())
 		return confirmingWait(ctx, msg)
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestRunHeartbeatForgetsOnSuccess(t *testing.T) {
 		t.Fatalf("heartbeat.New() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestRunHeartbeatForgetsOnEscalation(t *testing.T) {
 	escalate := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, fmt.Errorf("step needs a human: %w", agent.ErrEscalated)
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, escalate, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, escalate, bus, hb, "", nil)
 	if !errors.Is(err, agent.ErrEscalated) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrEscalated", err)
 	}
@@ -144,7 +144,7 @@ func TestRunHeartbeatForgetsOnPlainWaitError(t *testing.T) {
 	plainErr := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, wantErr
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, plainErr, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, plainErr, bus, hb, "", nil)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want errors.Is match for %v", err, wantErr)
 	}
@@ -192,7 +192,7 @@ func TestRunHeartbeatOneIDServesTwoSteps(t *testing.T) {
 		alive = append(alive, hb.Alive(wantID, time.Now()))
 		return confirmingWait(ctx, msg)
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestRunHeartbeatOneNanosecondTimeoutAges(t *testing.T) {
 		second = hb.Alive(wantID, time.Now())
 		return confirmingWait(ctx, msg)
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, hb, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}

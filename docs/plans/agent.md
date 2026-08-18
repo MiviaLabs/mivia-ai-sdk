@@ -5,7 +5,10 @@ all shipped. The envelope-to-events translator adds envelope and
 events. The execution loop is the in-process runner (see below); the
 `tools` package adds the tool registry separately. `Run` also carries
 an optional step-liveness heartbeat and an optional room name, so a
-built step message can pass `room.Room.Accepts`.
+built step message can pass `room.Room.Accepts`. `Run` also carries
+an optional context budget, `*contextbudget.Limits`, that gates each
+gated step's `wait` call against a cumulative byte and event cap; see
+`docs/plans/contextbudget.md`.
 
 ## Goal
 
@@ -454,6 +457,53 @@ This is a breaking change to every existing call site of `Run`. Every
 call site gains a trailing `""` argument in this change, since no
 existing test supplies a room name yet.
 
+### The budget parameter: the API lock target
+
+`Run`'s signature gains one trailing parameter, and the sentinel var
+block gains one new sentinel, `ErrOverBudget`:
+
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)`
+
+`budget == nil` skips every budget check; `Run` behaves exactly as
+the room-parameter section above describes. `budget != nil` runs
+`budget.Validate()` once, at the same point `Run` checks `wait`,
+`bus`, and `threadID`; an invalid budget returns
+`machine.Status("")`, `in` unchanged, and the wrapped `Validate`
+error. A non-nil, valid `budget` makes `confirmStep` keep a running
+byte total, `runningBytes`, across the call: after each step's
+message is signed into `built`, `confirmStep` adds that message's
+`len(payload)` to `runningBytes`. Right before the `wait` call for the
+step about to run, and before `hb.Beat`, `confirmStep` calls
+`budget.Fits` with `runningBytes` plus the about-to-run step's own
+payload byte length, and the 1-indexed count of steps built so far. A
+`Fits` failure returns `ErrOverBudget`, wrapping the step ID, without
+calling `hb.Beat`, `wait`, or `EmitMessageAcked` for that step. A
+panel step reaches no `confirmStep` `wait` call at all, so a panel
+member's payload never adds to `runningBytes` and never trips
+`budget`; see `docs/plans/contextbudget.md`'s disclosed scope limit.
+
+The expected `api/agent.txt` diff, against the room-parameter block
+above:
+
+```text
+- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)
+```
+
+```text
+  var ErrEscalated
+  var ErrNoBus
+  var ErrNoIdentity
+  var ErrNoPlan
+  var ErrNoThread
+  var ErrNoWait
++ var ErrOverBudget
+```
+
+This is a breaking change to every existing call site of `Run`. Every
+call site gains a trailing `nil` argument for `budget` in this
+change.
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -793,3 +843,44 @@ builder edits only agent/agent_test/translator_test.go.
   final printed status must match the program's real outcome.
 - This phase adds no conformance vector. `Message.Room` already has
   wire-level coverage in `envelope`'s own vectors.
+
+### Context budget: tests
+
+- `run_budget_test.go` — a nil budget, a generous valid budget, an
+  invalid budget surfacing the wrapped `Validate` error before `wait`
+  runs, a `MaxEvents` cap smaller than the plan's step count tripping
+  `ErrOverBudget` mid-plan, a cumulative `MaxBytes` cap that only the
+  sum of two steps' payloads exceeds, a `MaxBytes` cap the first
+  step's own payload alone exceeds, and the `Fits`-before-`hb.Beat`
+  ordering proof (mirroring `TestLivenessFullRunLeavesDeadEmpty`).
+- `run_panel_integration_test.go` gains
+  `TestBudgetPanelWaveReachesNoCheck`, mirroring
+  `TestLivenessPanelWaveReachesNoBeat`: a two-member panel plan with
+  no gated step, run with a budget a checked panel would trip,
+  completes with no `ErrOverBudget`, pinning the disclosed panel scope
+  limit.
+- Every existing call site to `a.Run(...)` gains a trailing `nil`
+  argument, mirroring the heartbeat and room parameters' mechanical
+  rollout across the same files. No existing assertion changes.
+
+### Context budget: verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for `agent`, for `contextbudget`, and
+  for the total, with the new budget lines counted in.
+- The `agent` row in `policy/layers.json` already lists
+  `contextbudget`, landed ahead of this phase by commit 07cddc7; this
+  phase makes no further edit to `policy/layers.json`.
+- `api/agent.txt` gains the changed `Run` line and the new
+  `ErrOverBudget` sentinel; `api/contextbudget.txt` is a new lock;
+  both land through `make api-update` in the same change as the code.
+- `go test -race ./agent/...` passes, covering the budget cases.
+- `docs/architecture.md` gains a `contextbudget/` bullet, and the
+  `agent/` bullet gains the `budget` parameter and `ErrOverBudget`, in
+  the same change as the code.
+- `docs/packages/agent.md` and `docs/examples/agent-dispatch.md` gain
+  the new nine-argument `Run` signature, in the same change as the
+  code.
+- This phase adds no conformance vector. `Limits` defines no wire
+  schema, and `agent.Run`'s budget check changes no byte on the wire.

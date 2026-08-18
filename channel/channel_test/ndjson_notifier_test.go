@@ -88,6 +88,41 @@ func TestNDJSONNotifierRoundTrip(t *testing.T) {
 	}
 }
 
+// TestNDJSONNotifierRoundTripApprovedFalse proves the decoded Answer
+// carries the wire line's actual approved value through to the
+// caller. Every other round-trip test in this file replies with
+// approved:true; without this case, a decoder that hardcodes
+// Approved: true regardless of the wire value would pass the whole
+// suite.
+func TestNDJSONNotifierRoundTripApprovedFalse(t *testing.T) {
+	pr, pw := io.Pipe()
+	ar, aw := io.Pipe()
+	notify := channel.NewNDJSONNotifier(ar, pw)
+
+	q := channel.Question{ID: "q1", Recipient: "human", Payload: "proceed?"}
+
+	go func() {
+		sc := bufio.NewScanner(pr)
+		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		if !sc.Scan() {
+			return
+		}
+		reply := ndjsonLine{Type: "answer", QuestionID: q.ID, Approved: false, Payload: "declined"}
+		_ = json.NewEncoder(aw).Encode(reply)
+	}()
+
+	got, err := notify(context.Background(), q)
+	if err != nil {
+		t.Fatalf("notify() error = %v, want nil", err)
+	}
+	if got.Approved {
+		t.Fatalf("Approved = true, want false")
+	}
+	if got.Payload != "declined" {
+		t.Fatalf("Payload = %q, want %q", got.Payload, "declined")
+	}
+}
+
 func TestNDJSONNotifierAnswerMismatch(t *testing.T) {
 	pr, pw := io.Pipe()
 	ar, aw := io.Pipe()
@@ -252,16 +287,33 @@ func TestNDJSONNotifierInvalidQuestionReleasesLock(t *testing.T) {
 	}
 }
 
+// ndjsonAnswerLineOverhead is the byte length of a marshaled
+// ndjsonLine answer with QuestionID "q1", Approved true, and an empty
+// Payload: {"type":"answer","question_id":"q1","approved":true,
+// "payload":""}. Adding it to a Payload length gives the exact
+// marshaled line length, letting the boundary cases below hit
+// bufio.Scanner's token cap byte-for-byte instead of approximating
+// it with a margin.
+const ndjsonAnswerLineOverhead = 65
+
+// TestNDJSONNotifierBufferBoundary pins the exact off-by-one edge of
+// the scanner's 1 MB token cap (ndjsonScannerMaxBuffer): a line one
+// byte under the cap decodes, a line exactly at the cap fails with
+// bufio.Scanner's "token too long". bufio.Scanner rejects a token
+// that is not strictly smaller than its max, so the cap itself is
+// already the failing case; there is no valid line at exactly max
+// bytes.
 func TestNDJSONNotifierBufferBoundary(t *testing.T) {
-	t.Run("at cap decodes", func(t *testing.T) {
+	const underCapPayloadLen = 1024*1024 - ndjsonAnswerLineOverhead - 1
+	const atCapPayloadLen = 1024*1024 - ndjsonAnswerLineOverhead
+
+	t.Run("one byte under cap decodes", func(t *testing.T) {
 		pr, pw := io.Pipe()
 		ar, aw := io.Pipe()
 		notify := channel.NewNDJSONNotifier(ar, pw)
 
 		q := channel.Question{ID: "q1", Recipient: "human", Payload: "proceed?"}
-		// Build a payload sized so the full JSON line lands just under
-		// the 1 MB scanner cap.
-		big := strings.Repeat("a", 1024*1024-256)
+		big := strings.Repeat("a", underCapPayloadLen)
 
 		go func() {
 			sc := bufio.NewScanner(pr)
@@ -280,7 +332,32 @@ func TestNDJSONNotifierBufferBoundary(t *testing.T) {
 		}
 	})
 
-	t.Run("past cap fails", func(t *testing.T) {
+	t.Run("at cap fails", func(t *testing.T) {
+		pr, pw := io.Pipe()
+		ar, aw := io.Pipe()
+		notify := channel.NewNDJSONNotifier(ar, pw)
+
+		q := channel.Question{ID: "q1", Recipient: "human", Payload: "proceed?"}
+		atCap := strings.Repeat("a", atCapPayloadLen)
+
+		go func() {
+			sc := bufio.NewScanner(pr)
+			sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			sc.Scan()
+			reply := ndjsonLine{Type: "answer", QuestionID: q.ID, Approved: true, Payload: atCap}
+			_ = json.NewEncoder(aw).Encode(reply)
+		}()
+
+		got, err := notify(context.Background(), q)
+		if err == nil {
+			t.Fatalf("notify() error = nil, want non-nil (overflow)")
+		}
+		if got != (channel.Answer{}) {
+			t.Fatalf("Answer = %+v, want zero value", got)
+		}
+	})
+
+	t.Run("well past cap fails", func(t *testing.T) {
 		pr, pw := io.Pipe()
 		ar, aw := io.Pipe()
 		notify := channel.NewNDJSONNotifier(ar, pw)

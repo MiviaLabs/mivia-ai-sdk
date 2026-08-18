@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sync"
 	"testing"
 	"time"
 
@@ -17,9 +16,77 @@ import (
 // This file covers NewNDJSONNotifier's one-caller-at-a-time contract:
 // a second call while a first is in flight, the permanent-lockout
 // limit after a ctx-canceled call, the two recourses (a late answer
-// the leaked goroutine drops, or closing r), and the -race concurrent
-// case. Split from ndjson_notifier_test.go to keep both files at or
-// below the file-size cap.
+// the leaked goroutine drops, or closing r), and the same lockout
+// behavior for the write phase (writing to an unbuffered pipe with no
+// reader draining it). Split from ndjson_notifier_test.go to keep both
+// files at or below the file-size cap; the write-phase close-recovery
+// case, the abandoned-write-succeeded race, and the -race concurrent
+// case continue in ndjson_notifier_write_lockout_test.go.
+
+// TestNDJSONNotifierContextCancelDuringWrite proves a ctx already
+// canceled before notify() writes its question line returns
+// ctx.Err() promptly, even when the write itself is permanently
+// blocked: w is an io.Pipe writer with no reader ever draining it, so
+// the blocking Write call inside writeQuestion never itself returns.
+// Without ctx-awareness on the write side, this call would hang
+// forever instead of honoring an already-canceled ctx.
+func TestNDJSONNotifierContextCancelDuringWrite(t *testing.T) {
+	_, pw := io.Pipe() // no reader ever drains pw; every Write blocks.
+	ar, _ := io.Pipe()
+	notify := channel.NewNDJSONNotifier(ar, pw)
+
+	q := channel.Question{ID: "q1", Recipient: "human", Payload: "proceed?"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	var err error
+	go func() {
+		defer close(done)
+		_, err = notify(ctx, q)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("notify() did not return within timeout while write was blocked on canceled ctx")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("notify() error = %v, want %v", err, context.Canceled)
+	}
+}
+
+// TestNDJSONNotifierBusyWhileWriteBlocked proves the same
+// permanent-lockout contract readAnswer already enforces for the read
+// phase also covers the write phase: a second call arriving while a
+// first call's write-side goroutine is still pending (abandoned by
+// ctx cancellation, the blocked Write not yet resolved) returns
+// ErrNotifierBusy, never starting its own Write on the same w.
+func TestNDJSONNotifierBusyWhileWriteBlocked(t *testing.T) {
+	_, pw := io.Pipe() // no reader ever drains pw; every Write blocks.
+	ar, _ := io.Pipe()
+	notify := channel.NewNDJSONNotifier(ar, pw)
+
+	q1 := channel.Question{ID: "q1", Recipient: "human", Payload: "first"}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		_, _ = notify(ctx1, q1)
+	}()
+	cancel1()
+
+	select {
+	case <-firstDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first notify() did not return after cancel")
+	}
+
+	_, err := notify(context.Background(), channel.Question{ID: "q2", Recipient: "human", Payload: "second"})
+	if !errors.Is(err, channel.ErrNotifierBusy) {
+		t.Fatalf("second notify() error = %v, want %v", err, channel.ErrNotifierBusy)
+	}
+}
 
 func TestNDJSONNotifierBusyWhileBlocked(t *testing.T) {
 	pr, pw := io.Pipe()
@@ -269,54 +336,5 @@ func TestNDJSONNotifierSerialReuseNeverBusy(t *testing.T) {
 	case <-responderDone:
 	case <-time.After(5 * time.Second):
 		t.Fatal("responder did not exit after pw.Close()")
-	}
-}
-
-func TestNDJSONNotifierConcurrentCalls(t *testing.T) {
-	pr, pw := io.Pipe()
-	ar, aw := io.Pipe()
-	notify := channel.NewNDJSONNotifier(ar, pw)
-
-	go func() {
-		sc := bufio.NewScanner(pr)
-		sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-		for sc.Scan() {
-			var got ndjsonLine
-			if err := json.Unmarshal(sc.Bytes(), &got); err != nil {
-				return
-			}
-			reply := ndjsonLine{Type: "answer", QuestionID: got.ID, Approved: true}
-			if err := json.NewEncoder(aw).Encode(reply); err != nil {
-				return
-			}
-		}
-	}()
-
-	var wg sync.WaitGroup
-	results := make([]error, 2)
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			q := channel.Question{ID: fmt.Sprintf("q%d", i), Recipient: "human", Payload: "hi"}
-			_, err := notify(context.Background(), q)
-			results[i] = err
-		}(i)
-	}
-	wg.Wait()
-
-	successes, busy := 0, 0
-	for _, err := range results {
-		switch {
-		case err == nil:
-			successes++
-		case errors.Is(err, channel.ErrNotifierBusy):
-			busy++
-		default:
-			t.Fatalf("unexpected error = %v", err)
-		}
-	}
-	if successes != 1 || busy != 1 {
-		t.Fatalf("successes = %d, busy = %d, want 1 and 1", successes, busy)
 	}
 }

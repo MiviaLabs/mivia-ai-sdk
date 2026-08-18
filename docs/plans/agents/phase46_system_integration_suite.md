@@ -9,10 +9,11 @@ package and needs no new `policy/layers.json` row.
 The user asked for a real, asserting integration test suite that
 proves every currently-shipped package works together, using only
 in-memory and reference implementations. Phase 42 (durable `ledger`
-backend) and phase 43 (reference `channel.Notifier` transport) are
-still plan-only. This phase scopes itself to work without either:
-`ledger.MemStore` and a test-local `channel.Notifier`-shaped closure
-stand in.
+backend) is still plan-only; phase 43 (`NewNDJSONNotifier`, the
+reference `channel.Notifier` transport) has since shipped, but this
+phase scopes itself to work without either: `ledger.MemStore` and a
+test-local `channel.Notifier`-shaped closure stand in, since this
+suite tests in-process composition, not a real stdio pipe.
 
 ### Relation to phase 45
 
@@ -103,10 +104,12 @@ Outside:
 - `durablefence`. It is a test-only conformance kit, imported from
   `ledger/ledger_test/`. It is not a subject of a cross-package
   integration test; `ledger`'s own plan and tests already cover it.
-- A durable `ledger.Store` backend (phase 42) and a reference
-  `channel.Notifier` transport (phase 43). Both stay plan-only; this
-  phase uses `ledger.MemStore` and a test-local `Notifier`-shaped
-  closure instead, and states that choice is deliberate, not a gap.
+- A durable `ledger.Store` backend (phase 42, still plan-only) and the
+  shipped reference `channel.Notifier` transport (phase 43,
+  `NewNDJSONNotifier`). This phase uses `ledger.MemStore` and a
+  test-local `Notifier`-shaped closure instead of either, and states
+  that choice is deliberate, not a gap: this suite tests in-process
+  composition, not a real stdio pipe.
 - A new `policy/layers.json` row or edge. Test files are exempt from
   the import policy; `scripts/check_deps.py` scans only non-`_test.go`
   files in each top-level package directory, never a `_test`
@@ -272,9 +275,9 @@ Fixture:
   proving `trigger.Action`'s closure shape composes with `agent.Run`
   the same way `scheduler.Job`'s does.
 - A test-local closure matching `channel.Notifier`'s func type,
-  standing in for phase 43's not-yet-shipped reference transport, used
-  as `agent.Run`'s `AckWait` to resolve the one gated step
-  automatically for both the scheduled and the triggered run.
+  standing in for the shipped `NewNDJSONNotifier` reference transport
+  (phase 43), used as `agent.Run`'s `AckWait` to resolve the one gated
+  step automatically for both the scheduled and the triggered run.
 - The same `events.Bus`, asserting `scheduler.JobFailedEvent` never
   fires on the happy path, and a second sub-test whose `Job` body
   returns an error on purpose, asserting `JobFailedEvent` fires

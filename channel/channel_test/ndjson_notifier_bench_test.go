@@ -11,18 +11,21 @@ import (
 )
 
 // ndjsonBenchAllocBudget bounds one NewNDJSONNotifier call round
-// trip's allocation count. Measured baseline: 24 allocs/op, see the
-// comment on BenchmarkNDJSONNotifierRoundTrip. json.NewEncoder's
-// per-call allocation and the bufio.Scanner's fixed initial buffer
-// are the expected allocation sources; the budget adds a small margin
-// above the baseline, enough to catch a regression of a few
-// unexpected allocs.
-const ndjsonBenchAllocBudget = 30
+// trip's allocation count. Measured baseline: 28 allocs/op without
+// -race, 31 allocs/op under -race (the race detector's own shadow
+// bookkeeping adds a few), see the comment on
+// BenchmarkNDJSONNotifierRoundTrip. json.NewEncoder's per-call
+// allocation, the bufio.Scanner's fixed initial buffer, and the
+// background goroutine and channel writeQuestion now spawns to stay
+// ctx-aware on the write side are the expected allocation sources;
+// the budget adds a small margin above the -race baseline, enough to
+// catch a regression of a few unexpected allocs.
+const ndjsonBenchAllocBudget = 36
 
 // BenchmarkNDJSONNotifierRoundTrip measures one NewNDJSONNotifier
 // call round trip over an io.Pipe pair with a fixture goroutine
 // answering immediately. Measured baseline on the development
-// machine: ~12500 ns/op, 24 allocs/op.
+// machine: ~14400 ns/op, 28 allocs/op.
 func BenchmarkNDJSONNotifierRoundTrip(b *testing.B) {
 	pr, pw := io.Pipe()
 	ar, aw := io.Pipe()

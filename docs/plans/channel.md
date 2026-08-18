@@ -181,17 +181,19 @@ write to `w` or both read from `r` at once would corrupt the NDJSON
 stream for both. The closure defends itself with an internal
 `sync.Mutex` and `TryLock`, not a blocking `Lock`:
 
-- A call that acquires the lock releases it only once its underlying
-  read truly finishes: a line arrives, `r` errors, or `r` closes. It
+- A call that acquires the lock releases it only once every phase its
+  I/O touched truly finishes: the write completes or errors, and, if
+  the write succeeded, a line arrives, `r` errors, or `r` closes. It
   never releases early on `ctx` cancellation, because the background
-  read goroutine keeps running past that point.
+  write or read goroutine keeps running past that point.
 - A call that fails to acquire the lock returns `ErrNotifierBusy` at
   once, touching neither `r` nor `w`.
 - This is a deliberate, permanent-lockout limit, not an oversight: if
-  the peer never answers and never closes or errors `r` after one
-  call's `ctx` is canceled, the closure stays locked forever, and
-  every later call on that closure returns `ErrNotifierBusy`
-  indefinitely. The one recourse is closing `r`: that makes the stale
+  the peer never drains a blocked write, and never answers or closes
+  or errors `r` after one call's `ctx` is canceled, the closure stays
+  locked forever, and every later call on that closure returns
+  `ErrNotifierBusy` indefinitely. The recourse is closing whichever
+  side is still stuck, `w` or `r`: that makes the stale `Write` or
   `Scan` return an error, which releases the lock and makes the
   closure usable again.
 - A late-arriving line after a `ctx`-canceled call has exactly one
@@ -200,19 +202,40 @@ stream for both. The closure defends itself with an internal
   call that did not ask for it.
 
 Per-call steps: `q.Validate()` runs first, before any I/O; a failure
-releases the lock and returns at once. `writeQuestion` marshals and
-writes the question line; a write error releases the lock and returns
-at once, wrapped `channel: ndjson: %w`. `readAnswer` blocks reading one
-line, respecting `ctx` through a select against a channel a background
-goroutine closes when its `Scan` resolves; the lock releases from
-inside that goroutine, right before it signals its result, so a caller
-never observes the lock as still held once it receives a result. A
-decode error, a wrong `type`, or a `question_id` mismatch returns a
-non-nil error and no `Answer`. On success, `Answer.Validate()` runs
-once more before the value crosses back to the caller, matching this
-package's own Encode/Decode-validates-before-crossing-boundary
-convention; this check is defense-in-depth, since `Question.Validate`
-already guarantees `wantID` is non-empty upstream.
+releases the lock and returns at once. `writeQuestion` runs the
+blocking `encodeQuestionLine` call in a goroutine and selects on
+`ctx.Done()` against that goroutine's result, mirroring `readAnswer`'s
+own pattern:
+
+- If the write finishes first and fails, the call is terminal: the
+  lock releases immediately, wrapped `channel: ndjson: %w`.
+- If the write finishes first and succeeds, the lock is not released
+  here; the caller hands the still-held lock to `readAnswer`.
+- If `ctx.Done()` fires first, `writeQuestion` returns `ctx.Err()` at
+  once, but a separate goroutine keeps waiting for the abandoned write
+  to resolve. `select` picks pseudo-randomly when both cases are ready
+  at once, so the write may in fact have already delivered `q` to the
+  peer even though this branch ran. That goroutine,
+  `continueAfterAbandonedWrite`, branches on the outcome: a write
+  failure is terminal, so it releases the lock; a write success is
+  not terminal, so, since the original call already returned and has
+  no live caller left to invoke `readAnswer`, this goroutine runs the
+  same `scanAnswerLine` step itself and releases the lock once that
+  resolves. This keeps a second caller locked out until both phases of
+  the abandoned call finish, never letting it start its own `Write` on
+  `w` while a delivered-but-unanswered question is still outstanding.
+
+`readAnswer` blocks reading one line, respecting `ctx` through a
+select against a channel a background goroutine closes when its `Scan`
+resolves; the lock releases from inside that goroutine, right before
+it signals its result, so a caller never observes the lock as still
+held once it receives a result. A decode error, a wrong `type`, or a
+`question_id` mismatch returns a non-nil error and no `Answer`. On
+success, `Answer.Validate()` runs once more before the value crosses
+back to the caller, matching this package's own
+Encode/Decode-validates-before-crossing-boundary convention; this
+check is defense-in-depth, since `Question.Validate` already
+guarantees `wantID` is non-empty upstream.
 
 `channel` gains no new import for this transport: `encoding/json`,
 `bufio`, `io`, `context`, `fmt`, and `errors` are all standard
@@ -317,8 +340,8 @@ counted in. `api/channel.txt` gains the three new symbols through
 `policy/layers.json`'s `"channel": []` row stays unchanged.
 `docs/packages/channel.md` gains an NDJSON transport section
 describing the wire shape, the one-caller-at-a-time contract
-(including the permanent-lockout limit and its close-`r` recourse),
-and the `mivia-agent` convention it mirrors. `docs/examples/
+(including the permanent-lockout limit and its close-`r`-or-`w`
+recourse), and the `mivia-agent` convention it mirrors. `docs/examples/
 channel-ndjson-stdio.md` is added, compiled and run against the real
 module, with a matching one-line entry in `docs/README.md`'s Examples
 list. No conformance vector change: `channel` still carries no signed

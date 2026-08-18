@@ -72,5 +72,5 @@ the answer line in the comment above on stdin, the program prints
 `ErrAnswerMismatch` cover the failure paths a real integration must
 handle; see [packages/channel.md](../packages/channel.md)'s NDJSON
 transport section for the full contract, including the
-permanent-lockout limit after a canceled call and its close-`r`
-recourse.
+permanent-lockout limit after a canceled call and its close-`w`-or-`r`
+recourse, whichever phase is pending.

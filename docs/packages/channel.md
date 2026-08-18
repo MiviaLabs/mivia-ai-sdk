@@ -100,23 +100,33 @@ buffer 64 KB initial, 1 MB cap, matching `mivia-agent`'s own
 ### One caller at a time
 
 The returned `Notifier` serves one call at a time, enforced with an
-internal `sync.Mutex` and `TryLock`:
+internal `sync.Mutex` and `TryLock`. `ctx` cancellation is honored
+during both phases of a call:
 
-- A call that acquires the lock releases it only once its underlying
-  read truly finishes: a line arrives, `r` errors, or `r` closes. It
-  never releases early on `ctx` cancellation, because the read runs in
-  a background goroutine that keeps going past that point.
+- The write phase runs `Write` on `w` in a background goroutine and
+  selects on `ctx.Done()`, exactly like the read phase already does
+  for `r`. A blocked `Write` (for example an unbuffered pipe with no
+  reader) does not stop a canceled `ctx` from returning `ctx.Err()` to
+  the calling goroutine at once.
+- A call that acquires the lock releases it only once whichever phase
+  is pending truly finishes: the write completes or errors, or, once
+  the write has succeeded, a line arrives, `r` errors, or `r` closes.
+  It never releases early on `ctx` cancellation, because the pending
+  phase's operation runs in a background goroutine that keeps going
+  past that point.
 - A call that fails to acquire the lock returns `ErrNotifierBusy` at
   once, touching neither `r` nor `w`.
 
-**Permanent-lockout limit.** If the peer never answers and never
-closes or errors `r` after a call's `ctx` is canceled, the closure
-stays locked forever: every later call on that closure returns
-`ErrNotifierBusy` indefinitely, misreporting a dead peer as busy
-rather than gone. `ctx` cancellation frees the calling goroutine from
-waiting; it does not free the closure for its future callers. The one
-recourse is closing `r`: that makes the stale read return an error,
-which releases the lock and makes the closure usable again.
+**Permanent-lockout limit.** If the peer never drains `w`, never
+answers, and never closes or errors `r` or `w` after a call's `ctx` is
+canceled, the closure stays locked forever: every later call on that
+closure returns `ErrNotifierBusy` indefinitely, misreporting a dead
+peer as busy rather than gone. `ctx` cancellation frees the calling
+goroutine from waiting; it does not free the closure for its future
+callers. The recourse depends on which phase was pending: closing `w`
+makes a stale blocked write return an error; closing `r` makes a stale
+blocked read return an error. Either releases the lock and makes the
+closure usable again.
 
 A caller needing more than one concurrent question builds its own
 correlation layer over more than one `NewNDJSONNotifier` closure, or

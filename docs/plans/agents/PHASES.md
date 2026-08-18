@@ -127,14 +127,13 @@ composition comes last.
 - Durability and reference gaps: phase 42, a `ledger.Store` backed by
   the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
   tag, plus a bounded-entry-cap knob for `MemStore` in the default
-  build; phase 43,
-  an NDJSON-over-stdio `channel.Notifier` transport, shipped as real
-  `channel` package API; phase 44, a `provider` token-estimation
-  capability. Each depends only on its own already-shipped package
-  (phase 34 `ledger`, phase 37 `channel`, phase 29 `provider`) and
-  ships independently of the other two and of phase 45. See
-  docs/plans/agents/phase42_ledger_durable_store.md,
-  docs/plans/agents/phase43_channel_reference_transport.md, and
+  build; phase 43, an NDJSON-over-stdio `channel.Notifier` transport,
+  shipped as real `channel` package API; phase 44, a `provider`
+  token-estimation capability. Each depends only on its own
+  already-shipped package (phase 34 `ledger`, phase 37 `channel`,
+  phase 29 `provider`) and ships independently of the other two and of
+  phase 45. See docs/plans/agents/phase42_ledger_durable_store.md,
+  docs/plans/channel.md (phase 43's plan folded in on shipping), and
   docs/plans/agents/phase44_provider_token_estimation.md.
 - Verification: phase 46, a system integration suite: two new
   `agent/agent_test/` files proving the current, widened package
@@ -151,21 +150,23 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
-shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
+Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 39, 40, and 43
+have shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
 docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
-docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
+docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 43's own
+plan folded into docs/plans/channel.md on shipping; no standalone
+phase 43 plan file remains. Phase 38 (flow
 loop) is plan-only; it has not gone through plan review yet, but is
 independently buildable now that phase 23 has shipped. Phase 45 (agent composition example) is
 plan-only; it has not gone through plan review yet. It depends only on
 already-shipped packages and adds no code, so it is independently
 buildable now.
 
-Phase 42 (ledger durable store), phase 43 (channel reference
-transport), and phase 44 (provider token estimation) are plan-only;
-none has gone through plan review yet. Each is independently buildable
-now, since phase 34, phase 37, and phase 29 have all shipped. Phase 42
+Phase 42 (ledger durable store) and phase 44 (provider token
+estimation) are plan-only; neither has gone through plan review yet.
+Each is independently buildable now, since phase 34 and phase 29 have
+both shipped. Phase 42
 weighed a stdlib-only file store against a database-backed store. The
 user chose the database-backed option, first naming `go-libsql`, then
 reconsidering, once that driver's cgo requirement and missing Windows
@@ -176,7 +177,7 @@ resulting third-party exception is authorized, scoped to the
 exists only to keep a `MemStore`-only caller's dependency graph free
 of it, not to gate a C-toolchain requirement. `MemStore` itself also
 gains an optional, default-build `MaxEntries` cap in the same phase.
-Phase 43 ships an NDJSON-over-stdio
+Phase 43 has shipped: an NDJSON-over-stdio
 transport, matching `mivia-agent`'s own wire convention, as real
 `channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
 walkthrough only.

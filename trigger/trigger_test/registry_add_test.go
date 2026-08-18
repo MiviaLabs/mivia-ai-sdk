@@ -24,6 +24,18 @@ func TestAddNilAction(t *testing.T) {
 	}
 }
 
+// TestAddBlankNameTakesPrecedenceOverNilAction pins the rejection
+// order the plan and Add's doc comment promise: a blank name loses to
+// a nil action when both are invalid at once. This distinguishes Add
+// from an implementation that checks the fields in the other order.
+func TestAddBlankNameTakesPrecedenceOverNilAction(t *testing.T) {
+	r := trigger.New()
+	err := r.Add("   ", nil, nil)
+	if !errors.Is(err, trigger.ErrBlankName) {
+		t.Fatalf("Add(blank name, nil action) = %v, want ErrBlankName", err)
+	}
+}
+
 func TestAddDuplicateName(t *testing.T) {
 	r := trigger.New()
 	action := func(context.Context) error { return nil }

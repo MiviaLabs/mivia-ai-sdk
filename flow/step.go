@@ -46,7 +46,10 @@ const (
 // pick which of this step's direct dependents the run keeps. Retry
 // bounds and paces repeated Fire attempts; a nil Retry keeps the
 // single-attempt behavior. New rejects a non-nil Retry combined with
-// a non-nil Sub or panel membership.
+// a non-nil Sub or panel membership. Loop, when non-nil, runs Sub
+// more than once, gated by LoopPolicy.Guard, before this step's own
+// transition and Confirm fire; New rejects a non-nil Loop combined
+// with a nil Sub or panel membership.
 type Step struct {
 	ID      string
 	Needs   []string
@@ -56,4 +59,5 @@ type Step struct {
 	When    Admission
 	Route   Route
 	Retry   *RetryPolicy
+	Loop    *LoopPolicy
 }

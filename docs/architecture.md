@@ -78,11 +78,18 @@ flowchart LR
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It provides `Step`, `Panel`, `Definition`, `New`,
   `Roots`, `Run`, `Confirm`, `Admission`, `Route`, `Outcome`, `Report`,
-  `Failure`, `FailureFrom`, `Checkpoint`, `Resume`, and `RetryPolicy`.
-  `Step` carries an optional `Sub *Definition` for chaining, an
-  `Admission` rule in `When`, an optional `Route` that makes it a
-  branch step, and an optional `Retry *RetryPolicy` that bounds and
-  paces repeated attempts of its own `Fire` call. `Run` walks the
+  `Failure`, `FailureFrom`, `Checkpoint`, `Resume`, `RetryPolicy`,
+  `LoopPolicy`, `LoopState`, and `LoopStateFrom`. `Step` carries an
+  optional `Sub *Definition` for chaining, an `Admission` rule in
+  `When`, an optional `Route` that makes it a branch step, an optional
+  `Retry *RetryPolicy` that bounds and paces repeated attempts of its
+  own `Fire` call, and an optional `Loop *LoopPolicy` that repeats its
+  `Sub` child workflow, gated by `LoopPolicy.Guard`, before its own
+  transition and `Confirm` fire; `LoopPolicy.Max` caps the iteration
+  count, and zero means unbounded, bounded only by the caller's own
+  `ctx`. `Run` injects a `LoopState` into `ctx` before each `Guard`
+  call, readable through `LoopStateFrom`; `New` rejects a `Loop`
+  combined with a nil `Sub` or panel membership. `Run` walks the
   graph in topological order. A step named in no panel runs alone and
   gates on a confirmed ack. A step named in a panel runs as part of
   that panel's wave, in a goroutine, once every member is ready; the

@@ -1,12 +1,13 @@
 # Phase 38: flow loop
 
-Status: future. Plan-only; it has not yet gone through plan review.
-Phases 21, 22, and 23 have all shipped: `Outcome`, `Report`,
-`Admission`, `Route`, `Failure`, and `FailureFrom` all exist in
-`flow`'s code and locked API; see `docs/plans/flow.md`. This phase is
-now independently buildable. Phase 30 (flow retry,
-`docs/plans/agents/phase30_flow_retry.md`, ready to build) touches
-disjoint step fields and neither blocks the other.
+Status: shipped. `LoopPolicy`, `LoopPolicy.Validate`, `LoopState`,
+`LoopStateFrom`, and `Step.Loop` all exist in `flow`'s code and locked
+API; see `docs/plans/flow.md`'s Phase 38 subsection. Phases 21, 22,
+and 23 shipped first: `Outcome`, `Report`, `Admission`, `Route`,
+`Failure`, and `FailureFrom` all exist in `flow`'s code and locked
+API. Phase 30 (flow retry, `docs/plans/agents/phase30_flow_retry.md`,
+ready to build) touches disjoint step fields and neither blocks the
+other.
 
 ## Why repeated chaining, not a graph cycle
 
@@ -51,12 +52,55 @@ hidden safety limit and no default cap.
 ## Scope
 
 Inside: the `LoopPolicy` type, its `Validate` method, the `Step.Loop`
-field, the `LoopState` type, the `LoopStateFrom` context accessor,
-and the loop-driving change inside `runSingleton`. This phase extends
-the existing `flow` package. It adds no new top-level package, so
+field, the `LoopState` type, the `LoopStateFrom` context accessor, and
+a new file, `flow/loop.go`, mirroring how phase 30 put
+`fireWithRetry` in `flow/retry.go`. `flow/loop.go` holds three
+unexported functions: `runChild`, relocated from `flow/runner.go`
+verbatim (see "File-size accounting" below); `runLoopChild`, the
+loop-aware variant of `runChild` that starts the child workflow from a
+caller-supplied starting record instead of a fresh `machine.InOut{}`;
+and `runLoopedChild`, the main loop driver, which calls `runLoopChild`
+once per iteration. `runSingleton` in `flow/runner.go` gains only a
+minimal dispatch: its Sub branch calls `runLoopedChild` in place of
+the single `runChild`-then-`fireFromChild` call, when `step.Loop` is
+non-nil, and keeps calling the unchanged `runChild`-then-`fireFromChild`
+sequence when `step.Loop` is nil. This phase extends the existing
+`flow` package. It adds no new top-level package, so
 `policy/layers.json` gains no new row; the `flow` row already lists
 `events` and `machine`, and this phase needs no import beyond those
 two plus the standard library.
+
+### File-size accounting
+
+`flow/runner.go` is at the 500-line structure-gate cap today, with no
+slack for a net addition. This phase relocates `runChild` (the
+10-line function plus its doc comment, currently lines 244-253 of
+`flow/runner.go`, plus the blank line that separates it from
+`fireFromChild`) from `flow/runner.go` to `flow/loop.go`, unchanged in
+body. `fireFromChild` stays in `flow/runner.go`; both the non-looped
+and the looped Sub path still call it, so it stays a shared helper the
+runner file owns. Removing `runChild` frees roughly 11 lines.
+`runSingleton`'s Sub branch then gains one `if step.Loop != nil { ...
+} else { ... }` dispatch around the existing
+`runChild`-then-`fireFromChild` call, an addition of roughly 6 to 8
+lines over the current unconditional call sequence. `runner.go`'s net
+line count therefore drops by roughly 3 to 5 lines, landing under the
+500-line cap with headroom, not exactly at it. `flow/runner.go` after
+this phase holds: `Run`, `advanceGroup`, `runSingletonAndMark`,
+`runSingleton` (with the new dispatch), `fireFromChild`, and every
+scan, wave, and emit helper already there today — everything except
+`runChild`, which moves to `flow/loop.go`. `flow/loop.go` holds
+`LoopPolicy`, `LoopState`, `LoopStateFrom`, `loopValidateMessage`,
+`runChild`, `runLoopChild`, and `runLoopedChild`; each of the three
+functions stays under the 80-line function cap on its own, since each
+owns one narrow concern (run once from a fresh record; run once from a
+given record; drive the iteration loop and call the other two).
+
+A non-looped Sub step is unaffected by this phase. It keeps starting
+its child workflow from a fresh `machine.InOut{}`, exactly as
+`flow/runner.go`'s existing `runChild` does today. Only a looped step
+threads a starting record into its child's first iteration; see "The
+loop-driving change" below.
 
 Outside:
 
@@ -98,34 +142,76 @@ Outside:
 `runChild` and `fireFromChild`. This phase adds a second path for a
 step whose `Sub` is non-nil and whose `Loop` is also non-nil.
 
-1. `iteration` starts at zero. The loop body runs at least once.
-2. Before each iteration, `runSingleton` checks `ctx.Err()`. A
-   non-nil error stops the loop at once and reports the context error
-   as the step's failure, wrapped `flow: step %q: %w`. This check runs
-   in the loop driver itself, not inside `Sub`'s own `Run` call, so an
-   unbounded loop (`Max` zero) still terminates even when the
-   caller's own `Guard`, `OnEntry`, or `OnExit` closures never inspect
-   `ctx` themselves. This mirrors phase 30's default `Sleep`, which
-   also selects on `ctx.Done()` rather than trusting a closure to
-   check it.
-3. `runSingleton` runs the child workflow via a loop-aware variant of
-   `runChild` that starts the child from the previous iteration's
-   output record instead of phase 7's fresh `machine.InOut{}`. The
-   first iteration starts from the parent step's own incoming record,
-   the same record a non-looped chained step already starts its child
-   from today. This carries review state, such as a revision note,
-   from one iteration to the next.
-4. `runSingleton` fires the parent's own transition from the current
+`runSingleton`'s Sub branch gains one conditional: when `step.Loop` is
+non-nil, it calls a new unexported function in `flow/loop.go`,
+`runLoopedChild`, in place of the single `runChild`-then-`fireFromChild`
+call sequence; when `step.Loop` is nil, it keeps calling the relocated
+`runChild` (now in `flow/loop.go`) then `fireFromChild` (still in
+`flow/runner.go`), unchanged. `runLoopedChild` takes the same shape of
+arguments `runChild` and `fireFromChild` together consume — `ctx`,
+`m`, `cur`, `rec`, and `step` — and returns `(cur, rec, err)` in
+`fireStep`'s return shape. It owns the iteration bookkeeping: the
+`ctx.Err()` check, the `Max` cap, and the `Guard` evaluation, described
+below. It delegates each iteration's child-workflow run to a second,
+explicitly named function, `runLoopChild`, the loop-aware variant of
+`runChild`: same return shape as `runChild`, `(machine.Status, error)`,
+but taking one extra argument, the starting `machine.InOut` record,
+in place of `runChild`'s hardcoded fresh `machine.InOut{}`. Naming
+`runLoopChild` as its own function, separate from `runLoopedChild`,
+mirrors how `runChild` and `fireFromChild` are already two separate
+functions in `flow/runner.go` today, and keeps `runLoopedChild` a
+short driver that calls out to `runLoopChild` and `fireFromChild`
+rather than one long function inlining the child run, the ctx check,
+the `fireFromChild` call, the `LoopState` construction, and the
+`Max`/`Guard` evaluation together.
+`runSingleton` itself holds no loop-algorithm code; after
+`runLoopedChild` returns, `runSingleton` calls `confirmStep` and
+`emitStep` exactly as it already does today for a non-looped chained
+step, unchanged. This keeps `runSingleton` a small dispatch, matching
+how phase 30 kept `runSingleton` a thin call to `fireWithRetry` in
+`flow/retry.go` instead of inlining the retry loop.
+
+`runLoopedChild`'s algorithm, calling `runLoopChild` at step 3:
+
+1. `iteration` starts at zero.
+2. Before each iteration, including the first, `runLoopedChild` checks
+   `ctx.Err()`. A non-nil error stops the loop at once — with zero
+   child workflow runs completed, if this is the first check — and
+   reports the context error as the step's failure, wrapped
+   `flow: step %q: %w`. The loop is not an unconditional do-while: a
+   `ctx` already canceled at `Run`'s entry stops it before any child
+   workflow runs, matching the pinned test case for that shape. This
+   check runs in the loop driver itself, not inside `Sub`'s own `Run`
+   call, so an unbounded loop (`Max` zero) still terminates even when
+   the caller's own `Guard`, `OnEntry`, or `OnExit` closures never
+   inspect `ctx` themselves. This mirrors phase 30's default `Sleep`,
+   which also selects on `ctx.Done()` rather than trusting a closure
+   to check it.
+3. `runLoopedChild` calls `runLoopChild`, passing the previous
+   iteration's output record as the starting record — or, on the
+   first iteration, the parent step's own incoming record. `runLoopChild`
+   runs `Run(ctx, step.Sub, m, start, confirm, nil, nil)`, the same
+   call `runChild` makes except for the starting record, and returns
+   the child's final status the same way `runChild` does. This is new
+   behavior, introduced by this phase, for a looped step only: `flow/loop.go`'s
+   relocated `runChild` still always starts a chained step's child
+   from a fresh `machine.InOut{}`, and a non-looped Sub step keeps
+   that exact behavior unchanged after this phase lands, since
+   `runSingleton`'s Sub branch calls `runChild`, not `runLoopChild`,
+   when `step.Loop` is nil. Threading the parent's incoming record
+   into the first iteration carries review state, such as a revision
+   note, from one iteration to the next.
+4. `runLoopedChild` fires the parent's own transition from the current
    status to the child's final status through the existing
    `fireFromChild` logic, updating `cur` and `rec`.
-5. `runSingleton` builds a `LoopState{Iteration: iteration, Record:
+5. `runLoopedChild` builds a `LoopState{Iteration: iteration, Record:
    rec}` and injects it into `ctx` for the next `Guard` call, through
    the same context-injection pattern phase 23 uses for `Failure`.
 6. `iteration` increments.
 7. When `Max` is non-zero and `iteration` has reached `Max`, the loop
    stops. This is the only engine-imposed stop; it never applies when
    `Max` is zero.
-8. Otherwise `runSingleton` evaluates `LoopPolicy.Guard` with the
+8. Otherwise `runLoopedChild` evaluates `LoopPolicy.Guard` with the
    updated `ctx`. A nil `Guard` reads as true, matching `machine.Fire`
    and `machine.Guard`'s own nil convention. A `Guard` error stops the
    loop at once and aborts the step, wrapped `flow: step %q: %w`,
@@ -133,13 +219,14 @@ step whose `Sub` is non-nil and whose `Loop` is also non-nil.
    A `false` result stops the loop, but unlike `machine.Fire`, where a
    false `Guard` aborts the transition with an error, a false
    `LoopPolicy.Guard` ends the loop as a normal, successful exit: the
-   already-fired transitions stand, and the step proceeds to
-   `Confirm`. A `true` result repeats from step 2.
-9. Once the loop stops for any reason other than a `ctx` or `Guard`
-   error, `runSingleton` calls `Confirm` once, for the whole step, the
-   same way today's non-looped chained step calls `Confirm` once
-   after its single child run. `runSingleton` then emits one
-   `StepCompletedEvent`, matching every other step kind.
+   already-fired transitions stand, and `runLoopedChild` returns
+   success. A `true` result repeats from step 2.
+
+Once `runLoopedChild` returns success, control returns to
+`runSingleton`'s existing confirm-and-emit call, unchanged: it calls
+`Confirm` once, for the whole step, the same way today's non-looped
+chained step calls `Confirm` once after its single child run, then
+emits one `StepCompletedEvent`, matching every other step kind.
 
 A step that exhausts `ctx` or whose `Guard` errors ends `OutcomeFailed`
 in `Report`, exactly like any other `Fire` or `Confirm` failure today.
@@ -159,9 +246,18 @@ The surface below lands in `api/flow.txt` via `make api-update`.
   convention. `Max` caps the iteration count; zero means unbounded,
   bounded only by the caller's own `ctx`. A negative `Max` is invalid.
 - `func (p LoopPolicy) Validate() error` — rejects `Max < 0` with the
-  pinned message below. `New` calls this for every step whose `Loop`
-  is non-nil. `Validate` never rejects a nil `Guard` or a zero `Max`;
-  both are deliberate, supported values, not defaults to warn about.
+  pinned message `flow: loop: max must be at least 0`. `Validate`
+  never rejects a nil `Guard` or a zero `Max`; both are deliberate,
+  supported values, not defaults to warn about. `Validate` has no step
+  ID to report, so its message names no step; `New` builds a
+  step-scoped message separately, through a shared unexported helper,
+  the same way phase 30's `flow/retry.go` splits
+  `RetryPolicy.Validate`'s bare message from `validateRetry`'s
+  step-scoped one via `retryValidateMessage`. The new helper,
+  `loopValidateMessage(p LoopPolicy) string`, returns the unprefixed
+  text `"max must be at least 0"` when `p.Max < 0`, or `""` when `p`
+  is valid; both `Validate` and `New`'s step-scoped check build their
+  pinned message from this one shared check.
 - `type LoopState struct { Iteration int; Record machine.InOut }` —
   the loop context a `Guard` closure reads. `Iteration` counts
   completed iterations, starting at zero before the first `Guard`
@@ -176,7 +272,9 @@ The surface below lands in `api/flow.txt` via `make api-update`.
 `New` gains three validations, with pinned messages:
 
 - `flow: step %q loop: max must be at least 0` — a `LoopPolicy` with
-  `Max < 0`.
+  `Max < 0`, built by wrapping `loopValidateMessage`'s unprefixed text
+  with the step's ID, the same way `validateRetry` wraps
+  `retryValidateMessage`'s text.
 - `flow: step %q has a loop policy but no sub-workflow` — `Loop` set
   on a step whose `Sub` is nil.
 - `flow: panel %d names looped step %q` — `Loop` set on a panel
@@ -236,15 +334,26 @@ Test files live in `flow/flow_test/`:
 - `loop_bench_test.go` — benchmark a ten-iteration loop step, with a
   `Guard` that always returns true until `Max`, against ten separate
   non-looped chained steps performing the same child workflow.
-  Measure the ten-separate-steps baseline on the phase 23 code before
-  this phase lands. Record both in the file's leading comment. Report
-  the ns/op and allocs/op ratio; the loop path's context injection per
-  iteration varies with `LoopState` construction, so a fixed
-  allocation budget applies as in phase 21's benchmarks.
+  Measure the ten-separate-steps baseline on the currently shipped
+  code (through phase 30), before this phase lands. Record both in
+  the file's leading comment. Report the ns/op and allocs/op ratio;
+  the loop path's context injection per iteration varies with
+  `LoopState` construction, so a fixed allocation budget applies as in
+  phase 21's benchmarks.
 
 ## Verification
 
-`make verify` passes. The coverage floor for `flow` holds.
+`make verify` passes. The coverage floor for `flow` holds. `flow/runner.go`
+is at the 500-line cap before this phase lands; relocating `runChild`
+to `flow/loop.go` (see "File-size accounting" above) frees more lines
+than the new dispatch conditional adds, so `flow/runner.go` lands
+under the cap, not exactly at it. `flow/loop.go` holds `LoopPolicy`,
+`LoopState`, `LoopStateFrom`, `loopValidateMessage`, `runChild`,
+`runLoopChild`, and `runLoopedChild`, each well under the 500-line
+file cap on its own. Every function in both files, including
+`runLoopChild` and `runLoopedChild` as two separate, explicitly named
+functions, stays at or below the 80-line function cap.
+`scripts/check_structure.py` enforces both caps.
 `api/flow.txt` gains `LoopPolicy`, its `Validate` method, `LoopState`,
 `LoopStateFrom`, and `Step.Loop` via `make api-update`. Commit the
 `api/` diff in the same change. `policy/layers.json` is unchanged;

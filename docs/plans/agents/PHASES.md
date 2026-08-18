@@ -123,15 +123,14 @@ composition comes last.
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 23, 25, 29, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
+Phases 22, 23, 25, 29, 31, 32, 33, 34, 35, 36, 37, 38, 39, and 40 have
 shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
 docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
 docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 30 passed
 plan review in three rounds and is ready to build, now that phase 23
-has shipped. Phase 38 (flow loop) is plan-only; it has not gone
-through plan review yet, but is independently buildable now that
-phase 23 has shipped.
+has shipped. Phase 38 (flow loop) shipped; see docs/plans/flow.md's
+Phase 38 subsection.
 
 ## Gate interactions
 

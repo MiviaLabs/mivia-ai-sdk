@@ -301,11 +301,11 @@ already matches the child final. The parity workaround stays valid
 but is no longer required. See
 docs/plans/agents/phase60_same_final_loops.md.
 
-Phase 61 is plan-only and not scheduled. It swaps the admission
-zero value: a step runs only when every need succeeded, and skip
-tolerance becomes the explicit opt-in. Route exclusion then
-propagates by default, matching the sibling repo's transition-driven
-readiness. See docs/plans/agents/phase61_strict_admission_default.md.
+Phase 61 has shipped. It swaps the admission zero value: a step
+runs only when every need succeeded, and skip tolerance is the
+explicit opt-in. Route exclusion propagates by default, matching
+the sibling repo's transition-driven readiness. See
+docs/plans/agents/phase61_strict_admission_default.md.
 
 ## Gate interactions
 

@@ -46,7 +46,7 @@ func confirmTracker(seen *[]string) flow.Confirm {
 }
 
 // TestRoutingIntegrationDefaultJoinAdmitsChosenAlternative runs an
-// if/else graph with a default-admission join. It proves the chosen
+// if/else graph with a join that declares AdmissionOnFinished. It proves the chosen
 // alternative succeeds, the other alternative skips, the join still
 // succeeds, Confirm never runs for the skipped alternative, and the
 // final status equals the chosen branch's target status.
@@ -56,7 +56,7 @@ func TestRoutingIntegrationDefaultJoinAdmitsChosenAlternative(t *testing.T) {
 		{ID: "branch", To: "b", Route: pickYes},
 		{ID: "yes", Needs: []string{"branch"}, To: "yes"},
 		{ID: "no", Needs: []string{"branch"}, To: "no"},
-		{ID: "join", Needs: []string{"yes", "no"}, To: "j"},
+		{ID: "join", Needs: []string{"yes", "no"}, To: "j", When: flow.AdmissionOnFinished},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)

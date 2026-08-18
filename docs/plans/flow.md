@@ -116,12 +116,13 @@ buy" section for the pattern sources.
   `Outcomes() map[string]Outcome` accessors. `Outcomes` returns a copy;
   caller mutation cannot change the report. `Run` returns it in place
   of the status and record pair.
-- `type Admission int` with `AdmissionOnFinished` as the zero-value
-  default and `AdmissionOnSucceeded`, shipped in phase 22. The default
-  admits a need that ended `OutcomeSucceeded` or `OutcomeSkipped`.
-  `AdmissionOnSucceeded` admits only a succeeded need; a skipped need
-  skips the step too, and the skip can cascade to that step's own
-  dependents. `Step` gains `When Admission`. `AdmissionOnFailed`,
+- `type Admission int` with `AdmissionOnSucceeded` as the zero-value
+  default and `AdmissionOnFinished`, shipped in phase 22 and flipped
+  in phase 61. The default admits only a succeeded need; a skipped
+  need skips the step too, and the skip cascades to that step's own
+  dependents, so route exclusion propagates by default.
+  `AdmissionOnFinished` is the explicit opt-in for skip tolerance.
+  `Step` gains `When Admission`. `AdmissionOnFailed`,
   shipped in phase 23, is the third value, for the fallback path: see
   the Scope section above.
 - `type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error)`

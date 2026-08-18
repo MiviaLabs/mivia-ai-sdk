@@ -268,7 +268,7 @@ func TestAdmissionOnFailedAllSucceededSkips(t *testing.T) {
 	d, err := flow.New([]flow.Step{
 		{ID: "risky", To: "r"},
 		{ID: "fallback", Needs: []string{"risky"}, When: flow.AdmissionOnFailed, To: "f"},
-		{ID: "after", Needs: []string{"fallback"}, To: "a"},
+		{ID: "after", Needs: []string{"fallback"}, When: flow.AdmissionOnFinished, To: "a"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)

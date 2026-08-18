@@ -289,15 +289,17 @@ func TestRouteExclusionFinalDespiteSecondPendingParent(t *testing.T) {
 	mustOutcome(t, report, "dep", flow.OutcomeSkipped)
 }
 
-// TestDefaultAdmissionAdmitsSkippedNeed proves the zero-value
-// AdmissionOnFinished admits a step whose need ended OutcomeSkipped.
-func TestDefaultAdmissionAdmitsSkippedNeed(t *testing.T) {
+// TestDefaultAdmissionSkipsNeed proves the zero-value
+// AdmissionOnSucceeded skips a step whose need ended OutcomeSkipped,
+// and the explicit AdmissionOnFinished opt-in admits it.
+func TestDefaultAdmissionSkipsNeed(t *testing.T) {
 	t.Parallel()
 	d, err := flow.New([]flow.Step{
 		{ID: "branch", To: "b", Route: keeping("left")},
 		{ID: "left", Needs: []string{"branch"}, To: "l1"},
 		{ID: "right", Needs: []string{"branch"}, To: "l2"},
-		{ID: "join", Needs: []string{"right"}, To: "j"},
+		{ID: "join", Needs: []string{"right"}, To: "j",
+			When: flow.AdmissionOnFinished},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
@@ -318,20 +320,18 @@ func TestDefaultAdmissionAdmitsSkippedNeed(t *testing.T) {
 	mustOutcome(t, report, "join", flow.OutcomeSucceeded)
 }
 
-// TestAdmissionOnSucceededCascadeStopsAtDefaultAdmission proves two
-// things about the admission cascade: AdmissionOnSucceeded propagates
-// a skip across one hop, and the API-pinned default rule
-// (AdmissionOnFinished admits OutcomeSucceeded or OutcomeSkipped)
-// stops the cascade at the next hop rather than propagating it
-// further. See the Admission doc comment in flow/step.go: default
-// admission "admits" a skipped need; it does not skip in turn.
-func TestAdmissionOnSucceededCascadeStopsAtDefaultAdmission(t *testing.T) {
+// TestAdmissionCascadeStopsAtFinishedOptIn proves the skip cascade
+// now runs through the strict default: an excluded hop skips its
+// dependents however far down they sit, and only an explicit
+// AdmissionOnFinished hop admits through the skip and stops the
+// cascade.
+func TestAdmissionCascadeStopsAtFinishedOptIn(t *testing.T) {
 	t.Parallel()
 	d, err := flow.New([]flow.Step{
 		{ID: "branch", To: "b", Route: keeping()},
 		{ID: "hop1", Needs: []string{"branch"}, To: "h1"},
-		{ID: "hop2", Needs: []string{"hop1"}, When: flow.AdmissionOnSucceeded, To: "h2"},
-		{ID: "hop3", Needs: []string{"hop2"}, To: "h3"},
+		{ID: "hop2", Needs: []string{"hop1"}, To: "h2"},
+		{ID: "hop3", Needs: []string{"hop2"}, When: flow.AdmissionOnFinished, To: "h3"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)

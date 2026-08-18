@@ -17,7 +17,9 @@ Go SDK for building AI agents. Module:
   LoopState, LoopStateFrom. A step named in
   a panel runs as part of that panel's wave, in a goroutine, once
   every member is ready. A step's Admission rule decides whether it
-  runs once its needs are terminal; a branch step's Route then picks
+  runs once its needs are terminal, and the zero value is strict: a
+  skipped need skips the step, so route exclusion propagates by
+  default; a branch step's Route then picks
   which direct dependents the run keeps. A step's Retry field, when
   non-nil, retries its own Fire call with exponential backoff through
   RetryPolicy.NextDelay, up to MaxAttempts; New rejects Retry on a

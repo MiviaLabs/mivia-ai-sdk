@@ -43,8 +43,9 @@ func admissionVerdict(s Step, outcomes map[string]Outcome) verdict {
 }
 
 // admits reports whether outcome o satisfies admission rule when.
-// AdmissionOnFinished, the zero value, accepts OutcomeSucceeded and
-// OutcomeSkipped. AdmissionOnSucceeded accepts only OutcomeSucceeded.
+// AdmissionOnSucceeded, the zero value, accepts only
+// OutcomeSucceeded. AdmissionOnFinished, the explicit opt-in,
+// accepts OutcomeSucceeded and OutcomeSkipped.
 func admits(when Admission, o Outcome) bool {
 	if when == AdmissionOnSucceeded {
 		return o == OutcomeSucceeded

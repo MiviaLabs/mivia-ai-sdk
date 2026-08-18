@@ -120,7 +120,7 @@ func admissionSkipFixture(t *testing.T) (*flow.Definition, *machine.Definition) 
 		{ID: "branch", To: "b", Route: routeExcludeAll},
 		{ID: "mid", Needs: []string{"branch"}, To: "midDone"},
 		{ID: "leaf", Needs: []string{"mid"}, When: flow.AdmissionOnSucceeded, To: "leafDone"},
-		{ID: "mid2", Needs: []string{"leaf"}, To: "afterMid2"},
+		{ID: "mid2", Needs: []string{"leaf"}, When: flow.AdmissionOnFinished, To: "afterMid2"},
 		{ID: "tail", Needs: []string{"mid2"}, To: "final"},
 	}, nil)
 	if err != nil {

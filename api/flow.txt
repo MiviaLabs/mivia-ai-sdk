@@ -1,7 +1,7 @@
 package flow
   const AdmissionOnFailed
-  const AdmissionOnFinished = iota
-  const AdmissionOnSucceeded
+  const AdmissionOnFinished
+  const AdmissionOnSucceeded = iota
   const OutcomeFailed
   const OutcomeSkipped
   const OutcomeSucceeded = iota

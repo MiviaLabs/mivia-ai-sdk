@@ -38,10 +38,10 @@ The exported surface below mirrors `api/flow.txt`.
   form `func(ctx context.Context, step Step) error`. A nil return
   means the ack confirmed.
 - `Admission` — the rule that admits a step once every one of its
-  needs is terminal. `AdmissionOnFinished`, the zero value, admits
-  when every need ended `OutcomeSucceeded` or `OutcomeSkipped`.
-  `AdmissionOnSucceeded` admits only when every need ended
-  `OutcomeSucceeded`. `AdmissionOnFailed` admits once every need is
+  needs is terminal. `AdmissionOnSucceeded`, the zero value, admits
+  only when every need ended `OutcomeSucceeded`. `AdmissionOnFinished`
+  is the explicit opt-in for skip tolerance: it admits when every need
+  ended `OutcomeSucceeded` or `OutcomeSkipped`. `AdmissionOnFailed` admits once every need is
   terminal and at least one ended `OutcomeFailed`; it is an any-of
   rule, unlike the all-of rule the other two values use. A step with
   this rule is a fallback.
@@ -505,12 +505,12 @@ closure or a nested `Definition`.
 `When` and `Route` decide whether a step runs, not what it runs.
 
 A step admits once every one of its needs is terminal.
-`AdmissionOnFinished`, the zero value, admits a step whose needs ended
-`OutcomeSucceeded` or `OutcomeSkipped`; a skipped prerequisite passes
-through, so a skipped branch never deadlocks a downstream join.
-`AdmissionOnSucceeded` admits only when every need ended
-`OutcomeSucceeded`; a skipped need skips this step too, and that skip
-can cascade to the step's own dependents in turn.
+`AdmissionOnSucceeded`, the zero value, admits a step whose needs all
+ended `OutcomeSucceeded`; a skipped need skips this step too, and that
+skip cascades to the step's own dependents, so route exclusion
+propagates by default. `AdmissionOnFinished` is the explicit opt-in
+for skip tolerance; it admits through a skipped prerequisite, so an
+optional branch never deadlocks a downstream join that declares it.
 
 A step with a non-nil `Route` is a branch step. It fires its own
 transition and confirms its ack like any other step. `Run` then calls

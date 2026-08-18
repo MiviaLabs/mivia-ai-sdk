@@ -111,10 +111,8 @@ func reviewPanelPlan(t *testing.T, artifacts *agentrun.Artifacts) *flow.Definiti
 				return []string{"rework"}, nil
 			},
 		},
-		{ID: "merge", To: "merged", Needs: []string{"review_gate"}, Payload: "merge-it",
-			When: flow.AdmissionOnSucceeded},
-		{ID: "rework", To: "reworked", Needs: []string{"review_gate"}, Payload: "rework-it",
-			When: flow.AdmissionOnSucceeded},
+		{ID: "merge", To: "merged", Needs: []string{"review_gate"}, Payload: "merge-it"},
+		{ID: "rework", To: "reworked", Needs: []string{"review_gate"}, Payload: "rework-it"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New panel plan: %v", err)

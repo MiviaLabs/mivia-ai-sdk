@@ -18,17 +18,16 @@ type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]s
 type Admission int
 
 const (
-	// AdmissionOnFinished admits a step when every need ended
-	// OutcomeSucceeded or OutcomeSkipped. It is the zero value, so an
-	// existing step keeps its behavior. It admits through a skipped
-	// need, so route exclusion propagates only under
-	// AdmissionOnSucceeded.
-	AdmissionOnFinished Admission = iota
 	// AdmissionOnSucceeded admits a step only when every need ended
-	// OutcomeSucceeded. A skipped need skips this step. It is the
-	// rule a route-excluded branch needs, so the skip propagates to
-	// the branch's own dependents.
-	AdmissionOnSucceeded
+	// OutcomeSucceeded. It is the zero value. A skipped need skips
+	// this step, so route exclusion propagates to an excluded
+	// branch's own dependents by default.
+	AdmissionOnSucceeded Admission = iota
+	// AdmissionOnFinished admits a step when every need ended
+	// OutcomeSucceeded or OutcomeSkipped. It is the explicit opt-in
+	// for skip tolerance, for join steps over optional branches: a
+	// step below an excluded branch runs only by declaring this rule.
+	AdmissionOnFinished
 	// AdmissionOnFailed admits a step once every one of its needs is
 	// terminal and at least one resolved OutcomeFailed. It is an
 	// any-of rule over Needs, unlike the all-of rule the other two

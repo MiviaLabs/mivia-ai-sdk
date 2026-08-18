@@ -83,8 +83,7 @@ func deliveryPlan(t *testing.T, last *string) (*flow.Definition, *machine.Defini
 			},
 		},
 		{ID: "repair_metadata", To: "meta-fixed", Needs: []string{"deliver"}, Payload: "fix-title"},
-		{ID: "pr_open", To: "opened", Needs: []string{"deliver"}, Payload: "open-note",
-			When: flow.AdmissionOnSucceeded},
+		{ID: "pr_open", To: "opened", Needs: []string{"deliver"}, Payload: "open-note"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New delivery child: %v", err)

@@ -85,12 +85,9 @@ func bugfixAuditPlan(t *testing.T, script *verdictScript) *flow.Definition {
 				return nil, fmt.Errorf("unknown triage verdict %q", script.last)
 			},
 		},
-		{ID: "fix_plan", To: "planned", Needs: []string{"gate"}, Payload: "plan-the-fix",
-			When: flow.AdmissionOnSucceeded},
-		{ID: "implement", To: "implemented", Needs: []string{"fix_plan"}, Payload: "ship-the-fix",
-			When: flow.AdmissionOnSucceeded},
-		{ID: "clean_exit", To: "clean", Needs: []string{"gate"}, Payload: "no-diff-close",
-			When: flow.AdmissionOnSucceeded},
+		{ID: "fix_plan", To: "planned", Needs: []string{"gate"}, Payload: "plan-the-fix"},
+		{ID: "implement", To: "implemented", Needs: []string{"fix_plan"}, Payload: "ship-the-fix"},
+		{ID: "clean_exit", To: "clean", Needs: []string{"gate"}, Payload: "no-diff-close"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New audit plan: %v", err)
@@ -274,8 +271,7 @@ func TestBugfixEvidenceRepairLoop(t *testing.T) {
 			},
 		},
 		{ID: "repair_tests", To: "repaired", Needs: []string{"test_validate"}, Payload: "repair-suite"},
-		{ID: "evidence_ok", To: "passed", Needs: []string{"test_validate"}, Payload: "pass-note",
-			When: flow.AdmissionOnSucceeded},
+		{ID: "evidence_ok", To: "passed", Needs: []string{"test_validate"}, Payload: "pass-note"},
 	}, nil)
 	if err != nil {
 		t.Fatalf("flow.New repair child: %v", err)

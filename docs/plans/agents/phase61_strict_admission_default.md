@@ -1,7 +1,9 @@
 # Phase 61: strict admission default
 
-Status: plan only, unassigned. It changes `flow` and `agentrun`
-semantics; no new package. It builds independently of phase 60.
+Status: shipped. It changes `flow` and `agentrun` semantics; no new
+package. The matrix walk needed no change: it compares rules by
+value and never modeled the tolerant default for non-fallback
+steps. Five flow pins updated case by case; no test was deleted.
 
 ## Why this plan exists
 

@@ -211,14 +211,15 @@ Mapping, workflow-engine shape to SDK block:
 
 Disclosed limits these scenarios pin:
 
-- Route exclusion propagates only through `AdmissionOnSucceeded`.
-  The default admission lets a step run after a skipped need.
 - An ack rejection stays fatal. A gate that must route to repair
   reports failure as output, never as a tool error.
 - Engine restart through checkpoint resume is not reachable through
   `agentrun`; only `flow.Run` exposes the checkpoint hook today.
 
-Two limits the scenarios surfaced are already fixed. A step repeated
+Three limits the scenarios surfaced are already fixed. Route
+exclusion now propagates by default: the admission zero value is
+strict, and the parity scenarios carry no defensive `When` clauses.
+The scenarios dropped them in the same change. A step repeated
 inside a loop overwrites its bare-ID artifact with the latest
 result, and every run appends to `Artifacts.History`, so a repair
 loop can read the earlier rejections it is repairing, the sibling

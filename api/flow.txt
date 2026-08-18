@@ -1,4 +1,5 @@
 package flow
+  const AdmissionOnFailed
   const AdmissionOnFinished = iota
   const AdmissionOnSucceeded
   const OutcomeFailed
@@ -8,11 +9,14 @@ package flow
   func (c Checkpoint) Encode() ([]byte, error)
   func (c Checkpoint) Validate() (error)
   func (d Definition) Roots() ([]string)
+  func (e *failureError) Error() (string)
+  func (e *failureError) Unwrap() (error)
   func (r Report) Outcome(id string) (Outcome, bool)
   func (r Report) Outcomes() (map[string]Outcome)
   func (r Report) Record() (machine.InOut)
   func (r Report) Status() (machine.Status)
   func Decode(data []byte) (Checkpoint, error)
+  func FailureFrom(ctx context.Context) (Failure, bool)
   func New(steps []Step, panels []Panel) (*Definition, error)
   func Resume(ctx context.Context, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
   func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
@@ -22,9 +26,14 @@ package flow
   Record machine.InOut
   Done []string
   Skipped []string
+  Failed []string
 }
   type Confirm func(ctx context.Context, step Step) error
   type Definition struct {
+}
+  type Failure struct {
+  Step string
+  Err error
 }
   type Outcome int
   type Panel []string

@@ -25,6 +25,14 @@ const (
 	// AdmissionOnSucceeded admits a step only when every need ended
 	// OutcomeSucceeded. A skipped need skips this step.
 	AdmissionOnSucceeded
+	// AdmissionOnFailed admits a step once every one of its needs is
+	// terminal and at least one resolved OutcomeFailed. It is an
+	// any-of rule over Needs, unlike the all-of rule the other two
+	// values use. A step with this rule is a fallback: New rejects it
+	// at the root (it would always admit) and inside a panel (a wave
+	// shares one ctx across every member, with no per-member home for
+	// the failure it would catch).
+	AdmissionOnFailed
 )
 
 // Step is one node in a workflow graph.

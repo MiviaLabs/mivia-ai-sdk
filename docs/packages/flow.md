@@ -29,7 +29,10 @@ The exported surface below mirrors `api/flow.txt`.
   needs is terminal. `AdmissionOnFinished`, the zero value, admits
   when every need ended `OutcomeSucceeded` or `OutcomeSkipped`.
   `AdmissionOnSucceeded` admits only when every need ended
-  `OutcomeSucceeded`.
+  `OutcomeSucceeded`. `AdmissionOnFailed` admits once every need is
+  terminal and at least one ended `OutcomeFailed`; it is an any-of
+  rule, unlike the all-of rule the other two values use. A step with
+  this rule is a fallback.
 - `Route` — the routing function of a branch step. It signs the form
   `func(ctx context.Context, cur machine.Status, rec machine.InOut)
   ([]string, error)`. It receives the branch step's post-fire status
@@ -43,12 +46,16 @@ The exported surface below mirrors `api/flow.txt`.
   unexported. Callers read them through `Status`, `Record`, `Outcome`,
   and `Outcomes`.
 - `Checkpoint` — the full resumable state of a `Run`: `Status`
-  (`machine.Status`), `Record` (`machine.InOut`), and `Done` (the
+  (`machine.Status`), `Record` (`machine.InOut`), `Done` (the
   lexicographically sorted step IDs of every step that resolved
-  `OutcomeSucceeded` so far). `Done`'s order is a sort, not a
-  completion order. `Encode` and `Decode` round-trip a `Checkpoint`
-  through JSON; the caller owns storage. See `Run`'s `onCheckpoint`
-  parameter and `Resume`.
+  `OutcomeSucceeded` so far), `Skipped` (the same for
+  `OutcomeSkipped`), and `Failed` (the same for `OutcomeFailed`,
+  whether or not a fallback caught the failure). Each list's order is
+  a sort, not a completion order. `Encode` and `Decode` round-trip a
+  `Checkpoint` through JSON; the caller owns storage. See `Run`'s
+  `onCheckpoint` parameter and `Resume`.
+- `Failure` — the failed step's context a fallback step receives:
+  `Step` names the failed step, `Err` is its recorded error.
 
 ## Functions and methods
 
@@ -69,7 +76,10 @@ The exported surface below mirrors `api/flow.txt`.
   one-member panel. `Run` returns a `Report` and an error. On every
   abort, `Run` returns the `Report` built so far, alongside the
   error: a step whose `Fire` fails or whose ack is rejected is marked
-  `OutcomeFailed` first. A wave error marks no member of that wave.
+  `OutcomeFailed` first. A wave's shared, pre-spawn transition failure
+  marks no member of that wave; a per-member `Fire` failure inside a
+  wave marks every member `OutcomeFailed`, whether or not a
+  dependent's `AdmissionOnFailed` rule catches it.
   When `bus` is non-nil, `Run` emits a `StepCompletedEvent` to it
   after each step completes; a chained step's child sub-workflow runs
   with a nil bus, so only the parent step emits. A skipped step fires
@@ -87,20 +97,28 @@ The exported surface below mirrors `api/flow.txt`.
   step or wave starts, `Run` checks `ctx` for cancellation; a canceled
   `ctx` stops the walk and returns the pinned pause error, wrapping
   `ctx.Err()`. See "Pause and resume" below.
+  A step admitted through a failed need is a fallback; `Run` catches
+  the dependency's `Fire` or `Route` failure and continues the run
+  instead of aborting. See Fallback and continue-on-failure below.
 - `Report.Status()` — the run's final `machine.Status`.
 - `Report.Record()` — the run's final `machine.InOut`.
 - `Report.Outcome(id)` — one step's `Outcome`, and whether it
   resolved.
 - `Report.Outcomes()` — a copy of every resolved step's `Outcome`,
   keyed by ID. Caller mutation cannot change the `Report`.
-- `Checkpoint.Validate()` — rejects an empty `Status`.
+- `Checkpoint.Validate()` — rejects an empty `Status` and a step ID
+  named in more than one of `Done`, `Skipped`, and `Failed`.
 - `Checkpoint.Encode()` — validates, then marshals the checkpoint to
   JSON.
 - `Decode(data)` — unmarshals JSON, then validates the result.
 - `Resume(ctx, d, m, checkpoint, confirm, bus, onCheckpoint)` — seeds
-  `outcomes` from `checkpoint.Done`, `cur` from `checkpoint.Status`,
-  and `rec` from `checkpoint.Record`, then continues the same graph
-  walk `Run` uses. See "Pause and resume" below.
+  `outcomes` from `checkpoint.Done`, `checkpoint.Skipped`, and
+  `checkpoint.Failed`, `cur` from `checkpoint.Status`, and `rec` from
+  `checkpoint.Record`, then continues the same graph walk `Run` uses.
+  See "Pause and resume" below.
+- `FailureFrom(ctx)` — reads the `Failure` `Run` injects into a
+  fallback step's own transition context. The boolean is false outside
+  a fallback firing.
 
 ## Invariants
 
@@ -147,6 +165,12 @@ The exported surface below mirrors `api/flow.txt`.
   exclusion mid-panel would stall that panel forever, since a panel
   resolves only once every member's needs are terminal. `New` rejects
   the shape.
+- An `AdmissionOnFailed` step must have at least one need. A root
+  always admits, so the rule would be dead weight. `New` rejects the
+  shape.
+- No panel names an `AdmissionOnFailed` step. A wave shares one `ctx`
+  across every member, with no per-member home for the `Failure` a
+  fallback would catch. `New` rejects the shape.
 
 `Run` enforces the rules below.
 
@@ -213,6 +237,16 @@ still unresolved and selects it to run again; the resulting
 `checkpoint.Status` no longer names a status the seeded walk can reach
 that step from. `Resume` returns that failure as an ordinary error.
 
+`checkpoint.Failed` preserves a caught failure's outcome across a
+pause, so `Resume` never re-runs a step that already resolved
+`OutcomeFailed`. `Resume` starts its own fallback bookkeeping empty,
+though: a fallback step that has not yet run at pause time still runs
+after `Resume`, admitted by `AdmissionOnFailed` the same way it would
+without a pause, but `FailureFrom` returns false inside it, and a
+`Route` exclusion that would have emptied the failure's last pending
+handler set resolves as an ordinary skip instead of aborting the run.
+See Fallback and continue-on-failure below.
+
 A caller whose `Record.Input` or `Record.Output` must survive a
 `Checkpoint` round-trip is responsible for using JSON-primitive-
 compatible types, or for re-hydrating its own concrete type after
@@ -243,6 +277,61 @@ declaration order, chosen after every member finishes. The other
 members' transitions still ran; only their records are discarded. A
 caller whose panel members need their outputs merged cannot rely on
 this package yet.
+
+## Fallback and continue-on-failure
+
+A step declares a fallback through admission, not through a dedicated
+field. A step with `When: AdmissionOnFailed` admits once every one of
+its needs is terminal and at least one ended `OutcomeFailed`; this is
+an any-of rule, unlike the all-of rule `AdmissionOnFinished` and
+`AdmissionOnSucceeded` use.
+
+When a step's `Fire` fails, or a branch step's `Route` fails, `Run`
+scans the unresolved steps for an `AdmissionOnFailed` step whose
+`Needs` names the failed step. At least one match catches the
+failure: the run continues instead of aborting, and the failed step
+stays `OutcomeFailed`. No match aborts the run, exactly as before this
+mechanism existed.
+
+Before `Run` fires the fallback's own transition, it injects a
+`Failure` into the transition's context: `Failure.Step` names the
+failed step, and `Failure.Err` is its recorded error. `FailureFrom`
+reads it back inside `Guard`, `OnExit`, or `OnEntry`. A fallback with
+two failed needs receives the first failed need in `Needs` declaration
+order. A dependent of the failed step that keeps the default
+admission rule never satisfies it with a failed need, so it becomes
+`OutcomeSkipped` once the failure is handled; only a declared fallback
+runs down that path.
+
+A panel failure follows its own rule. `runWave`'s shared, pre-spawn
+transition failure is never catchable: it happens before any member's
+`Guard` runs. A per-member `Fire` failure marks every member of that
+wave `OutcomeFailed`, then the continue rule runs once per member: the
+run continues only when every failed member has at least one
+`AdmissionOnFailed` dependent. One unhandled member aborts the whole
+wave's failure, joined, exactly as an unhandled wave failure did
+before this mechanism existed.
+
+A `Route` exclusion can silently remove the sole fallback of an
+already-handled failure. `Run` re-checks this after every successful
+`Route` call: when an excluded dependent was a failure's last
+declared handler, the run aborts with that failure's recorded error,
+preserving fail-fast.
+
+A fallback is an ordinary step. It may itself fail and be caught by a
+second, nested fallback; it may also be a branch step, running `Route`
+normally after its own `Fire` succeeds. The only restrictions
+`AdmissionOnFailed` adds are the two `New` invariants above: at least
+one need, and no panel membership.
+
+A chained step's own child-workflow failure is never catchable by a
+parent-level fallback. The child's nested `Run` call already ran
+through its own continue rule, in its own frame; whatever error
+crosses back into the parent is treated as final.
+
+A checkpoint taken after a catch preserves the failed step's outcome,
+through `Checkpoint.Failed`, but not the pending-handler bookkeeping
+behind it. See "Pause and resume" above.
 
 ## Attaching work to a step
 

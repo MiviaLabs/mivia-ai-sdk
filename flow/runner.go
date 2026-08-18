@@ -11,11 +11,11 @@ import (
 )
 
 // Confirm gates a step's ack. Run calls it after Fire moves the
-// status, for a step named in no panel and for a one-member panel.
-// Run does not call Confirm for a step in a panel of two or more
-// members. Run calls Confirm again for a chained step after its
-// child workflow completes and the parent transition fires. A nil
-// return means the ack confirmed; the walk advances.
+// status, for a step named in no panel and for a one-member panel,
+// and again for a chained step after its child workflow completes and
+// the parent transition fires. Run does not call Confirm for a step
+// in a panel of two or more members. A nil return means the ack
+// confirmed; the walk advances.
 type Confirm func(ctx context.Context, step Step) error
 
 // Run walks the step graph in topological order. A step named in no
@@ -27,22 +27,16 @@ type Confirm func(ctx context.Context, step Step) error
 // wave fires every member's transition concurrently through the one
 // shared row every member's homogeneous To selects. Run does not call
 // confirm for a wave of two or more members. A step with a non-nil
-// Sub runs its child workflow to completion, then uses the child
-// final status as the parent step's target status. A chained step's
-// child workflow runs with a nil bus, and its child steps emit no
-// events. Run keeps the
-// current status and one record through the walk; each wave reads the
-// record and writes the next. Run rejects a nil d, a nil m, and a
-// nil confirm at entry, before it dereferences d or m. It checks d
-// first, then m, then confirm, so a nil m never panics inside a
-// d-nil or m-nil check.
+// Sub runs its child workflow to completion, then uses the child final
+// status as the parent step's target status; the child runs with a
+// nil bus. Run keeps the current status and one record through the
+// walk. Run rejects a nil d, a nil m, and a nil confirm at entry,
+// checking d first, then m, then confirm, so a nil m never panics
+// inside a d-nil or m-nil check.
 //
 // onCheckpoint, when non-nil, fires immediately after each step or
-// wave resolves OutcomeSucceeded, with a fresh Checkpoint holding the
-// current status, the current record, the sorted step IDs of every
-// OutcomeSucceeded step resolved so far, and the sorted step IDs of
-// every OutcomeSkipped step resolved so far. A nil onCheckpoint skips
-// the call. See Checkpoint and Resume.
+// wave resolves OutcomeSucceeded, with a fresh Checkpoint. A nil
+// onCheckpoint skips the call. See Checkpoint and Resume.
 //
 // Before each step or wave starts, Run checks ctx for cancellation. A
 // canceled ctx stops the walk before the next step starts and returns
@@ -55,17 +49,22 @@ type Confirm func(ctx context.Context, step Step) error
 // and every resolved step's Outcome. On every abort, Run returns the
 // Report built so far, alongside the error. A step whose Fire fails
 // or whose Confirm is rejected is marked OutcomeFailed before the
-// return. A wave error marks no member of that wave: neither the
-// failing member nor a successful sibling.
+// return. A wave's shared, pre-spawn transition failure marks no
+// member of that wave; a per-member Fire failure inside a wave marks
+// every member OutcomeFailed, whether or not a dependent's
+// AdmissionOnFailed rule catches the failure. A step admitted through
+// a failed need (AdmissionOnFailed) is a fallback; Run injects a
+// Failure into its transition's context, and FailureFrom reads it
+// back. A caught Fire or Route failure continues down the fallback
+// path; a Confirm rejection or a missing transition row stays fatal.
+// Checkpoint's Failed field preserves an already-caught failure's
+// outcome across a pause; see Checkpoint for what does not survive.
 //
-// A panel member's Input and Output must be either an immutable
-// value, or a value the caller has already cloned per step. Run
-// copies each member's InOut struct before it fires that member's
-// transition, but the copy is shallow: a map, a slice, or a pointer
-// an Input or Output field holds is not copied. Two panel members
-// that alias the same underlying data still race if either mutates it
-// in place. flow cannot deep-copy an arbitrary any value; this is a
-// caller contract, not a runtime check.
+// A panel member's Input and Output must be an immutable value, or a
+// value the caller already cloned per step. Run's copy of each
+// member's InOut is shallow: a map, a slice, or a pointer an Input or
+// Output field holds is not copied. Two members that alias the same
+// data still race if either mutates it in place.
 func Run(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	in machine.InOut, confirm Confirm, bus *events.Bus,
@@ -87,25 +86,21 @@ func Run(
 
 // advanceGroup runs, skips, or rejects the group nextReadyGroup found,
 // for one loop iteration of Run. It marks every resolved step's
-// Outcome in outcomes before it returns, and fires onCheckpoint once
-// a step's or a wave's outcomes settle at OutcomeSucceeded, after any
-// route-driven skip so a checkpoint never captures a state a route
-// rejection later overwrites.
+// Outcome before it returns, and fires onCheckpoint once a step's or a
+// wave's outcomes settle at OutcomeSucceeded, after any route-driven
+// skip so a checkpoint never captures a state a route rejection later
+// overwrites. A catchable failure resolves through resolveCatchable
+// or resolvePanelFailure, fires no checkpoint, and returns nil.
 func advanceGroup(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, next Step, group []Step, res scanResult,
 	steps []Step, confirm Confirm, bus *events.Bus, outcomes map[string]Outcome,
-	onCheckpoint func(Checkpoint),
+	pending map[string]*handledFailure, onCheckpoint func(Checkpoint),
 ) (machine.Status, machine.InOut, error) {
 	switch res {
 	case scanNone:
-		// Unreachable for a same-panel Needs cycle: validatePanelIndependence
-		// rejects that shape in New. Still reachable for a cross-panel
-		// scheduling deadlock: a member of one panel needs a member of
-		// another panel, and vice versa, with no cycle in the Needs graph and
-		// no single panel's closure violation. New does not validate
-		// cross-panel scheduling feasibility; a future phase may close this
-		// gap.
+		// Unreachable for a same-panel Needs cycle; reachable for a
+		// cross-panel scheduling deadlock, which New does not validate for.
 		return cur, rec, errorf("no ready step; graph stalled")
 
 	case scanSkipSingleton:
@@ -117,31 +112,46 @@ func advanceGroup(
 		return cur, rec, nil
 
 	case scanSingleton:
-		cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, next, confirm, bus, outcomes)
+		cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, next, confirm, bus, outcomes, pending)
 		if err != nil {
-			return cur, rec, err
+			resolved, handled := resolveCatchable(err, next.ID, steps, outcomes, pending)
+			return cur, rec, continueOrAbort(resolved, handled)
 		}
-		if next.Route != nil {
-			if err := applyRoute(ctx, next, cur, rec, steps, outcomes); err != nil {
-				outcomes[next.ID] = OutcomeFailed
-				return cur, rec, err
-			}
+		if next.Route == nil {
+			fireCheckpoint(onCheckpoint, cur, rec, outcomes)
+			return cur, rec, nil
+		}
+		if rerr := applyRoute(ctx, next, cur, rec, steps, outcomes); rerr != nil {
+			outcomes[next.ID] = OutcomeFailed
+			resolved, handled := resolveCatchable(newFailureError(failureKindFire, rerr), next.ID, steps, outcomes, pending)
+			return cur, rec, continueOrAbort(resolved, handled)
+		}
+		if aerr := prunePendingOnRoute(next, steps, outcomes, pending); aerr != nil {
+			return cur, rec, aerr
 		}
 		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 		return cur, rec, nil
 
 	case scanPanel:
 		if len(group) == 1 {
-			cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes)
+			cur, rec, err := runSingletonAndMark(ctx, m, cur, rec, group[0], confirm, bus, outcomes, pending)
 			if err != nil {
-				return cur, rec, err
+				resolved, handled := resolveCatchable(err, group[0].ID, steps, outcomes, pending)
+				return cur, rec, continueOrAbort(resolved, handled)
 			}
 			fireCheckpoint(onCheckpoint, cur, rec, outcomes)
 			return cur, rec, nil
 		}
 		cur, rec, err := runWave(ctx, m, cur, rec, group)
 		if err != nil {
-			return cur, rec, err
+			var fe *failureError
+			if errors.As(err, &fe) {
+				// The shared pre-spawn transition failed: uncatchable, no
+				// member's outcome marked.
+				return cur, rec, err
+			}
+			resolved, handled := resolvePanelFailure(err, group, steps, outcomes, pending)
+			return cur, rec, continueOrAbort(resolved, handled)
 		}
 		for _, step := range group {
 			emitStep(ctx, bus, step.ID)
@@ -152,74 +162,89 @@ func advanceGroup(
 
 	default:
 		// Unreachable: nextReadyGroup returns only the five scanResult
-		// values this switch already handles. This guards against a
-		// future scanResult addition landing without a matching case.
+		// values this switch already handles.
 		return cur, rec, errorf("nextReadyGroup returned an unknown result")
 	}
 }
 
 // runSingletonAndMark runs step through runSingleton and marks its
-// resolution in outcomes: OutcomeSucceeded on success, OutcomeFailed
-// on error, including every chained-step failure point runSingleton
-// reports.
+// resolution: OutcomeSucceeded on success, OutcomeFailed on error.
+// It then prunes step from every pending handler set: a handler that
+// ran, either way, can never lose its only runner.
 func runSingletonAndMark(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, step Step, confirm Confirm, bus *events.Bus,
-	outcomes map[string]Outcome,
+	outcomes map[string]Outcome, pending map[string]*handledFailure,
 ) (machine.Status, machine.InOut, error) {
-	cur, rec, err := runSingleton(ctx, m, cur, rec, step, confirm, bus)
+	cur, rec, err := runSingleton(ctx, m, cur, rec, step, confirm, bus, pending)
 	if err != nil {
 		outcomes[step.ID] = OutcomeFailed
+		prunePendingHandler(pending, step.ID)
 		return cur, rec, err
 	}
 	outcomes[step.ID] = OutcomeSucceeded
+	prunePendingHandler(pending, step.ID)
 	return cur, rec, nil
 }
 
-// runSingleton runs one ready step. It handles a chained step by
-// running its child workflow first, then firing the parent transition.
-// It returns the updated status and record, or an error.
+// runSingleton runs one ready step, handling a chained step by running
+// its child workflow first, then firing the parent transition. A step
+// admitted through a pending failed need fires with a Failure in ctx.
 func runSingleton(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, step Step, confirm Confirm, bus *events.Bus,
+	pending map[string]*handledFailure,
 ) (machine.Status, machine.InOut, error) {
+	fireCtx := ctx
+	if fail, ok := failureForStep(step, pending); ok {
+		fireCtx = withFailure(ctx, fail)
+	}
+
 	if step.Sub != nil {
 		child, err := runChild(ctx, step.Sub, m, confirm)
 		if err != nil {
+			// The child Run already exhausted its own continue rule, so
+			// any *failureError tag here is the child frame's, not this
+			// one; strip it so it never matches a parent-level fallback.
+			var fe *failureError
+			for errors.As(err, &fe) {
+				err = fe.err
+			}
 			return cur, rec, err
 		}
-		cur, rec, err = fireFromChild(ctx, m, cur, rec, step, child)
+		cur, rec, err = fireFromChild(fireCtx, m, cur, rec, step, child)
 		if err != nil {
 			return cur, rec, err
 		}
-		if err := confirm(ctx, step); err != nil {
-			return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
+		if err := confirmStep(ctx, confirm, step); err != nil {
+			return cur, rec, err
 		}
 		emitStep(ctx, bus, step.ID)
 		return cur, rec, nil
 	}
 
 	rows := m.AllowedTransitions(cur)
-	row, err := pickTransition(rows, machine.Status(step.To))
+	row, err := pickTransitionFor(step, rows, machine.Status(step.To))
 	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
+		return cur, rec, err
 	}
 
-	cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
+	cur, rec, err = fireStep(fireCtx, m, cur, rec, step, row)
 	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
+		return cur, rec, err
 	}
 
-	if err := confirm(ctx, step); err != nil {
-		return cur, rec, errorf("step %q: ack not confirmed: %w", step.ID, err)
+	if err := confirmStep(ctx, confirm, step); err != nil {
+		return cur, rec, err
 	}
 	emitStep(ctx, bus, step.ID)
 	return cur, rec, nil
 }
 
-// runChild runs a chained step's child workflow to completion. It
-// passes the same machine definition and a fresh InOut, starting from
-// the machine's initial status. It uses the same confirm closure.
+// runChild runs a chained step's child workflow to completion, with
+// the same machine definition, a fresh InOut, and the same confirm.
+// A chained step's own child workflow reports no checkpoint; nested
+// resumability is a future phase's concern.
 func runChild(
 	ctx context.Context, child *Definition, m *machine.Definition, confirm Confirm,
 ) (machine.Status, error) {
@@ -227,21 +252,21 @@ func runChild(
 	return report.Status(), err
 }
 
-// fireFromChild picks the parent transition row from cur to child,
-// fires it, and returns the updated status and record. It wraps
-// errors with the parent step ID.
+// fireFromChild picks the parent transition row from cur to child and
+// fires it, through the same pickTransitionFor and fireStep helpers
+// the straight-line branch uses, so its failures tag the same way.
 func fireFromChild(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, step Step, child machine.Status,
 ) (machine.Status, machine.InOut, error) {
 	rows := m.AllowedTransitions(cur)
-	row, err := pickTransition(rows, child)
+	row, err := pickTransitionFor(step, rows, child)
 	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
+		return cur, rec, err
 	}
-	cur, rec, err = m.Fire(ctx, cur, row.Trigger, rec)
+	cur, rec, err = fireStep(ctx, m, cur, rec, step, row)
 	if err != nil {
-		return cur, rec, errorf("step %q: %w", step.ID, err)
+		return cur, rec, err
 	}
 	return cur, rec, nil
 }
@@ -356,18 +381,19 @@ type waveResult struct {
 }
 
 // runWave resolves the shared transition row once, before it spawns
-// any goroutine. validatePanels' homogeneity rule guarantees every
-// member of group shares one To, so pickTransition(rows, to) is a
-// pure function of (rows, to); it cannot fail for one member and
-// succeed for a sibling. A pickTransition failure fails the whole
+// any goroutine: validatePanels' homogeneity rule guarantees every
+// member of group shares one To, so this pick cannot fail for one
+// member and succeed for a sibling. A failure here fails the whole
 // group before any goroutine spawns: no member's Guard, OnExit, or
-// OnEntry runs. Every member then fires row.Trigger from its own
-// InOut copy, concurrently. A member Fire failure joins with its
-// siblings' failures through errors.Join; cur and rec stay at their
-// pre-wave values, and the caller must not mark any member done. On
-// success runWave returns the first group member's result, by
-// declaration order, looked up by ID after every goroutine finishes,
-// not by channel arrival order.
+// OnEntry runs; it tags as failureKindTransition so advanceGroup's
+// scanPanel case routes it straight to an uncatchable abort, distinct
+// from a per-member Fire failure. Every member then fires row.Trigger
+// from its own InOut copy, concurrently. A member Fire failure joins
+// with its siblings' failures through errors.Join; cur and rec stay
+// at their pre-wave values, and the caller must not mark any member
+// done. On success runWave returns the first group member's result,
+// by declaration order, looked up by ID after every goroutine
+// finishes.
 func runWave(
 	ctx context.Context, m *machine.Definition, cur machine.Status,
 	rec machine.InOut, group []Step,
@@ -376,7 +402,7 @@ func runWave(
 	to := machine.Status(group[0].To)
 	row, err := pickTransition(rows, to)
 	if err != nil {
-		return cur, rec, errorf("panel: %w", err)
+		return cur, rec, newFailureError(failureKindTransition, errorf("panel: %w", err))
 	}
 
 	results := make(chan waveResult, len(group))

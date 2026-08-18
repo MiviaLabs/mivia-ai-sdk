@@ -9,17 +9,20 @@ import (
 
 // Resume restarts a graph walk from a stored checkpoint. It seeds
 // outcomes from checkpoint.Done (every listed ID set to
-// OutcomeSucceeded) and checkpoint.Skipped (every listed ID set to
-// OutcomeSkipped), cur from checkpoint.Status, and rec from
+// OutcomeSucceeded), checkpoint.Skipped (every listed ID set to
+// OutcomeSkipped), and checkpoint.Failed (every listed ID set to
+// OutcomeFailed), cur from checkpoint.Status, and rec from
 // checkpoint.Record, then continues the same graph walk Run uses. A
 // route exclusion or an admission skip captured before the pause
-// stays skipped after Resume; nextReadyGroup and admissionVerdict
-// never re-evaluate a step already seeded in outcomes. Resume runs
-// five entry checks in order, before any seeding happens: a nil d, a
-// nil m, a nil confirm, a checkpoint that fails Validate, and a
-// checkpoint.Done or checkpoint.Skipped entry naming a step ID absent
-// from d. The first failing check returns an error immediately; no
-// step runs.
+// stays skipped after Resume; a step already resolved OutcomeFailed
+// before the pause, caught or not, is never re-run after Resume;
+// nextReadyGroup and admissionVerdict never re-evaluate a step
+// already seeded in outcomes. Resume runs five entry checks in order,
+// before any seeding happens: a nil d, a nil m, a nil confirm, a
+// checkpoint that fails Validate, and a checkpoint.Done,
+// checkpoint.Skipped, or checkpoint.Failed entry naming a step ID
+// absent from d. The first failing check returns an error
+// immediately; no step runs.
 //
 // Resume performs no topology check across Done: it never confirms
 // that a step named in Done has every one of its own Needs also named
@@ -29,6 +32,9 @@ import (
 // machine.Fire call fails, because checkpoint.Status no longer names a
 // status the seeded walk can reach that step from. Resume returns
 // that failure as an ordinary error.
+//
+// Resume starts pending empty; it does not restore a still-pending
+// fallback's bookkeeping from before the pause. See Checkpoint.
 func Resume(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	checkpoint Checkpoint, confirm Confirm, bus *events.Bus,
@@ -47,7 +53,7 @@ func Resume(
 		return Report{status: machine.Status(""), record: checkpoint.Record}, err
 	}
 
-	outcomes := make(map[string]Outcome, len(checkpoint.Done)+len(checkpoint.Skipped))
+	outcomes := make(map[string]Outcome, len(checkpoint.Done)+len(checkpoint.Skipped)+len(checkpoint.Failed))
 	for _, id := range checkpoint.Done {
 		if !hasStep(d.steps, id) {
 			return Report{status: checkpoint.Status, record: checkpoint.Record},
@@ -61,6 +67,13 @@ func Resume(
 				errorf("resume: checkpoint names unknown step %q", id)
 		}
 		outcomes[id] = OutcomeSkipped
+	}
+	for _, id := range checkpoint.Failed {
+		if !hasStep(d.steps, id) {
+			return Report{status: checkpoint.Status, record: checkpoint.Record},
+				errorf("resume: checkpoint names unknown step %q", id)
+		}
+		outcomes[id] = OutcomeFailed
 	}
 
 	return runLoop(ctx, d, m, checkpoint.Status, checkpoint.Record, outcomes, confirm, bus, onCheckpoint)
@@ -79,12 +92,19 @@ func hasStep(steps []Step, id string) bool {
 // runLoop is the shared graph walk Run and Resume both drive. It
 // takes the seed cur, rec, and outcomes: Run seeds outcomes empty and
 // cur at m.Initial(); Resume seeds outcomes from a checkpoint's Done
-// and cur/rec from the checkpoint's Status/Record.
+// and cur/rec from the checkpoint's Status/Record. runLoop always
+// starts pending empty: a single-step Definition can never declare an
+// AdmissionOnFailed step (validateFailureAdmission rejects a needless
+// root), and a multi-step resume re-derives every still-pending
+// handler set the same way a fresh Run does, from the steps whose
+// outcome the seed leaves unresolved.
 func runLoop(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	cur machine.Status, rec machine.InOut, outcomes map[string]Outcome,
 	confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint),
 ) (Report, error) {
+	pending := make(map[string]*handledFailure)
+
 	if len(d.steps) == 0 {
 		return Report{status: cur, record: rec, outcomes: outcomes}, nil
 	}
@@ -96,7 +116,7 @@ func runLoop(
 			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("run paused: %w", err)
 		}
 		var err error
-		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes)
+		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes, pending)
 		if err != nil {
 			return Report{status: cur, record: rec, outcomes: outcomes}, err
 		}
@@ -111,7 +131,7 @@ func runLoop(
 
 		next, group, res := nextReadyGroup(d.steps, d.panels, outcomes)
 		var err error
-		cur, rec, err = advanceGroup(ctx, m, cur, rec, next, group, res, d.steps, confirm, bus, outcomes, onCheckpoint)
+		cur, rec, err = advanceGroup(ctx, m, cur, rec, next, group, res, d.steps, confirm, bus, outcomes, pending, onCheckpoint)
 		if err != nil {
 			return Report{status: cur, record: rec, outcomes: outcomes}, err
 		}
@@ -121,13 +141,19 @@ func runLoop(
 }
 
 // fireCheckpoint calls onCheckpoint with a fresh Checkpoint built from
-// cur, rec, the OutcomeSucceeded entries of outcomes, and the
-// OutcomeSkipped entries of outcomes. A nil onCheckpoint skips the
-// call; the loop pays no cost building the checkpoint value when the
-// hook is nil.
+// cur, rec, the OutcomeSucceeded entries of outcomes, the
+// OutcomeSkipped entries of outcomes, and the OutcomeFailed entries of
+// outcomes. A nil onCheckpoint skips the call; the loop pays no cost
+// building the checkpoint value when the hook is nil.
 func fireCheckpoint(onCheckpoint func(Checkpoint), cur machine.Status, rec machine.InOut, outcomes map[string]Outcome) {
 	if onCheckpoint == nil {
 		return
 	}
-	onCheckpoint(Checkpoint{Status: cur, Record: rec, Done: doneFrom(outcomes), Skipped: skippedFrom(outcomes)})
+	onCheckpoint(Checkpoint{
+		Status:  cur,
+		Record:  rec,
+		Done:    doneFrom(outcomes),
+		Skipped: skippedFrom(outcomes),
+		Failed:  failedFrom(outcomes),
+	})
 }

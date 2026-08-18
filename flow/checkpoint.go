@@ -8,37 +8,58 @@ import (
 
 // Checkpoint is the full resumable state of a Run: the current
 // machine.Status, the current machine.InOut record, the sorted step
-// IDs of every step that resolved OutcomeSucceeded so far, and the
-// sorted step IDs of every step that resolved OutcomeSkipped so far.
-// Done's and Skipped's order is a sort, not a completion order: two
-// steps that complete in one order can appear in the opposite order,
-// if their IDs sort the other way. A route exclusion (applyRoute) or
-// an admission skip (nextReadyGroup) is final regardless of the
+// IDs of every step that resolved OutcomeSucceeded so far, the sorted
+// step IDs of every step that resolved OutcomeSkipped so far, and the
+// sorted step IDs of every step that resolved OutcomeFailed so far,
+// whether or not a fallback caught that failure. Done's, Skipped's,
+// and Failed's order is a sort, not a completion order: two steps
+// that complete in one order can appear in the opposite order, if
+// their IDs sort the other way. A route exclusion (applyRoute) or an
+// admission skip (nextReadyGroup) is final regardless of the
 // excluding step's later outcome; Skipped preserves that decision
 // across a pause and a Resume the same way Done preserves a success.
-// Run aborts on the first OutcomeFailed step, so Checkpoint never
-// needs to record a failure.
+//
+// Failed preserves only the resolved outcome of an already-caught
+// failure; Resume does not restore the fallback bookkeeping a still-
+// pending handler needs. A fallback step that resolves after a
+// Resume still runs, admitted by AdmissionOnFailed the same way it
+// would without a pause, but FailureFrom returns false inside it: the
+// Failure a pre-pause fallback would have read does not survive the
+// round trip. A Route exclusion that would have emptied a failure's
+// last pending handler set, and so aborted the run with the recorded
+// step error, instead resolves as an ordinary skip after a Resume; no
+// error carries the lost failure across the boundary. Run never
+// checkpoints this loss silently: see Run's doc comment.
 type Checkpoint struct {
 	Status  machine.Status
 	Record  machine.InOut
 	Done    []string
 	Skipped []string
+	Failed  []string
 }
 
-// Validate rejects an empty Status and a step ID named in both Done
-// and Skipped: a step cannot have resolved both OutcomeSucceeded and
-// OutcomeSkipped. Encode and Decode both call it.
+// Validate rejects an empty Status and a step ID named in more than
+// one of Done, Skipped, and Failed: a step cannot resolve to two
+// different outcomes. Encode and Decode both call it.
 func (c Checkpoint) Validate() error {
 	if c.Status == machine.Status("") {
 		return errorf("checkpoint: status must not be empty")
 	}
-	skipped := make(map[string]bool, len(c.Skipped))
-	for _, id := range c.Skipped {
-		skipped[id] = true
+	seen := make(map[string]string, len(c.Done)+len(c.Skipped)+len(c.Failed))
+	groups := []struct {
+		name string
+		ids  []string
+	}{
+		{"Done", c.Done},
+		{"Skipped", c.Skipped},
+		{"Failed", c.Failed},
 	}
-	for _, id := range c.Done {
-		if skipped[id] {
-			return errorf("checkpoint: step %q named in both Done and Skipped", id)
+	for _, g := range groups {
+		for _, id := range g.ids {
+			if prior, ok := seen[id]; ok {
+				return errorf("checkpoint: step %q named in both %s and %s", id, prior, g.name)
+			}
+			seen[id] = g.name
 		}
 	}
 	return nil
@@ -54,6 +75,12 @@ func doneFrom(outcomes map[string]Outcome) []string {
 // OutcomeSkipped entry in outcomes.
 func skippedFrom(outcomes map[string]Outcome) []string {
 	return idsWithOutcome(outcomes, OutcomeSkipped)
+}
+
+// failedFrom returns the lexicographically sorted step IDs of every
+// OutcomeFailed entry in outcomes.
+func failedFrom(outcomes map[string]Outcome) []string {
+	return idsWithOutcome(outcomes, OutcomeFailed)
 }
 
 // idsWithOutcome returns the lexicographically sorted step IDs whose

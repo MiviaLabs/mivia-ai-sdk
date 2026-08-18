@@ -19,6 +19,9 @@ surface below mirrors `api/ledger.txt`.
 - `Store` — the pluggable record backend: `Load`, `CompareAndSwap`,
   `Range`.
 - `MemStore` — the shipped mutex-guarded `Store`.
+- `MemStoreOptions` — optional cap for `MemStore`. Field `MaxEntries`
+  int; zero means unbounded, positive bounds live entries, negative is
+  rejected.
 - `SQLiteStore` — a `Store` backed by a local `modernc.org/sqlite`
   database file (or `":memory:"`). Behind the `ledger_sqlite` build
   tag; see "SQLiteStore" below.
@@ -37,7 +40,9 @@ surface below mirrors `api/ledger.txt`.
 
 - `New(store, bus)` — builds a `Ledger`. A nil `store` defaults to
   `NewMemStore()`. A nil `bus` disables events.
-- `NewMemStore()` — builds an empty `MemStore`.
+- `NewMemStore()` — builds an empty, unbounded `MemStore`.
+- `NewMemStoreWithOptions(opts)` — builds a `MemStore` honoring the
+  cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
 - `Ledger.Admit(ctx, key, seq, task, needs...)` — records a task once
   per key. Returns `false, nil`, not an error, for a duplicate or a
   post-completion resubmission.
@@ -81,6 +86,8 @@ Use `errors.Is` to test these.
 - `ErrNoKey` — the key has no admitted record.
 - `ErrUnknownStatus` — `Complete` got a `status` other than
   `StatusCompleted` or `StatusFailed`.
+- `ErrInvalidMaxEntries` — `NewMemStoreWithOptions` got a negative
+  `MaxEntries`.
 
 ## Invariants
 

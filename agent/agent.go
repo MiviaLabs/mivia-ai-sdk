@@ -9,9 +9,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
-// Sentinel errors for New; test with errors.Is. A card validation
-// failure wraps discovery's own error instead, because discovery
-// exports no sentinel.
+// Sentinel errors for New and Run; test with errors.Is. A card
+// validation failure wraps discovery's own error instead, because
+// discovery exports no sentinel.
 var (
 	ErrNoIdentity = errors.New("agent: identity is required")
 	ErrNoPlan     = errors.New("agent: plan is required")

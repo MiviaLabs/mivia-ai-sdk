@@ -75,7 +75,7 @@ framework. One small plan per step lives in
   client, discovery card. The identity key wrap, a2a mapping, a2a
   client, and discovery card ship.
 - **Composition**: agent definition, run loop, tools, memory. The
-  agent definition ships; the run loop stays future.
+  agent definition and run loop ship; tools and memory stay future.
 - **System integration**: the end-to-end multi-agent exchange. Future.
 - **Reactions**: the events bus and the block emissions. The bus and
   the machine emissions ship.

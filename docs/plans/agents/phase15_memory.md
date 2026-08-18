@@ -19,25 +19,39 @@ A first version evicts by insertion order only.
 ## API
 
 - `type Store struct` holding the blobs and the budget.
-- `New(maxBytes int) *Store`
+- `var ErrNoBudget` — the sentinel for a non-positive `maxBytes` passed
+  to `New`.
+- `var ErrBudgetExceeded` — the sentinel for a blob that `Put` rejects
+  because it is larger than the store's budget.
+- `var ErrUnknownRef` — the sentinel for a `ref` that `Get` does not
+  hold.
+- `New(maxBytes int) (*Store, error)` — a non-positive `maxBytes`
+  wraps `ErrNoBudget`.
 - `(*Store).Put(content []byte) (ref string, err error)`
 - `(*Store).Get(ref string) ([]byte, error)`
 
-`Put` computes the `sha256:` content address with `envelope.ContextRef`.
-It rejects a blob over the budget. `Get` returns the blob for a known
-ref and an error for an unknown one. The store is safe for concurrent
-use.
+`Put` computes the `sha256:` content address via
+`envelope.ContextRef(string(content))`. It rejects a blob over the
+budget with `ErrBudgetExceeded`. `Get` returns the blob for a known
+ref and `ErrUnknownRef` for an unknown one. The store is safe for
+concurrent use.
 
 ## Tests
 
 Test files live in `memory/memory_test/`:
 
-- `store_test.go` — the red-green cases for `Put` and `Get`.
+- `store_test.go` — the red-green cases for `New`, `Put`, and `Get`.
   Start with the assertions. Confirm they fail on the empty phase.
   Implement and watch them pass.
+  - `TestNew`: a positive `maxBytes`, a zero `maxBytes` (`ErrNoBudget`),
+    a negative `maxBytes` (`ErrNoBudget`).
+  - `TestPut`: a blob under budget, a blob over budget
+    (`ErrBudgetExceeded`).
+  - `TestGet`: a known ref, an unknown ref (`ErrUnknownRef`).
 - `store_integration_test.go` — put two blobs, get them by ref, and
   prove the refs match `envelope.ContextRef`. Exceed the budget and
-  prove the store rejects it. Run under `go test -race`.
+  prove the store rejects it with `ErrBudgetExceeded`. Run under
+  `go test -race`.
 - `store_bench_test.go` — benchmark `Put` and `Get` on a ten-megabyte
   budget. Target under one microsecond for a small blob.
 

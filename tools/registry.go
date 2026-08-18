@@ -26,7 +26,21 @@ var (
 	// ErrScopeDenied is RunScoped's error when scope.Allowed returns
 	// false for the resolved tool.
 	ErrScopeDenied = errors.New("tools: tool denied by scope")
+	// ErrToolDeclined is RunScoped's error when scope.Approve returns
+	// (false, nil). Test with errors.Is. Phase 36 addition.
+	ErrToolDeclined = errors.New("tools: tool declined by approval")
 )
+
+// ToolCall describes one call RunScoped is about to make, passed to
+// a Scope's Approve function. Name is the resolved tool's
+// registration name. In is the caller's input payload, unchanged from
+// the RunScoped call. Profile is ExecutionProfileOf(t) for the
+// resolved tool.
+type ToolCall struct {
+	Name    string
+	In      InOut
+	Profile ExecutionProfile
+}
 
 // Registry holds tools by name. Built only through New. Safe for
 // concurrent Add, Get, Remove, and Run; a sync.RWMutex guards the map.
@@ -97,14 +111,34 @@ func (r *Registry) Run(ctx context.Context, name string, in InOut) (Out, error) 
 // scope is non-nil, then calls the tool the same way Run does.
 // Returns ErrUnknownName for an unresolved name and ErrScopeDenied
 // for a name the scope excludes. A nil scope allows every resolved
-// tool, matching Run's behavior.
+// tool, matching Run's behavior. After scope.Allowed passes, when
+// scope.approve is non-nil and the resolved tool's rank meets or
+// exceeds scope.approvalThreshold's rank, RunScoped calls
+// scope.approve before it calls Run. approve returning (true, nil)
+// proceeds to Run. approve returning (false, nil) returns
+// ErrToolDeclined. approve returning a non-nil error returns that
+// error unchanged. The map lookup lock is released before approve
+// runs, so a blocking approve never blocks other registry callers.
 func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error) {
 	t, ok := r.Get(name)
 	if !ok {
 		return Out{}, ErrUnknownName
 	}
-	if scope != nil && !scope.Allowed(name, t) {
+	if scope == nil {
+		return t.Run(ctx, in)
+	}
+	if !scope.Allowed(name, t) {
 		return Out{}, ErrScopeDenied
+	}
+	profile := ExecutionProfileOf(t)
+	if scope.approve != nil && executionClassRank(profile.Class) >= executionClassRank(scope.approvalThreshold) {
+		approved, err := scope.approve(ctx, ToolCall{Name: name, In: in, Profile: profile})
+		if err != nil {
+			return Out{}, err
+		}
+		if !approved {
+			return Out{}, ErrToolDeclined
+		}
 	}
 	return t.Run(ctx, in)
 }

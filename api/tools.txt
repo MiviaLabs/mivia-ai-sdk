@@ -43,13 +43,21 @@ package tools
   type ScopeOptions struct {
   Allowlist []string
   ExtraDenylist []string
+  Approve func(ctx context.Context, call ToolCall) (bool, error)
+  ApprovalThreshold ExecutionClass
 }
   type Tool interface {
 	Name() string
 	Run(ctx context.Context, in InOut) (Out, error)
 }
+  type ToolCall struct {
+  Name string
+  In InOut
+  Profile ExecutionProfile
+}
   var ErrBlankName
   var ErrDuplicateName
   var ErrNilTool
   var ErrScopeDenied
+  var ErrToolDeclined
   var ErrUnknownName

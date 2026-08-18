@@ -1,29 +1,41 @@
 package tools
 
-// ScopeOptions holds the inputs to NewScope: an allowlist and an
-// extra denylist.
+import "context"
+
+// ScopeOptions holds the inputs to NewScope: an allowlist, an extra
+// denylist, and an optional approval gate. Approve and
+// ApprovalThreshold are phase 36 additions; both are optional. A
+// ScopeOptions with neither set behaves exactly as phase 31 shipped
+// it, with no approval check.
 type ScopeOptions struct {
-	Allowlist     []string
-	ExtraDenylist []string
+	Allowlist         []string
+	ExtraDenylist     []string
+	Approve           func(ctx context.Context, call ToolCall) (bool, error)
+	ApprovalThreshold ExecutionClass
 }
 
-// Scope is a narrowing filter over tool names. Built only through
-// NewScope. Narrows only: ExtraDenylist always wins over Allowlist,
-// and no operation on a built Scope can re-add a name ExtraDenylist
-// removed.
+// Scope is a narrowing filter over tool names, plus an optional
+// approval gate. Built only through NewScope. Narrows only:
+// ExtraDenylist always wins over Allowlist, and no operation on a
+// built Scope can re-add a name ExtraDenylist removed.
 type Scope struct {
-	allow map[string]struct{}
-	deny  map[string]struct{}
+	allow             map[string]struct{}
+	deny              map[string]struct{}
+	approve           func(ctx context.Context, call ToolCall) (bool, error)
+	approvalThreshold ExecutionClass
 }
 
 // NewScope builds a Scope from opts. An empty Allowlist means every
 // non-denied, non-privileged tool is allowed. ExtraDenylist always
 // removes a name from the allowed set, even when Allowlist also names
-// it.
+// it. Approve and ApprovalThreshold carry through unchanged for
+// RunScoped's approval check.
 func NewScope(opts ScopeOptions) *Scope {
 	s := &Scope{
-		allow: make(map[string]struct{}, len(opts.Allowlist)),
-		deny:  make(map[string]struct{}, len(opts.ExtraDenylist)),
+		allow:             make(map[string]struct{}, len(opts.Allowlist)),
+		deny:              make(map[string]struct{}, len(opts.ExtraDenylist)),
+		approve:           opts.Approve,
+		approvalThreshold: opts.ApprovalThreshold,
 	}
 	for _, name := range opts.Allowlist {
 		s.allow[name] = struct{}{}

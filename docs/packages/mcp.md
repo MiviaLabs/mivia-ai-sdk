@@ -72,6 +72,11 @@ run. The exported surface below mirrors `api/mcp.txt`.
 - A progress notification for a call made through `CallToolWithProgress`
   reaches only that call's own handler, never another call's, even
   under concurrent calls on the same `Client`.
+- A `CallToolWithProgress` handler entry is retained for the `Client`'s
+  whole lifetime, not released after its call returns; `Close` clears
+  every entry at once. This guards against a late notification the SDK
+  dispatches on a goroutine unordered against the call's own response
+  goroutine.
 
 ## Why this shape
 

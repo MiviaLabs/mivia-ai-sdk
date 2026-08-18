@@ -18,10 +18,11 @@ references.
 
 ## Package map
 
-The diagram shows the seventeen packages and the import edges between
+The diagram shows the eighteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`contextbudget`, `discovery`, `envelope`, `events`, `provider`, and
-`tools` are leaves: they import no other package in this module.
+`contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
+`provider`, and `tools` are leaves: they import no other package in
+this module.
 
 ```mermaid
 flowchart LR
@@ -49,6 +50,7 @@ flowchart LR
     mcp --> tools
     contextbudget[contextbudget]
     discovery[discovery]
+    durablefence[durablefence]
     envelope[envelope]
     events[events]
     provider[provider]
@@ -181,6 +183,15 @@ flowchart LR
   `StatusBlocked`. `ledger` reuses `machine.Status` for its five task
   states and imports `events` for its typed event names; it imports
   no other package. See [packages/ledger.md](packages/ledger.md).
+- `durablefence/` — a test-only conformance kit. It provides
+  `Scenario`, `Validate`, `ErrIncompleteScenario`, six `Check*`
+  functions, and `RunAll`. A caller wires its own claim, takeover,
+  mutate, release, and fence-reading calls into a `Scenario` literal
+  and runs `RunAll` to prove the claim-and-fence invariants hold,
+  including a concurrent takeover-versus-mutate race a sequential test
+  cannot reach. `durablefence` is a leaf with no import edge to or
+  from any other package in this module; no production code may import
+  it. `ledger/ledger_test/scenario_test.go` wires it against `Ledger`.
 - `memory/` — the content-addressed context store. It provides
   `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's

@@ -12,10 +12,19 @@ BAD_BASENAME = re.compile(
     r"(?i)(?:phase|tdd|perf|wip|draft|scratch|tmp|old|backup)"
     r"|_v\d+\."
 )
-BAD_FUNC = re.compile(
-    r"(?i)func\s+\w*(?:phase|tdd|perf|wip|draft|scratch|tmp|old|backup)"
-    r"|func\s+\w+_v\d+\w*\s*\("
-)
+BAD_WORDS = {"phase", "tdd", "perf", "wip", "draft", "scratch", "tmp", "old", "backup"}
+VERSION_SUFFIX = re.compile(r"_v\d+", re.IGNORECASE)
+FUNC_DECL = re.compile(r"\bfunc\s+(?:\([^)]*\)\s+)?(\w+)\s*\(")
+CAMEL_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+")
+
+
+def _has_bad_word(name: str) -> bool:
+    """True if name contains a banned keyword as its own camelCase word,
+    not merely as a substring (so Hold does not trip on old)."""
+    if VERSION_SUFFIX.search(name):
+        return True
+    words = (w.lower() for w in CAMEL_WORD.findall(name))
+    return any(w in BAD_WORDS for w in words)
 
 
 def check_file(path: Path, rel: Path) -> list[str]:
@@ -23,10 +32,12 @@ def check_file(path: Path, rel: Path) -> list[str]:
     if BAD_BASENAME.search(path.name):
         violations.append(f"{rel}: filename contains a prohibited keyword")
     for n, line in enumerate(path.read_text().splitlines(), 1):
-        if BAD_FUNC.search(line):
-            violations.append(
-                f"{rel}:{n}: function name contains a prohibited keyword"
-            )
+        for m in FUNC_DECL.finditer(line):
+            if _has_bad_word(m.group(1)):
+                violations.append(
+                    f"{rel}:{n}: function name contains a prohibited keyword"
+                )
+                break
     return violations
 
 

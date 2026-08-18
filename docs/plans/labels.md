@@ -11,7 +11,7 @@ rule narrow so it never flags ordinary prose.
 Inside: the new gate script, its Makefile wiring, the rewrite of four files,
 two new AGENTS.md items, and this plan. Outside: Go code, `api/` locks,
 `policy/layers.json`, `semgrep/` rules, README.md, and
-`docs/protocol-design.md` stay untouched; they are label-free today.
+`docs/architecture.md` stay untouched; they are label-free today.
 
 ### The rule
 
@@ -65,7 +65,7 @@ two new AGENTS.md items, and this plan. Outside: Go code, `api/` locks,
 
 - Project-name blacklist: rejected. It needs a curated list, and it would
   flag legitimate technical names, such as the protocol name "A2A" in
-  `docs/protocol-design.md` and `docs/plans/a2a.md`. The label ban, the
+  `docs/architecture.md` and `docs/plans/a2a.md`. The label ban, the
   writing standard, and adversarial review cover the intent.
 - Lowercase and spaced variants: rejected. Lowercase stays out of scope
   because the directive's examples are uppercase and the d5 fixture

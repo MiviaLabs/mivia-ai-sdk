@@ -2,16 +2,18 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, a2aclient, tools, mcp, ledger,
-memory, provider, channel, trigger, scheduler, and agent. Each package
-covers one concern and composes through its exported API. This doc
-tree covers the wire protocol, the module map, every package's
-exported surface, and runnable-style walkthroughs.
+heartbeat, identity, discovery, a2a, a2aclient, tools, contextbudget,
+mcp, ledger, durablefence, memory, provider, channel, trigger,
+scheduler, and agent. Each package covers one concern and composes
+through its exported API. This doc tree covers the module map, the
+wire-protocol rationale, every package's exported surface, and
+runnable-style walkthroughs.
 
 ## Start here
 
-- [architecture.md](architecture.md) — the module map and the message flow.
-- [protocol-design.md](protocol-design.md) — the wire-protocol rationale: why the envelope is shaped this way.
+- [architecture.md](architecture.md) — the single design reference:
+  the module map, the message flow, why the envelope is shaped this
+  way, the gate system, and the invariants.
 
 ## Package reference
 
@@ -25,9 +27,11 @@ exported surface, and runnable-style walkthroughs.
 - [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, and the runner.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
 - [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter: send a message as a remote task, poll its status, and fetch its result.
-- [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name.
+- [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
+- [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
+- [packages/durablefence.md](packages/durablefence.md) — a leaf, test-only conformance kit that proves claim, takeover, and fence invariants against any implementation.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, and the request and response types.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
@@ -45,12 +49,24 @@ exported surface, and runnable-style walkthroughs.
 - [examples/flow-runner.md](examples/flow-runner.md) — a step graph driven end to end through the runner.
 - [examples/agent-dispatch.md](examples/agent-dispatch.md) — the full end-to-end walkthrough: an agent dispatching a plan through signed, acked messages.
 - [examples/channel-ndjson-stdio.md](examples/channel-ndjson-stdio.md) — a `channel.Notifier` speaking newline-delimited JSON over stdin and stdout, the `mivia-agent` desktop app's own wire convention.
+- [examples/flow-panel-concurrent.md](examples/flow-panel-concurrent.md) — one panel wave in depth: two steps firing the same transition row at the same time.
+- [examples/flow-branch-routing.md](examples/flow-branch-routing.md) — a branch step's `Route` keeping one of two direct dependents at run time.
+- [examples/flow-retry-policy.md](examples/flow-retry-policy.md) — a flaky step retried under a `RetryPolicy` until it succeeds.
+- [examples/flow-loop-driving.md](examples/flow-loop-driving.md) — a step repeating its `Sub` child workflow under a `LoopPolicy` until a guard stops it.
+- [examples/flow-fallback-admission.md](examples/flow-fallback-admission.md) — a failed step caught by an `AdmissionOnFailed` fallback instead of aborting the run.
+- [examples/flow-checkpoint-resume.md](examples/flow-checkpoint-resume.md) — a run paused by canceling `ctx`, then resumed from a stored `Checkpoint`.
+- [examples/tools-scope-approval.md](examples/tools-scope-approval.md) — a privileged tool denied by a `Scope`'s allowlist, then gated behind an `Approve` callback.
+- [examples/memory-context-store.md](examples/memory-context-store.md) — three blobs put under a byte budget, the oldest evicted to make room for the third.
+- [examples/provider-completer-turn.md](examples/provider-completer-turn.md) — one hand-written `Completer` driven through `RunTurn`'s sync and streamed dispatch paths.
+- [examples/ledger-admission-lifecycle.md](examples/ledger-admission-lifecycle.md) — admit, claim, renew, a stale-lease takeover, complete as failed, and a blocked dependent.
+- [examples/agent-composition.md](examples/agent-composition.md) — `agent.Run` composed with `provider`, `tools`, `mcp`, `ledger`, and `memory`, shipped as both a Markdown fence and a committed, runnable package under `docs/examples/`.
+- [examples/scheduler-recurring-jobs.md](examples/scheduler-recurring-jobs.md) — two recurring jobs on one `Scheduler`, one of them failing, observed through an `events.Bus`.
+- [examples/trigger-condition-action.md](examples/trigger-condition-action.md) — a named `Condition`/`Action` pair on a `trigger.Registry`, fired once unmet and once met.
+- [examples/discovery-capability-match.md](examples/discovery-capability-match.md) — a parsed capability card checked against a matching and a non-matching request.
+- [examples/identity-agent-key.md](examples/identity-agent-key.md) — a generated agent key signing an envelope message and matching its own hex signer.
+- [examples/a2a-mapping-roundtrip.md](examples/a2a-mapping-roundtrip.md) — a signed message mapped to an A2A `Part` and back, verified bit-for-bit.
 
 ## Internal records
 
 `docs/plans/` holds internal development records: the change contract
 behind each package. They are not part of this documentation.
-
-`docs/research-*.md` files are internal research notes. They are not
-part of the public reading path, and this index does not link them
-individually.

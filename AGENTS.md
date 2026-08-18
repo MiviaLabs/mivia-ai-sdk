@@ -100,9 +100,10 @@ Go SDK for building AI agents. Module:
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.
-- `docs/` — README.md is the index; architecture.md the module map;
+- `docs/` — README.md is the index; architecture.md the single design
+  reference (module map, message flow, wire rationale, gate system);
   packages/ the package references; examples/ the walkthroughs;
-  plans/ the change contracts; protocol-design.md the wire rationale.
+  plans/ the change contracts.
 - `scripts/` — gates: check_docs, check_structure, check_deps,
   check_plan, check_prose, check_api, check_gomod,
   check_semgrepignore, check_semgrep_probes, check_labels,
@@ -174,9 +175,14 @@ decision follows this rule.
   adapter, a workflow runner, and the message plane. The agent imports
   the blocks; a block never imports the agent.
 - Do not split a working package for purity alone. Split a package only
-  when a real consumer needs the concern by itself. Keep cohesion.
+  when a real consumer needs the concern by itself. Keep cohesion. The
+  building-block rule is about composing behaviors, not about tearing
+  one cohesive struct into many packages: `envelope` holds the
+  message, the ack, the signing, and the thread chain in one package
+  because the four concerns share one struct and cannot split without
+  artificial layering.
 - A block stays replaceable and testable on its own. Do not entangle it
-  with a caller. See docs/research-agents.md for the assessment.
+  with a caller.
 
 ## Subagent workflow
 
@@ -240,8 +246,8 @@ any stage means stop and escalate to the user.
 - The wire contract is pinned by conformance vectors in
   `envelope/testdata/vectors/`. Add a vector for every schema or rule
   change: `valid_`, `invalid_decode_`, or `invalid_sig_` prefix.
-- Changes to message semantics must update `docs/protocol-design.md` in
-  the same change.
+- Changes to message semantics must update `docs/architecture.md`'s
+  "Why the envelope is shaped this way" section in the same change.
 
 ## Enforcement ladder (all mechanical, all in make verify)
 

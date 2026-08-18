@@ -6,7 +6,7 @@ routing, the failure fallback path, the checkpoint pause/resume pair,
 a bounded retry loop around a step's `Fire` call, and a loop-driving
 repeat of a step's `Sub` all ship. This plan expands the earlier
 step-list design into a step runner for v1. Rationale in
-docs/research-state-machine.md. `Run` returns a `Report` holding every
+docs/plans/machine.md's "Why build, not buy" section. `Run` returns a `Report` holding every
 step's terminal `Outcome`, replacing the boolean done map. Phase 22
 shipped the admission rule, the skip semantics, and the branch step.
 Phase 23 shipped the fallback path and the failure context. Phase 25
@@ -72,8 +72,9 @@ on the same checkpoint after a step failure. A caller schedules a
 resume from a cron job, a queue, or a webhook, since `Resume` is a
 plain resumable function call. History
 replay is rejected: a caller who persists every checkpoint already
-holds a replayable log, and `flow` does not build an event log. See
-docs/research-state-machine.md:236-238. Compensation has no named
+holds a replayable log, and `flow` does not build an event log; event
+sourcing is the wrong tool for a need that asks for current state, not
+a log. Compensation has no named
 caller yet; adding it now is speculative generality. Phase 38 shipped
 a loop-driving change: repeated invocation of a step's `Sub` child
 workflow, gated by a caller-supplied guard, in place of a graph cycle;
@@ -89,8 +90,8 @@ meets the need without overengineering.
 ## API
 
 Proposed shape, subject to plan review. It follows the DAG scheduler
-and step-as-data patterns. See docs/research-state-machine.md for the
-pattern sources.
+and step-as-data patterns. See docs/plans/machine.md's "Why build, not
+buy" section for the pattern sources.
 
 - `type Step struct { ID string; Needs []string; To string; Payload string; Sub *Definition }`
   as a graph node. `Sub` is the chained child definition.
@@ -730,8 +731,9 @@ Test files land in `flow/flow_test/`:
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
-rationale lives in docs/research-state-machine.md. `api/flow.txt`
-lands via make api-update. Phase 22 extended `api/flow.txt` with
+rationale lives in docs/plans/machine.md's "Why build, not buy"
+section. `api/flow.txt` lands via make api-update. Phase 22 extended
+`api/flow.txt` with
 `Admission`, its two constants, the `Route` type, and the two new
 `Step` fields. Phase 23 extended it with `AdmissionOnFailed`, the
 `Failure` type, `FailureFrom`, and the `Failed` field on `Checkpoint`;
@@ -744,7 +746,7 @@ and phase 25 each left `api/machine.txt` and
 
 No conformance-vector change from phase 22, phase 23, or phase 25:
 `Checkpoint` and `Failure` carry no signed or threaded wire form, so
-`envelope/testdata/vectors/` and `docs/protocol-design.md` stay
+`envelope/testdata/vectors/` and `docs/architecture.md` stay
 untouched.
 
 ### Phase 30 (shipped) verification

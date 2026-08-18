@@ -1,8 +1,8 @@
 # Architecture
 
-This document maps the modules, the message flow, the gate system, and
-the invariants the architecture enforces. See
-[protocol-design.md](protocol-design.md) for the wire rationale. See
+This document maps the modules, the message flow, the wire-format
+rationale, the gate system, and the invariants the architecture
+enforces. It is the single design reference for this SDK. See
 [packages/envelope.md](packages/envelope.md),
 [packages/room.md](packages/room.md),
 [packages/machine.md](packages/machine.md),
@@ -361,6 +361,200 @@ sequenceDiagram
    act.
 8. **Thread chain.** `envelope/thread.go`, `VerifyThread`: checks the
    hash chain and rejects repeated message IDs.
+
+## Why the envelope is shaped this way
+
+Schema version: **v1**. Two language models that exchange plain
+natural language have four recurring failure modes: no epistemic
+typing ("the API returns JSON" and "I assume the API returns JSON"
+look identical); silent misunderstanding (no acknowledgment of
+meaning, so a 15%-wrong parse only shows in the final output); context
+that is not addressable (each exchange re-transmits or assumes shared
+context and drifts); and no provenance (a model claim, a tool result,
+and an untrusted document arrive in the same register — a
+prompt-injection surface). Bandwidth and parsing are not the
+bottleneck; both sides are trained on ambiguous human text.
+
+Existing multi-agent protocols do not close these gaps. A2A
+standardizes capability discovery, task lifecycle, and transport, with
+no epistemic typing and no semantic acknowledgment; it is routing and
+task management, and this envelope's message semantics compose with
+it rather than compete. A cross-protocol governance survey (across
+MCP, A2A, ACP, ANP, and ERC-8004) found voting, dissent preservation,
+and human escalation universally absent, and audit treated as a
+substrate property, not a protocol primitive; this envelope takes
+three cheap primitives from that gap: `challenge` (deliberation),
+`escalate` (human escalation), and a tamper-evident hash chain per
+thread (audit). Research on why models default to natural language
+documents cascading semantic loss (the internal-state-to-language
+mapping is lossy, so reconstruction error compounds per relay hop),
+"lost-in-conversation" (no task boundaries), and pseudo-execution
+(an agent reports done without doing); this envelope answers with
+explicit thread boundaries (`thread_id`), a capped relay count
+(`max_hops`), and a semantic ack that catches reconstruction error
+after one hop instead of after a cascade.
+
+Two alternatives were rejected. A pure formal language (logic, a
+binary format) throws away what models do best and adds translation
+errors at both ends. Pure natural language is the status quo: no
+validation, no provenance, silent drift. Activation- or tensor-level
+exchange between models trades the human-readable debugging channel
+for same-family-weights fidelity, out of scope for a portable
+protocol.
+
+The design puts machine-checkable metadata around a natural-language
+payload:
+
+```json
+{
+  "version": "v1",
+  "id": "msg-1",
+  "room": "platform-team",
+  "thread_id": "task-42",
+  "to": ["agent-b", "agent-c"],
+  "in_reply_to": "msg-0",
+  "intent": "assert | query | request | challenge | retract | escalate",
+  "epistemic": "verified | inferred | assumed | untrusted-input",
+  "confidence": 0.85,
+  "context_refs": ["sha256:..."],
+  "prev_hash": "sha256:...",
+  "provenance": {"source": "tool:grep", "chain": ["agent-a"],
+    "evidence": ["sha256:..."]},
+  "max_hops": 3,
+  "cost_budget": 4000,
+  "ack_required": true,
+  "payload": "natural language content",
+  "signer": "<hex ed25519 public key>",
+  "signature": "<hex ed25519 signature>"
+}
+```
+
+- **Natural-language payload.** Structure goes where structure pays:
+  the metadata. The content stays in the format both sides parse
+  best.
+- **Epistemic label as a first-class field.** Errors in multi-agent
+  systems come mostly from confidence laundering: a guess passes
+  through two hops and comes out as a fact. `verified` requires a
+  named source plus evidence content refs, so the strongest label
+  points at artifacts a receiver can hash-check, not a bare claim.
+- **Context by reference.** `ContextRef(content)` computes a `sha256:`
+  address. Shared context is deduplicated, and "do we talk about the
+  same thing" becomes checkable. Context window is the one resource
+  that is actually scarce.
+- **Provenance chain.** Security, not bookkeeping. The
+  `untrusted-input` label tells the receiver to hold the content at
+  arm's length, not treat it as an instruction.
+- **Thread boundary.** `thread_id` groups one conversation or task.
+  Required, since unnamed threads are how agents lose the plot over
+  long exchanges.
+- **Addressing: 1-to-1, multicast, rooms.** `signer` is the sender.
+  `to` lists recipients: one entry is 1-to-1, several are multicast,
+  empty is broadcast to the room. `room` names a standing group;
+  threads live inside rooms. Membership lives in the `room` package: a
+  moderator-gated roster with roles, and `Room.Accepts` gates a
+  message on signer and recipient membership. The envelope carries the
+  address; `room` carries the roster. `agent.Run` may stamp a
+  caller-chosen room name onto each step message before signing, so a
+  plan whose caller supplies one produces messages a `room.Room` can
+  admit.
+- **Tamper-evident audit.** `prev_hash` links each message to the
+  `Hash()` of the previous message in the thread. Reordering,
+  deletion, or insertion breaks the chain and is detectable at the
+  cost of one hash per message. `VerifyThread` also rejects a repeated
+  message ID: `id` stays unique within its `thread_id`, so a replayed
+  or duplicated message cannot enter the chain.
+- **Hop cap.** `max_hops` limits how many relays a message may pass
+  through, checked against the provenance chain length. Semantic error
+  accumulates per hop; unbounded relay is unbounded drift.
+- **Human escalation.** `escalate` routes a decision to a human or
+  higher authority, a primitive absent from the surveyed protocols.
+- **Cost budget.** Lets the sender cap reply cost so the receiver can
+  pick a compression level.
+- **Authentication.** `Sign`/`VerifySignature` (ed25519) authenticate a
+  message: the signature covers the canonical JSON of every field
+  except itself, so any post-signing change fails verification. The
+  hash chain gives tamper-evidence for the thread; the signature gives
+  authorship for each message. Trust policy (which signers to accept)
+  stays with the caller.
+- **Schema version.** `version` is validated against the one supported
+  value. Unknown JSON fields are ignored on decode, so a newer sender
+  can add fields without breaking an older receiver.
+
+`Message.Validate` enforces every rule stated above as a field
+comment: `version` equals the supported value; `id` is set and
+differs from `in_reply_to`; `thread_id` is set; `challenge` and
+`retract` require `in_reply_to`; `verified` requires
+`provenance.source` and at least one evidence ref; `confidence` sits
+inside `[0, 1]`; context refs and `prev_hash` are canonical
+(`sha256:` plus 64 lowercase hex chars, comparable by string
+equality); `max_hops`, when set, is not exceeded by the provenance
+chain; every evidence ref is a canonical sha256 address; `signer` and
+`signature` come as a pair, in canonical hex form; `payload` is
+non-empty. `VerifyThread` adds the thread-level rule: no `id` repeats
+within one thread.
+
+**Semantic acknowledgment** is the one rule that matters more than any
+field. For any `request`, and for any message with
+`ack_required: true`, the receiver replies with a compressed
+restatement of what it understood before it acts; the sender confirms
+or corrects. This converts silent misunderstanding into a cheap
+two-round exchange, the same move a careful human engineer makes
+("so you want X, not Y — right?"), and it measures reconstruction
+error after one hop instead of after a cascade.
+
+```go
+ack, _ := envelope.NewAck(msg, "agent-b", "You want X, not Y.") // pending; built by receiver
+ack = ack.Confirm()                                              // sender accepts
+ack = ack.Correct("Y is out of scope; only X.")                  // or sender fixes
+```
+
+Only a `confirmed` ack means the receiver may act. In a group, each
+recipient sends its own ack and `from` tells them apart. A request to
+a room is not actionable until every addressed recipient has a
+confirmed ack; that rule belongs to the caller, not the envelope.
+
+`prev_hash` forms a linear chain, which assumes one writer appends to
+a thread at a time. Two parties taking turns satisfy this; a busy room
+does not, since two agents can both append to the same parent and the
+chain forks. The rule is: a thread has serialized appends, enforced by
+whoever owns the transport (last-hash-wins locking, a sequencer, or a
+thread owner). A multi-parent DAG (`prev_hash` as a list, git-style)
+is the known upgrade path for a use case that needs concurrent
+writers.
+
+Deliberately omitted, because these belong to other layers, not the
+message envelope: capability discovery (a registry concern — the
+`discovery` package defines its own minimal card shape instead of the
+A2A Agent Card format); streaming, push, and task lifecycle (transport
+and session concerns — `a2a` maps an envelope message onto an A2A v1.0
+message part and back with no task-lifecycle or transport claim, and
+`a2aclient` sends that mapped part to a remote agent and polls its
+status over `a2aproject/a2a-go`'s gRPC transport, adding no
+message-semantics rule of its own); voting and dissent preservation
+(governance-layer primitives beyond the two-party `challenge` and
+`escalate`); identity registries or DID resolution (a signature proves
+a message came from the holder of a key, not who that key belongs to
+organizationally — a registry decision this SDK does not make).
+
+Known limits: epistemic labels are self-reported, so a model that
+hallucinates can mislabel the hallucination as `verified` — the labels
+create auditable claims about truth, not truth itself, and only the
+provenance fields (did the tool call happen?) are mechanically
+checkable, not confidence. Acks cost a round trip, overhead for
+nothing on a trivial message, so the `ack_required` threshold needs
+care. Two colluding, identical models can agree on a shared
+misunderstanding faster than a human catches it; a different model on
+the receiving side is arguably a protocol-level feature, and
+`escalate` is the designed escape hatch. Trust policy is out of band:
+signatures authenticate the key holder, but which signers a receiver
+accepts is the caller's decision, with no revocation or key-rotation
+story yet. A status transition precedes its ack check: the `flow`
+runner fires a step's status transition, then waits on the step's ack;
+a rejected or escalated ack halts the walk but does not roll the
+status or its record back to the pre-step value. `agent.Run` signs
+each step's message, waits for a confirmed ack through a
+caller-supplied `AckWait`, and only advances the walk once the ack
+confirms.
 
 ## Gate system
 

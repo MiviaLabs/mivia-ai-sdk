@@ -132,7 +132,7 @@ Additions (bug fix and test-gap round):
 - No new conformance vector: NaN/Inf Confidence and malformed JSON
   never pass Validate, so neither path reaches the wire vectors in
   testdata/vectors. Those vectors pin valid-message wire contracts.
-- No docs/protocol-design.md update: none of the three items change
+- No docs/architecture.md update: none of the three items change
   wire format, validation rules, or message semantics. Hash's
   fallback only changes behavior on an already-invalid Message that
   Validate would reject; the other two items are test-only.
@@ -142,7 +142,7 @@ Additions (bug fix and test-gap round):
 `make verify`. Adds the conformance-vector convention: every schema or
 rule change adds a `valid_`, `invalid_decode_`, or `invalid_sig_` file.
 The duplicate-ID rule and the VerifySignature marshal error land with
-their docs/protocol-design.md update in the same change.
+their docs/architecture.md update in the same change.
 
 Bug fix and test-gap round: `make verify` covers gofmt, vet, tests,
 doc gate, structure gate, Semgrep, and probes; run it after the

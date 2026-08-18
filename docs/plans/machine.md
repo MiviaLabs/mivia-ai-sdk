@@ -1,7 +1,6 @@
 # Plan: machine
 
-Status: shipped through phases 1 through 3. Rationale in
-docs/research-state-machine.md. The build phases live in
+Status: shipped through phases 1 through 3. The build phases live in
 docs/plans/agents/. See phases 1 through 3.
 
 ## Goal
@@ -22,10 +21,68 @@ Outside: the step graph, panels, parallel execution, scheduling, and
 chaining. The flow package owns those concerns. The machine never
 schedules. It never knows a graph. It stays reusable on its own.
 
+## Why build, not buy
+
+No Go library covers a typed state machine plus a step runner as one
+small, generic, stdlib-only construct. The ecosystem splits into two
+camps: simple but narrow flat finite-state machines (`looplab/fsm`,
+`cocoonspace/fsm`), and capable but heavy distributed workflow
+engines (Temporal, Cadence, `cschleiden/go-workflows`,
+`luno/workflow`) that need a server, a database, or persistence and
+eventing adapters. This repo's one hard rule, standard library only,
+rules out the heavy camp outright.
+
+Two libraries came closest. `qmuntal/stateless` covers states,
+triggers, guards, and entry and exit actions, the richest coverage of
+any candidate, and is stdlib-only in its own imports. It requires a
+newer Go than this repo targets, uses reflection for parameterized
+triggers (a type mismatch panics), and has no step model: it is a
+state machine, not a workflow step engine. `luno/workflow` gives
+steps with a from-status, a worker, and a to-status, but needs store
+and stream backends for its production path, violating the
+stdlib-only rule.
+
+Adopting a foreign library still means wrapping it: the wrapper is
+code this SDK writes and maintains anyway, plus the foreign surface's
+own learning cost and version churn. A typed state machine with
+guards and step metadata is small; `envelope` already models states
+as typed enums with `Validate` methods, so the skill was already in
+house. The requirement is a specification, not a download: a state
+machine with steps, gates, inputs, outputs, and statuses is a
+definition language, and building it in house keeps the shape and the
+semantics explicit.
+
+The decision splits the concern into two packages, following the rule
+that one package owns one concern: `machine` owns status mechanics
+(typed statuses, gates, inputs, outputs, entry and exit actions, no
+graph, no scheduler), and `flow` owns step scheduling (a step graph,
+panels, parallel execution, chaining), composing `machine` for each
+step's status transitions. See docs/plans/flow.md.
+
+Every shipped requirement maps to a published, simple pattern, none
+of which drags in a framework. The action model (a transition table
+row: from, trigger, guard, to, on-exit, on-entry) matches XState's and
+PyTransitions' shape. Kahn's algorithm sorts the step graph in
+topological order in about twenty lines and gives parallel panels for
+free: a wave is the set of nodes with no remaining dependencies, and
+the same pass detects cycles. Stdlib parallel execution puts tasks in
+goroutines, gathers results with a `WaitGroup` and a buffered channel,
+and combines errors with `errors.Join` (stdlib since Go 1.20); this
+keeps `flow` dependency-free with no `errgroup` import. Chaining is
+function composition: a step is a callable that takes an input and
+returns an output, and a sub-workflow is a step that calls a nested
+workflow and returns its result.
+
+The strongest counter-argument: a naive team builds a worse engine
+than a mature library, and DAG scheduling plus parallel panels are
+real complexity. The mitigation is a hard layer boundary: `machine`
+never schedules, `flow` never knows a status count, and each stays
+replaceable and testable on its own.
+
 ## API
 
 Proposed shape, subject to plan review. It follows the action model
-pattern. See docs/research-state-machine.md for the pattern sources.
+pattern above.
 
 - `type Status string` as the typed status enum base.
 - `type Trigger string` as the label that selects a transition.
@@ -117,6 +174,6 @@ second `Transitions` read returns the original `To`. No test covered
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
-rationale lives in docs/research-state-machine.md. `api/machine.txt`
-lands via make api-update. The lock update drops the exported fields
-and adds the two methods.
+rationale lives in the "Why build, not buy" section above.
+`api/machine.txt` lands via make api-update. The lock update drops
+the exported fields and adds the two methods.

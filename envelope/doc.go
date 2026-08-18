@@ -5,5 +5,5 @@
 // (Encode/Decode); ack.go = Ack, the semantic-ack flow; sign.go =
 // ed25519 authentication (Sign, VerifySignature); thread.go =
 // VerifyThread, the hash-chain check for an ordered thread.
-// Rationale: ../docs/protocol-design.md. Contribution rules: ../AGENTS.md.
+// Rationale: ../docs/architecture.md. Contribution rules: ../AGENTS.md.
 package envelope

@@ -53,7 +53,7 @@ Cover all of these in the report. Each is a finding source.
   widen an exclusion? Check `scripts/`, `semgrep/`, the `Makefile`, and
   `.githooks/` line by line against the change.
 - **Doc truth** — do the doc comments, README, plan, and
-  `docs/protocol-design.md` describe the code as it now is? A stale
+  `docs/architecture.md` describe the code as it now is? A stale
   claim is a finding.
 - **Plan drift** — does the change match its plan
   (`docs/plans/<pkg>.md`)? Scope creep is a finding. A dropped Scope

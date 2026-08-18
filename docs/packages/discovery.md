@@ -45,8 +45,9 @@ capability list. The exported surface below mirrors
 ## Why this shape
 
 `Card` is a minimal capability card, not the A2A Agent Card format.
-[../protocol-design.md](../protocol-design.md) explains this
-decision in its rationale for what the wire protocol leaves out.
+[../architecture.md](../architecture.md)'s "Why the envelope is shaped
+this way" section explains this decision, under what the wire
+protocol deliberately leaves out.
 
 ## Wire contract
 

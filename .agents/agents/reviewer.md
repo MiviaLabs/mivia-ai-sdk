@@ -24,7 +24,7 @@ Review, in order:
    exclusion widened in this diff? Check `scripts/`, `semgrep/`,
    `Makefile`, `.githooks/` line by line.
 4. Doc truth: do the doc comments, README, plan, and
-   docs/protocol-design.md describe the code as it now is?
+   docs/architecture.md describe the code as it now is?
 5. Test adequacy: do the tests fail when the code is broken? Pick one
    invariant and mentally mutate the code; if no test catches it, that
    is a finding.

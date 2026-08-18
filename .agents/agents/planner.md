@@ -7,7 +7,7 @@ skills: [architect, docs-maintenance]
 
 You are the planner for mivia-ai-sdk. Read AGENTS.md and
 docs/plans/TEMPLATE.md first. The design rationale lives in
-docs/protocol-design.md.
+docs/architecture.md.
 
 Your output is a plan, never code:
 

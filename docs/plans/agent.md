@@ -833,10 +833,10 @@ builder edits only agent/agent_test/translator_test.go.
 - `docs/packages/agent.md` gains the updated `Run` signature and one
   new invariant line stating the room-stamping rule, in the same
   change as the code.
-- `docs/protocol-design.md`'s Addressing bullet gains one sentence
+- `docs/architecture.md`'s Addressing bullet gains one sentence
   noting `agent.Run` can stamp a caller-chosen room name onto each
   step message before signing. Required by AGENTS.md: message-
-  semantics changes update `docs/protocol-design.md` in the same
+  semantics changes update `docs/architecture.md` in the same
   change as the code.
 - `docs/examples/agent-dispatch.md` gains the room-string fix,
   verified by re-running the program against the real module; the

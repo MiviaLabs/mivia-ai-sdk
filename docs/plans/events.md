@@ -2,8 +2,9 @@
 
 Status: shipped through phases 17 and 18. This plan fixes
 the boundary before any builder starts. It is the bus design contract.
-See docs/research-agents.md for the block composition rule. The build
-phases live in docs/plans/agents/. Phase 17 ships the leaf core.
+See AGENTS.md's Building blocks section for the block composition
+rule. The build phases live in docs/plans/agents/. Phase 17 ships the
+leaf core.
 Phase 18 proves the machine wiring on a caller-owned bus.
 
 ## Goal

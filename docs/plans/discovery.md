@@ -1,7 +1,8 @@
 # Plan: discovery
 
 Status: shipped. This package has no internal imports. See
-docs/research-agents.md for the capability-card decision.
+docs/packages/discovery.md's "Why this shape" section for the
+capability-card decision.
 
 ## Goal
 

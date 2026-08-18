@@ -15,9 +15,9 @@ network call and no third-party import.
 Inside this package:
 
 - The `Part` type: a package-local struct that mirrors the A2A v1.0
-  wire shape (`docs/research-a2a.md`, `docs/research-agents.md`). A2A
-  v1.0 dropped the old `kind` field and the separate part classes; one
-  part carries text, raw bytes, a url, or a data object.
+  wire shape. A2A v1.0 dropped the old `kind` field and the separate
+  part classes; one part carries text, raw bytes, a url, or a data
+  object.
 - `ToPart` and `FromPart`: the mapping functions between
   `envelope.Message` and `Part`.
 - Conformance vectors for the mapped form.
@@ -191,7 +191,7 @@ the new row above), the Semgrep scan, and the coverage floor at 85
 for `a2a`. `make api-update` locks `Part`, `Mapped`, `ToPart`, and
 `FromPart` into `api/a2a.txt` in the same change as the code.
 
-The mapping section of `docs/protocol-design.md`'s "Deliberately
+The mapping section of `docs/architecture.md`'s "Deliberately
 omitted" entry for A2A updates in the same change: it currently says
 capability discovery uses the `discovery` package instead of the A2A
 Agent Card; phase 9 adds one sentence recording that the envelope now

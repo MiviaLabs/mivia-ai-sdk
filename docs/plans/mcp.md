@@ -669,6 +669,6 @@ update; the two `semgrep/sdk-standards.yml` rule edits and the new
 `check_semgrep_probes.py` case; the `AGENTS.md` exception-sentence
 edit; and the `docs/architecture.md` and `docs/plans/mcp.md` doc
 updates. The `policy/layers.json` row is already landed with this
-plan. `docs/protocol-design.md` does not change in this phase: `mcp`
+plan. `docs/architecture.md` does not change in this phase: `mcp`
 adds no message-semantics rule to this module's own envelope wire
 format; it wraps a separate, already-specified protocol.

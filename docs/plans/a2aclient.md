@@ -459,7 +459,7 @@ needs: `a2a-go` for the client, and `google.golang.org/grpc` for the
 notes above). The delivery loop's builder step makes the edit
 alongside the `a2aclient` code and the gate changes above, in the same
 reviewed change, the same way a builder updates
-`docs/protocol-design.md` for a message-semantics change. This plan
+`docs/architecture.md` for a message-semantics change. This plan
 records the exact sentence so the builder does not improvise the
 wording.
 
@@ -471,6 +471,6 @@ one change: the `a2aclient` package and its tests; the
 `a2aproject/a2a-go` require; the `check_gomod.py` allowlist for
 `go.mod` and `go.sum`; the two `semgrep/sdk-standards.yml` rule edits
 and the new `check_semgrep_probes.py` case; and the AGENTS.md sentence
-above. `docs/protocol-design.md` does not change in this phase:
+above. `docs/architecture.md` does not change in this phase:
 `a2aclient` adds no message-semantics rule, only a transport for the
 existing envelope wire form.

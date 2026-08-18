@@ -1,6 +1,6 @@
 ---
 name: docs-maintenance
-description: Maintain the mivia-ai-sdk documentation. Trigger when the user asks to update, tidy, add to, or restructure the docs; when a code or API change needs its docs updated; when prose must be made concise; or when docs are out of date, wordy, fluff-heavy, or inconsistent. Covers the index, architecture, package refs, examples, plan, and protocol docs in docs/.
+description: Maintain the mivia-ai-sdk documentation. Trigger when the user asks to update, tidy, add to, or restructure the docs; when a code or API change needs its docs updated; when prose must be made concise; or when docs are out of date, wordy, fluff-heavy, or inconsistent. Covers the index, architecture, package refs, examples, and plan docs in docs/.
 ---
 
 # Docs maintenance
@@ -18,14 +18,14 @@ disagreeing with itself. Your job is to stop that drift.
 
 ## What lives where
 
-- `docs/protocol-design.md` — wire-protocol rationale. Why the envelope is
-  shaped this way. Edit only when message semantics change; update it in
-  the same change as the code.
-- `docs/architecture.md` — module map, message flow, gate system.
+- `docs/architecture.md` — the single design reference: module map,
+  message flow, wire-protocol rationale (why the envelope is shaped
+  this way), gate system. Edit its "Why the envelope is shaped this
+  way" section only when message semantics change; update it in the
+  same change as the code.
 - `docs/packages/*.md` — per-package references (envelope, room).
 - `docs/examples/*.md` — walkthroughs with complete fenced Go programs.
 - `docs/plans/*.md` — change contracts, one per package or concern.
-- `docs/research-a2a.md` — research record for a future package.
 
 ## The writing standard
 
@@ -138,8 +138,9 @@ Only then edit.
 
 1. **API surface** (new exported symbol) — update the matching
    `docs/packages/*.md` and run `make api-update`.
-2. **Message semantics** — update `docs/protocol-design.md` in the same
-   change. Enforced by AGENTS.md.
+2. **Message semantics** — update `docs/architecture.md`'s "Why the
+   envelope is shaped this way" section in the same change. Enforced
+   by AGENTS.md.
 3. **Module map or flow** — update `docs/architecture.md`.
 4. **New example-worthy behavior** — update or add a `docs/examples/*.md`
    walkthrough.

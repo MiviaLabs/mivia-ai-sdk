@@ -2,7 +2,7 @@
 // with roles, moderator-gated admission, and a gate that admits an
 // envelope.Message only when its signer is a member. The room carries
 // the roster that envelope.Message.Room only names. See envelope/ for
-// the wire format and ../docs/protocol-design.md for the rationale.
+// the wire format and ../docs/architecture.md for the rationale.
 package room
 
 import (

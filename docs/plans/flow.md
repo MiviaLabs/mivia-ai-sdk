@@ -476,10 +476,9 @@ every edge this phase needs.
 
 ### Phase 48: run-time payloads, graph accessors, and derived transitions
 
-Phase 48 widens `flow` in three ways. `Step.PayloadFrom` derives a
+Phase 48 widens `flow` in two ways. `Step.PayloadFrom` derives a
 step's payload from the live record at run time. `Definition.Steps`
-and `Definition.Panels` expose copied graph views. `TransitionsFor`
-derives a machine transition table from a definition.
+and `Definition.Panels` expose deep-copied graph views.
 
 `PayloadFrom func(rec machine.InOut) string` resolves immediately
 before each gated `Confirm` call, against the record that transition
@@ -494,48 +493,9 @@ definitions included. `Panels` returns a copy of the panel list.
 Both follow `Roots`: value receivers, fresh backing arrays, and no
 way for a caller to mutate the stored graph.
 
-`TransitionsFor(d *Definition, initial machine.Status)`
-`([]machine.Transition, error)` derives the transition rows a walk
-of `d` fires. The runner keeps one shared current status through the
-walk and scans for ready groups in declaration order, so the machine
-table linearizes that execution order. `TransitionsFor` simulates
-the same scan under an all-run assumption, tracking the set of
-statuses the walk can stand on at each group.
-
-Each plain step contributes one row per current status in its set,
-with the step ID as trigger, targeting the step's `To`. A panel of
-two or more members contributes one shared row per current status,
-triggered by the first member's ID, targeting the members' shared
-`To`. A chained step recurses into its child first; the child `Run`
-starts from the machine's initial status with a fresh record. The
-parent then targets its child's simulated final status, and its own
-`To` stays unused.
-
-A fallback step, admitted through `AdmissionOnFailed`, never runs on
-the happy path, so the simulation derives its rows from its needs'
-recorded statuses: each need's pre-fire set, for a failed `Fire`,
-and its post-fire set, for a failed `Route`. The simulation forks
-the tracked set at two points: after a step with a fallback
-dependent, and after the fallback's own slot, so later steps gain
-rows for both branches.
-
-`TransitionsFor` rejects a nil definition, an empty initial status,
-a step with a non-nil `Loop` (a looped parent fires per iteration
-and needs continuation rows the simulator cannot derive honestly;
-`flow/flow_test/loop_test.go` builds such tables by hand), and a
-step that needs a target status but carries none. It rejects two
-derived rows that share one `From` and `To`, because
-`pickTransition` matches on `To` alone. It rejects a self loop and a
-duplicate `From` and `Trigger` pair, both of which `machine.New`
-refuses. A child whose simulation ends on more than one status hits
-those checks and fails with the parent named.
-
-The derived table models the all-run walk and the fallback forks.
-Route-excluded branches and skipped-need cascades can strand the
-live status outside the derived set; those rows stay the caller's
-own. `docs/examples/_agentcomposition` and the derivation
-integration test consume the helper today; phase 49's matrix check
-succeeds it.
+A derivation helper that builds a machine table from a definition
+stayed unshipped: no caller needed it. `agentrun.ValidateMatrix`,
+in phase 49, checks a caller-built table against the plan instead.
 
 ## Tests
 
@@ -809,20 +769,8 @@ any gated step.
 chain end to end through a real machine.
 
 `flow/flow_test/graph_accessors_test.go` proves the copies. Mutating
-a returned step, need, or panel never changes the stored
-definition. `Sub` graphs and their steps copy recursively.
-
-`flow/flow_test/derive_test.go` drives `TransitionsFor` by table. A
-chain derives one row per step. A diamond merge derives two rows
-for the joining step. A panel wave derives one shared row. A
-chained step targets its child's finals, not its own `To`. A
-fallback gains the failed need's predecessors. The rejection cases
-cover a nil definition, an empty initial, a missing `To`, a
-`From`-`To` collision, and a self loop.
-
-`flow/flow_test/derive_integration_test.go` builds a graph, derives
-its rows, builds the machine from them, and walks it to completion.
-No hand-written transition row survives in the test.
+a returned step, need, retry, loop, panel, or nested `Sub` graph
+never changes the stored definition.
 
 ## Verification
 
@@ -894,12 +842,12 @@ wire form.
 
 `make verify` passes, and the `flow` coverage floor holds.
 `api/flow.txt` gains `Step.PayloadFrom`, `Definition.Steps`,
-`Definition.Panels`, and `TransitionsFor`, via `make api-update`;
+and `Definition.Panels`, via `make api-update`;
 the `api/` diff is committed in the same change.
 `policy/layers.json` stays unchanged: `flow`'s allowed imports
 already cover every edge. `docs/packages/flow.md` and
-`docs/architecture.md` describe the run-time resolution, the
-accessors, and the derivation helper in the same change as the code.
+`docs/architecture.md` describe the run-time resolution and the
+accessors in the same change as the code.
 `AGENTS.md` updates its `flow/` layout bullet. No conformance-vector
-change: none of the three additions carries a signed or threaded
+change: neither addition carries a signed or threaded
 wire form.

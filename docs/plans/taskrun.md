@@ -81,9 +81,11 @@ following files exist:
   without running work.
 - `lease_test.go` — a live lease satisfies `errors.Is` for
   `ledger.ErrLeaseActive` and stages no `CompletedEvent`.
+- `propagate_test.go` — an `Admit` and a `State` store failure return
+  the store error, not a taskrun sentinel.
 
-A `probeStore` wrapper fails a chosen `CompareAndSwap` and records the
-last fence.
+A `probeStore` wrapper fails a chosen `CompareAndSwap` or `Load` and
+records the last fence.
 
 ## Verification
 

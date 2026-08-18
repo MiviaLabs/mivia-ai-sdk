@@ -226,8 +226,8 @@ files close the concurrent-run, approval-transport, ledger race,
 `make verify`; it weakens no existing gate.
 
 Phase 48 ships in this change. It widens the shipped `flow` package with
-`Step.PayloadFrom`, the `Definition.Steps` and `Definition.Panels`
-accessors, and `TransitionsFor`, and adds the `agent` `Plan` and
+`Step.PayloadFrom` and the `Definition.Steps` and `Definition.Panels`
+accessors, and adds the `agent` `Plan` and
 `Signer` accessors ahead of phase 49's validators. The shipped
 contract lives in docs/plans/flow.md and docs/plans/agent.md.
 
@@ -245,10 +245,18 @@ check. It depends on phase 48 and adds one `policy/layers.json` edge.
 Its package plan lives at docs/plans/agentrun.md; no standalone
 phase 49 plan file remains.
 
-Phases 51 and 52 are plan-only; none has gone through plan
-review yet.
 Phases 51 and 52 each add one package and depend on no unshipped
-phase; they ship independently of each other and of phase 49.
+phase; they ship independently of each other and of phase 49. Phase
+51 has shipped, so the rest of this paragraph covers phase 52.
+
+Phase 51 (`a2aack`) has shipped. It turns a remote A2A task round
+trip into the composition layer's `AckWait` as one top-level package,
+over `a2aclient`. It adds one `policy/layers.json` edge. Its package
+plan lives at docs/plans/a2aack.md; no standalone phase 51 plan file
+remains.
+
+Phase 52 is plan-only; it has not gone through plan review yet. It
+adds one package and depends on no unshipped phase.
 
 Phase 53 is plan-only and not scheduled. It builds nothing until two
 gates open: phase 52 proving the receive ladder, and the user

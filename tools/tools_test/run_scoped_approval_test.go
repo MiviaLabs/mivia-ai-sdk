@@ -65,6 +65,9 @@ func TestRunScopedApprovalErrorPropagatesUnwrapped(t *testing.T) {
 	if !errors.Is(err, approvalErr) {
 		t.Fatalf("RunScoped(delete) error = %v, want %v", err, approvalErr)
 	}
+	if err != approvalErr {
+		t.Fatalf("RunScoped(delete) error = %v (%p), want the exact approvalErr value %v (%p), unwrapped", err, err, approvalErr, approvalErr)
+	}
 	if errors.Is(err, tools.ErrToolDeclined) {
 		t.Fatalf("RunScoped(delete) error = %v, want distinct from ErrToolDeclined", err)
 	}

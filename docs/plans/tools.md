@@ -378,7 +378,7 @@ Test files live in `tools/tools_test/`, an external test package.
   unchanged, and `ExecutionProfileOf(t)` as `Profile`, for a tool that
   implements `ProfiledTool` and for one that does not (zero
   `ExecutionProfile`, `Class == ExecutionClassUnclassified`).
-- `approval_threshold_test.go` — red-green cases for the rank order. A
+- `approval_rank_test.go` — red-green cases for the rank order. A
   tool ranked below `ApprovalThreshold` runs with no `Approve` call,
   proven by a counter the test's `Approve` increments. A tool ranked
   at or above `ApprovalThreshold` triggers exactly one `Approve` call.

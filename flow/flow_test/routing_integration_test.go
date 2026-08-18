@@ -7,6 +7,7 @@ package flow_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -109,5 +110,50 @@ func TestRoutingIntegrationStrictJoinSkipsOnUnchosenAlternative(t *testing.T) {
 		if id == "no" || id == "join" {
 			t.Fatalf("Confirm ran for the skipped step %q", id)
 		}
+	}
+}
+
+// TestRoutingIntegrationConfirmRejectionBlocksRoute runs the if/else
+// graph with a Confirm that rejects the branch step's own ack. It
+// proves Run aborts before it calls Route: Route never runs, neither
+// alternative resolves, and the branch step is marked OutcomeFailed.
+func TestRoutingIntegrationConfirmRejectionBlocksRoute(t *testing.T) {
+	t.Parallel()
+	routeCalled := false
+	route := func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error) {
+		routeCalled = true
+		return []string{"yes"}, nil
+	}
+	d, err := flow.New([]flow.Step{
+		{ID: "branch", To: "b", Route: route},
+		{ID: "yes", Needs: []string{"branch"}, To: "yes"},
+		{ID: "no", Needs: []string{"branch"}, To: "no"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	rejectErr := errors.New("ack rejected")
+	confirm := func(ctx context.Context, step flow.Step) error {
+		if step.ID == "branch" {
+			return rejectErr
+		}
+		return nil
+	}
+	report, err := flow.Run(context.Background(), d, ifElseMachine(t), machine.InOut{}, confirm, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, rejectErr) {
+		t.Fatalf("error does not wrap the confirm rejection: %v", err)
+	}
+	if routeCalled {
+		t.Fatal("Route ran despite the branch step's ack rejection")
+	}
+	mustOutcome(t, report, "branch", flow.OutcomeFailed)
+	if _, ok := report.Outcome("yes"); ok {
+		t.Fatal("\"yes\" resolved despite Run aborting before Route ran")
+	}
+	if _, ok := report.Outcome("no"); ok {
+		t.Fatal("\"no\" resolved despite Run aborting before Route ran")
 	}
 }

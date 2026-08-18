@@ -130,13 +130,16 @@ func TestRouteNamingNonDependentAborts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	_, err = flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
+	report, err := flow.Run(context.Background(), d, branchMachine(t), machine.InOut{}, noopConfirm, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	want := `flow: step "branch": route named "nope", not a direct dependent`
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+	if _, ok := report.Outcome("left"); ok {
+		t.Fatal("\"left\" resolved despite the aborted route: applyRoute must mark no dependent on this error")
 	}
 }
 
@@ -166,6 +169,9 @@ func TestRouteErrorMarksBranchFailedAborts(t *testing.T) {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 	mustOutcome(t, report, "branch", flow.OutcomeFailed)
+	if _, ok := report.Outcome("left"); ok {
+		t.Fatal("\"left\" resolved despite the route error: applyRoute must mark no dependent on this error")
+	}
 }
 
 // subscribeCount subscribes to StepCompletedEvent on bus and returns a

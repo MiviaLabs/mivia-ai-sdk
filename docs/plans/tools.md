@@ -1,13 +1,19 @@
 # Plan: tools
 
-Status: shipped. `Registry.Remove` was added for symmetry with
-`room.Room.Admit`/`Remove`, agreed in architecture review.
-`ExecutionClass`, `ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`,
-`PrivilegedTool`, `Scope`, `ScopeOptions`, `NewScope`,
-`ExecutionProfileOf`, `ResultBudgetOf`, `IsPrivileged`, `RunScoped`, and
-`ErrScopeDenied` extend the execution-risk surface: optional markers a
-`Tool` may implement, and a `Scope` that narrows which tools a run may
-invoke.
+Status: in progress (phase 36). `Registry.Remove` was added for
+symmetry with `room.Room.Admit`/`Remove`, agreed in architecture
+review. `ExecutionClass`, `ExecutionProfile`, `ProfiledTool`,
+`ResultBudgetTool`, `PrivilegedTool`, `Scope`, `ScopeOptions`,
+`NewScope`, `ExecutionProfileOf`, `ResultBudgetOf`, `IsPrivileged`,
+`RunScoped`, and `ErrScopeDenied` extend the execution-risk surface,
+shipped in phase 31: optional markers a `Tool` may implement, and a
+`Scope` that narrows which tools a run may invoke. Phase 36 extends
+`RunScoped` again, the same additive way phase 31 extended phase 14:
+`ToolCall`, `ScopeOptions.Approve`, `ScopeOptions.ApprovalThreshold`,
+and `ErrToolDeclined` add a synchronous approval gate `RunScoped` runs
+after `Allowed` passes. See
+`docs/plans/agents/phase36_tool_approval.md` for the full design
+rationale.
 
 ## Goal
 
@@ -34,6 +40,53 @@ this module, or a future one, can reuse it. Outside: any change to
 `Tool`, `Registry.Add`, `Registry.Get`, `Registry.Remove`, or
 `Registry.Run`. Execution-profile checks are opt-in through the new
 `RunScoped` method, never a hidden check inside `Run`.
+
+Inside, added in phase 36: a `ToolCall` type describing one call
+eligible for approval, an `Approve` field and an `ApprovalThreshold`
+field on `ScopeOptions`, an approval check inside `RunScoped`, and
+`ErrToolDeclined`, a sentinel for a call `Approve` turns down.
+
+Outside, in phase 36: any UI, prompt, or transport that delivers the
+approval question to a human or a policy engine. That is a caller
+concern, the same way a tool never sees the agent. Outside: any
+persistence of an approval decision. Outside: any async or
+event-driven approval flow. `Approve` is a plain, synchronous function
+call; `RunScoped` calls it in place and blocks until it returns.
+`tools` adds no goroutine or channel model of its own. A caller that
+needs an out-of-band answer, for example a human replying hours later,
+builds that flow itself outside `tools`, with an `Approve` function
+that only decides once the out-of-band answer already exists. Outside:
+any change to `Tool`, `Registry.Add`, `Registry.Get`,
+`Registry.Remove`, `Registry.Run`, `ExecutionClass`,
+`ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`, or
+`PrivilegedTool` beyond the approval hook. `Scope.Allowed`'s denylist,
+allowlist, and privileged rules stay unchanged; approval is an added
+check `RunScoped` runs after `Allowed` passes, not a replacement for
+it. Outside: any audit or event record of an approval decision.
+`tools`'s row in `policy/layers.json` stays `[]`; a caller that wants
+a typed event wraps its own `Approve` function to publish one on an
+`events.Bus` it owns.
+
+`ApprovalThreshold` compares against an unexported rank order over
+`ExecutionClass`, used only inside the approval check:
+`ExecutionClassUnclassified` ranks lowest, then `ExecutionClassRead`,
+then `ExecutionClassWrite`, then `ExecutionClassExternal` highest. A
+`ProfiledTool` that publishes a `Class` outside the four constants
+ranks at the highest rank, the opposite default from `Scope.Allowed`,
+which never reads `Class` at all. Approval gating treats an
+unrecognized `Class` as the most cautious case on purpose: an
+unrecognized value must not let a tool skip approval.
+
+`RunScoped` calls `scope.Approve` only when `scope.Approve` is
+non-nil and the resolved tool's rank meets or exceeds
+`scope.ApprovalThreshold`'s rank, after `scope.Allowed` passes.
+`Approve` returning `(true, nil)` runs the tool. `Approve` returning
+`(false, nil)` makes `RunScoped` return `ErrToolDeclined`, guaranteed
+by `RunScoped` itself so every caller can test
+`errors.Is(err, ErrToolDeclined)` regardless of how `Approve` is
+written. `Approve` returning a non-nil error makes `RunScoped` return
+that error unchanged, distinct from `ErrToolDeclined`, so a caller can
+tell an approval-mechanism failure apart from a decline.
 
 Phase 16 runs the tool registry as a flow step. A panel step runs in
 its own goroutine, so more than one goroutine can call `Add`, `Get`,
@@ -143,6 +196,8 @@ caller's type assertion instead.
   `Run` returns this error when `Get` reports `false`.
 - `var ErrScopeDenied` — `RunScoped` returns this when `scope.Allowed`
   returns false for the resolved tool.
+- `var ErrToolDeclined` — `RunScoped` returns this when `scope.Approve`
+  returns `(false, nil)`. Test with `errors.Is`. Phase 36 addition.
 
 ### Execution profile and scope
 
@@ -173,22 +228,43 @@ caller's type assertion instead.
   else returns `0, false`.
 - `func IsPrivileged(t Tool) bool` — returns `t.Privileged()` when `t`
   implements `PrivilegedTool`; else returns false.
-- `type ScopeOptions struct { Allowlist []string; ExtraDenylist []string }`
+- `type ScopeOptions struct { Allowlist []string; ExtraDenylist []string; Approve func(ctx context.Context, call ToolCall) (bool, error); ApprovalThreshold ExecutionClass }`
+  — `Approve` and `ApprovalThreshold` are phase 36 additions. Both are
+  optional; a `ScopeOptions` with neither set behaves exactly as phase
+  31 shipped it, with no approval check.
 - `type Scope struct` — built only through `NewScope`; holds the
-  resolved allow and deny sets. Unexported fields.
+  resolved allow and deny sets and the approval configuration.
+  Unexported fields.
 - `func NewScope(opts ScopeOptions) *Scope`
 - `(*Scope).Allowed(name string, t Tool) bool` — true when `name`
-  passes the denylist, the privileged check, and the allowlist.
+  passes the denylist, the privileged check, and the allowlist. Phase
+  36 leaves this signature and behavior unchanged; approval is a
+  separate check `RunScoped` runs after `Allowed` returns true.
 - `(*Registry).RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error)`
   — resolves `name` through `Get`, checks `scope.Allowed` when `scope`
   is non-nil, then calls the tool the same way `Run` does. Returns
   `ErrUnknownName` for an unresolved name and `ErrScopeDenied` for a
   name the scope excludes. A nil `scope` allows every resolved tool,
-  matching `Run`'s behavior.
+  matching `Run`'s behavior. Phase 36 keeps this signature unchanged
+  and adds one branch: after `scope.Allowed` passes, when
+  `scope.Approve` is non-nil and the resolved tool's rank meets or
+  exceeds `scope.ApprovalThreshold`'s rank, `RunScoped` calls
+  `scope.Approve(ctx, ToolCall{Name: name, In: in, Profile: ExecutionProfileOf(t)})`
+  before it calls `Run`. `Approve` returning `(true, nil)` proceeds to
+  `Run`. `Approve` returning `(false, nil)` returns `ErrToolDeclined`.
+  `Approve` returning a non-nil error returns that error unchanged. A
+  nil `scope`, matching phase 31, skips both `Allowed` and this check.
+- `type ToolCall struct { Name string; In InOut; Profile ExecutionProfile }`
+  — describes one call `RunScoped` is about to make, passed to
+  `Approve`. `Name` is the resolved tool's registration name. `In` is
+  the caller's input payload, unchanged from the `RunScoped` call.
+  `Profile` is `ExecutionProfileOf(t)` for the resolved tool.
 
 `Registry` is safe for concurrent `Add`, `Get`, `Remove`, `Run`, and
-`RunScoped`; the same `sync.RWMutex` that guards `Run` guards
-`RunScoped`.
+`RunScoped`. `RunScoped`'s map lookup is guarded by the same
+`sync.RWMutex` as `Run`; the phase 36 approval branch runs
+`scope.Approve` and `t.Run` with no lock held, so a caller's `Approve`
+may block indefinitely without blocking other registry callers.
 
 ## Tests
 
@@ -295,6 +371,58 @@ Test files live in `tools/tools_test/`, an external test package.
   registry of one hundred tools behind a `Scope` with a fifty-name
   allowlist. State the allocation budget next to `registry_bench_test.go`.
 
+### Approval gating tests (phase 36)
+
+- `tool_call_test.go` — red-green cases proving `RunScoped` builds
+  `ToolCall` with the resolved tool's name, the caller's `In` value
+  unchanged, and `ExecutionProfileOf(t)` as `Profile`, for a tool that
+  implements `ProfiledTool` and for one that does not (zero
+  `ExecutionProfile`, `Class == ExecutionClassUnclassified`).
+- `approval_rank_test.go` — red-green cases for the rank order. A
+  tool ranked below `ApprovalThreshold` runs with no `Approve` call,
+  proven by a counter the test's `Approve` increments. A tool ranked
+  at or above `ApprovalThreshold` triggers exactly one `Approve` call.
+  A tool with an out-of-enum `Class` triggers `Approve` at any
+  threshold at or below `ExecutionClassExternal`, proving the
+  cautious-default rank. A `Scope` built with `Approve` set and
+  `ApprovalThreshold` left unset (zero value) triggers `Approve` even
+  for an unclassified tool.
+- `run_scoped_approval_test.go` — red-green cases for `RunScoped`'s
+  three-way outcome. `Approve` returning `(true, nil)` runs the tool
+  and returns its result. `Approve` returning `(false, nil)` returns
+  `ErrToolDeclined` and never calls the tool's `Run`, proven by a
+  counter on a stub `Tool`. `Approve` returning a non-nil error
+  returns that exact error, unwrapped, and never calls `Run`. A nil
+  `Approve` field skips the check entirely, matching a `Scope` with no
+  approval configured. A nil `scope` argument skips the check,
+  matching phase 31's existing nil-scope behavior.
+- `run_scoped_approval_order_test.go` — proves ordering: a name denied
+  by `Allowed` (denylist, absent allowlist, or unapproved privileged
+  tool) returns `ErrScopeDenied` and never calls `Approve`, even when
+  `Approve` is set and would return true. This proves `Allowed` gates
+  before `Approve` runs.
+- `run_scoped_approval_integration_test.go` — register a read-class
+  tool and a write-class tool implementing `ProfiledTool` in one
+  `Registry`. Build a `Scope` with
+  `ApprovalThreshold: ExecutionClassWrite` and an `Approve` function
+  that denies every call. Prove `RunScoped` runs the read tool with no
+  `Approve` call and denies the write tool with `ErrToolDeclined`.
+  Prove `Registry.Run`, unscoped, still runs both tools with no
+  approval check, showing the phase 14 and phase 31 paths stay
+  unchanged.
+- `run_scoped_approval_concurrent_test.go` — modeled on
+  `registry_run_scoped_concurrent_test.go`'s pattern, required by this
+  plan for every method that touches the tools map. A tool requiring
+  approval is registered. Sub-case one uses a `Scope` whose `Approve`
+  always approves. N goroutines call `RunScoped` under that `Scope`,
+  racing against N goroutines calling `Remove` for the same name,
+  under `go test -race`. Every call returns either the tool's result
+  or `ErrUnknownName`; no call panics. Sub-case two uses a `Scope`
+  whose `Approve` always denies. N goroutines call `RunScoped` under
+  that `Scope`, racing against N goroutines calling `Remove` for the
+  same name, under `go test -race`. Every call returns either
+  `ErrToolDeclined` or `ErrUnknownName`; no call panics.
+
 ## Verification
 
 `make verify` passes. The coverage floor for `tools` holds at or above
@@ -306,10 +434,12 @@ locks `Tool`, `Registry`, `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`,
 `ExecutionClassRead`, `ExecutionClassWrite`, `ExecutionClassExternal`,
 `ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`,
 `PrivilegedTool`, `ExecutionProfileOf`, `ResultBudgetOf`,
-`IsPrivileged`, `ScopeOptions`, `Scope`, `NewScope`, `RunScoped`, and
-`ErrScopeDenied`. `go test -race ./tools/...` passes, covering
-`registry_concurrent_test.go` and
-`registry_run_scoped_concurrent_test.go`.
+`IsPrivileged`, `ScopeOptions`, `Scope`, `NewScope`, `RunScoped`,
+`ErrScopeDenied`, `ToolCall`, and `ErrToolDeclined`. `ScopeOptions`
+gains its `Approve` and `ApprovalThreshold` fields in the same lock.
+`go test -race ./tools/...` passes, covering
+`registry_concurrent_test.go`, `registry_run_scoped_concurrent_test.go`,
+and `run_scoped_approval_concurrent_test.go`.
 
 `semgrep/sdk-standards.yml`'s `sdk.go.no-enum-string-literals` rule
 gains `ExecutionClass` in its regex alternation, in the same change as
@@ -319,4 +449,12 @@ fires on an `ExecutionClass("x")` violation and stays silent on the
 declared constants, alongside the existing `Intent` case.
 
 `docs/packages/tools.md` documents the execution-risk symbols, the
-concurrency contract for `RunScoped`, and a usage note on `Scope`.
+concurrency contract for `RunScoped`, a usage note on `Scope`, and the
+phase 36 approval-gating additions (`ToolCall`, `ScopeOptions.Approve`,
+`ScopeOptions.ApprovalThreshold`, `ErrToolDeclined`), amended in the
+same change as this phase's code.
+
+`policy/layers.json`'s `tools` row stays `[]`; phase 36 adds no
+internal import. `ToolCall`, `Approve`, and the approval check use
+only `context` and `errors`, the same standard-library-only footprint
+phase 14 and phase 31 already use.

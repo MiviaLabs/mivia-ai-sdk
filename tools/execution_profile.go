@@ -91,3 +91,26 @@ func IsPrivileged(t Tool) bool {
 	}
 	return false
 }
+
+// executionClassRank orders ExecutionClass for RunScoped's approval
+// check only: ExecutionClassUnclassified lowest, then
+// ExecutionClassRead, then ExecutionClassWrite, then
+// ExecutionClassExternal highest. An out-of-enum value ranks at the
+// same, highest level as ExecutionClassExternal, the cautious
+// default: an unrecognized Class must not let a tool skip approval.
+// This is the opposite default from Scope.Allowed, which never reads
+// Class at all.
+func executionClassRank(c ExecutionClass) int {
+	switch c {
+	case ExecutionClassUnclassified:
+		return 0
+	case ExecutionClassRead:
+		return 1
+	case ExecutionClassWrite:
+		return 2
+	case ExecutionClassExternal:
+		return 3
+	default:
+		return 3
+	}
+}

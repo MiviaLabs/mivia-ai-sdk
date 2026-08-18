@@ -31,10 +31,16 @@ unknown name fails. The exported surface below mirrors
   package does not read the bound to truncate or reject a result.
 - `PrivilegedTool` — optional interface. A `Tool` implements
   `Privileged() bool` to mark itself as needing explicit allowlisting.
-- `ScopeOptions` — `Allowlist` and `ExtraDenylist`, the inputs to
+- `ScopeOptions` — `Allowlist` and `ExtraDenylist`, plus `Approve` and
+  `ApprovalThreshold`, the inputs to `NewScope`. `Approve` and
+  `ApprovalThreshold` are optional; a `ScopeOptions` with neither set
+  behaves exactly as phase 31 shipped it, with no approval check.
+- `Scope` — a narrowing filter over tool names, plus an optional
+  approval gate. The zero value is not usable; create one with
   `NewScope`.
-- `Scope` — a narrowing filter over tool names. The zero value is not
-  usable; create one with `NewScope`.
+- `ToolCall` — `Name`, `In`, and `Profile`, describing one call
+  `RunScoped` is about to make. Passed to a `Scope`'s `Approve`
+  function.
 
 ## Functions and methods
 
@@ -48,7 +54,11 @@ unknown name fails. The exported surface below mirrors
   runs the tool.
 - `Registry.RunScoped(ctx, name, in, scope)` — resolves `name` through
   `Get`, checks `scope.Allowed` when `scope` is non-nil, then runs the
-  tool. A nil `scope` behaves like `Run`.
+  tool. A nil `scope` behaves like `Run`. After `scope.Allowed` passes,
+  when the scope has an `Approve` function and the resolved tool's
+  rank meets or exceeds `ApprovalThreshold`, `RunScoped` calls
+  `Approve` with a `ToolCall` before it runs the tool. See "Approval
+  gating" below.
 - `ExecutionProfileOf(t)` — returns `t`'s published `ExecutionProfile`,
   or the zero value when `t` does not implement `ProfiledTool`.
 - `ResultBudgetOf(t)` — returns `t`'s `MaxResultBytes()` and true, or
@@ -70,6 +80,8 @@ Use `errors.Is` to test these.
 - `ErrUnknownName` — `Run` or `RunScoped` got a name `Get` reports as
   absent.
 - `ErrScopeDenied` — `RunScoped` got a name `scope.Allowed` rejects.
+- `ErrToolDeclined` — `RunScoped` got `(false, nil)` from
+  `scope.Approve`.
 
 ## Invariants
 
@@ -101,6 +113,13 @@ Use `errors.Is` to test these.
 - `RunScoped` never reads `Timeout`, `ResourceKey`, or
   `MaxResultBytes`. It checks only `scope.Allowed`, then runs the tool
   the way `Run` does. See "Published, not enforced" below.
+- `RunScoped` calls `scope.Approve` only after `scope.Allowed` passes,
+  only when `Approve` is non-nil, and only when the resolved tool's
+  rank meets or exceeds `ApprovalThreshold`'s rank. See "Approval
+  gating" below.
+- `Approve` returning `(true, nil)` runs the tool. `(false, nil)`
+  returns `ErrToolDeclined` and never runs the tool. A non-nil error
+  returns that error unchanged and never runs the tool.
 
 ## Why this shape
 
@@ -128,6 +147,22 @@ Neither `Run` nor `RunScoped` truncates or rejects a result using
 `ResultBudgetOf`. `RunScoped` runs the tool the same way `Run` does; it
 checks only `Scope.Allowed`. A future agent-binding caller enforces
 these fields when it wires a `Registry` into `agent.Run`.
+
+### Approval gating
+
+`Approve` is `func(ctx context.Context, call ToolCall) (bool, error)`.
+`RunScoped` calls it in place and blocks until it returns; `tools`
+adds no goroutine or channel model of its own. A caller that needs an
+out-of-band answer, for example a human replying hours later, builds
+that flow itself outside `tools`.
+
+`ApprovalThreshold` compares against an unexported rank order over
+`ExecutionClass`: `ExecutionClassUnclassified` ranks lowest, then
+`ExecutionClassRead`, then `ExecutionClassWrite`, then
+`ExecutionClassExternal` highest. A `ProfiledTool` that publishes a
+`Class` outside the four constants ranks at the highest rank, the
+opposite default from `Scope.Allowed`, which never reads `Class` at
+all. An unrecognized `Class` must not let a tool skip approval.
 
 ## Cross-references
 
@@ -179,4 +214,22 @@ _, err := reg.RunScoped(context.Background(), "echo", tools.InOut{Value: "hi"}, 
 // err == nil
 _, err = reg.RunScoped(context.Background(), "delete", tools.InOut{}, scope)
 // err is tools.ErrScopeDenied: "delete" is privileged and not allowlisted
+```
+
+`Approve` and `ApprovalThreshold` gate a call that passes `Allowed`.
+`ApprovalThreshold` left at its zero value, `ExecutionClassUnclassified`,
+gates every allowed call, including an unclassified tool like `echo`
+and `delete` above:
+
+```go
+scope = tools.NewScope(tools.ScopeOptions{
+    Allowlist: []string{"echo", "delete"},
+    Approve: func(_ context.Context, call tools.ToolCall) (bool, error) {
+        return call.Name != "delete", nil
+    },
+})
+_, err = reg.RunScoped(context.Background(), "echo", tools.InOut{Value: "hi"}, scope)
+// err == nil: Approve was called and returned true
+_, err = reg.RunScoped(context.Background(), "delete", tools.InOut{}, scope)
+// err is tools.ErrToolDeclined: Approve was called and returned false
 ```

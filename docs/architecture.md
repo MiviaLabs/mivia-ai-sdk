@@ -165,10 +165,17 @@ flowchart LR
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
   a named action; a `Registry` resolves one by name and runs it. `Add`
-  and `Remove` mirror `room.Room`'s membership symmetry. `tools`
-  imports no other package in this module; no package yet imports
-  `tools`, and the agent binding is a later phase. See
-  [packages/tools.md](packages/tools.md).
+  and `Remove` mirror `room.Room`'s membership symmetry. It also
+  provides `ExecutionClass`, `ExecutionProfile`, `ProfiledTool`,
+  `ResultBudgetTool`, `PrivilegedTool`, `Scope`, `ScopeOptions`,
+  `NewScope`, and `RunScoped`: optional execution-risk markers a
+  `Tool` may implement, and a `Scope` that narrows which tools a run
+  may invoke. `ScopeOptions.Approve` and `ScopeOptions.ApprovalThreshold`
+  add a synchronous approval gate: `RunScoped` calls `Approve` with a
+  `ToolCall` after `Allowed` passes and before it runs the tool,
+  returning `ErrToolDeclined` for a decline. `tools` imports no other
+  package in this module; `mcp` imports `tools`, and the agent binding
+  is a later phase. See [packages/tools.md](packages/tools.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
   `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,

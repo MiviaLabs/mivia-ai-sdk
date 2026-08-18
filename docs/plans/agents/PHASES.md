@@ -268,12 +268,14 @@ gates open: phase 52 proving the receive ladder, and the user
 authorizing a widened `a2a-go` import exception. See
 docs/plans/agents/phase53_a2a_go_server.md.
 
-Phase 54 (`scripts/check_mutation.py`) is plan-only; it has not gone
-through plan review yet. It adds no package: one stdlib-only script
-applies text-level operator mutations per package, runs the package
-suite per mutant, and checks a kill floor. It stays a separate
-`make mutation` tier; it never joins `verify-fast`. See
-docs/plans/agents/phase54_mutation_kit.md.
+Phase 54 (`scripts/check_mutation.py`) has shipped its first rollout
+step. It adds no package: one stdlib-only script applies text-level
+operator mutations per package, runs the package suite per mutant,
+and checks the result against a stored per-package kill floor.
+`--probe` joins `make verify`; a full sweep stays a separate
+`make mutation` tier and never joins `verify-fast`. `envelope`,
+`machine`, and `ledger` hold measured floors; the remaining packages
+are open future work. No standalone phase 54 plan file remains.
 
 Phase 55 (`subagent`) has shipped. It adds one package: `AsTool`
 wraps a built runner as a `tools.Tool`, `RunAll` joins concurrent

@@ -202,6 +202,35 @@ func TestRunTurnStreamMergesOutOfOrderToolCallIndexes(t *testing.T) {
 	}
 }
 
+func TestRunTurnStreamTerminalChunkContentIsAggregated(t *testing.T) {
+	chunks := []provider.Chunk{
+		{Delta: "Hel"},
+		{
+			Delta:         "lo",
+			ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":"cats"}`)},
+			Done:          true,
+			FinishReason:  "tool_calls",
+		},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if got.Message.Content != "Hello" {
+		t.Fatalf("Message.Content = %q, want %q (terminal chunk's Delta must be included)", got.Message.Content, "Hello")
+	}
+	if len(got.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls len = %d, want 1 (terminal chunk's ToolCallDelta must be included)", len(got.ToolCalls))
+	}
+	tc := got.ToolCalls[0]
+	if tc.ID != "call-0" || tc.Name != "search" || string(tc.Arguments) != `{"q":"cats"}` {
+		t.Fatalf("ToolCalls[0] = %+v, want the terminal chunk's fragment", tc)
+	}
+}
+
 func TestRunTurnStreamClosedEarlyReturnsZeroResponse(t *testing.T) {
 	chunks := []provider.Chunk{
 		{Delta: "partial "},
@@ -246,6 +275,9 @@ func TestRunTurnPropagatesChatError(t *testing.T) {
 	if !errors.Is(err, errFakeChat) {
 		t.Fatalf("RunTurn() error = %v, want errors.Is errFakeChat", err)
 	}
+	if err != errFakeChat {
+		t.Fatalf("RunTurn() error = %v, want the unwrapped sentinel errFakeChat (identity)", err)
+	}
 	if !reflect.DeepEqual(got, provider.Response{}) {
 		t.Fatalf("RunTurn() response = %+v, want zero value", got)
 	}
@@ -258,6 +290,9 @@ func TestRunTurnPropagatesChatStreamBeforeFirstChunkError(t *testing.T) {
 	got, err := provider.RunTurn(context.Background(), f, req)
 	if !errors.Is(err, errFakeStream) {
 		t.Fatalf("RunTurn() error = %v, want errors.Is errFakeStream", err)
+	}
+	if err != errFakeStream {
+		t.Fatalf("RunTurn() error = %v, want the unwrapped sentinel errFakeStream (identity)", err)
 	}
 	if !reflect.DeepEqual(got, provider.Response{}) {
 		t.Fatalf("RunTurn() response = %+v, want zero value", got)
@@ -280,6 +315,118 @@ func TestRunTurnValidatesMessagesBeforeDispatch(t *testing.T) {
 	}
 	if f.chatCalled || f.streamCalled {
 		t.Fatal("RunTurn() dispatched to the Completer despite an invalid message")
+	}
+}
+
+func TestRunTurnValidatesMessagesBeforeDispatchNonStreaming(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	req := provider.Request{
+		Stream:   false,
+		Messages: []provider.Message{{Role: provider.RoleTool, ToolCallID: ""}},
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrToolCallIDRequired) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolCallIDRequired", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if f.chatCalled || f.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite an invalid message on the non-streaming path")
+	}
+}
+
+func TestRunTurnValidatesAllMessagesInOrder(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	validThenInvalid := provider.Request{
+		Stream: false,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: "hello"},
+			{Role: provider.RoleTool, ToolCallID: ""},
+		},
+	}
+	got, err := provider.RunTurn(context.Background(), f, validThenInvalid)
+	if !errors.Is(err, provider.ErrToolCallIDRequired) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolCallIDRequired", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if f.chatCalled || f.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite an invalid trailing message")
+	}
+
+	g := &fakeCompleter{name: "fake"}
+	invalidThenValid := provider.Request{
+		Stream: false,
+		Messages: []provider.Message{
+			{Role: provider.RoleTool, ToolCallID: ""},
+			{Role: provider.RoleUser, Content: "hello"},
+		},
+	}
+	got, err = provider.RunTurn(context.Background(), g, invalidThenValid)
+	if !errors.Is(err, provider.ErrToolCallIDRequired) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolCallIDRequired", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if g.chatCalled || g.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite a leading invalid message")
+	}
+}
+
+func TestRunTurnValidatesFirstInvalidEntryAmongDifferentSentinels(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	req := provider.Request{
+		Stream: false,
+		Messages: []provider.Message{
+			{Role: provider.Role("unknown")},
+			{Role: provider.RoleTool, ToolCallID: ""},
+		},
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrUnknownRole) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrUnknownRole (the first invalid entry)", err)
+	}
+	if errors.Is(err, provider.ErrToolCallIDRequired) {
+		t.Fatalf("RunTurn() error = %v, unexpectedly errors.Is ErrToolCallIDRequired (the second, later, entry)", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if f.chatCalled || f.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite an invalid leading message")
+	}
+}
+
+func TestRunTurnStreamMergeKeepsFirstNonEmptyIDAndName(t *testing.T) {
+	chunks := []provider.Chunk{
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0-duplicate", Name: "search-duplicate", Arguments: []byte(`"cats"}`)}},
+		{Done: true, FinishReason: "tool_calls"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if len(got.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls len = %d, want 1", len(got.ToolCalls))
+	}
+	tc := got.ToolCalls[0]
+	if tc.ID != "call-0" {
+		t.Fatalf("ToolCalls[0].ID = %q, want first-seen %q", tc.ID, "call-0")
+	}
+	if tc.Name != "search" {
+		t.Fatalf("ToolCalls[0].Name = %q, want first-seen %q", tc.Name, "search")
+	}
+	if string(tc.Arguments) != `{"q":"cats"}` {
+		t.Fatalf("ToolCalls[0].Arguments = %q, want %q", tc.Arguments, `{"q":"cats"}`)
 	}
 }
 

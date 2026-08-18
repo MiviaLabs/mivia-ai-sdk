@@ -293,6 +293,12 @@ parity scenarios surfaced the gap; see
 docs/plans/agents/phase60_same_final_loops.md and the disclosed
 limits in docs/plans/e2e.md.
 
+Phase 61 is plan-only and not scheduled. It swaps the admission
+zero value: a step runs only when every need succeeded, and skip
+tolerance becomes the explicit opt-in. Route exclusion then
+propagates by default, matching the sibling repo's transition-driven
+readiness. See docs/plans/agents/phase61_strict_admission_default.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

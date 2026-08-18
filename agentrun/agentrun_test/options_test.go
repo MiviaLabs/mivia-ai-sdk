@@ -10,6 +10,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
+	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -151,6 +152,11 @@ func TestNewRejectionsContent(t *testing.T) {
 				o.Tools = tools.New()
 			},
 			wantSent: tools.ErrUnknownName,
+		},
+		{
+			name:     "zero-value receiver rejects with ErrReceiverEmpty",
+			mutate:   func(o *agentrun.Options) { o.Receiver = &identity.Identity{} },
+			wantSent: agentrun.ErrReceiverEmpty,
 		},
 	})
 }

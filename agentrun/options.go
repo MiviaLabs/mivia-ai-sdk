@@ -27,6 +27,7 @@ var (
 	ErrNoTools       = errors.New("agentrun: Scope, Store, Ask, or Artifacts needs Tools")
 	ErrNoRecipient   = errors.New("agentrun: Ask needs AskTo")
 	ErrResultNotText = errors.New("agentrun: tool result is not a string")
+	ErrReceiverEmpty = errors.New("agentrun: Receiver signer is empty")
 )
 
 // Options declares the blocks one New call wires into a Runner. The
@@ -109,7 +110,14 @@ func New(opts Options) (*Runner, error) {
 
 	receiver := opts.Agent.Signer()
 	if opts.Receiver != nil {
-		receiver = opts.Receiver.Signer()
+		s := opts.Receiver.Signer()
+		if s == "" {
+			return nil, ErrReceiverEmpty
+		}
+		receiver = s
+	}
+	if receiver == "" {
+		return nil, ErrReceiverEmpty
 	}
 	bus := opts.Bus
 	if bus == nil {

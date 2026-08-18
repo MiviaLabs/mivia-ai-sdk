@@ -41,9 +41,10 @@ The agent accessors added in the same change:
 
 The flow accessors added in the same change:
 
-- `Definition.Steps()` — a shallow copy of the step slice; Sub children
-  nest.
-- `Definition.Panels()` — a copy of the panel slice.
+- `Definition.Steps()` — a deep copy of the step slice; each step's
+  Needs, Retry, Loop, and Sub child all copy recursively.
+- `Definition.Panels()` — a deep copy of the panel slice; each member
+  slice copies too.
 
 ## Sentinel errors
 

@@ -149,7 +149,7 @@ composition comes last.
   `agent/agent_test/` files proving the current, widened package
   surface composes end to end, using `ledger.MemStore` and a
   test-local `channel.Notifier`-shaped closure in place of the tag-
-  gated `SQLiteStore` backend and the still-plan-only phase 43
+  gated `SQLiteStore` backend and the shipped phase 43
   transport. It depends only on
   already-shipped packages, adds no exported symbol, and needs no new
   `policy/layers.json` row. It widens
@@ -201,16 +201,17 @@ transport, matching `mivia-agent`'s own wire convention, as real
 `channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
 walkthrough only.
 
-Phase 46 (system integration suite) is plan-only; it has not gone
-through plan review yet. It is independently buildable now: every
-package it exercises has already shipped, and it needs neither phase
-42's durable backend nor phase 43's reference transport, using
-`ledger.MemStore` and a test-local closure in their place.
+Phase 46 (system integration suite) has shipped. It adds four test
+files to `agent/agent_test/`. It uses `ledger.MemStore` and a
+test-local closure in place of a durable backend and the reference
+transport. Its checkpoint case drives `flow.Run` and `flow.Resume`
+directly, because `agent.Run` passes a nil `onCheckpoint`.
 
-Phase 47 (concurrency integration suite) is plan-only; it has not
-gone through plan review yet. It is buildable once phase 46 lands,
-since its shared-block suite extends phase 46's fixture. Its Makefile
-step strengthens `make verify`; it weakens no existing gate.
+Phase 47 (concurrency integration suite) has shipped. It adds
+`go test -race ./...` to `make verify` and five test files. Those
+files close the concurrent-run, approval-transport, ledger race,
+`mcp` concurrency, and loopback gRPC gaps. It strengthens
+`make verify`; it weakens no existing gate.
 
 ## Gate interactions
 

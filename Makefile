@@ -23,7 +23,12 @@ verify-fast:
 	$(SEMGREP_SCAN)
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 
+# The race step gates every "run under go test -race" comment in the
+# tree. It runs over the default build, after verify-fast and before
+# the coverage block. verify-fast stays free of it, so the pre-commit
+# hook keeps its runtime.
 verify: verify-fast
+	go test -race ./...
 	@set -e; trap 'rm -f cover.out cover_*.out' EXIT; \
 	src_pkgs="$$(go list ./... | grep -v /scripts | grep -v '_test$$')"; \
 	mod="$$(head -1 go.mod | awk '{print $$2}')"; \

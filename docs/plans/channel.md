@@ -277,10 +277,10 @@ Test files live in `channel/channel_test/`, an external test package.
   `channel.Notifier`-backed closure satisfies `agent.AckWait`'s exact
   signature, proving the composition claim against the real type, not
   a hand-copied stand-in. This test covers `agent.AckWait` only.
-  Phase 36 has since shipped `tools.ScopeOptions.Approve`; no test in
-  this package yet proves a `channel.Notifier`-backed closure against
-  that field's signature. A future change closes that gap the same
-  way this test closes it for `agent.AckWait`.
+  Phase 36 has since shipped `tools.ScopeOptions.Approve`. That gap is
+  now closed: `notifier_approval_integration_test.go` wires a real
+  `NewNDJSONNotifier` into `tools.ScopeOptions.Approve` and drives both
+  the approve and the decline branch over the NDJSON wire.
 
 ### NDJSON transport (phase 43, shipped) tests
 

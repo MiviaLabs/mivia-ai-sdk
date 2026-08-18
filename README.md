@@ -257,6 +257,8 @@ tools chain without shared variables. From here the stack widens:
 
 ## Concepts
 
+### Wire concepts
+
 These concepts belong to the envelope block.
 
 - **Intent** — what the message does: `assert`, `query`, `request`,
@@ -289,9 +291,41 @@ These concepts belong to the envelope block.
   acts. Required for every `request`, optional for other intents through
   `AckRequired`.
 
-All invariants are enforced in code by `Message.Validate` and
+All wire invariants are enforced in code by `Message.Validate` and
 `Ack.Validate`, never only documented. The wire contract is pinned by
 conformance vectors in `envelope/testdata/vectors/`.
+
+### Composition concepts
+
+These concepts belong to the layers above the envelope.
+
+- **Pipeline** — one `agentrun.Options` literal composes an agent,
+  a machine, tools, and an artifact bag. `New` validates the
+  plan-versus-machine transition matrix and every gated step's tool
+  name before anything runs.
+- **Ack chain** — each gated step runs its tool by step ID, stores
+  the string result under a content ref, and confirms a signed ack.
+  A rejected ack fails the run; an escalated tool routes to one
+  human ask.
+- **Orchestrator and subagent** — `subagent.AsTool` wraps a built
+  runner as a step tool. Spawned runs get fresh threads; a
+  context-carried depth bound, default three, stops recursive
+  spawns in code.
+- **Message plane** — a bounded `Mailbox` carries signed messages
+  between orchestrators, subagents, and humans. `Deliver` validates
+  every message before it lands; `Take` drains in delivery order.
+- **Durable task** — ledger records move through `pending`,
+  `claimed`, `completed`, `failed`, and `blocked`. A monotonic fence
+  token makes a dispossessed owner's late write fail; a failed
+  dependency blocks its dependents at completion and at admission.
+- **Receive ladder** — a `dispatch` endpoint runs each NDJSON line
+  through decode, verify, admit, resolve, and handle, failing fast
+  per line. One bad line answers an error object; later lines still
+  process.
+
+The composition invariants are enforced in code too: ledger's
+`TaskState.Validate` and compare-and-swap, subagent's depth check,
+dispatch's fixed ladder order, and agentrun's matrix walk.
 
 ## Layout
 

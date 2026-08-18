@@ -11,7 +11,7 @@
     "discovery": [],
     "dispatch": ["agent", "envelope", "events", "room"],
     "durablefence": [],
-    "e2e": ["agent", "discovery", "envelope", "events", "flow", "identity", "tools"],
+    "e2e": ["agent", "channel", "discovery", "envelope", "events", "flow", "identity", "ledger", "provider", "tools"],
     "envelope": [],
     "events": [],
     "flow": ["events", "machine"],

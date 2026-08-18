@@ -62,10 +62,41 @@ func (t *ThreadCapture) Wait(ctx context.Context, msg envelope.Message) (envelop
 func (t *ThreadCapture) Messages() []envelope.Message
 ```
 
-The harness imports `agent`, `discovery`, `envelope`, `events`,
-`flow`, `identity`, and `tools`; `policy/layers.json` gains exactly
-that row. Scenario test files import anything they need; the deps
-gate exempts test files, so new scenarios never churn the policy.
+The fault kit is a named capability of the harness. Each decorator
+wraps one seam as an interface and fails its FaultOn-th call with an
+error wrapping `ErrFault`; every other call passes through:
+
+```go
+// fault.go
+var ErrFault error
+
+type FaultStore struct{ Store ledger.Store; FaultOn int32 }
+func (f *FaultStore) Load(...) (ledger.TaskState, bool, error)
+func (f *FaultStore) CompareAndSwap(...) (bool, error)
+func (f *FaultStore) Range(...) error
+
+type FaultNotifier struct{ Notifier channel.Notifier; FaultOn int32 }
+func (f *FaultNotifier) Notify(...) (channel.Answer, error)
+
+type FaultCompleter struct{ Completer provider.Completer; FaultOn int32 }
+func (f *FaultCompleter) Name() string
+func (f *FaultCompleter) Chat(...) (provider.Response, error)
+func (f *FaultCompleter) ChatStream(...) (<-chan provider.Chunk, error)
+
+type FaultWait struct{ Inner agent.AckWait; FaultOn int32 }
+func (f *FaultWait) Wait(...) (envelope.Ack, error)
+```
+
+The kit raises the seam only where the block already exposes an
+interface. A block behind a concrete type keeps no decorator: memory's
+`Store` is such a case and stays out of the kit. No production block is
+refactored to create a seam.
+
+The harness imports `agent`, `channel`, `discovery`, `envelope`,
+`events`, `flow`, `identity`, `ledger`, `provider`, and `tools`;
+`policy/layers.json` gains exactly that row. Scenario test files import
+anything they need; the deps gate exempts test files, so new scenarios
+never churn the policy.
 
 ## Scenarios
 
@@ -95,6 +126,25 @@ Each scenario states its wiring, inputs, and asserted outputs.
   work ran once, the ledger holds completed, the dependent returns
   `ErrTaskBlocked`, and the replay returns `ErrTaskDone` without
   re-running work.
+- `faults_store_test.go` — wires ledger, agentrun, and the harness
+  `FaultStore`. Input: a two-step pipeline whose second step runs an
+  Admit, Claim, Complete ceremony over a store set to fault on the
+  fifth call. Outputs: the run error matches `ErrFault` and names the
+  store, step one's artifact survives in the bag, and step two never
+  confirms.
+- `faults_notifier_test.go` — wires channel, tools, agentrun, and the
+  harness `FaultNotifier`. Input: an escalating tool with an `Ask`
+  notifier set to fault on the first ask. Outputs: the escalation
+  surfaces as a step failure that matches `ErrFault` and names the
+  notifier, and the run returns instead of hanging.
+- `faults_subagent_test.go` — wires subagent, agentrun, and the
+  harness `FaultCompleter` and `FaultWait`. Input: an orchestrator
+  step fans three subagents out through `RunAll`; the middle one is a
+  model subagent whose provider faults on the first call. Outputs:
+  `RunAll` returns three results, the two siblings land with nil Err,
+  the failing spec's Err matches `ErrFault`, and the orchestrator run
+  reports it. A second test pins `FaultWait` failing the run on the
+  first ack.
 
 A fallback step stays out of the pipeline scenario by design. In an
 agentrun run the tool chain answers inside the ack, and a rejected
@@ -119,9 +169,15 @@ is ranked by value; each closes a confirmed gap.
   `agentrun` runner, `Send` from another, one wrong-room line
   mid-stream. Lands with phase 52.
 - Budget trips at step two: step one's artifacts and store ref
-  survive, step two never acks.
+  survive, step two never acks. The artifact-survival half of this
+  shipped with the fault kit: `faults_store_test.go` pins step one's
+  artifact surviving a step-two failure that matches `ErrFault`. What
+  remains is switching the killer from a store fault to
+  `contextbudget.Limits`; the scenario body stays the same.
 - Stale lease takeover around real work: the fenced loser's
-  `Complete` returns `ErrFenced`; the taker's lands.
+  `Complete` returns `ErrFenced`; the taker's lands. The kit's
+  `FaultStore` now exercises `Complete` under a failing store, so the
+  takeover half is the remaining new wiring.
 - A validated plan still aborts: a route-excluded dependent whose
   row exists only for the chosen sibling; the run error names the
   missing row. Pins the disclosed limit.

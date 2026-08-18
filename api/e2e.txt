@@ -1,4 +1,12 @@
 package e2e
+  func (f *FaultCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error)
+  func (f *FaultCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)
+  func (f *FaultCompleter) Name() (string)
+  func (f *FaultNotifier) Notify(ctx context.Context, q channel.Question) (channel.Answer, error)
+  func (f *FaultStore) CompareAndSwap(ctx context.Context, key ledger.IdempotencyKey, old, new ledger.TaskState) (bool, error)
+  func (f *FaultStore) Load(ctx context.Context, key ledger.IdempotencyKey) (ledger.TaskState, bool, error)
+  func (f *FaultStore) Range(ctx context.Context, fn func(ledger.TaskState) bool) (error)
+  func (f *FaultWait) Wait(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
   func (r *Recorder) Handler() (events.Handler)
   func (r *Recorder) Names() ([]events.Name)
   func (t *ThreadCapture) Messages() ([]envelope.Message)
@@ -13,6 +21,22 @@ package e2e
   type EscalateTool struct {
   ToolName string
 }
+  type FaultCompleter struct {
+  Completer provider.Completer
+  FaultOn int32
+}
+  type FaultNotifier struct {
+  Notifier channel.Notifier
+  FaultOn int32
+}
+  type FaultStore struct {
+  Store ledger.Store
+  FaultOn int32
+}
+  type FaultWait struct {
+  Inner agent.AckWait
+  FaultOn int32
+}
   type PrefixTool struct {
   ToolName string
   Prefix string
@@ -21,3 +45,4 @@ package e2e
 }
   type ThreadCapture struct {
 }
+  var ErrFault

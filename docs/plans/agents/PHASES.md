@@ -297,14 +297,14 @@ Phase 60 has shipped. It changes no package surface: a loop child
 that ends every iteration on one status is representable, because
 the parent re-enters without a transition row when its standing
 already matches the child final. The parity workaround stays valid
-but is no longer required. See
-docs/plans/agents/phase60_same_final_loops.md.
+but is no longer required. No standalone phase 60 plan file
+remains.
 
 Phase 61 has shipped. It swaps the admission zero value: a step
 runs only when every need succeeded, and skip tolerance is the
 explicit opt-in. Route exclusion propagates by default, matching
-the sibling repo's transition-driven readiness. See
-docs/plans/agents/phase61_strict_admission_default.md.
+the sibling repo's transition-driven readiness. No standalone
+phase 61 plan file remains.
 
 ## Gate interactions
 

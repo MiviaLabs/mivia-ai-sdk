@@ -225,7 +225,10 @@ Disclosed limits these scenarios pin:
 One limit the scenarios surfaced is already fixed: a step repeated
 inside a loop overwrites its bare-ID artifact with the latest
 result. The suffixed message IDs stay on the thread only. Guards and
-`PayloadOf` read the bare key for the latest result.
+`PayloadOf` read the bare key for the latest result. Every run also
+appends to `Artifacts.History`, so a repair loop can read the
+earlier rejections it is repairing, the sibling repo's
+`prior_findings` pattern.
 
 ## Tests
 

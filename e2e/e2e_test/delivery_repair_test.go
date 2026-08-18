@@ -169,6 +169,15 @@ func TestDeliveryMetadataRepairLoopRecovers(t *testing.T) {
 	if !ok || !strings.Contains(got, "pr-opened:fix: bug fix") {
 		t.Errorf("delivery artifact = %q,%v, want the latest result, the opened PR", got, ok)
 	}
+	runs := artifacts.History("deliver")
+	if len(runs) != 2 ||
+		!strings.Contains(runs[0].Value, "pr-rejected") ||
+		!strings.Contains(runs[1].Value, "pr-opened") {
+		t.Errorf("delivery history = %+v, want the rejection then the opening", runs)
+	}
+	if runs[1].MessageID != "deliver#2" {
+		t.Errorf("second run message ID = %q, want the signed counter ID", runs[1].MessageID)
+	}
 	if _, ok := artifacts.Get("repair_metadata"); !ok {
 		t.Error("the metadata repair never ran")
 	}

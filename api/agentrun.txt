@@ -1,6 +1,8 @@
 package agentrun
   func (a *Artifacts) Get(step string) (string, bool)
+  func (a *Artifacts) History(step string) ([]Run)
   func (a *Artifacts) Set(step, value string)
+  func (a *Artifacts) SetRun(msgID, step, value string)
   func (r *Runner) Bus() (*events.Bus)
   func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (machine.Status, machine.InOut, error)
   func New(opts Options) (*Runner, error)
@@ -23,6 +25,10 @@ package agentrun
   Budget *contextbudget.Limits
   Monitor *heartbeat.Monitor
   Wait agent.AckWait
+}
+  type Run struct {
+  MessageID string
+  Value string
 }
   type Runner struct {
 }

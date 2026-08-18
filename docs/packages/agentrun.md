@@ -18,8 +18,11 @@ mirrors `api/agentrun.txt`.
   the fields stay unexported.
 - `Artifacts` — a record of each gated step's tool result, keyed by step
   ID. A step repeated inside a loop overwrites the entry, so the bare ID
-  holds the latest iteration's result. Safe for concurrent use. Build a
-  zero value with `&Artifacts{}`.
+  holds the latest iteration's result. Every run also appends to a
+  per-step history: `History(step)` returns every `Run` in order, each
+  carrying its signed message ID, so earlier failures and rejections
+  stay readable. Safe for concurrent use. Build a zero value with
+  `&Artifacts{}`.
 
 ## Functions and methods
 

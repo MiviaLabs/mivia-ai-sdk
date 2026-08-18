@@ -105,11 +105,25 @@ func TestRunLoopedChildRunsToolPerIteration(t *testing.T) {
 	if branch.calls != 2 {
 		t.Fatalf("branch tool calls = %d, want 2", branch.calls)
 	}
+	assertBranchArtifacts(t, artifacts)
+}
+
+// assertBranchArtifacts pins the latest-wins key and the ordered
+// run history for the repeated branch step.
+func assertBranchArtifacts(t *testing.T, artifacts *agentrun.Artifacts) {
+	t.Helper()
 	if v, ok := artifacts.Get("branch"); !ok || v != "ran:2" {
 		t.Errorf("artifact %q = %q,%v, want the latest iteration's result", "branch", v, ok)
 	}
 	if _, ok := artifacts.Get("branch#2"); ok {
 		t.Errorf("artifact %q exists; repeats overwrite the bare step ID", "branch#2")
+	}
+	runs := artifacts.History("branch")
+	if len(runs) != 2 || runs[0].Value != "ran:1" || runs[1].Value != "ran:2" {
+		t.Errorf("History(branch) = %+v, want both runs in order", runs)
+	}
+	if runs[0].MessageID != "branch" || runs[1].MessageID != "branch#2" {
+		t.Errorf("History message IDs = %q,%q, want the signed counter IDs", runs[0].MessageID, runs[1].MessageID)
 	}
 	if v, ok := artifacts.Get("toA"); !ok || v != "a:pa" {
 		t.Errorf("artifact %q = %q,%v, want the single run's result", "toA", v, ok)

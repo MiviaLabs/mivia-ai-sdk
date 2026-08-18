@@ -91,7 +91,7 @@ func (r *Runner) chain() agent.AckWait {
 			}
 		}
 		if r.artifacts != nil {
-			r.artifacts.Set(name, result)
+			r.artifacts.SetRun(msg.ID, name, result)
 		}
 		ack, err := envelope.NewAck(msg, r.receiver, result)
 		if err != nil {
@@ -182,16 +182,34 @@ func bigPanels(d *flow.Definition) map[string]bool {
 
 // Artifacts records each gated step's tool result by step ID. A
 // step repeated inside a loop overwrites the entry, so the bare ID
-// always holds the latest iteration's result. Build a zero value
-// with &Artifacts{}; Set initializes the map on first use. It is
-// safe for concurrent use.
+// always holds the latest iteration's result. Every run also
+// appends to a per-step history, so a caller can read earlier
+// failures and rejections through History. Build a zero value with
+// &Artifacts{}; Set initializes the maps on first use. It is safe
+// for concurrent use.
 type Artifacts struct {
 	mu     sync.Mutex
 	values map[string]string
+	runs   map[string][]Run
 }
 
-// Set stores value under step, replacing any earlier value.
+// Run is one recorded result of one step run. MessageID is the
+// signed message's ID, which carries the "#N" counter for a step
+// repeated inside a loop.
+type Run struct {
+	MessageID string
+	Value     string
+}
+
+// Set stores value under step, replacing any earlier value, and
+// appends one Run to the step's history.
 func (a *Artifacts) Set(step, value string) {
+	a.SetRun("", step, value)
+}
+
+// SetRun is Set with the producing message's ID recorded on the
+// history entry. An empty msgID records the entry without one.
+func (a *Artifacts) SetRun(msgID, step, value string) {
 	if a == nil {
 		return
 	}
@@ -199,8 +217,10 @@ func (a *Artifacts) Set(step, value string) {
 	defer a.mu.Unlock()
 	if a.values == nil {
 		a.values = make(map[string]string)
+		a.runs = make(map[string][]Run)
 	}
 	a.values[step] = value
+	a.runs[step] = append(a.runs[step], Run{MessageID: msgID, Value: value})
 }
 
 // Get returns the value stored under step and whether step held one. A
@@ -213,6 +233,18 @@ func (a *Artifacts) Get(step string) (string, bool) {
 	defer a.mu.Unlock()
 	v, ok := a.values[step]
 	return v, ok
+}
+
+// History returns every recorded run of step, in run order. A nil
+// Artifacts or an unknown step reads as empty. The caller owns the
+// returned slice.
+func (a *Artifacts) History(step string) []Run {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return append([]Run(nil), a.runs[step]...)
 }
 
 // PayloadOf builds a flow.PayloadFrom closure that reads one step's

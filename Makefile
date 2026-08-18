@@ -27,7 +27,7 @@ verify-fast:
 # tree. It runs over the default build, after verify-fast and before
 # the coverage block. verify-fast stays free of it, so the pre-commit
 # hook keeps its runtime.
-verify: verify-fast
+verify: verify-fast verify-ledger-sqlite
 	go test -race ./...
 	@set -e; trap 'rm -f cover.out cover_*.out' EXIT; \
 	src_pkgs="$$(go list ./... | grep -v /scripts | grep -v '_test$$')"; \
@@ -56,14 +56,16 @@ bench:
 	go test -run=NONE -bench=. -benchmem ./...
 
 # verify-ledger-sqlite is the tag-gated verification command for
-# SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md). It
-# is not part of the default verify target: sqlite_store*.go never
-# compiles into the default build. It holds the tag-gated ledger
-# package to the same 85% coverage floor verify's default-build block
-# enforces.
+# SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md).
+# sqlite_store*.go never compiles into the default build, so verify
+# depends on this target for the tagged tier. It holds the tag-gated
+# ledger package to the same 85% coverage floor verify's default
+# build block enforces, and it also runs e2e's tagged ceremony
+# scenario over a SQLite file, so the durable store is exercised at
+# the composition layer, not only alone.
 verify-ledger-sqlite:
 	@trap 'rm -f cover_ledger_sqlite.out' EXIT; \
-	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/...; \
+	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./e2e/...; \
 	go tool cover -func=cover_ledger_sqlite.out | awk -v floor="$(COVERAGE_FLOOR)" '/^total:/{pct=$$3; sub(/%/,"",pct); if (pct+0<floor) {printf "ledger (tag ledger_sqlite) coverage %.1f%% below the %d%% floor\n", pct, floor; exit 1}}'
 
 api-update:

@@ -156,6 +156,12 @@ These scenarios exercise the whole system over the shipped
   send into the subagent's mailbox, the subagent drains both and
   replies into the orchestrator's, and the orchestrator admits the
   subagent's signer into a room on the way.
+- `sqlite_ceremony_test.go` — behind the `ledger_sqlite` tag, the
+  full taskrun ceremony around one agentrun pipeline over a SQLite
+  file in a temp dir, closed and reopened from the same path: the
+  completed record, the replay sentinel, and the blocked dependent
+  all survive the reopen. `verify` runs this through its
+  `verify-ledger-sqlite` tier.
 
 Still on the backlog:
 

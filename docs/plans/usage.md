@@ -3,8 +3,9 @@
 Status: shipped. New top-level package. Depends on the shipped
 `provider` package for its `Usage` type; `usage` defines no
 token-count type of its own. `usage` imports `provider` only, plus
-stdlib; no third-party import. Full design rationale:
-`docs/plans/agents/phase58_usage.md`.
+stdlib; no third-party import. This plan folded in from
+`docs/plans/agents/phase58_usage.md` on shipping; no standalone
+phase 58 plan file remains.
 
 ## Goal
 
@@ -94,8 +95,8 @@ Test files live in `usage/usage_test/`:
   per call, since only the first of the 100 calls allocates a new map
   entry), and an isolated-first-call case rebuilding a fresh
   `Accumulator` each measured run. The isolated case's measured
-  baseline is 3 allocations, not the 1 in the phase 58 design
-  document: `New()` plus the first `Record` call together cost 3
+  baseline is 3 allocations, not the 1 of the original design:
+  `New()` plus the first `Record` call together cost 3
   allocations on this implementation (the `Accumulator` escapes to
   the heap once its address is used through a mutex-guarded method,
   plus the map's initial bucket allocation on first insert). The test

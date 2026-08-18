@@ -302,6 +302,16 @@ package in this module. It ships with no caller, the same way
 phase 14 shipped `tools`. Its package plan lives at
 docs/plans/hooks.md; no standalone phase 57 plan file remains.
 
+Phase 58 (`usage`) has shipped. It adds one package: an
+`Accumulator` records one `provider.Usage` per call, keyed by a
+caller-supplied session identifier. `Total` sums every field for
+a session, `Reset` clears one session, and `Record` is safe for
+concurrent use. It reuses `provider.Usage`, so one token-count
+definition serves the whole SDK. It depends on the shipped
+`provider` package and adds one `policy/layers.json` edge. Its
+package plan lives at docs/plans/usage.md; no standalone phase 58
+plan file remains.
+
 Phase 59 (`trace`) has shipped. It adds one package: a `Span`
 records one named operation, a `Tracer` links spans through `ctx`,
 and `SpanFrom` reads the current span back. `End`, `SetAttribute`,

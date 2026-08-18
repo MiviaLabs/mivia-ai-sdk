@@ -44,7 +44,7 @@ decode or dispatch fault onto `ErrBadCommand`.
 - `HeartbeatTool` — beat, alive, and dead against a bound monitor.
 - `DiscoveryTool` — parses one capability card per call and reports
   the matching capability, or `none`.
-- `ProviderTool` — one model turn through a caller-supplied
+- `ProviderTool` — one model turn through a caller-supplied Completer; `ProviderRegistryTool` — one turn over
   `Completer`; the prompt in, the reply content out.
 - `TriggerTool` — fires a named trigger; the registry's own action
   runs.

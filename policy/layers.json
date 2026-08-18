@@ -1,36 +1,129 @@
 {
   "comment": "Dependency direction policy. A package may import only the listed internal packages. Adding a package requires a row here first - the plan gate (docs/plans/) says why the package exists.",
   "allowed_imports": {
-    "a2a": ["envelope"],
-    "a2aack": ["a2aclient", "agent", "envelope"],
-    "a2aclient": ["a2a", "envelope"],
-    "agent": ["identity", "discovery", "flow", "envelope", "events", "machine", "heartbeat", "contextbudget"],
-    "agentrun": ["agent", "channel", "contextbudget", "envelope", "events", "flow", "heartbeat", "identity", "machine", "memory", "tools"],
+    "a2a": [
+      "envelope"
+    ],
+    "a2aack": [
+      "a2aclient",
+      "agent",
+      "envelope"
+    ],
+    "a2aclient": [
+      "a2a",
+      "envelope"
+    ],
+    "agent": [
+      "identity",
+      "discovery",
+      "flow",
+      "envelope",
+      "events",
+      "machine",
+      "heartbeat",
+      "contextbudget"
+    ],
+    "agentrun": [
+      "agent",
+      "channel",
+      "contextbudget",
+      "envelope",
+      "events",
+      "flow",
+      "heartbeat",
+      "identity",
+      "machine",
+      "memory",
+      "tools"
+    ],
     "channel": [],
     "contextbudget": [],
     "discovery": [],
-    "dispatch": ["agent", "envelope", "events", "room"],
+    "dispatch": [
+      "agent",
+      "envelope",
+      "events",
+      "room"
+    ],
     "durablefence": [],
-    "e2e": ["agent", "channel", "discovery", "envelope", "events", "flow", "identity", "ledger", "provider", "tools"],
+    "e2e": [
+      "agent",
+      "channel",
+      "discovery",
+      "envelope",
+      "events",
+      "flow",
+      "identity",
+      "ledger",
+      "provider",
+      "tools"
+    ],
     "envelope": [],
     "events": [],
-    "flow": ["events", "machine"],
-    "heartbeat": ["events"],
+    "flow": [
+      "events",
+      "machine"
+    ],
+    "heartbeat": [
+      "events"
+    ],
     "hooks": [],
-    "identity": ["envelope"],
-    "ledger": ["machine", "events"],
-    "machine": ["events"],
-    "mcp": ["tools"],
-    "memory": ["envelope"],
+    "identity": [
+      "envelope"
+    ],
+    "ledger": [
+      "machine",
+      "events"
+    ],
+    "machine": [
+      "events"
+    ],
+    "mcp": [
+      "tools"
+    ],
+    "memory": [
+      "envelope"
+    ],
     "provider": [],
-    "providerregistry": ["provider"],
-    "room": ["envelope", "heartbeat"],
-    "scheduler": ["events"],
-    "subagent": ["agent", "agentrun", "channel", "discovery", "envelope", "events", "flow", "heartbeat", "identity", "ledger", "machine", "memory", "provider", "room", "scheduler", "taskrun", "tools", "trigger"],
-    "taskrun": ["ledger"],
+    "providerregistry": [
+      "provider"
+    ],
+    "room": [
+      "envelope",
+      "heartbeat"
+    ],
+    "scheduler": [
+      "events"
+    ],
+    "subagent": [
+      "agent",
+      "agentrun",
+      "channel",
+      "discovery",
+      "envelope",
+      "events",
+      "flow",
+      "heartbeat",
+      "identity",
+      "ledger",
+      "machine",
+      "memory",
+      "provider",
+      "providerregistry",
+      "room",
+      "scheduler",
+      "taskrun",
+      "tools",
+      "trigger"
+    ],
+    "taskrun": [
+      "ledger"
+    ],
     "tools": [],
     "trace": [],
     "trigger": [],
-    "usage": ["provider"]
+    "usage": [
+      "provider"
+    ]
   }
 }

@@ -19,8 +19,8 @@ messages. The exported surface below mirrors `api/agent.txt`.
 - `New(id, card, plan)` — builds an `Agent`.
 - `Agent.Name()` — the card's `Name` field.
 - `Agent.Capabilities()` — the card's `Capabilities` slice.
-- `Agent.Run(ctx, threadID, m, in, wait, bus, hb, room)` — drives the
-  bound plan through `flow.Run`.
+- `Agent.Run(ctx, threadID, m, in, wait, bus, hb, room, budget)` —
+  drives the bound plan through `flow.Run`.
 - `EmitMessageDelivered(ctx, bus, m)` — verifies `m`'s signature, then
   emits `MessageDeliveredEvent`.
 - `EmitMessageAcked(ctx, bus, a)` — validates `a`, then emits
@@ -46,6 +46,8 @@ Use `errors.Is` to test these.
   step to a human instead of resolving an ack.
 - `ErrNoWait` — `Run` got a nil `wait`.
 - `ErrNoThread` — `Run` got an empty `threadID`.
+- `ErrOverBudget` — a gated step's `Fits` check against a non-nil
+  `budget` failed.
 
 ## Invariants
 
@@ -113,15 +115,40 @@ Use `errors.Is` to test these.
   `a.id.Sign` runs, on every gated step's built message, since
   `Sign` covers the whole canonical-JSON payload including `Room`.
 
+### The optional budget parameter
+
+- `budget` is an optional `*contextbudget.Limits`. A nil `budget`
+  skips every budget check; `Run`'s behavior is otherwise unchanged.
+- A non-nil `budget` runs `budget.Validate()` once, at the same point
+  `Run` checks `wait`, `bus`, and `threadID`; an invalid budget
+  returns `machine.Status("")`, `in` unchanged, and the wrapped
+  `Validate` error.
+- A non-nil, valid `budget` makes `Run` keep a running byte total,
+  `runningBytes`, across the call: after each step's message is
+  signed into `built`, `Run` adds that message's `len(payload)` to
+  `runningBytes`.
+- Right before the `wait` call for the step about to run, and before
+  `hb.Beat`, `confirmStep` calls `budget.Fits` with `runningBytes`
+  plus the about-to-run step's own payload byte length, and the
+  1-indexed count of steps built so far.
+- A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
+  without calling `hb.Beat`, `wait`, or `EmitMessageAcked` for that
+  step.
+- A panel step, a step named in a `flow.Panel` with two or more
+  members, never reaches `confirmStep`'s `wait` call, so a panel
+  member's payload never adds to `runningBytes` and never trips
+  `budget`. This mirrors the disclosed heartbeat panel gap above.
+
 ## Why this shape
 
-`agent` is the composition layer. It imports six other packages:
-`identity`, `discovery`, `flow`, `envelope`, `events`, and
-`heartbeat`. None of those six packages imports `agent` back.
-Dependency direction flows inward, from the leaf building blocks
-toward the package that wires them together, so `agent` composes
-signing, workflow stepping, event emission, and liveness tracking
-without any of those packages knowing an agent exists.
+`agent` is the composition layer. It imports seven other packages:
+`identity`, `discovery`, `flow`, `envelope`, `events`, `heartbeat`,
+and `contextbudget`. None of those seven packages imports `agent`
+back. Dependency direction flows inward, from the leaf building
+blocks toward the package that wires them together, so `agent`
+composes signing, workflow stepping, event emission, liveness
+tracking, and budget accounting without any of those packages knowing
+an agent exists.
 
 ## Cross-references
 
@@ -172,7 +199,7 @@ m, _ := machine.New(
     machine.Transition{From: "pending", To: "reviewed", Trigger: "advance"},
 )
 
-status, out, err := a.Run(context.Background(), "task-42", m, machine.InOut{}, wait, bus, nil, "")
+status, out, err := a.Run(context.Background(), "task-42", m, machine.InOut{}, wait, bus, nil, "", nil)
 if err != nil {
     // a step failed, escalated (errors.Is(err, agent.ErrEscalated)),
     // or an entry check rejected an argument

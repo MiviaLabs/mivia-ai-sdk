@@ -17,10 +17,10 @@ references.
 
 ## Package map
 
-The diagram shows the fifteen packages and the import edges between
+The diagram shows the sixteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`discovery`, `envelope`, `events`, and `tools` are leaves: they
-import no other package in this module.
+`contextbudget`, `discovery`, `envelope`, `events`, and `tools` are
+leaves: they import no other package in this module.
 
 ```mermaid
 flowchart LR
@@ -31,6 +31,7 @@ flowchart LR
     agent --> events
     agent --> machine
     agent --> heartbeat
+    agent --> contextbudget
     flow --> events
     flow --> machine
     heartbeat --> events
@@ -45,6 +46,7 @@ flowchart LR
     a2aclient --> a2a
     a2aclient --> envelope
     mcp --> tools
+    contextbudget[contextbudget]
     discovery[discovery]
     envelope[envelope]
     events[events]
@@ -118,10 +120,20 @@ flowchart LR
   schedule. `Run` also takes one trailing, optional `room string`
   parameter. A non-empty `room` makes `Run` stamp it onto
   `Message.Room` before it signs each gated step's message; an empty
-  `room` leaves `Message.Room` at the zero value. `agent` imports
-  `envelope`, `events`, `machine`, and `heartbeat`; none of those four
-  packages imports `agent` or any of the other three. See
-  [packages/agent.md](packages/agent.md).
+  `room` leaves `Message.Room` at the zero value. `Run` also takes one
+  trailing, optional `*contextbudget.Limits` parameter. A non-nil
+  `budget` runs `budget.Validate()` once, at the same point `Run`
+  checks `wait`, `bus`, and `threadID`; an invalid budget returns its
+  wrapped `Validate` error. A non-nil, valid `budget` makes
+  `confirmStep` check `budget.Fits`, right before each gated step's
+  `AckWait` call and before the heartbeat beat, against the cumulative
+  byte total of every message built so far plus the step about to run.
+  A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
+  without beating, waiting, or emitting `MessageAckedEvent` for that
+  step. A panel step reaches no `Fits` check either. `agent` imports
+  `envelope`, `events`, `machine`, `heartbeat`, and `contextbudget`;
+  none of those five packages imports `agent` or any of the other
+  four. See [packages/agent.md](packages/agent.md).
 - `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
   `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
   `MissedEvent`. `Monitor` tracks liveness by time: it records the
@@ -187,6 +199,14 @@ flowchart LR
   internally. It is the second package, after `a2aclient`, allowed to
   carry a third-party import: `github.com/modelcontextprotocol/go-sdk`,
   the official MCP Go SDK. See [packages/mcp.md](packages/mcp.md).
+- `contextbudget/` — a leaf primitive. It provides `Limits`,
+  `Validate`, and `Fits`. `Limits` caps one model call's context by
+  byte count and event count; a zero field means no cap for that
+  dimension. `Validate` rejects a negative `MaxBytes` or `MaxEvents`.
+  `Fits` reports whether a candidate byte and event total both stay
+  at or under their caps; it keeps no running total of its own.
+  `contextbudget` imports no other package in this module; `agent`
+  imports it for `Run`'s optional budget check.
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

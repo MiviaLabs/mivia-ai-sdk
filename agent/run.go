@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -23,9 +24,10 @@ type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, erro
 // Sentinel errors for Run; test with errors.Is. ErrNoBus, already
 // exported by the phase 20 translator, is reused for a nil bus.
 var (
-	ErrEscalated = errors.New("agent: step escalated")
-	ErrNoWait    = errors.New("agent: wait is required")
-	ErrNoThread  = errors.New("agent: thread id is required")
+	ErrEscalated  = errors.New("agent: step escalated")
+	ErrNoWait     = errors.New("agent: wait is required")
+	ErrNoThread   = errors.New("agent: thread id is required")
+	ErrOverBudget = errors.New("agent: context budget exceeded")
 )
 
 // Run drives a's bound plan (the *flow.Definition New bound) through
@@ -66,10 +68,25 @@ var (
 // stays "". A non-empty room makes confirmStep stamp it onto
 // Message.Room before a.id.Sign runs, on every gated step's built
 // message.
+//
+// budget is an optional context budget. A nil budget skips every
+// budget check; Run's behavior is otherwise unchanged. A non-nil
+// budget runs budget.Validate() once, at the same point Run checks
+// wait, bus, and threadID; an invalid budget returns
+// machine.Status(""), in unchanged, and the wrapped Validate error.
+// A non-nil, valid budget makes confirmStep check budget.Fits, right
+// before each gated step's wait call, against the cumulative byte
+// total of every message built so far plus the step about to run,
+// and the 1-indexed count of steps built so far including that step.
+// A Fits failure returns ErrOverBudget, wrapping the step ID, without
+// calling hb.Beat, wait, or EmitMessageAcked for that step. A panel
+// step reaches no confirmStep wait call, so its payload never adds to
+// the running total and never trips budget; see docs/plans/agents/
+// phase32_context_budget.md's disclosed scope limit.
 func (a *Agent) Run(
 	ctx context.Context, threadID string, m *machine.Definition,
 	in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor,
-	room string,
+	room string, budget *contextbudget.Limits,
 ) (machine.Status, machine.InOut, error) {
 	if wait == nil {
 		return machine.Status(""), in, ErrNoWait
@@ -80,6 +97,11 @@ func (a *Agent) Run(
 	if threadID == "" {
 		return machine.Status(""), in, ErrNoThread
 	}
+	if budget != nil {
+		if err := budget.Validate(); err != nil {
+			return machine.Status(""), in, err
+		}
+	}
 
 	hbID := a.id.Signer() + ":" + threadID
 	if hb != nil {
@@ -87,7 +109,8 @@ func (a *Agent) Run(
 	}
 
 	var built []envelope.Message
-	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID, room)
+	var runningBytes int
+	confirm := a.confirmStep(threadID, wait, bus, &built, hb, hbID, room, budget, &runningBytes)
 
 	report, err := flow.Run(ctx, a.plan, m, in, confirm, bus)
 	status, rec := report.Status(), report.Record()
@@ -110,8 +133,11 @@ func (a *Agent) Run(
 // two Confirm calls concurrently, so built needs no lock. hb, when
 // non-nil, beats hbID right before wait; a nil hb skips the beat. room,
 // when non-empty, sets msg.Room before a.id.Sign; an empty room leaves
-// Message.Room at the zero value.
-func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string, room string) flow.Confirm {
+// Message.Room at the zero value. budget, when non-nil, gates the
+// Fits check; runningBytes accumulates the byte length of every
+// built step's payload and is checked, along with the step count,
+// before hb.Beat and wait.
+func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *heartbeat.Monitor, hbID string, room string, budget *contextbudget.Limits, runningBytes *int) flow.Confirm {
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{
 			Version:   envelope.Version,
@@ -134,6 +160,13 @@ func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, buil
 		if err := EmitMessageDelivered(ctx, bus, signed); err != nil {
 			return err
 		}
+		if budget != nil {
+			candidateBytes := *runningBytes + len(signed.Payload)
+			stepCount := len(*built) + 1
+			if !budget.Fits(candidateBytes, stepCount) {
+				return fmt.Errorf("agent: step %q: %w", step.ID, ErrOverBudget)
+			}
+		}
 		if hb != nil {
 			_ = hb.Beat(hbID, time.Now())
 		}
@@ -148,6 +181,9 @@ func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, buil
 			return fmt.Errorf("agent: step %q ack status %q, want %q", step.ID, ack.Status, envelope.AckConfirmed)
 		}
 		*built = append(*built, signed)
+		if budget != nil {
+			*runningBytes += len(signed.Payload)
+		}
 		return nil
 	}
 }

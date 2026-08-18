@@ -214,7 +214,7 @@ func TestExchangeSignedRequestConfirmedAck(t *testing.T) {
 	var refs []string
 	wait := exchangeWait(t, fx, &captured, &refs)
 
-	status, _, err := fx.a.Run(context.Background(), "exchange-thread-1", fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID())
+	status, _, err := fx.a.Run(context.Background(), "exchange-thread-1", fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID(), nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestExchangeRejectsUnadmittedReceiver(t *testing.T) {
 	var refs []string
 	wait := exchangeWait(t, fx, &captured, &refs)
 
-	status, _, err := fx.a.Run(context.Background(), "exchange-thread-2", fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID())
+	status, _, err := fx.a.Run(context.Background(), "exchange-thread-2", fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID(), nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for an unadmitted receiver")
 	}

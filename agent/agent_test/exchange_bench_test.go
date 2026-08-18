@@ -35,7 +35,7 @@ func BenchmarkExchange(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		threadID := fmt.Sprintf("bench-thread-%d", i)
-		if _, _, err := fx.a.Run(ctx, threadID, fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID()); err != nil {
+		if _, _, err := fx.a.Run(ctx, threadID, fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID(), nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -64,7 +64,7 @@ func TestExchangeAllocBudget(t *testing.T) {
 	alloc := testing.AllocsPerRun(200, func() {
 		threadID := fmt.Sprintf("alloc-thread-%d", i)
 		i++
-		if _, _, err := fx.a.Run(ctx, threadID, fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID()); err != nil {
+		if _, _, err := fx.a.Run(ctx, threadID, fx.m, machine.InOut{}, wait, fx.bus, nil, fx.r.ID(), nil); err != nil {
 			t.Fatal(err)
 		}
 	})

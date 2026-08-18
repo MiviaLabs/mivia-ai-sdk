@@ -113,7 +113,7 @@ func TestRunEntryChecks(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			in := machine.InOut{Input: "keep me"}
-			status, rec, err := a.Run(context.Background(), tt.threadID, nil, in, tt.wait, tt.bus, nil, "")
+			status, rec, err := a.Run(context.Background(), tt.threadID, nil, in, tt.wait, tt.bus, nil, "", nil)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Run() error = %v, want errors.Is match for %v", err, tt.wantErr)
 			}
@@ -132,7 +132,7 @@ func TestRunEntryChecks(t *testing.T) {
 func TestRunOneStepConfirmed(t *testing.T) {
 	a, m := oneStepFixture(t)
 	bus := newRunBus(t)
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "")
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRunOneStepRoomStamped(t *testing.T) {
 		captured = msg
 		return confirmingWait(ctx, msg)
 	}
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "room-1")
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "room-1", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestRunOneStepRoomEmpty(t *testing.T) {
 		captured = msg
 		return confirmingWait(ctx, msg)
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestRunOneStepRoomEmpty(t *testing.T) {
 func TestRunOneStepCorrected(t *testing.T) {
 	a, m := oneStepFixture(t)
 	bus := newRunBus(t)
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, correctingWait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, correctingWait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a corrected ack")
 	}
@@ -214,7 +214,7 @@ func TestRunOneStepEscalated(t *testing.T) {
 	escalate := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, fmt.Errorf("step needs a human: %w", agent.ErrEscalated)
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, escalate, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, escalate, bus, nil, "", nil)
 	if !errors.Is(err, agent.ErrEscalated) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrEscalated", err)
 	}
@@ -233,7 +233,7 @@ func TestRunOneStepPlainWaitError(t *testing.T) {
 	plainErr := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, wantErr
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, plainErr, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, plainErr, bus, nil, "", nil)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want errors.Is match for %v", err, wantErr)
 	}
@@ -265,7 +265,7 @@ func TestRunOneStepWaitErrorWithValidAck(t *testing.T) {
 		}
 		return ack.Confirm(), wantErr
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Run() error = %v, want errors.Is match for %v", err, wantErr)
 	}
@@ -300,7 +300,7 @@ func TestRunOneStepSignFailure(t *testing.T) {
 		calls++
 		return envelope.Ack{}, nil
 	}
-	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a broken identity")
 	}
@@ -319,7 +319,7 @@ func TestRunOneStepWaitReturnsInvalidAckNoError(t *testing.T) {
 	wait := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, nil
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for an invalid ack")
 	}
@@ -338,7 +338,7 @@ func TestRunConfirmStepMessageDeliveredNoSubscriber(t *testing.T) {
 		calls++
 		return envelope.Ack{}, nil
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no MessageDeliveredEvent subscriber")
 	}
@@ -364,7 +364,7 @@ func TestRunConfirmStepMessageAckedNoSubscriber(t *testing.T) {
 	if err := bus.Subscribe(agent.MessageDeliveredEvent, func(ctx context.Context, e events.Event) error { return nil }); err != nil {
 		t.Fatalf("Subscribe(MessageDeliveredEvent) unexpected error: %v", err)
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no MessageAckedEvent subscriber")
 	}
@@ -387,7 +387,7 @@ func TestRunThreadVerifiedNoSubscriber(t *testing.T) {
 			t.Fatalf("Subscribe(%q) unexpected error: %v", name, err)
 		}
 	}
-	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "")
+	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", nil)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for a bus with no ThreadVerifiedEvent subscriber")
 	}
@@ -410,7 +410,7 @@ func TestRunZeroStepPlan(t *testing.T) {
 		calls++
 		return envelope.Ack{}, nil
 	}
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "")
+	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, "", nil)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}

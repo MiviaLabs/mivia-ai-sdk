@@ -1,11 +1,11 @@
 # Phase 16: system integration
 
-Status: ready to build. Builds on every prior phase: `identity`,
+Status: shipped. Builds on every prior phase: `identity`,
 `discovery`, `flow`, `machine`, `envelope`, `events`, `a2a`, `room`,
-`tools`, `memory`, and `agent`. All ten packages ship today. This
-phase adds no package and no exported symbol. It adds two test files
-under `agent/agent_test/` that wire the shipped blocks into one real
-exchange.
+`tools`, `memory`, and `agent`. All ten packages shipped before this
+phase. This phase added no package and no exported symbol. It added
+two test files under `agent/agent_test/` that wire the shipped blocks
+into one real exchange.
 
 ## Goal
 
@@ -155,9 +155,18 @@ measured allocation count per run in a comment once the baseline
 exists, matching the convention in `a2a/a2a_test/mapping_bench_test.go`
 and `agent/agent_test/run_bench_test.go`. Target: under ten
 milliseconds per exchange on the reference machine, matching the
-phase's original target. The bench does not assert the target in
-code; `b.N`'s wall time is read from `go test -bench` output, matching
-every other benchmark file in this module.
+phase's original target. The bench itself does not assert the target
+in code; `b.N`'s wall time is read from `go test -bench` output,
+matching every other benchmark file in this module.
+
+`TestExchangeAllocBudget` pairs with `BenchmarkExchange`, matching
+the convention in `a2a/a2a_test/mapping_bench_test.go` and
+`agent/agent_test/run_bench_test.go`: every `Benchmark*` function in
+this package has a companion `Test*AllocBudget` that calls
+`testing.AllocsPerRun` and asserts a calibrated ceiling.
+`exchangeAllocBudget` documents the measured baseline (73 allocs/op
+under `go test`, 92 allocs/op under `go test -race`) and sets the
+ceiling at 105, a small margin above the `-race` baseline.
 
 The red-green file has no role in this phase. Both files are
 integration-only, per the phase's original scope note.

@@ -17,7 +17,17 @@ import (
 	"strings"
 )
 
+// alwaysBuildTags names every build tag this module gates a file
+// behind, today only ledger_sqlite (ledger/sqlite_store.go). The lock
+// tool always includes a tag-gated file's exported surface, so
+// api/*.txt captures the symbol regardless of tag; only the real
+// `go build` and `go test` invocations honor the tag and keep the
+// dependency out of the default binary. Extend this list when a
+// future package adds its own gated file.
+var alwaysBuildTags = []string{"ledger_sqlite"}
+
 func main() {
+	build.Default.BuildTags = alwaysBuildTags
 	dirs, err := packageDirs()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -64,7 +74,8 @@ func packageDirs() ([]string, error) {
 
 // surface returns the sorted exported-symbol blocks of the package in
 // dir. A struct type is one multi-line block so its fields stay attached.
-// Files excluded by build constraints never enter the surface.
+// A file excluded by a build constraint not in alwaysBuildTags never
+// enters the surface; GOOS/GOARCH constraints still apply normally.
 func surface(dir string) ([]string, error) {
 	fset := token.NewFileSet()
 	entries, err := os.ReadDir(dir)

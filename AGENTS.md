@@ -63,8 +63,10 @@ Go SDK for building AI agents. Module:
   tools.Tool a tools.Registry already knows how to hold and run.
 - `ledger/` — the durable-task-admission primitive: idempotency-keyed
   admission, a leased claim with a monotonic fence, renewal, a stale
-  takeover, and dependency-driven blocking on failure. Imports
-  machine and events only.
+  takeover, and dependency-driven blocking on failure. Imports machine
+  and events internally. `SQLiteStore`, behind the `ledger_sqlite`
+  build tag, additionally imports the pure-Go `modernc.org/sqlite`
+  driver externally; the default build never compiles it.
 - `durablefence/` — a leaf, test-only conformance kit for claim,
   takeover, and fence invariants. Imported only from another
   package's `_test` subdirectory, for example
@@ -193,8 +195,10 @@ any stage means stop and escalate to the user.
 - No third-party dependencies. Standard library only.
   Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
   `google.golang.org/grpc`; `mcp` may import
-  `github.com/modelcontextprotocol/go-sdk`; no other package may add a
-  third-party import without its own plan review.
+  `github.com/modelcontextprotocol/go-sdk`; `ledger` may import
+  `modernc.org/sqlite`, behind the `ledger_sqlite` build tag only; no
+  other package may add a third-party import without its own plan
+  review.
 - Comments are a machine-read API surface. Keep them short: one line of
   what, plus invariants and cross-references (`See X`, file names) where
   they exist. No prose paragraphs, no restating the signature.

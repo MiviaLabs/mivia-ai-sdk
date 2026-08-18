@@ -49,7 +49,7 @@ rules:
     message: Standard library plus this module only; third-party imports are forbidden (see AGENTS.md).
     paths:
       include: ["/**/*.go"]
-      exclude: ["/a2aclient/*.go", "/mcp/*.go"]
+      exclude: ["/a2aclient/*.go", "/mcp/*.go", "/ledger/*.go"]
     patterns:
       - pattern-regex: '(?i)"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
       - pattern-not-regex: '(?i)"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
@@ -76,6 +76,17 @@ rules:
       - pattern-regex: '(?i)"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
       - pattern-not-regex: '(?i)"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
       - pattern-not-regex: '"github\.com/modelcontextprotocol/go-sdk(/[^"\n]*)?"'
+
+  - id: sdk.go.ledger-scoped-third-party-import
+    languages: [go]
+    severity: ERROR
+    message: ledger/*.go may import only modernc.org/sqlite, behind the ledger_sqlite build tag; every other third-party import is forbidden (see AGENTS.md).
+    paths:
+      include: ["/ledger/*.go"]
+    patterns:
+      - pattern-regex: '(?i)"[a-z0-9-]+(\.[a-z0-9-]+)+/[^"\n]*"'
+      - pattern-not-regex: '(?i)"github\.com/MiviaLabs/mivia-ai-sdk(/[^"\n]*)?"'
+      - pattern-not-regex: '"modernc\.org/sqlite(/[^"\n]*)?"'
 
   # --- Centralization: no string literals where constants exist ---
   - id: sdk.go.no-enum-string-literals
@@ -115,6 +126,7 @@ rules:
         - "/**/sign.go"
         - "/**/ack.go"
         - "/**/wire.go"
+        - "/ledger/sqlite_store.go"
         - "/a2aclient/grpc.go"
         - "/**/*_test.go"
         - "/scripts/**"

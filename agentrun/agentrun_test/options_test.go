@@ -218,6 +218,18 @@ func TestNewUsesCallerBus(t *testing.T) {
 	if runner.Bus() != bus {
 		t.Fatal("Runner.Bus is not the caller-provided bus")
 	}
+	// The caller bus must carry the no-op subscriptions New adds. An
+	// unsubscribed bus fails Emit, so this catches a New that returns
+	// the caller bus without wiring it.
+	for _, name := range []events.Name{
+		agent.MessageDeliveredEvent,
+		agent.MessageAckedEvent,
+		agent.ThreadVerifiedEvent,
+	} {
+		if err := runner.Bus().Emit(context.Background(), events.Event{Name: name, Data: "x"}); err != nil {
+			t.Fatalf("caller bus.Emit(%s): %v", name, err)
+		}
+	}
 }
 
 // TestRunRejectsEmptyThread proves Runner.Run checks threadID before

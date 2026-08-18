@@ -5,11 +5,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
+	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -223,6 +225,39 @@ func TestRunStorePutExceedsBudget(t *testing.T) {
 	_, _, err = runner.Run(ctx, "thread-store-full", machine.InOut{})
 	if !errors.Is(err, memory.ErrBudgetExceeded) {
 		t.Fatalf("Run error = %v, want memory.ErrBudgetExceeded", err)
+	}
+}
+
+// TestRunWithMonitor proves a real heartbeat.Monitor flows through
+// agentrun into agent.Run without breaking the run. It exercises the
+// agentrun-to-heartbeat edge declared in policy/layers.json.
+func TestRunWithMonitor(t *testing.T) {
+	ctx := context.Background()
+	plan := mustFlow(t, []flow.Step{{ID: "t1", To: "resolved", Payload: "seed"}}, nil)
+	hb, err := heartbeat.New(time.Minute)
+	if err != nil {
+		t.Fatalf("heartbeat.New: %v", err)
+	}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent:   mustAgent(t, plan),
+		Machine: oneStepMachine(t),
+		Tools:   oneStepRegistry(t),
+		Monitor: hb,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	status, _, err := runner.Run(ctx, "thread-monitor", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != "resolved" {
+		t.Fatalf("status = %q, want %q", status, "resolved")
+	}
+	// agent.Run forgets the beaten id on every return path, so the
+	// monitor holds no live id once Run completes.
+	if dead := hb.Dead(time.Now()); len(dead) != 0 {
+		t.Fatalf("monitor Dead = %v, want empty after Run forgets", dead)
 	}
 }
 

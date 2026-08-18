@@ -8,8 +8,9 @@ import (
 )
 
 // TestArtifactsConcurrent proves Set and Get are safe when called
-// concurrently from multiple goroutines. It does not assert logical
-// correctness; it asserts that concurrent access never panics or races.
+// concurrently from multiple goroutines, and that every written key is
+// present once the goroutines join. The -race detector catches any lock
+// error; the final assertions catch lost writes without it.
 func TestArtifactsConcurrent(t *testing.T) {
 	a := &agentrun.Artifacts{}
 	const n = 100
@@ -21,7 +22,7 @@ func TestArtifactsConcurrent(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < n; i++ {
-			step := "step-" + string(rune(i%26))
+			step := "step-" + string(rune('a'+i%26))
 			a.Set(step, string(rune('a'+i%26)))
 		}
 	}()
@@ -30,15 +31,22 @@ func TestArtifactsConcurrent(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < n; i++ {
-			step := "step-" + string(rune(i%26))
+			step := "step-" + string(rune('a'+i%26))
 			_, _ = a.Get(step)
 		}
 	}()
 
 	wg.Wait()
 
-	// If we reach here without a panic, concurrent access is safe.
-	// A data-race detector (go test -race) will catch lock errors.
+	// Every key written by the concurrent setters must be present once
+	// the goroutines join. This asserts real stored state, not just the
+	// absence of a panic, so the test proves something without -race.
+	for i := 0; i < 26; i++ {
+		step := "step-" + string(rune('a'+i))
+		if _, ok := a.Get(step); !ok {
+			t.Fatalf("artifact %q missing after concurrent writes", step)
+		}
+	}
 }
 
 // TestArtifactsNilReceiver proves Set and Get on a nil pointer do not panic.

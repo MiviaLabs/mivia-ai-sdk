@@ -67,10 +67,36 @@ edge in `policy/layers.json`, ask: is there a test that sends a real
 value from the importer across the edge to the imported package and
 reads the real result? In this repo the edges are:
 
-- `room` imports `envelope`. The real path: `Sign` a message, `Encode`
-  it, `Accepts` it in a `Room`, and verify membership and admission.
-- `flow` imports nothing yet. When a later phase adds the `machine`
-  edge, that edge needs a cross-package test too.
+- `a2a` imports `envelope`: `ToPart` maps an `envelope.Message` into an
+  `a2a.Mapped` value.
+- `a2aclient` imports `a2a` and `envelope`: it sends an `a2a.Mapped`
+  task and re-verifies the returned `envelope.Message` signature.
+- `agent` imports `identity`, `discovery`, `flow`, `envelope`, `events`,
+  `machine`, `heartbeat`, and `contextbudget`: `Run` builds signed
+  `envelope.Message`s through a `flow.Definition` over a
+  `machine.Definition`, emits `events.Event`s, and optionally beats a
+  `heartbeat.Monitor`.
+- `flow` imports `events` and `machine`: `Run` emits
+  `StepCompletedEvent` and calls `machine.Definition.Fire`.
+- `heartbeat` imports `events`: `Monitor.Beat` emits a `BeatEvent`.
+- `identity` imports `envelope`: `Sign` wraps `envelope.Sign`.
+- `ledger` imports `machine` and `events`: `Claim` persists
+  `machine.Status` transitions and emits ledger events.
+- `machine` imports `events`: `MoveEvent` is an `events.Name` a caller
+  emits after a successful `Fire`.
+- `memory` imports `envelope`: `Store.Put` and `Store.Get` use
+  `envelope.ContextRef` keys.
+- `mcp` imports `tools`: `ListTools` maps remote tools into
+  `tools.Tool` values and `RegisterAll` adds them to a
+  `tools.Registry`.
+- `room` imports `envelope` and `heartbeat`: `Accepts` verifies an
+  `envelope.Message` signature; `StaleMembers` reads a
+  `heartbeat.Monitor`.
+- `scheduler` imports `events`: `Scheduler.Run` emits `JobFailedEvent`
+  on the supplied bus.
+- The remaining packages (`channel`, `contextbudget`, `discovery`,
+  `durablefence`, `envelope`, `events`, `provider`, `tools`, `trigger`)
+  declare no internal import edges.
 
 If an allowed edge has no cross-package test, that is a gap. Flag it.
 A fake or a re-bound registry at the edge is not a cross-package test;

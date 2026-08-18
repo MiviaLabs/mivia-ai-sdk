@@ -54,9 +54,9 @@ The package imports `heartbeat`. The policy row is
 
 Room, Role types; New, sentinel errors; Admit/Remove/Promote/Leave/
 IsMember/Members/ID/Accepts methods. Locked in `api/room.txt`.
-Imports only envelope (policy/layers.json). Accepts verifies
-signatures itself so callers cannot skip authentication. The lock
-gains the six sentinel `var` lines when api_surface learns vars;
+Allowed imports are `envelope` and `heartbeat` (policy/layers.json).
+Accepts verifies signatures itself so callers cannot skip authentication.
+The lock gains the six sentinel `var` lines when api_surface learns vars;
 see gates.md; the api_surface fixes changed no symbol.
 
 ### The staleness API

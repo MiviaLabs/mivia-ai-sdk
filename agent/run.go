@@ -38,9 +38,10 @@ var (
 // once per successful run with one or more gated steps,
 // ThreadVerifiedEvent.
 //
-// Run checks wait for nil, then bus for nil, then threadID for
-// empty, in that order, before it touches m or a's plan; each check
-// returns machine.Status(""), in unchanged, and its sentinel.
+// Run checks a and a.id for nil first, then wait for nil, then bus
+// for nil, then threadID for empty, in that order, before it touches
+// m or a's plan; each check returns machine.Status(""), in unchanged,
+// and its sentinel.
 //
 // For each step flow.Run gates behind Confirm, Run builds an
 // envelope.Message from the step's ID, threadID, and Payload, with
@@ -88,6 +89,9 @@ func (a *Agent) Run(
 	in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor,
 	room string, budget *contextbudget.Limits,
 ) (machine.Status, machine.InOut, error) {
+	if a == nil || a.id == nil {
+		return machine.Status(""), in, ErrNoIdentity
+	}
 	if wait == nil {
 		return machine.Status(""), in, ErrNoWait
 	}

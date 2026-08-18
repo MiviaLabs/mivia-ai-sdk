@@ -53,7 +53,6 @@ type Client struct {
 
 	closed    atomic.Bool
 	closeOnce sync.Once
-	closeErr  error
 }
 
 // Connect opens a Client over t: it builds an SDK Client configured
@@ -84,12 +83,13 @@ func Connect(ctx context.Context, t Transport, opts ClientOptions) (*Client, err
 // Close closes the underlying session. Close is idempotent: a second
 // call returns nil.
 func (c *Client) Close() error {
+	var err error
 	c.closeOnce.Do(func() {
 		c.closed.Store(true)
-		c.closeErr = c.session.Close()
+		err = c.session.Close()
 		c.clearHandlers()
 	})
-	return c.closeErr
+	return err
 }
 
 // isClosed reports whether Close already ran.

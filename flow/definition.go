@@ -71,14 +71,23 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 }
 
 // copySteps deep-copies the step slice. Each step's Needs slice is
-// copied. Each non-nil Sub is copied recursively, including its
-// steps, panels, and roots, so later caller mutation cannot change
-// the built graph.
+// copied. Each non-nil Retry or Loop policy is copied into a fresh
+// struct. Each non-nil Sub is copied recursively, including its
+// steps, panels, roots, and its own Retry and Loop policies, so later
+// caller mutation cannot change the built graph.
 func copySteps(steps []Step) []Step {
 	out := make([]Step, len(steps))
 	for i, s := range steps {
 		out[i] = s
 		out[i].Needs = append([]string(nil), s.Needs...)
+		if s.Retry != nil {
+			rp := *s.Retry
+			out[i].Retry = &rp
+		}
+		if s.Loop != nil {
+			lp := *s.Loop
+			out[i].Loop = &lp
+		}
 		if s.Sub != nil {
 			out[i].Sub = &Definition{
 				steps:  copySteps(s.Sub.steps),

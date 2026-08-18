@@ -157,3 +157,38 @@ func TestSignValidatesFirst(t *testing.T) {
 		t.Fatalf("Sign err = %v, want ErrKeyInvalid", err)
 	}
 }
+
+// TestSignerNilReceiver proves Signer returns "" for a nil *Identity
+// instead of panicking.
+func TestSignerNilReceiver(t *testing.T) {
+	var id *identity.Identity
+	if got := id.Signer(); got != "" {
+		t.Fatalf("nil receiver Signer = %q, want empty", got)
+	}
+}
+
+// TestValidateRejectsMismatchedSeed proves Validate rejects a private
+// key whose embedded public half does not derive from the seed. The
+// PublicKey field is set to the embedded half, so an implementation
+// that only checks PublicKey against PrivateKey.Public() would pass
+// incorrectly.
+func TestValidateRejectsMismatchedSeed(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	otherPub, _, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey other: %v", err)
+	}
+	broken := make([]byte, ed25519.PrivateKeySize)
+	copy(broken[:ed25519.SeedSize], priv[:ed25519.SeedSize])
+	copy(broken[ed25519.SeedSize:], otherPub)
+	id := &identity.Identity{
+		PublicKey:  otherPub,
+		PrivateKey: ed25519.PrivateKey(broken),
+	}
+	if err := id.Validate(); !errors.Is(err, identity.ErrKeyInvalid) {
+		t.Fatalf("Validate err = %v, want ErrKeyInvalid", err)
+	}
+}

@@ -42,8 +42,9 @@ type Confirm func(ctx context.Context, step Step) error
 // canceled ctx stops the walk before the next step starts and returns
 // the pinned pause error, wrapping ctx.Err(); the last Checkpoint
 // onCheckpoint delivered is the resume point. A step already running
-// keeps running to its own completion; Run only refuses to start the
-// next step after an observed cancellation.
+// keeps running to its own completion, unless cancellation is observed
+// inside a retry loop or a looped child workflow; in those cases the
+// current step aborts and returns the context error.
 //
 // Run returns a Report holding the final status, the final record,
 // and every resolved step's Outcome. On every abort, Run returns the

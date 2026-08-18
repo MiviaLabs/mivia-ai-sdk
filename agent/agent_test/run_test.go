@@ -89,10 +89,39 @@ func correctingWait(ctx context.Context, msg envelope.Message) (envelope.Ack, er
 	return ack.Correct("try again"), nil
 }
 
+// TestRunZeroValueAgentReturnsErrNoIdentity proves a nil *Agent and an
+// Agent with a nil identity both return ErrNoIdentity before any other
+// work, leaving the input record unchanged.
+func TestRunZeroValueAgentReturnsErrNoIdentity(t *testing.T) {
+	cases := []struct {
+		name string
+		a    *agent.Agent
+	}{
+		{"nil agent", nil},
+		{"zero-value agent", &agent.Agent{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := events.New()
+			in := machine.InOut{Input: "keep me"}
+			status, rec, err := tc.a.Run(context.Background(), "thread-1", nil, in, confirmingWait, bus, nil, "", nil)
+			if !errors.Is(err, agent.ErrNoIdentity) {
+				t.Fatalf("Run() error = %v, want errors.Is match for ErrNoIdentity", err)
+			}
+			if status != machine.Status("") {
+				t.Fatalf("Run() status = %q, want empty", status)
+			}
+			if rec != in {
+				t.Fatalf("Run() record = %+v, want unchanged %+v", rec, in)
+			}
+		})
+	}
+}
+
 // TestRunEntryChecks proves the nil-wait, nil-bus, and empty-threadID
-// sentinels and their check order: wait first, then bus, then
-// threadID. Each case returns machine.Status("") and the caller's in
-// unchanged.
+// sentinels and their check order after the identity guard: wait
+// first, then bus, then threadID. Each case returns machine.Status(""),
+// in unchanged.
 func TestRunEntryChecks(t *testing.T) {
 	a := newRunAgent(t, &flow.Definition{})
 	bus := events.New()

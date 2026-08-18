@@ -5,11 +5,11 @@ description: Drives a change through the full gated loop - plan, plan review, bu
 
 # Delivery loop
 
-Drive the change through four subagents in order. Never skip a stage.
+Drive the change through five stages in order. Never skip a stage.
 Never let an agent grade its own work. The orchestrator (AGENTS.md)
-clarifies the task with the user before Stage 1; if the task is still
-ambiguous when this skill runs, stop and return to the user with
-proposals A/B/C instead of guessing.
+clarifies the task with the user before Stage 1 and runs Stage 5
+itself. If the task is still ambiguous when this skill runs, stop and
+return to the user with proposals A/B/C instead of guessing.
 
 ## Stage 1: Plan
 

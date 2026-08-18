@@ -212,6 +212,60 @@ func TestCloseIsIdempotent(t *testing.T) {
 	}
 }
 
+// errCloseConnection wraps a real Connection and returns wantErr from
+// Close, after closing the real connection so the test does not leak.
+type errCloseConnection struct {
+	mcpsdk.Connection
+	wantErr error
+}
+
+func (c *errCloseConnection) Close() error {
+	_ = c.Connection.Close()
+	return c.wantErr
+}
+
+// errCloseTransport wraps a Transport and returns an errCloseConnection
+// around the real connection so the first session Close fails.
+type errCloseTransport struct {
+	mcpsdk.Transport
+	wantErr error
+}
+
+func (t *errCloseTransport) Connect(ctx context.Context) (mcpsdk.Connection, error) {
+	conn, err := t.Transport.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &errCloseConnection{Connection: conn, wantErr: t.wantErr}, nil
+}
+
+// TestCloseIdempotentAfterError proves that only the Close call that
+// actually closes the session returns its error; a second call returns
+// nil.
+func TestCloseIdempotentAfterError(t *testing.T) {
+	server := newFixtureServer(nil)
+	serverTransport, clientTransport := mcpsdk.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server.Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+
+	wantErr := errors.New("fixture: close failed")
+	wrapped := &errCloseTransport{Transport: clientTransport, wantErr: wantErr}
+	c, err := Connect(context.Background(), wrapped, ClientOptions{})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+
+	if err := c.Close(); !errors.Is(err, wantErr) {
+		t.Fatalf("first Close: err = %v, want %v", err, wantErr)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("second Close: err = %v, want nil", err)
+	}
+}
+
 func TestOperationsAfterCloseReturnErrClosed(t *testing.T) {
 	server := newFixtureServer(nil)
 	addEchoTool(server, "echo")

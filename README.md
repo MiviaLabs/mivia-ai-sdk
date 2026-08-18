@@ -1,7 +1,10 @@
 # mivia-ai-sdk
 
 Go SDK for building AI agents and workflows. A set of composable
-building blocks, not a monolith. Standard library only.
+building blocks, not a monolith. Most packages use the standard
+library only. The `go.mod` file lists the small set of third-party
+dependencies used by `a2aclient`, `mcp`, and `ledger` (the latter
+only when the `ledger_sqlite` build tag is set).
 
 ## Features
 
@@ -53,8 +56,8 @@ public API.
   bus. Ships.
 - **identity** — the agent key wrap: Identity, New, Load, Sign,
   Signer. Ships.
-- **a2a** — a future block. The plan lives in
-  [docs/plans/a2a.md](docs/plans/a2a.md).
+- **a2a** — A2A v1.0 envelope mapping. Ships. The a2a-go client lives
+  in `a2aclient`.
 - **agent** — the composition layer. Ships. An agent wires the blocks;
   a block never imports the agent.
 
@@ -69,8 +72,8 @@ framework. One small plan per step lives in
   graph, runner, panels, and chaining. The machine block, the flow
   graph and runner, and the events bus ship.
 - **Transport and identity**: identity key wrap, a2a mapping, a2a
-  client, discovery card. The identity key wrap and discovery card ship;
-  the a2a blocks stay future.
+  client, discovery card. The identity key wrap, a2a mapping, a2a
+  client, and discovery card ship.
 - **Composition**: agent definition, run loop, tools, memory. The
   agent definition ships; the run loop stays future.
 - **System integration**: the end-to-end multi-agent exchange. Future.

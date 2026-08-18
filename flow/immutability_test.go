@@ -3,6 +3,7 @@ package flow
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // TestNewCopiesNeeds proves New deep-copies each Needs slice.
@@ -134,5 +135,57 @@ func TestNewCopiesSub(t *testing.T) {
 	}
 	if got := sub.roots[0]; got != "a" {
 		t.Fatalf("parent's sub root = %q, want %q", got, "a")
+	}
+}
+
+// TestNewDeepCopiesRetryAndLoopPolicies proves New copies each step's
+// Retry and Loop policies into fresh structs, and that the recursive
+// copySteps for a Sub does the same. A caller that mutates its original
+// policy after New must not change the built Definition.
+func TestNewDeepCopiesRetryAndLoopPolicies(t *testing.T) {
+	childRetry := &RetryPolicy{MaxAttempts: 2, BaseDelay: time.Millisecond, MaxDelay: 5 * time.Millisecond}
+	child, err := New([]Step{{ID: "child", To: "y", Retry: childRetry}}, nil)
+	if err != nil {
+		t.Fatalf("child New: %v", err)
+	}
+
+	retry := &RetryPolicy{MaxAttempts: 3, BaseDelay: 2 * time.Millisecond, MaxDelay: 10 * time.Millisecond}
+	loop := &LoopPolicy{Max: 4}
+	steps := []Step{
+		{ID: "retry-step", To: "x", Retry: retry},
+		{ID: "loop-step", Sub: child, Loop: loop},
+	}
+	d, err := New(steps, nil)
+	if err != nil {
+		t.Fatalf("parent New: %v", err)
+	}
+
+	retry.MaxAttempts = 999
+	loop.Max = 999
+	childRetry.MaxAttempts = 999
+
+	if d.steps[0].Retry == retry {
+		t.Fatal("parent's Retry pointer is the caller's pointer; want a fresh copy")
+	}
+	if got := d.steps[0].Retry.MaxAttempts; got != 3 {
+		t.Fatalf("parent's Retry.MaxAttempts = %d, want 3", got)
+	}
+
+	if d.steps[1].Loop == loop {
+		t.Fatal("parent's Loop pointer is the caller's pointer; want a fresh copy")
+	}
+	if got := d.steps[1].Loop.Max; got != 4 {
+		t.Fatalf("parent's Loop.Max = %d, want 4", got)
+	}
+
+	sub := d.steps[1].Sub
+	if sub == nil || len(sub.steps) == 0 {
+		t.Fatal("loop-step Sub missing")
+	}
+	if sub.steps[0].Retry == childRetry {
+		t.Fatal("child's Retry pointer is the caller's pointer; want a fresh copy")
+	}
+	if got := sub.steps[0].Retry.MaxAttempts; got != 2 {
+		t.Fatalf("child's Retry.MaxAttempts = %d, want 2", got)
 	}
 }

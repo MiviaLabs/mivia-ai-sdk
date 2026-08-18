@@ -105,6 +105,9 @@ func (i *Identity) Sign(m envelope.Message) (envelope.Message, error) {
 // ed25519.PrivateKeySize bytes; the length guard comes first because
 // key.Public() slices key[32:].
 func (i *Identity) Signer() string {
+	if i == nil {
+		return ""
+	}
 	if len(i.PrivateKey) != ed25519.PrivateKeySize {
 		return ""
 	}

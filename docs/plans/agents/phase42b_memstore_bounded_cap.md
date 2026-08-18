@@ -6,12 +6,12 @@ phase adds one configuration knob to the existing `MemStore`. It does
 not touch `Ledger`, `TaskState`, `Store`, `Snapshot`, or any existing
 sentinel error's meaning.
 
-This phase split out of `docs/plans/agents/phase42_ledger_durable_
-store.md` (round 1 of that plan's review), which originally bundled
-this knob with the unrelated, tag-gated `SQLiteStore` addition. The
-two concerns now ship as separate, independently reviewable and
-revertible phases. See `phase42_ledger_durable_store.md` for
-`SQLiteStore`; this document covers `MemStoreOptions` only.
+This phase split out of the original phase 42 plan (round 1 of that
+plan's review), which originally bundled this knob with the
+unrelated, tag-gated `SQLiteStore` addition. The two concerns now
+ship as separate, independently reviewable and revertible phases. See
+`docs/packages/ledger.md`'s "SQLiteStore" section for `SQLiteStore`;
+this document covers `MemStoreOptions` only.
 
 ## Revision note (first revision, answers phase42 plan-review round 1)
 
@@ -84,7 +84,7 @@ this module: an in-memory store that evicts the oldest-inserted entry
 once a byte budget is spent (`docs/plans/memory.md`). This phase gives
 `MemStore` the equivalent bound for entry count, holding to the
 narrower rule `memory.Store` does not need to hold to: `ledger`'s own
-idempotency contract, stated in `ledger/ledger.go:38`'s
+idempotency contract, stated in `ledger/ledger.go:39`'s
 `admitEligible` comment, must survive eviction.
 
 A full delete of an evicted key's map entry cannot hold that contract:
@@ -97,13 +97,22 @@ the fields that hold the bulk of a record's memory.
 
 ### What a tombstone keeps and what it drops
 
-A tombstone keeps: `Key`, `Status`, `Sequence`, `Fence`, `Rev`, and
-`BlockedBy`. `BlockedBy` stays because `TaskState.Validate` requires a
-non-empty `BlockedBy` on a `StatusBlocked` record and rejects a
-non-empty `BlockedBy` on any other status
-(`ledger/task_state.go:94-99`); dropping it would make a tombstoned
-`StatusBlocked` record fail `Validate`, breaking `Snapshot.Validate`
-(`ledger/snapshot.go:29`) for any snapshot taken after an eviction.
+A tombstone keeps: `Key`, `Status`, `Sequence`, `Fence`, `Rev`,
+`BlockedBy`, `CreatedBy`, `CreatedAt`, `UpdatedBy`, and `UpdatedAt`.
+`BlockedBy` stays because `TaskState.Validate` requires a non-empty
+`BlockedBy` on a `StatusBlocked` record and rejects a non-empty
+`BlockedBy` on any other status (`ledger/task_state.go:103-108`);
+dropping it would make a tombstoned `StatusBlocked` record fail
+`Validate`, breaking `Snapshot.Validate` (`ledger/snapshot.go:29`) for
+any snapshot taken after an eviction. `CreatedBy`, `CreatedAt`,
+`UpdatedBy`, and `UpdatedAt` stay because each is a fixed-size `Actor`
+string or a `time.Time` stamp, unlike the unbounded `Task` field, so
+none contributes to the unbounded growth eviction exists to bound.
+Eviction is an internal `MemStore` housekeeping action, not a
+caller-attributed write: tombstoning must not fabricate a new audit
+stamp under some internal actor, so the tombstone keeps the original
+write's `CreatedBy`/`CreatedAt`/`UpdatedBy`/`UpdatedAt` values
+unchanged rather than overwriting them.
 
 A tombstone drops: `Task` (set to `nil`), `Needs` (set to `nil`), and
 `Owner` and `LeaseUntil` (set to their zero values). `Task` is the
@@ -115,13 +124,13 @@ scan (`docs/plans/ledger.md`'s API section) walks forward from a
 failing key's own dependents, not backward through a completed
 record's `Needs`. `Owner` and `LeaseUntil` are safe to drop because
 `TaskState.Validate` requires them only for `StatusClaimed`
-(`ledger/task_state.go:100-107`), and only a terminal record is ever
+(`ledger/task_state.go:109-116`), and only a terminal record is ever
 tombstoned; a `StatusClaimed` or `StatusPending` record is never
 evicted (see "Eviction rule" below), so `Validate`'s `StatusClaimed`
 branch never sees a tombstone missing them.
 
 `CompareAndSwap`'s compare tuple, `(Sequence, Status, Fence, Rev)`
-(`ledger/store.go:20`, `ledger/store.go:73`), is unaffected: every
+(`ledger/store.go:10`, `ledger/store.go:83`), is unaffected: every
 field that tuple reads survives tombstoning unchanged. A terminal
 record is never rewritten again by `Complete`'s own existing rule
 (`docs/plans/ledger.md`'s API section), so no caller ever attempts a
@@ -133,7 +142,7 @@ path this phase expects to exercise in normal operation.
 
 `Load(ctx, key)` against a tombstoned key returns the tombstone
 `TaskState` and `found == true`, matching its documented contract
-exactly (`ledger/store.go:48-49`): a tombstone is a real, present
+exactly (`ledger/store.go:50-51`): a tombstone is a real, present
 record, not an absent one. A caller reading `Task` off that result
 gets `nil`, not the original value: this is a real, disclosed
 consequence of enabling `MaxEntries`, stated here and in the
@@ -147,9 +156,9 @@ in `Range`'s iteration. `Snapshot` (`ledger/snapshot.go`), which walks
 `Needs`. `Snapshot.Validate` passes for a tombstoned `StatusBlocked`
 entry because `BlockedBy` survives; it never sees a tombstoned
 `StatusClaimed` entry, since only a terminal record is ever
-tombstoned. This is the same disclosed limitation
-`SQLiteStore`'s design in `phase42_ledger_durable_store.md` already
-states for its own `Task`-serialization boundary: a caller who needs
+tombstoned. This is the same disclosed limitation `SQLiteStore`'s
+design already states for its own `Task`-serialization boundary
+(`docs/packages/ledger.md`'s "SQLiteStore" section): a caller who needs
 every evicted record's original `Task` payload preserved must not
 enable `MaxEntries`, or must snapshot before enough terminal records
 accumulate to trigger eviction.
@@ -165,9 +174,9 @@ Outside: any change to `NewMemStore`'s existing zero-argument
 signature or its existing unbounded behavior. Outside: any change to
 `Store`, `Ledger`, `TaskState`, `Snapshot`, or any existing sentinel
 error's meaning. Outside: `SQLiteStore` and any change to
-`ledger`'s tag-gated code; see
-`docs/plans/agents/phase42_ledger_durable_store.md`. Outside: an
-eviction or capacity knob on `SQLiteStore`; a durable, disk-backed
+`ledger`'s tag-gated code; see `docs/packages/ledger.md`'s
+"SQLiteStore" section. Outside: an eviction or capacity knob on
+`SQLiteStore`; a durable, disk-backed
 store has no equivalent in-process-growth concern the way `MemStore`
 does, since its cost lives on disk, not in the process's own heap.
 Outside: any way to recover a tombstoned record's original `Task` or
@@ -254,6 +263,16 @@ order. Once a key is tombstoned, it is never queued or tombstoned
 again: replacing its map entry does not touch the FIFO queue further
 for that key.
 
+A record can tombstone in the same `CompareAndSwap` call that makes
+it terminal. This happens when the cap is already exceeded by
+`StatusPending` or `StatusClaimed` records alone (the terminal queue
+was empty, so the earlier over-cap state was tolerated per the rule
+above) and the call in progress is the first to push a key to
+terminal status: that key becomes the sole, and therefore oldest,
+queued entry, and the same call's eviction loop pops and tombstones
+it immediately, clearing its own `Task` and `Needs` before the caller
+that just completed it can `Load` the original payload back.
+
 When every current record is still `StatusPending` or `StatusClaimed`
 (the terminal queue is empty) and the cap is still exceeded, `MemStore`
 does not tombstone anything: `MaxEntries` bounds what it safely can,
@@ -283,24 +302,44 @@ tag, runs under the module's existing `go test ./...`):
   `NewMemStore()`: unbounded, no tombstoning under any load.
 - A negative `MaxEntries` returns `ErrInvalidMaxEntries` (asserted with
   `errors.Is`) and a nil `*MemStore`.
+- A `MemStore` built with a small positive `MaxEntries`, driven to
+  `liveCount == MaxEntries` exactly (the boundary, not past it): no
+  key tombstones. This case runs before the next one, as the step
+  that proves the non-breaching boundary does not evict.
 - A `MemStore` built with a small positive `MaxEntries`, driven through
-  a sequence of `Admit`-then-`Complete` calls (via a `Ledger`) that
-  pushes the terminal-record count past the cap: the oldest-terminal
-  key tombstones first, and `MemStore` never tombstones a
-  `StatusPending` or `StatusClaimed` record, asserted by keeping a
-  claimed key alive throughout and confirming `Load` still returns its
-  full, non-tombstoned record after the cap is exceeded several times
-  over.
+  a sequence of keys, each taken through `Admit`, then `Claim` by an
+  owner (capturing the returned `FenceToken`), then `Complete` with
+  that owner and fence (via a `Ledger`), that pushes the
+  terminal-record count past the cap: the oldest-terminal key
+  tombstones first, and `MemStore` never tombstones a `StatusPending`
+  or `StatusClaimed` record, asserted by keeping a separate key
+  claimed but not completed throughout and confirming `Load` still
+  returns its full, non-tombstoned record after the cap is exceeded
+  several times over.
+- The same-call eviction edge case: a `MemStore` built with
+  `MaxEntries: 1`, two keys `Admit`-ed (both `StatusPending`, so
+  `liveCount` reaches 2 against the cap of 1 with the terminal queue
+  still empty and the breach tolerated), then the second key
+  `Claim`-ed by an owner, capturing the returned `FenceToken`, then
+  `Complete`-ed with that owner and fence. Assert that immediately
+  after that `Complete` call returns, `Load` against the
+  just-completed key reports `found == true` with `Task == nil` and
+  `Needs == nil`: it tombstoned in the same call that made it
+  terminal, because it was the sole queued entry and the cap was
+  already exceeded.
 - A `MemStore` whose every current record is still `StatusPending` or
   `StatusClaimed` (no terminal entries to tombstone) keeps accepting
   further `Admit` calls past the cap, proving the documented "bounds
   what it safely can" limit rather than a hard failure.
-- The idempotency case the plan-reviewer required: admit a key,
-  complete it (terminal status), force eviction by driving further
-  `Admit`-then-`Complete` cycles until `MaxEntries` is exceeded and the
-  original key's record tombstones, then call `Admit` again at the
-  same idempotency key and at a sequence higher than the original.
-  Assert `Admit` returns `false, nil`: the tombstone's surviving
+- The idempotency case the plan-reviewer required: admit a key, claim
+  it by an owner (capturing the returned `FenceToken`), then complete
+  it with that owner and fence (terminal status). Force eviction by
+  driving further keys through the same `Admit`-then-`Claim`-then-
+  `Complete` sequence, each with its own owner and captured fence,
+  until `MaxEntries` is exceeded and the original key's record
+  tombstones. Then call `Admit` again at the same idempotency key and
+  at a sequence higher than the original. Assert `Admit` returns
+  `false, nil`: the tombstone's surviving
   `Status` and `Sequence` fields make `admitEligible` reject the
   re-admission exactly as it would against a non-evicted terminal
   record, proving idempotency holds across eviction. A parallel case

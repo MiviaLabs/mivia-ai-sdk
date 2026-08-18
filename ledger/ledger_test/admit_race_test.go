@@ -34,7 +34,7 @@ func TestAdmitRaceExactlyOneWinner(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			ok, err := l.Admit(ctx, "k1", 1, nil)
+			ok, err := l.Admit(ctx, testActor, "k1", 1, nil, fixedNow)
 			if err != nil {
 				atomic.AddInt64(&errsFound, 1)
 				return

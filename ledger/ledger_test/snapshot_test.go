@@ -78,6 +78,12 @@ func TestEncodeDecodeRoundTrips(t *testing.T) {
 	if !dep.LeaseUntil.Equal(fixedNow.Add(fixedLease)) {
 		t.Fatalf("dep.LeaseUntil = %v, want %v", dep.LeaseUntil, fixedNow.Add(fixedLease))
 	}
+	if dep.CreatedBy != testActor || !dep.CreatedAt.Equal(fixedNow) {
+		t.Fatalf("dep CreatedBy/CreatedAt = %q/%v, want %q/%v", dep.CreatedBy, dep.CreatedAt, testActor, fixedNow)
+	}
+	if dep.UpdatedBy != testActor || !dep.UpdatedAt.Equal(fixedNow) {
+		t.Fatalf("dep UpdatedBy/UpdatedAt = %q/%v, want %q/%v", dep.UpdatedBy, dep.UpdatedAt, testActor, fixedNow)
+	}
 }
 
 // TestDecodeRejectsMalformedInput proves Decode rejects malformed
@@ -107,7 +113,7 @@ func TestRestoreReproducesPriorState(t *testing.T) {
 	mustAdmit(t, l, ctx, "root", 1)
 	mustAdmit(t, l, ctx, "dep", 1, "root")
 	fence := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 

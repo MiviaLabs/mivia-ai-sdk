@@ -15,11 +15,15 @@ var fixedNow = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 const fixedLease = time.Hour
 
+// testActor is the default Actor every shared fixture builder passes,
+// so a test opts into asserting a specific Actor only where it cares.
+const testActor ledger.Actor = "test-actor"
+
 // mustAdmit admits key at seq and fails the test on any error or a
 // rejected admission.
 func mustAdmit(t *testing.T, l *ledger.Ledger, ctx context.Context, key ledger.IdempotencyKey, seq ledger.Sequence, needs ...ledger.IdempotencyKey) {
 	t.Helper()
-	ok, err := l.Admit(ctx, key, seq, nil, needs...)
+	ok, err := l.Admit(ctx, testActor, key, seq, nil, fixedNow, needs...)
 	if err != nil {
 		t.Fatalf("Admit(%s): %v", key, err)
 	}
@@ -32,7 +36,7 @@ func mustAdmit(t *testing.T, l *ledger.Ledger, ctx context.Context, key ledger.I
 // any error.
 func mustClaim(t *testing.T, l *ledger.Ledger, ctx context.Context, key ledger.IdempotencyKey, owner ledger.OwnerID) ledger.FenceToken {
 	t.Helper()
-	fence, err := l.Claim(ctx, key, owner, fixedLease, fixedNow)
+	fence, err := l.Claim(ctx, testActor, key, owner, fixedLease, fixedNow)
 	if err != nil {
 		t.Fatalf("Claim(%s): %v", key, err)
 	}
@@ -45,7 +49,7 @@ func buildCompleted(t *testing.T, l *ledger.Ledger, ctx context.Context) {
 	t.Helper()
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); err != nil {
+	if err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 }
@@ -55,7 +59,7 @@ func buildFailed(t *testing.T, l *ledger.Ledger, ctx context.Context) {
 	t.Helper()
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 }
@@ -67,7 +71,7 @@ func buildBlocked(t *testing.T, l *ledger.Ledger, ctx context.Context) {
 	mustAdmit(t, l, ctx, "root", 1)
 	mustAdmit(t, l, ctx, "k1", 1, "root")
 	fence := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 }

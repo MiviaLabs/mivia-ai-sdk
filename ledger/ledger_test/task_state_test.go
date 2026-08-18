@@ -63,6 +63,18 @@ func TestTaskStateValidate(t *testing.T) {
 			state:   ledger.TaskState{Key: "k1", Status: ledger.StatusClaimed, Owner: "owner-a"},
 			wantErr: true,
 		},
+		{
+			name:  "zero-value audit fields accepted",
+			state: ledger.TaskState{Key: "k1", Status: ledger.StatusPending},
+		},
+		{
+			name: "set audit fields accepted",
+			state: ledger.TaskState{
+				Key: "k1", Status: ledger.StatusPending,
+				CreatedBy: testActor, CreatedAt: fixedNow,
+				UpdatedBy: testActor, UpdatedAt: fixedNow,
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

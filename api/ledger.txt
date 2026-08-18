@@ -11,16 +11,16 @@ package ledger
   const StatusFailed = "failed"
   const StatusPending = "pending"
   const TakenOverEvent = "ledger.taken_over"
-  func (l *Ledger) Admit(ctx context.Context, key IdempotencyKey, seq Sequence, task any, needs ...IdempotencyKey) (bool, error)
+  func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq Sequence, task any, now time.Time, needs ...IdempotencyKey) (bool, error)
   func (l *Ledger) Blocked(ctx context.Context, key IdempotencyKey) (IdempotencyKey, bool, error)
-  func (l *Ledger) Claim(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
-  func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status) (error)
-  func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken) (error)
-  func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) (error)
+  func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
+  func (l *Ledger) Complete(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status, now time.Time) (error)
+  func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, now time.Time) (error)
+  func (l *Ledger) Renew(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) (error)
   func (l *Ledger) Restore(ctx context.Context, s Snapshot) (error)
   func (l *Ledger) Snapshot(ctx context.Context) (Snapshot, error)
   func (l *Ledger) State(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
-  func (l *Ledger) Takeover(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
+  func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
   func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
   func (m *MemStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
   func (m *MemStore) Range(ctx context.Context, fn func(TaskState) bool) (error)
@@ -35,6 +35,7 @@ package ledger
   func New(store Store, bus *events.Bus) (*Ledger, error)
   func NewMemStore() (*MemStore)
   func NewSQLiteStore(path string) (*SQLiteStore, error)
+  type Actor string
   type FenceToken uint64
   type IdempotencyKey string
   type Ledger struct {
@@ -64,6 +65,10 @@ package ledger
   BlockedBy IdempotencyKey
   Task any
   Rev uint64
+  CreatedBy Actor
+  CreatedAt time.Time
+  UpdatedBy Actor
+  UpdatedAt time.Time
 }
   var ErrFenced
   var ErrLeaseActive

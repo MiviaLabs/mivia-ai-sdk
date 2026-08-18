@@ -120,6 +120,39 @@ func TestMemStoreCompareAndSwapRejectsNonZeroBaselineAgainstAbsentKey(t *testing
 	}
 }
 
+// TestMemStoreCompareAndSwapCarriesAuditFields proves a TaskState
+// literal carrying CreatedBy, CreatedAt, UpdatedBy, and UpdatedAt
+// round-trips through CompareAndSwap and Load unchanged.
+func TestMemStoreCompareAndSwapCarriesAuditFields(t *testing.T) {
+	ctx := context.Background()
+	store := ledger.NewMemStore()
+
+	createdAt := fixedNow
+	updatedAt := fixedNow.Add(fixedLease)
+	in := ledger.TaskState{
+		Key:       "k1",
+		Status:    ledger.StatusPending,
+		Sequence:  1,
+		CreatedBy: testActor,
+		CreatedAt: createdAt,
+		UpdatedBy: testActor,
+		UpdatedAt: updatedAt,
+	}
+	if ok, err := store.CompareAndSwap(ctx, "k1", ledger.TaskState{}, in); err != nil || !ok {
+		t.Fatalf("insert: ok=%v err=%v", ok, err)
+	}
+	out, found, err := store.Load(ctx, "k1")
+	if err != nil || !found {
+		t.Fatalf("Load: found=%v err=%v", found, err)
+	}
+	if out.CreatedBy != testActor || !out.CreatedAt.Equal(createdAt) {
+		t.Fatalf("CreatedBy/CreatedAt = %q/%v, want %q/%v", out.CreatedBy, out.CreatedAt, testActor, createdAt)
+	}
+	if out.UpdatedBy != testActor || !out.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %q/%v, want %q/%v", out.UpdatedBy, out.UpdatedAt, testActor, updatedAt)
+	}
+}
+
 // TestMemStoreRangeStopsEarlyWhenFnReturnsFalse proves Range stops
 // iterating the first time fn returns false, matching its documented
 // early-stop contract.

@@ -86,7 +86,7 @@ func TestRenewRaceBothSucceedWithRetry(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		go func(i int) {
 			defer wg.Done()
-			errs[i] = l.Renew(ctx, "k1", "owner-a", fence, fixedLease, fixedNow)
+			errs[i] = l.Renew(ctx, testActor, "k1", "owner-a", fence, fixedLease, fixedNow)
 		}(i)
 	}
 	wg.Wait()

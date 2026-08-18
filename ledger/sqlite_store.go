@@ -29,42 +29,6 @@ const sqliteMaxConns = 8
 // pragmaDSNParams applies once per pooled connection at open time.
 const pragmaDSNParams = "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 
-// createLedgerTasksTable is the single table SQLiteStore needs,
-// created idempotently on every open.
-const createLedgerTasksTable = `
-CREATE TABLE IF NOT EXISTS ledger_tasks (
-    key         TEXT PRIMARY KEY,
-    status      TEXT NOT NULL,
-    sequence    INTEGER NOT NULL,
-    owner       TEXT NOT NULL DEFAULT '',
-    fence       INTEGER NOT NULL DEFAULT 0,
-    lease_until TEXT NOT NULL DEFAULT '',
-    needs       TEXT NOT NULL DEFAULT '[]',
-    blocked_by  TEXT NOT NULL DEFAULT '',
-    task        BLOB,
-    rev         INTEGER NOT NULL DEFAULT 0
-)`
-
-// selectLedgerTask reads every column Load and Range need.
-const selectLedgerTaskColumns = "key, status, sequence, owner, fence, lease_until, needs, blocked_by, task, rev"
-
-// insertLedgerTask maps CompareAndSwap's insert-if-absent branch: a
-// zero-value old against an absent key.
-const insertLedgerTask = `
-INSERT INTO ledger_tasks
-    (key, status, sequence, owner, fence, lease_until, needs, blocked_by, task, rev)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-ON CONFLICT(key) DO NOTHING`
-
-// updateLedgerTask maps CompareAndSwap's conditional-update branch,
-// carrying every compare field in its WHERE clause and bumping rev
-// inline.
-const updateLedgerTask = `
-UPDATE ledger_tasks
-SET status = ?, sequence = ?, owner = ?, fence = ?, lease_until = ?,
-    needs = ?, blocked_by = ?, task = ?, rev = rev + 1
-WHERE key = ? AND sequence = ? AND status = ? AND fence = ? AND rev = ?`
-
 // sqlitePragmas are executed once per connection immediately after
 // open, for correctness before the pool has cycled a new connection
 // through the DSN-level _pragma= params above.
@@ -114,11 +78,59 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ledger: create ledger_tasks table: %w", err)
 	}
+	if err := migrateAuditColumns(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("ledger: ping sqlite store: %w", err)
 	}
 	return &SQLiteStore{db: db}, nil
+}
+
+// migrateAuditColumns adds any of auditColumns absent from an
+// already-existing ledger_tasks table, backfilling the empty string
+// for every pre-existing row. A fresh table already declares all four
+// columns through createLedgerTasksTable, so this runs zero ALTER
+// TABLE statements on first open; running it again against an
+// already-migrated file is equally a no-op.
+func migrateAuditColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(ledger_tasks)")
+	if err != nil {
+		return fmt.Errorf("ledger: sqlite table_info: %w", err)
+	}
+	present := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid        int
+			name, typ  string
+			notNull    int
+			dfltValue  any
+			primaryKey int
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &primaryKey); err != nil {
+			_ = rows.Close()
+			return fmt.Errorf("ledger: sqlite table_info scan: %w", err)
+		}
+		present[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("ledger: sqlite table_info close: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("ledger: sqlite table_info rows: %w", err)
+	}
+	for _, name := range auditColumns {
+		if present[name] {
+			continue
+		}
+		stmt := "ALTER TABLE ledger_tasks ADD COLUMN " + name + " TEXT NOT NULL DEFAULT ''"
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("ledger: sqlite add column %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // Close closes the underlying *sql.DB. Idempotent.
@@ -183,8 +195,11 @@ func scanTaskState(row sqlScanner) (TaskState, error) {
 		needsJSON                                 string
 		sequence, fence, rev                      uint64
 		taskBytes                                 []byte
+		createdAtStr, updatedAtStr                string
+		createdBy, updatedBy                      string
 	)
-	if err := row.Scan(&key, &status, &sequence, &owner, &fence, &leaseUntil, &needsJSON, &blockedBy, &taskBytes, &rev); err != nil {
+	if err := row.Scan(&key, &status, &sequence, &owner, &fence, &leaseUntil, &needsJSON, &blockedBy, &taskBytes, &rev,
+		&createdAtStr, &updatedAtStr, &createdBy, &updatedBy); err != nil {
 		return TaskState{}, err
 	}
 	needs, err := decodeNeeds([]byte(needsJSON))
@@ -202,6 +217,14 @@ func scanTaskState(row sqlScanner) (TaskState, error) {
 			return TaskState{}, fmt.Errorf("ledger: parse lease_until: %w", err)
 		}
 	}
+	createdAt, err := parseAuditTime(createdAtStr, "created_at")
+	if err != nil {
+		return TaskState{}, err
+	}
+	updatedAt, err := parseAuditTime(updatedAtStr, "updated_at")
+	if err != nil {
+		return TaskState{}, err
+	}
 	return TaskState{
 		Key:        IdempotencyKey(key),
 		Status:     machine.Status(status),
@@ -213,7 +236,25 @@ func scanTaskState(row sqlScanner) (TaskState, error) {
 		BlockedBy:  IdempotencyKey(blockedBy),
 		Task:       task,
 		Rev:        rev,
+		CreatedBy:  Actor(createdBy),
+		CreatedAt:  createdAt,
+		UpdatedBy:  Actor(updatedBy),
+		UpdatedAt:  updatedAt,
 	}, nil
+}
+
+// parseAuditTime parses a created_at/updated_at column value. An
+// empty column (a never-written or migration-backfilled row) reads
+// back as the zero time.Time.
+func parseAuditTime(value, field string) (time.Time, error) {
+	if value == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("ledger: parse %s: %w", field, err)
+	}
+	return t, nil
 }
 
 // Load returns the stored record for key. The bool reports whether a
@@ -256,10 +297,13 @@ func (s *SQLiteStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, ol
 	if !new.LeaseUntil.IsZero() {
 		leaseUntil = new.LeaseUntil.Format(time.RFC3339Nano)
 	}
+	createdAt := formatAuditTime(new.CreatedAt)
+	updatedAt := formatAuditTime(new.UpdatedAt)
 	if old.Sequence == 0 && old.Status == "" && old.Fence == 0 && old.Rev == 0 {
 		res, err := s.db.ExecContext(ctx, insertLedgerTask,
 			string(key), string(new.Status), uint64(new.Sequence), string(new.Owner),
-			uint64(new.Fence), leaseUntil, string(needsJSON), string(new.BlockedBy), taskBytes)
+			uint64(new.Fence), leaseUntil, string(needsJSON), string(new.BlockedBy), taskBytes,
+			createdAt, updatedAt, string(new.CreatedBy), string(new.UpdatedBy))
 		if err != nil {
 			return false, fmt.Errorf("ledger: sqlite insert: %w", err)
 		}
@@ -268,11 +312,22 @@ func (s *SQLiteStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, ol
 	res, err := s.db.ExecContext(ctx, updateLedgerTask,
 		string(new.Status), uint64(new.Sequence), string(new.Owner), uint64(new.Fence),
 		leaseUntil, string(needsJSON), string(new.BlockedBy), taskBytes,
+		updatedAt, string(new.UpdatedBy),
 		string(key), uint64(old.Sequence), string(old.Status), uint64(old.Fence), uint64(old.Rev))
 	if err != nil {
 		return false, fmt.Errorf("ledger: sqlite update: %w", err)
 	}
 	return rowsAffectedOne(res)
+}
+
+// formatAuditTime formats a CreatedAt/UpdatedAt value for storage. A
+// zero time.Time formats as the empty string, matching leaseUntil's
+// own zero-value convention.
+func formatAuditTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339Nano)
 }
 
 // rowsAffectedOne reports whether res affected exactly one row.

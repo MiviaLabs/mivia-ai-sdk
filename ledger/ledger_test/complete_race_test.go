@@ -42,11 +42,11 @@ func TestCompleteRaceExactlyOneWinner(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		completedErr = l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted)
+		completedErr = l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow)
 	}()
 	go func() {
 		defer wg.Done()
-		failedErr = l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusFailed)
+		failedErr = l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusFailed, fixedNow)
 	}()
 	wg.Wait()
 
@@ -118,12 +118,12 @@ func TestCompleteFailedBlocksDependentAfterConcurrentClaim(t *testing.T) {
 	fence := mustClaim(t, l, ctx, "A", "owner-a")
 
 	store.trigger = func() {
-		if _, err := l.Claim(ctx, "B", "owner-b", fixedLease, fixedNow); err != nil {
+		if _, err := l.Claim(ctx, testActor, "B", "owner-b", fixedLease, fixedNow); err != nil {
 			t.Errorf("concurrent Claim(B): %v", err)
 		}
 	}
 
-	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "A", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 
@@ -161,12 +161,12 @@ func TestCompleteFailedSkipsDependentCompletedAfterRangeSnapshot(t *testing.T) {
 	fenceB := mustClaim(t, l, ctx, "B", "owner-b")
 
 	store.trigger = func() {
-		if err := l.Complete(ctx, "B", "owner-b", fenceB, ledger.StatusCompleted); err != nil {
+		if err := l.Complete(ctx, testActor, "B", "owner-b", fenceB, ledger.StatusCompleted, fixedNow); err != nil {
 			t.Errorf("concurrent Complete(B): %v", err)
 		}
 	}
 
-	if err := l.Complete(ctx, "A", "owner-a", fenceA, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "A", "owner-a", fenceA, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 

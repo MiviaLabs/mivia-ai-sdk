@@ -26,6 +26,9 @@ const sqliteScenarioOwner = OwnerID("sqlite-durablefence-owner")
 // microseconds after the first, still observes an active lease.
 const sqliteScenarioLease = time.Hour
 
+// sqliteScenarioActor is the fixed Actor every closure below passes.
+const sqliteScenarioActor = Actor("sqlite-durablefence-actor")
+
 // sqliteScenarioClockBase anchors sqliteScenarioClock's strictly
 // increasing timestamps to a fixed date, matching
 // ledger_test/scenario_test.go's deterministic-clock pattern.
@@ -76,21 +79,21 @@ func sqliteTokenToFence(token string) (FenceToken, error) {
 // builds against a MemStore-backed Ledger.
 func buildSQLiteLedgerScenario(t *testing.T, l *Ledger, ctx context.Context) durablefence.Scenario {
 	t.Helper()
-	if ok, err := l.Admit(ctx, sqliteScenarioKey, 1, nil); err != nil || !ok {
+	if ok, err := l.Admit(ctx, sqliteScenarioActor, sqliteScenarioKey, 1, nil, sqliteScenarioClockBase); err != nil || !ok {
 		t.Fatalf("Admit: ok=%v err=%v", ok, err)
 	}
 	clk := &sqliteScenarioClock{}
 
 	return durablefence.Scenario{
 		Claim: func(ctx context.Context) (string, error) {
-			fence, err := l.Claim(ctx, sqliteScenarioKey, sqliteScenarioOwner, sqliteScenarioLease, clk.now())
+			fence, err := l.Claim(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, sqliteScenarioLease, clk.now())
 			if err != nil {
 				return "", err
 			}
 			return sqliteFenceToToken(fence), nil
 		},
 		Takeover: func(ctx context.Context) (string, error) {
-			fence, err := l.Takeover(ctx, sqliteScenarioKey, sqliteScenarioOwner, sqliteScenarioLease, clk.staleNow())
+			fence, err := l.Takeover(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, sqliteScenarioLease, clk.staleNow())
 			if err != nil {
 				return "", err
 			}
@@ -101,14 +104,14 @@ func buildSQLiteLedgerScenario(t *testing.T, l *Ledger, ctx context.Context) dur
 			if err != nil {
 				return err
 			}
-			return l.Renew(ctx, sqliteScenarioKey, sqliteScenarioOwner, fence, sqliteScenarioLease, clk.now())
+			return l.Renew(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, fence, sqliteScenarioLease, clk.now())
 		},
 		Release: func(ctx context.Context, token string) error {
 			fence, err := sqliteTokenToFence(token)
 			if err != nil {
 				return err
 			}
-			return l.Release(ctx, sqliteScenarioKey, sqliteScenarioOwner, fence)
+			return l.Release(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, fence, clk.now())
 		},
 		IsHeld: func(ctx context.Context) (bool, error) {
 			st, found, err := l.State(ctx, sqliteScenarioKey)
@@ -124,7 +127,7 @@ func buildSQLiteLedgerScenario(t *testing.T, l *Ledger, ctx context.Context) dur
 				// this Scenario, so it is not fenced.
 				return false, nil
 			}
-			err = l.Renew(ctx, sqliteScenarioKey, sqliteScenarioOwner, fence, sqliteScenarioLease, clk.now())
+			err = l.Renew(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, fence, sqliteScenarioLease, clk.now())
 			switch {
 			case err == nil:
 				return false, nil

@@ -19,7 +19,7 @@ import (
 // still after now. A record in a terminal or blocked status is also
 // ineligible; Claim reports that with ErrNotClaimed, matching
 // Takeover's vocabulary for a non-claimable status.
-func (l *Ledger) Claim(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
+func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -43,6 +43,8 @@ func (l *Ledger) Claim(ctx context.Context, key IdempotencyKey, owner OwnerID, l
 		next.Owner = owner
 		next.Fence = fence
 		next.LeaseUntil = now.Add(lease)
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return 0, err
@@ -66,7 +68,7 @@ func (l *Ledger) Claim(ctx context.Context, key IdempotencyKey, owner OwnerID, l
 // fresh reload still shows the caller's fence owning a StatusClaimed
 // record, Renew retries; a fresh reload that fails either check
 // returns the matching sentinel error instead.
-func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) error {
+func (l *Ledger) Renew(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) error {
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -83,6 +85,8 @@ func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, f
 		}
 		next := cur
 		next.LeaseUntil = now.Add(lease)
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err
@@ -106,7 +110,7 @@ func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, f
 // shows the caller's fence owning a StatusClaimed record, Release
 // retries; a fresh reload that fails either check returns the
 // matching sentinel error instead.
-func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken) error {
+func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, now time.Time) error {
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -125,6 +129,8 @@ func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID,
 		next.Status = StatusPending
 		next.Owner = ""
 		next.LeaseUntil = time.Time{}
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err
@@ -150,7 +156,7 @@ func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID,
 // when LeaseUntil is still after now. It returns ErrNotClaimed for a
 // StatusPending or terminal record: Takeover never admits or claims a
 // never-claimed record; a caller uses Claim for that.
-func (l *Ledger) Takeover(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
+func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -170,6 +176,8 @@ func (l *Ledger) Takeover(ctx context.Context, key IdempotencyKey, owner OwnerID
 		next.Owner = owner
 		next.Fence = fence
 		next.LeaseUntil = now.Add(lease)
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return 0, err

@@ -15,12 +15,21 @@ func TestClaimOnPendingSucceeds(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
-	fence, err := l.Claim(ctx, "k1", "owner-a", fixedLease, fixedNow)
+	claimActor := ledger.Actor("claim-actor")
+	claimNow := fixedNow.Add(time.Minute)
+	fence, err := l.Claim(ctx, claimActor, "k1", "owner-a", fixedLease, claimNow)
 	if err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	if fence == 0 {
 		t.Fatalf("Claim: fence must be nonzero")
+	}
+	st, _, _ := l.State(ctx, "k1")
+	if st.UpdatedBy != claimActor || !st.UpdatedAt.Equal(claimNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, claimActor, claimNow)
+	}
+	if st.CreatedBy != testActor || !st.CreatedAt.Equal(fixedNow) {
+		t.Fatalf("CreatedBy/CreatedAt = %q/%v, want unchanged %q/%v", st.CreatedBy, st.CreatedAt, testActor, fixedNow)
 	}
 }
 
@@ -33,7 +42,7 @@ func TestClaimWhileLeaseLiveRejected(t *testing.T) {
 	mustAdmit(t, l, ctx, "k1", 1)
 	first := mustClaim(t, l, ctx, "k1", "owner-a")
 
-	_, err := l.Claim(ctx, "k1", "owner-b", fixedLease, fixedNow)
+	_, err := l.Claim(ctx, testActor, "k1", "owner-b", fixedLease, fixedNow)
 	if !errors.Is(err, ledger.ErrLeaseActive) {
 		t.Fatalf("Claim: got %v, want ErrLeaseActive", err)
 	}
@@ -49,12 +58,12 @@ func TestClaimAfterExpiryByDifferentOwner(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
-	first, err := l.Claim(ctx, "k1", "owner-a", time.Minute, fixedNow)
+	first, err := l.Claim(ctx, testActor, "k1", "owner-a", time.Minute, fixedNow)
 	if err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	later := fixedNow.Add(2 * time.Minute)
-	second, err := l.Claim(ctx, "k1", "owner-b", fixedLease, later)
+	second, err := l.Claim(ctx, testActor, "k1", "owner-b", fixedLease, later)
 	if err != nil {
 		t.Fatalf("Claim after expiry: %v", err)
 	}
@@ -71,13 +80,20 @@ func TestRenewExtendsLease(t *testing.T) {
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
 	later := fixedNow.Add(time.Hour)
-	if err := l.Renew(ctx, "k1", "owner-a", fence, fixedLease, later); err != nil {
+	renewActor := ledger.Actor("renew-actor")
+	if err := l.Renew(ctx, renewActor, "k1", "owner-a", fence, fixedLease, later); err != nil {
 		t.Fatalf("Renew: %v", err)
 	}
 	st, _, _ := l.State(ctx, "k1")
 	want := later.Add(fixedLease)
 	if !st.LeaseUntil.Equal(want) {
 		t.Fatalf("LeaseUntil = %v, want %v", st.LeaseUntil, want)
+	}
+	if st.UpdatedBy != renewActor || !st.UpdatedAt.Equal(later) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, renewActor, later)
+	}
+	if st.CreatedBy != testActor || !st.CreatedAt.Equal(fixedNow) {
+		t.Fatalf("CreatedBy/CreatedAt = %q/%v, want unchanged %q/%v", st.CreatedBy, st.CreatedAt, testActor, fixedNow)
 	}
 }
 
@@ -88,7 +104,7 @@ func TestRenewStaleFenceRejected(t *testing.T) {
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	err := l.Renew(ctx, "k1", "owner-a", fence+1, fixedLease, fixedNow)
+	err := l.Renew(ctx, testActor, "k1", "owner-a", fence+1, fixedLease, fixedNow)
 	if !errors.Is(err, ledger.ErrFenced) {
 		t.Fatalf("Renew: got %v, want ErrFenced", err)
 	}
@@ -100,7 +116,7 @@ func TestRenewAgainstPendingRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
-	err := l.Renew(ctx, "k1", "owner-a", 0, fixedLease, fixedNow)
+	err := l.Renew(ctx, testActor, "k1", "owner-a", 0, fixedLease, fixedNow)
 	if !errors.Is(err, ledger.ErrNotClaimed) {
 		t.Fatalf("Renew: got %v, want ErrNotClaimed", err)
 	}
@@ -114,14 +130,22 @@ func TestReleaseReturnsRecordToPending(t *testing.T) {
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if err := l.Release(ctx, "k1", "owner-a", fence); err != nil {
+	releaseActor := ledger.Actor("release-actor")
+	releaseNow := fixedNow.Add(2 * time.Minute)
+	if err := l.Release(ctx, releaseActor, "k1", "owner-a", fence, releaseNow); err != nil {
 		t.Fatalf("Release: %v", err)
 	}
 	st, _, _ := l.State(ctx, "k1")
 	if st.Status != ledger.StatusPending {
 		t.Fatalf("Status = %q, want StatusPending", st.Status)
 	}
-	if _, err := l.Claim(ctx, "k1", "owner-b", fixedLease, fixedNow); err != nil {
+	if st.UpdatedBy != releaseActor || !st.UpdatedAt.Equal(releaseNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, releaseActor, releaseNow)
+	}
+	if st.CreatedBy != testActor || !st.CreatedAt.Equal(fixedNow) {
+		t.Fatalf("CreatedBy/CreatedAt = %q/%v, want unchanged %q/%v", st.CreatedBy, st.CreatedAt, testActor, fixedNow)
+	}
+	if _, err := l.Claim(ctx, testActor, "k1", "owner-b", fixedLease, fixedNow); err != nil {
 		t.Fatalf("Claim after Release: %v", err)
 	}
 }
@@ -133,7 +157,7 @@ func TestReleaseStaleFenceRejected(t *testing.T) {
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	err := l.Release(ctx, "k1", "owner-a", fence+1)
+	err := l.Release(ctx, testActor, "k1", "owner-a", fence+1, fixedNow)
 	if !errors.Is(err, ledger.ErrFenced) {
 		t.Fatalf("Release: got %v, want ErrFenced", err)
 	}
@@ -145,7 +169,7 @@ func TestReleaseAgainstPendingRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
-	err := l.Release(ctx, "k1", "owner-a", 0)
+	err := l.Release(ctx, testActor, "k1", "owner-a", 0, fixedNow)
 	if !errors.Is(err, ledger.ErrNotClaimed) {
 		t.Fatalf("Release: got %v, want ErrNotClaimed", err)
 	}
@@ -157,7 +181,7 @@ func TestReleaseAgainstPendingRejected(t *testing.T) {
 func TestClaimAgainstUnknownKeyRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	_, err := l.Claim(ctx, "ghost", "owner-a", fixedLease, fixedNow)
+	_, err := l.Claim(ctx, testActor, "ghost", "owner-a", fixedLease, fixedNow)
 	if !errors.Is(err, ledger.ErrNoKey) {
 		t.Fatalf("Claim: got %v, want ErrNoKey", err)
 	}
@@ -172,7 +196,7 @@ func TestClaimAgainstUnknownKeyRejected(t *testing.T) {
 func TestRenewAgainstUnknownKeyRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	err := l.Renew(ctx, "ghost", "owner-a", 0, fixedLease, fixedNow)
+	err := l.Renew(ctx, testActor, "ghost", "owner-a", 0, fixedLease, fixedNow)
 	if !errors.Is(err, ledger.ErrNoKey) {
 		t.Fatalf("Renew: got %v, want ErrNoKey", err)
 	}
@@ -183,7 +207,7 @@ func TestRenewAgainstUnknownKeyRejected(t *testing.T) {
 func TestReleaseAgainstUnknownKeyRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	err := l.Release(ctx, "ghost", "owner-a", 0)
+	err := l.Release(ctx, testActor, "ghost", "owner-a", 0, fixedNow)
 	if !errors.Is(err, ledger.ErrNoKey) {
 		t.Fatalf("Release: got %v, want ErrNoKey", err)
 	}
@@ -207,7 +231,7 @@ func TestClaimAgainstTerminalRejected(t *testing.T) {
 			l := newLedger(t, nil)
 			sc.build(t, l, ctx)
 			later := fixedNow.Add(2 * fixedLease)
-			_, err := l.Claim(ctx, "k1", "owner-b", fixedLease, later)
+			_, err := l.Claim(ctx, testActor, "k1", "owner-b", fixedLease, later)
 			if !errors.Is(err, ledger.ErrNotClaimed) {
 				t.Fatalf("Claim: got %v, want ErrNotClaimed", err)
 			}

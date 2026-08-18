@@ -35,28 +35,28 @@ func TestAdmitClaimRenewCompleteEndToEnd(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if ok, err := l.Admit(ctx, "root", 1, "root-task"); err != nil || !ok {
+	if ok, err := l.Admit(ctx, testActor, "root", 1, "root-task", fixedNow); err != nil || !ok {
 		t.Fatalf("Admit(root): ok=%v err=%v", ok, err)
 	}
-	if ok, err := l.Admit(ctx, "dep", 1, "dep-task", "root"); err != nil || !ok {
+	if ok, err := l.Admit(ctx, testActor, "dep", 1, "dep-task", fixedNow, "root"); err != nil || !ok {
 		t.Fatalf("Admit(dep): ok=%v err=%v", ok, err)
 	}
 
-	fence, err := l.Claim(ctx, "root", "owner-a", time.Minute, fixedNow)
+	fence, err := l.Claim(ctx, testActor, "root", "owner-a", time.Minute, fixedNow)
 	if err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 
 	afterFirstRenew := fixedNow.Add(30 * time.Second)
-	if err := l.Renew(ctx, "root", "owner-a", fence, time.Minute, afterFirstRenew); err != nil {
+	if err := l.Renew(ctx, testActor, "root", "owner-a", fence, time.Minute, afterFirstRenew); err != nil {
 		t.Fatalf("Renew 1: %v", err)
 	}
 	afterSecondRenew := afterFirstRenew.Add(30 * time.Second)
-	if err := l.Renew(ctx, "root", "owner-a", fence, time.Minute, afterSecondRenew); err != nil {
+	if err := l.Renew(ctx, testActor, "root", "owner-a", fence, time.Minute, afterSecondRenew); err != nil {
 		t.Fatalf("Renew 2: %v", err)
 	}
 
-	if err := l.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 

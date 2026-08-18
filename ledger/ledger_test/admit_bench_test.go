@@ -41,7 +41,7 @@ func BenchmarkAdmit(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				key := keys[i%n]
 				seq := ledger.Sequence(i/n + 1)
-				if _, err := l.Admit(ctx, key, seq, nil); err != nil {
+				if _, err := l.Admit(ctx, testActor, key, seq, nil, fixedNow); err != nil {
 					b.Fatal(err)
 				}
 			}

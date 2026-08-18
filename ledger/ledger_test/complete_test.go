@@ -17,14 +17,22 @@ func TestCompleteSucceeded(t *testing.T) {
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); err != nil {
+	completeActor := ledger.Actor("complete-actor")
+	completeNow := fixedNow.Add(fixedLease)
+	if err := l.Complete(ctx, completeActor, "k1", "owner-a", fence, ledger.StatusCompleted, completeNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	st, _, _ := l.State(ctx, "k1")
 	if st.Status != ledger.StatusCompleted {
 		t.Fatalf("Status = %q, want StatusCompleted", st.Status)
 	}
-	if err := l.Renew(ctx, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, ledger.ErrNotClaimed) {
+	if st.UpdatedBy != completeActor || !st.UpdatedAt.Equal(completeNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, completeActor, completeNow)
+	}
+	if st.CreatedBy != testActor || !st.CreatedAt.Equal(fixedNow) {
+		t.Fatalf("CreatedBy/CreatedAt = %q/%v, want unchanged %q/%v", st.CreatedBy, st.CreatedAt, testActor, fixedNow)
+	}
+	if err := l.Renew(ctx, testActor, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, ledger.ErrNotClaimed) {
 		t.Fatalf("Renew after completion: got %v, want ErrNotClaimed", err)
 	}
 }
@@ -38,7 +46,9 @@ func TestCompleteFailedBlocksDependent(t *testing.T) {
 	mustAdmit(t, l, ctx, "root", 1)
 	mustAdmit(t, l, ctx, "dep", 1, "root")
 	fence := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); err != nil {
+	blockActor := ledger.Actor("block-actor")
+	blockNow := fixedNow.Add(fixedLease)
+	if err := l.Complete(ctx, blockActor, "root", "owner-a", fence, ledger.StatusFailed, blockNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	blockedBy, blocked, err := l.Blocked(ctx, "dep")
@@ -50,6 +60,13 @@ func TestCompleteFailedBlocksDependent(t *testing.T) {
 	}
 	if blockedBy != "root" {
 		t.Fatalf("BlockedBy = %q, want root", blockedBy)
+	}
+	depState, _, err := l.State(ctx, "dep")
+	if err != nil {
+		t.Fatalf("State: %v", err)
+	}
+	if depState.UpdatedBy != blockActor || !depState.UpdatedAt.Equal(blockNow) {
+		t.Fatalf("dep UpdatedBy/UpdatedAt = %q/%v, want %q/%v", depState.UpdatedBy, depState.UpdatedAt, blockActor, blockNow)
 	}
 }
 
@@ -63,7 +80,7 @@ func TestCompleteFailedBlocksTransitively(t *testing.T) {
 	mustAdmit(t, l, ctx, "mid", 1, "root")
 	mustAdmit(t, l, ctx, "leaf", 1, "mid")
 	fence := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	for _, key := range []ledger.IdempotencyKey{"mid", "leaf"} {
@@ -92,7 +109,7 @@ func TestCompleteFailedTwoCycleTerminates(t *testing.T) {
 	mustAdmit(t, l, ctx, "A", 1, "B")
 	mustAdmit(t, l, ctx, "B", 1, "A")
 	fence := mustClaim(t, l, ctx, "A", "owner-a")
-	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "A", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	want := map[ledger.IdempotencyKey]machine.Status{
@@ -124,7 +141,7 @@ func TestCompleteFailedThreeHopCycleTerminates(t *testing.T) {
 	mustAdmit(t, l, ctx, "B", 1, "C")
 	mustAdmit(t, l, ctx, "C", 1, "A")
 	fence := mustClaim(t, l, ctx, "A", "owner-a")
-	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "A", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	want := map[ledger.IdempotencyKey]machine.Status{
@@ -155,7 +172,7 @@ func TestCompleteFailedSharedDependentBlockedOnce(t *testing.T) {
 	mustAdmit(t, l, ctx, "D", 1, "X", "Y")
 
 	fenceX := mustClaim(t, l, ctx, "X", "owner-a")
-	if err := l.Complete(ctx, "X", "owner-a", fenceX, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "X", "owner-a", fenceX, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete X: %v", err)
 	}
 	blockedBy, blocked, err := l.Blocked(ctx, "D")
@@ -167,7 +184,7 @@ func TestCompleteFailedSharedDependentBlockedOnce(t *testing.T) {
 	}
 
 	fenceY := mustClaim(t, l, ctx, "Y", "owner-b")
-	if err := l.Complete(ctx, "Y", "owner-b", fenceY, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "Y", "owner-b", fenceY, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete Y: %v", err)
 	}
 	blockedBy, blocked, err = l.Blocked(ctx, "D")
@@ -187,7 +204,7 @@ func TestCompleteStaleFenceRejected(t *testing.T) {
 	mustAdmit(t, l, ctx, "root", 1)
 	mustAdmit(t, l, ctx, "dep", 1, "root")
 	fence := mustClaim(t, l, ctx, "root", "owner-a")
-	err := l.Complete(ctx, "root", "owner-a", fence+1, ledger.StatusFailed)
+	err := l.Complete(ctx, testActor, "root", "owner-a", fence+1, ledger.StatusFailed, fixedNow)
 	if !errors.Is(err, ledger.ErrFenced) {
 		t.Fatalf("Complete: got %v, want ErrFenced", err)
 	}
@@ -203,7 +220,7 @@ func TestCompleteAgainstPendingRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
-	err := l.Complete(ctx, "k1", "owner-a", 0, ledger.StatusCompleted)
+	err := l.Complete(ctx, testActor, "k1", "owner-a", 0, ledger.StatusCompleted, fixedNow)
 	if !errors.Is(err, ledger.ErrNotClaimed) {
 		t.Fatalf("Complete: got %v, want ErrNotClaimed", err)
 	}
@@ -218,10 +235,10 @@ func TestCompleteAgainstTerminalRejected(t *testing.T) {
 	l := newLedger(t, nil)
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); err != nil {
+	if err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusFailed)
+	err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusFailed, fixedNow)
 	if !errors.Is(err, ledger.ErrNotClaimed) {
 		t.Fatalf("second Complete: got %v, want ErrNotClaimed", err)
 	}
@@ -236,7 +253,7 @@ func TestCompleteAgainstTerminalRejected(t *testing.T) {
 func TestCompleteAgainstUnknownKeyRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	err := l.Complete(ctx, "ghost", "owner-a", 0, ledger.StatusCompleted)
+	err := l.Complete(ctx, testActor, "ghost", "owner-a", 0, ledger.StatusCompleted, fixedNow)
 	if !errors.Is(err, ledger.ErrNoKey) {
 		t.Fatalf("Complete: got %v, want ErrNoKey", err)
 	}
@@ -252,7 +269,7 @@ func TestCompleteUnknownStatusAgainstClaimedRejected(t *testing.T) {
 	mustAdmit(t, l, ctx, "k1", 1)
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
 	before, _, _ := l.State(ctx, "k1")
-	err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusPending)
+	err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusPending, fixedNow)
 	if !errors.Is(err, ledger.ErrUnknownStatus) {
 		t.Fatalf("Complete: got %v, want ErrUnknownStatus", err)
 	}
@@ -269,7 +286,7 @@ func TestCompleteUnknownStatusAgainstClaimedRejected(t *testing.T) {
 func TestCompleteUnknownStatusAgainstUnknownKeyRejected(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	err := l.Complete(ctx, "ghost", "owner-a", 0, machine.Status(""))
+	err := l.Complete(ctx, testActor, "ghost", "owner-a", 0, machine.Status(""), fixedNow)
 	if !errors.Is(err, ledger.ErrUnknownStatus) {
 		t.Fatalf("Complete: got %v, want ErrUnknownStatus", err)
 	}
@@ -307,7 +324,7 @@ func TestBlockDependentsSkipsDependentAlreadyBlockedDuringRetry(t *testing.T) {
 		}
 	}
 
-	if err := l.Complete(ctx, "A", "owner-a", fence, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "A", "owner-a", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 
@@ -338,12 +355,12 @@ func TestCompleteFailedSkipsDependentAlreadyCompleted(t *testing.T) {
 	mustAdmit(t, l, ctx, "D", 1, "root")
 
 	fenceD := mustClaim(t, l, ctx, "D", "owner-d")
-	if err := l.Complete(ctx, "D", "owner-d", fenceD, ledger.StatusCompleted); err != nil {
+	if err := l.Complete(ctx, testActor, "D", "owner-d", fenceD, ledger.StatusCompleted, fixedNow); err != nil {
 		t.Fatalf("Complete D: %v", err)
 	}
 
 	fenceRoot := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fenceRoot, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fenceRoot, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete root: %v", err)
 	}
 
@@ -373,12 +390,12 @@ func TestCompleteFailedSkipsDependentAlreadyFailed(t *testing.T) {
 	mustAdmit(t, l, ctx, "D", 1, "root")
 
 	fenceD := mustClaim(t, l, ctx, "D", "owner-d")
-	if err := l.Complete(ctx, "D", "owner-d", fenceD, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "D", "owner-d", fenceD, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete D: %v", err)
 	}
 
 	fenceRoot := mustClaim(t, l, ctx, "root", "owner-a")
-	if err := l.Complete(ctx, "root", "owner-a", fenceRoot, ledger.StatusFailed); err != nil {
+	if err := l.Complete(ctx, testActor, "root", "owner-a", fenceRoot, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete root: %v", err)
 	}
 

@@ -1,0 +1,19 @@
+package durablefence
+  func (s Scenario) Validate() (error)
+  func CheckClaimGrantsHold(t testing.TB, ctx context.Context, s Scenario)
+  func CheckClaimRejectsWhileHeld(t testing.TB, ctx context.Context, s Scenario)
+  func CheckIsFencedFalseForUnknownToken(t testing.TB, ctx context.Context, s Scenario)
+  func CheckMutateSucceedsForCurrentOwner(t testing.TB, ctx context.Context, s Scenario)
+  func CheckReleaseClearsHold(t testing.TB, ctx context.Context, s Scenario)
+  func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Scenario)
+  func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scenario)
+  func RunAll(t testing.TB, ctx context.Context, s Scenario)
+  type Scenario struct {
+  Claim func(context.Context) (string, error)
+  Takeover func(context.Context) (string, error)
+  Mutate func(context.Context, string) error
+  Release func(context.Context, string) error
+  IsHeld func(context.Context) (bool, error)
+  IsFenced func(context.Context, string) (bool, error)
+}
+  var ErrIncompleteScenario

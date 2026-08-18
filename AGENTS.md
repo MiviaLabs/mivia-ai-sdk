@@ -53,6 +53,10 @@ Go SDK for building AI agents. Module:
   admission, a leased claim with a monotonic fence, renewal, a stale
   takeover, and dependency-driven blocking on failure. Imports
   machine and events only.
+- `durablefence/` — a leaf, test-only conformance kit for claim,
+  takeover, and fence invariants. Imported only from another
+  package's `_test` subdirectory, for example
+  `ledger/ledger_test/scenario_test.go`.
 - `memory/` — the shared context store: Store, New, Put, Get, keyed
   by `envelope.ContextRef`. A size budget evicts the oldest-inserted
   blobs. Imports envelope only.

@@ -13,9 +13,9 @@ BAD_BASENAME = re.compile(
     r"|_v\d+\."
 )
 BAD_WORDS = {"phase", "tdd", "perf", "wip", "draft", "scratch", "tmp", "old", "backup"}
-VERSION_SUFFIX = re.compile(r"_v\d+")
+VERSION_SUFFIX = re.compile(r"_v\d+", re.IGNORECASE)
 FUNC_DECL = re.compile(r"\bfunc\s+(?:\([^)]*\)\s+)?(\w+)\s*\(")
-CAMEL_WORD = re.compile(r"[A-Z]+[a-z0-9]*|[a-z0-9]+")
+CAMEL_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+")
 
 
 def _has_bad_word(name: str) -> bool:

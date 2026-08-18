@@ -1,0 +1,23 @@
+package taskrun
+  func Run(ctx context.Context, opts Options, t Task, work func(context.Context) error) (error)
+  type Options struct {
+  Ledger *ledger.Ledger
+  Actor ledger.Actor
+  Owner ledger.OwnerID
+  Lease time.Duration
+  Now func() time.Time
+}
+  type Task struct {
+  Key ledger.IdempotencyKey
+  Seq ledger.Sequence
+  Description string
+  Needs []ledger.IdempotencyKey
+}
+  var ErrNoActor
+  var ErrNoKey
+  var ErrNoLease
+  var ErrNoLedger
+  var ErrNoOwner
+  var ErrTaskBlocked
+  var ErrTaskDone
+  var ErrTaskFailed

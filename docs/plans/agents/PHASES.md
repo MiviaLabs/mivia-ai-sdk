@@ -225,17 +225,24 @@ files close the concurrent-run, approval-transport, ledger race,
 `mcp` concurrency, and loopback gRPC gaps. It strengthens
 `make verify`; it weakens no existing gate.
 
-Phase 48 has shipped. It widens the shipped `flow` package with
+Phase 48 ships in this change. It widens the shipped `flow` package with
 `Step.PayloadFrom`, the `Definition.Steps` and `Definition.Panels`
 accessors, and `TransitionsFor`, and adds the `agent` `Plan` and
 `Signer` accessors ahead of phase 49's validators. The shipped
 contract lives in docs/plans/flow.md and docs/plans/agent.md.
 
-Phases 49 through 52 are plan-only; none has gone through plan
+Phase 50 (`taskrun`) has shipped. It adds the ledger
+admit-claim-complete ceremony around a work func as one top-level
+package: admission with dependency keys, claim with lease and fence,
+work execution, and completion with the mapped status. It depends only
+on the shipped `ledger` package and adds one `policy/layers.json`
+edge. Its package plan lives at docs/plans/taskrun.md.
+
+Phases 49, 51, and 52 are plan-only; none has gone through plan
 review yet. Phase 49 adds `agentrun`; its accessors already shipped
-with phase 48. It depends on phase 48, because its artifact flow
-reads `PayloadFrom`.
-Phases 50, 51, and 52 each add one package and depend on no unshipped
+with phase 48. It depends on phase 48, because its artifact flow reads
+`PayloadFrom`.
+Phases 51 and 52 each add one package and depend on no unshipped
 phase; they ship independently of each other and of phase 49.
 
 Phase 53 is plan-only and not scheduled. It builds nothing until two

@@ -20,6 +20,7 @@
     "provider": [],
     "room": ["envelope", "heartbeat"],
     "scheduler": ["events"],
+    "taskrun": ["ledger"],
     "tools": [],
     "trigger": []
   }

@@ -1,6 +1,7 @@
 # Phase 50: taskrun ledger ceremony
 
-Status: future. Plan-only; it has not gone through plan review yet.
+Status: shipped. The plan folded into docs/plans/taskrun.md on
+shipping; see docs/plans/agents/PHASES.md.
 Depends on no unshipped phase. It adds one new top-level package.
 
 ## Why this phase exists
@@ -29,11 +30,15 @@ Inside:
 - New package `taskrun` with `Options`, `Task`, `Run`, and sentinels.
 - Admission with dependency keys, claim with lease and fence, work
   execution, completion with the mapped status.
-- Idempotent replay: a task already completed or failed returns its
-  sentinel without running the work. Both statuses are terminal in
-  the ledger; re-running either requires a new idempotency key.
-- A claim blocked by a live lease returns `ledger.ErrLeaseActive`
-  wrapped, with the key, for the caller's takeover decision.
+- A task blocked by a failed dependency returns `ErrTaskBlocked`
+  without running the work.
+- Idempotent replay: a task already completed, failed, or blocked
+  returns its sentinel without running the work. Each status is
+  terminal in the ledger; re-running any requires a new idempotency
+  key.
+- A claim blocked by a live lease returns an error satisfying
+  `errors.Is(err, ledger.ErrLeaseActive)` and completes nothing. The
+  caller holds its own key for a takeover decision.
 
 Outside:
 
@@ -72,13 +77,14 @@ func Run(ctx context.Context, opts Options, t Task,
 	work func(ctx context.Context) error) error
 
 var (
-	ErrNoLedger  = errors.New("taskrun: ledger is required")
-	ErrNoOwner   = errors.New("taskrun: owner is required")
-	ErrNoActor   = errors.New("taskrun: actor is required")
-	ErrNoLease   = errors.New("taskrun: lease must be positive")
-	ErrNoKey     = errors.New("taskrun: task key is required")
-	ErrTaskDone  = errors.New("taskrun: task already completed")
-	ErrTaskFailed = errors.New("taskrun: task already failed")
+	ErrNoLedger    = errors.New("taskrun: ledger is required")
+	ErrNoOwner     = errors.New("taskrun: owner is required")
+	ErrNoActor     = errors.New("taskrun: actor is required")
+	ErrNoLease     = errors.New("taskrun: lease must be positive")
+	ErrNoKey       = errors.New("taskrun: task key is required")
+	ErrTaskDone    = errors.New("taskrun: task already completed")
+	ErrTaskFailed  = errors.New("taskrun: task already failed")
+	ErrTaskBlocked = errors.New("taskrun: task blocked on a failed dependency")
 )
 ```
 
@@ -88,10 +94,11 @@ Run order:
 2. `Admit` with `Description` and `Needs`. A duplicate admit is not
    an error; proceed.
 3. `State` on the key: `StatusCompleted` returns `ErrTaskDone`;
-   `StatusFailed` returns `ErrTaskFailed`. Neither runs work, and
-   neither can be re-claimed: the ledger holds both as terminal.
-4. `Claim` with `Owner` and `Lease`. `ErrLeaseActive` returns
-   wrapped, with no `Complete`.
+   `StatusFailed` returns `ErrTaskFailed`; `StatusBlocked` returns
+   `ErrTaskBlocked`. Each status is terminal in the ledger; none
+   runs work, and none can be re-claimed.
+4. `Claim` with `Owner` and `Lease`. `ErrLeaseActive` returns an
+   error satisfying `errors.Is`, with no `Complete`.
 5. Run `work`. A nil error completes `ledger.StatusCompleted`; an
    error completes `ledger.StatusFailed` and returns the work error
    unwrapped.
@@ -112,14 +119,20 @@ Run order:
 `taskrun/taskrun_test/`, one external test package:
 
 - `options_test.go`, table-driven: every sentinel above, plus the
-  `Now` default.
+  `Now` default. A failed validation on a bus-wired ledger emits no
+  `AdmittedEvent`.
 - `ceremony_test.go`: happy path asserts the event order on a real
   bus: `AdmittedEvent`, `ClaimedEvent`, `CompletedEvent`.
 - `failure_test.go`: a work error returns unwrapped, completes
   `StatusFailed`, and a `State` read confirms it.
+- `blocked_test.go`: a task whose dependency completed
+  `StatusFailed` is `StatusBlocked`; `Run` returns `ErrTaskBlocked`
+  and never calls work.
 - `complete_always_test.go`: a work function fails on purpose after
   the claim; it does not panic. A second `Complete` with the same
   fence returns `ledger.ErrNotClaimed`, proving the first landed.
+- `complete_join_test.go`: a `Complete` that fails after the work
+  failed joins the returned error; `errors.Is(err, workErr)` holds.
 - `replay_test.go`: a completed key returns `ErrTaskDone` and never
   calls work; a failed key returns `ErrTaskFailed` and never calls
   work.

@@ -86,7 +86,11 @@ files destructure the three-value return, 60 call sites in total:
 `chain_bench_test.go` (5), `chain_new_test.go` (1), and
 `emit_test.go` (6). Every file moves to the `Report` API in
 the same change. Each file keeps its assertions; only the return
-handling changes. The `new_test.go`, `new_integration_test.go`,
+handling changes. `TestRunChainedStepParentFireFromChildGuardRejects`
+and `TestRunChainedStepParentConfirmErrorWrap` in `chain_test.go`
+each add one assertion: `report.Outcome("parent")` returns
+`OutcomeFailed, true`. This pins the other two chained-step failure
+points named in the API section. The `new_test.go`, `new_integration_test.go`,
 `new_bench_test.go`, and `panel_new_test.go` files test `New`,
 whose signature stays unchanged. `chain_new_test.go` also holds
 one `Run` call site; it moves to the `Report` API with the rest.

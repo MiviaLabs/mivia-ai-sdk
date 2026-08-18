@@ -1,6 +1,6 @@
 # Phase 34: ledger durable admission and claim primitive
 
-Status: revision round 3, ready to plan review. New top-level package.
+Status: revision round 4, ready to plan review. New top-level package.
 Depends on the shipped `machine` and `events` packages only; `ledger`
 does not import `heartbeat` (see the Scope note on staleness below).
 Composes, once both land, with `durablefence`'s `Scenario` harness
@@ -262,15 +262,26 @@ calls `ledger.Takeover` and resumes ownership.
   `LeaseUntil` is at or before `now`. `LeaseUntil` versus `now` is the
   only staleness signal `Claim` reads; `ledger` keeps no heartbeat or
   other liveness state. Bumps `FenceToken` and sets `LeaseUntil` to
-  `now.Add(lease)`. Returns `ErrLeaseActive` when another owner's
+  `now.Add(lease)`. `Claim` first calls `Store.Load`. Returns
+  `ErrNoKey` when the key has no record, checked before any status
+  precondition and before any `CompareAndSwap` call: a never-admitted
+  key is never eligible for `Claim`, so `Claim` never falls through to
+  `Store`'s zero-value, insert-if-absent `CompareAndSwap` convention to
+  create a `StatusClaimed` record outside `Admit`. Only once `Load`
+  reports the key found does `Claim` evaluate `Status` and
+  `LeaseUntil`. Returns `ErrLeaseActive` when another owner's
   `LeaseUntil` is still after `now`. On a losing `CompareAndSwap`,
   re-loads the record and re-evaluates the same precondition, so the
   loser of a race against another `Claim` or a `Takeover` also returns
   `ErrLeaseActive`, per the `Store` retry-and-reclassify contract
   above.
 - `func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) error`
-  — extends `LeaseUntil` to `now.Add(lease)`. Returns `ErrNotClaimed`
-  when the record's `Status` is not `StatusClaimed`. Returns
+  — extends `LeaseUntil` to `now.Add(lease)`. `Renew` first calls
+  `Store.Load`. Returns `ErrNoKey` when the key has no record, checked
+  before the `ErrNotClaimed` and `ErrFenced` checks and before any
+  `CompareAndSwap` call, so `Renew` cannot mistake "never admitted" for
+  "admitted but not currently claimed". Returns `ErrNotClaimed` when
+  the record's `Status` is not `StatusClaimed`. Returns
   `ErrFenced` when `fence` does not match the current record. On a
   losing `CompareAndSwap` (for example a concurrent `Renew` on the same
   fence that won the `Rev` bump first), re-loads the record and
@@ -281,11 +292,17 @@ calls `ledger.Takeover` and resumes ownership.
   losing the extension, per the `Store` retry-and-reclassify contract
   above.
 - `func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken) error`
-  — returns a claimed record to `StatusPending`. Returns `ErrFenced`
-  on a stale token. On a losing `CompareAndSwap` whose fresh reload
-  still shows the caller's fence owning a `StatusClaimed` record,
-  retries `CompareAndSwap` against the fresh record, per the `Store`
-  retry-and-reclassify contract above.
+  — returns a claimed record to `StatusPending`. `Release` first calls
+  `Store.Load`. Returns `ErrNoKey` when the key has no record, checked
+  before the `ErrFenced` and `ErrNotClaimed` checks and before any
+  `CompareAndSwap` call. Returns `ErrFenced`
+  on a stale token. Returns `ErrNotClaimed` when the record's `Status`
+  is not `StatusClaimed`. On a losing `CompareAndSwap` whose fresh
+  reload still shows the caller's fence owning a `StatusClaimed`
+  record, retries `CompareAndSwap` against the fresh record; a fresh
+  reload showing a fence mismatch or a `Status` no longer
+  `StatusClaimed` returns the matching sentinel error instead, per the
+  `Store` retry-and-reclassify contract above.
 - `func (l *Ledger) Takeover(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)`
   — claims a `StatusClaimed` record whose `LeaseUntil` is at or before
   `now`: the same staleness signal `Claim` reads, applied to the same
@@ -293,7 +310,12 @@ calls `ledger.Takeover` and resumes ownership.
   the same just-expired lease are resolved by one CAS, not by two
   independent eligibility checks that could disagree. Bumps
   `FenceToken` past the prior value, fencing the dispossessed owner's
-  token. Returns `ErrNotStale` when `LeaseUntil` is still after `now`.
+  token. `Takeover` first calls `Store.Load`. Returns `ErrNoKey` when
+  the key has no record, checked before the `ErrNotStale` and
+  `ErrNotClaimed` checks and before any `CompareAndSwap` call: a
+  never-admitted key is distinct from an admitted `StatusPending`
+  record, and `Takeover` reports that distinction instead of folding
+  it into `ErrNotClaimed`. Returns `ErrNotStale` when `LeaseUntil` is still after `now`.
   Returns `ErrNotClaimed` for a `StatusPending` or terminal record:
   `Takeover` never admits or claims a never-claimed record; a caller
   uses `Claim` for that. On a losing `CompareAndSwap`, re-loads the
@@ -303,12 +325,32 @@ calls `ledger.Takeover` and resumes ownership.
   retry-and-reclassify contract above.
 - `func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status) error`
   — accepts only `StatusCompleted` or `StatusFailed`. Returns
-  `ErrFenced` on a stale token. On a losing `CompareAndSwap` for the
-  primary key, re-loads the record and re-evaluates the fence: a fence
-  mismatch on the fresh record returns `ErrFenced`; a fence match
-  (the caller still legitimately owns the record) retries
-  `CompareAndSwap` against the fresh record, per the `Store`
-  retry-and-reclassify contract above. On `StatusFailed`, walks the dependency
+  `ErrUnknownStatus` when `status` is neither `StatusCompleted` nor
+  `StatusFailed` (including the zero value, `StatusPending`, and
+  `StatusBlocked`), checked first, before any `Store` call: an invalid
+  `status` argument is a caller error independent of the record's
+  state, so `Complete` rejects it before spending a `Load`. Once
+  `status` is valid, `Complete` calls `Store.Load`. Returns `ErrNoKey`
+  when the key has no record, checked next, before the `ErrFenced` and
+  `ErrNotClaimed` checks and before any `CompareAndSwap` call. Requires
+  the record's `Status` to be `StatusClaimed`. Returns `ErrFenced` on a
+  stale token. Returns `ErrNotClaimed` when the record's `Status` is
+  not `StatusClaimed`, including a record `Complete` already moved to
+  `StatusCompleted` or `StatusFailed`: a second call against a
+  terminal record never mutates it, even when the fence still matches.
+  On a losing `CompareAndSwap` for the primary key, re-loads the
+  record and re-evaluates both checks, mirroring `Renew`: if the fence
+  no longer matches, returns `ErrFenced`; if the fence matches but the
+  fresh record's `Status` is no longer `StatusClaimed` (for example a
+  racing duplicate `Complete` call already won and moved the record to
+  a terminal status), returns `ErrNotClaimed` instead of retrying;
+  only when the fence still matches and the fresh record's `Status` is
+  still `StatusClaimed` does `Complete` retry `CompareAndSwap` against
+  the fresh record, per the `Store` retry-and-reclassify contract
+  above. This closes the gap the general contract's own example
+  names: "the record already reached the target state" is not
+  eligible for retry, so a losing `Complete` can never silently flip a
+  terminal record from one finished status to the other. On `StatusFailed`, walks the dependency
   graph and sets `StatusBlocked` with `BlockedBy` set to the failed
   key on every record that (transitively) names it in `Needs`. The
   walk keeps a visited-key set and skips a key already visited, so a
@@ -335,9 +377,20 @@ calls `ledger.Takeover` and resumes ownership.
   in-memory list: it cannot be decided from a single record while
   `Range`'s callback is still iterating.
 - `func (l *Ledger) State(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)`
-  — the current record for a key.
+  — the current record for a key. The bool is a found signal: `true`
+  when `key` has a record, `false` when it does not. `State` never
+  returns an error for a missing key; only `Load` failing against the
+  `Store` returns an error.
 - `func (l *Ledger) Blocked(ctx context.Context, key IdempotencyKey) (IdempotencyKey, bool, error)`
   — the blocking ancestor when `key`'s status is `StatusBlocked`.
+  `Blocked` does not add a separate found-bool signal: its bool means
+  "`key` is currently blocked", and that answer is `false` both for a
+  never-admitted key and for an admitted, unblocked key, because
+  `Blocked` only ever answers one question, not two. A caller who needs
+  to tell "never admitted" apart from "admitted but not blocked" calls
+  `State` first; `Blocked` is read-only and performs no `CompareAndSwap`,
+  so it carries none of the insert-if-absent risk `Claim`, `Renew`,
+  `Release`, `Takeover`, and `Complete` guard against with `ErrNoKey`.
 - `type Snapshot struct { Tasks []TaskState }` and
   `func (l *Ledger) Snapshot(ctx context.Context) (Snapshot, error)`
   — a point-in-time copy of every record in `Store`, gathered through
@@ -396,6 +449,16 @@ Test files live in `ledger/ledger_test/`:
   - `Release` with the current fence returns the record to
     `StatusPending`; a subsequent `Claim` by any owner succeeds.
   - `Release` with a stale fence returns `ErrFenced`.
+  - `Release` against a `StatusPending` record (never claimed) returns
+    `ErrNotClaimed`.
+  - `Claim` against a never-admitted key returns `ErrNoKey`; the
+    `Store` gains no record, proving `Claim` never uses the
+    insert-if-absent `CompareAndSwap` convention to create a record
+    outside `Admit`.
+  - `Renew` against a never-admitted key returns `ErrNoKey`, not
+    `ErrNotClaimed`: the two cases stay distinguishable.
+  - `Release` against a never-admitted key returns `ErrNoKey`, not
+    `ErrNotClaimed`.
 - `takeover_test.go` — red-green cases for `Takeover`:
   - `Takeover` while `LeaseUntil` is still after `now` returns
     `ErrNotStale`.
@@ -406,6 +469,9 @@ Test files live in `ledger/ledger_test/`:
     ownership of a never-claimed record.
   - `Takeover` against a terminal record (`StatusCompleted`) returns
     `ErrNotClaimed`.
+  - `Takeover` against a never-admitted key returns `ErrNoKey`, not
+    `ErrNotClaimed`: a never-admitted key and an admitted
+    `StatusPending` record stay distinguishable.
   - A `Renew` call from the old owner's fence, made after a
     successful `Takeover`, returns `ErrFenced`. This is the fencing
     guarantee: the dispossessed owner cannot mutate the record after
@@ -435,7 +501,28 @@ Test files live in `ledger/ledger_test/`:
     `D`'s `BlockedBy` unchanged.
   - `Complete` with a stale fence returns `ErrFenced`; no dependent is
     blocked.
+  - `Complete` against a `StatusPending` record (never claimed) returns
+    `ErrNotClaimed`.
+  - A second `Complete` call against a record `Complete` already moved
+    to `StatusCompleted`, made with the same owner and the same fence
+    the first call used, returns `ErrNotClaimed` and leaves the record
+    at `StatusCompleted`: a matching fence on a terminal record is not
+    enough to reclassify the call as a legitimate retry.
+  - `Complete` against a never-admitted key returns `ErrNoKey`, not
+    `ErrNotClaimed`.
+  - `Complete` called with `status` set to `StatusPending` (an
+    out-of-range choice for `Complete`, neither `StatusCompleted` nor
+    `StatusFailed`) against an already-claimed record returns
+    `ErrUnknownStatus`, and the stored record is unchanged: `Complete`
+    rejects the argument before any `Store` call, so a bad `status`
+    never touches a legitimately claimed record.
+  - `Complete` called with the zero-value `machine.Status` against a
+    never-admitted key returns `ErrUnknownStatus`, not `ErrNoKey`,
+    proving the `status` check runs first, before `Store.Load`.
   - `Blocked` on an unblocked key returns `false`.
+  - `Blocked` on a never-admitted key returns `false, nil`, the same
+    result as an admitted, unblocked key: `Blocked` carries no separate
+    found-bool signal, per the API section's decision on `Blocked`.
 - `snapshot_test.go` — red-green cases for `Snapshot`, `Encode`,
   `Decode`, `Restore`:
   - `Snapshot` after several admissions lists every record.
@@ -495,6 +582,17 @@ Test files live in `ledger/ledger_test/`:
   twice, once per successful call. A wrapped `Store` that counts
   `CompareAndSwap` calls asserts the total exceeds two, proving at
   least one retry happened. Run under `go test -race`.
+- `complete_race_test.go` — an integration test that admits and claims
+  a key, then races two goroutines both calling `Complete` with the
+  same owner and fence: one with `status` `StatusCompleted`, the other
+  with `status` `StatusFailed`. Assert exactly one goroutine's
+  `Complete` call returns `nil` and the other returns `ErrNotClaimed`;
+  assert the final stored record's `Status` matches whichever call won,
+  never the loser's requested status. This proves a losing `Complete`
+  reclassifies against the fresh record's `Status`, not only its
+  fence, so a racing duplicate call can never silently flip a terminal
+  record from one finished status to the other. Assert `CompletedEvent`
+  fires exactly once. Run under `go test -race`.
 - `admit_bench_test.go` — a benchmark measuring `Admit` throughput
   against `MemStore` under increasing key counts. Report ops/sec and
   allocs/op; no fixed allocation budget, since `MemStore`'s internal
@@ -505,8 +603,8 @@ Test files live in `ledger/ledger_test/`:
 
 `make verify` passes. `go test -race ./...` covers `claim_race_test.go`,
 `admit_race_test.go`, `takeover_race_test.go`, `renew_race_test.go`,
-and any other concurrent case. The coverage floor for `ledger` holds
-at or above 85.
+`complete_race_test.go`, and any other concurrent case. The coverage
+floor for `ledger` holds at or above 85.
 
 `api/ledger.txt` is created by `make api-update` from the API section
 above, and the diff lands in the same change as the code.

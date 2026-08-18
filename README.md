@@ -33,6 +33,9 @@ only when the `ledger_sqlite` build tag is set).
 - **discovery** — capability cards: parse, validate, match
 - **a2a** / **a2aclient** — A2A v1.0 envelope mapping and a client
   adapter over `a2a-go`'s gRPC transport
+- **a2aack** — a remote A2A task round trip as one step's ack wait
+- **dispatch** — an HTTP envelope endpoint: NDJSON lines in, the
+  receive ladder per line, ack or error lines out, plus a Send client
 - **tools** — a named-action registry: execution-risk markers, scoped
   allow/deny lists, synchronous approval gating
 - **contextbudget** — a byte and event-count budget check for one
@@ -53,6 +56,18 @@ only when the `ledger_sqlite` build tag is set).
   jobs against a caller-supplied bus
 - **trigger** — the shared "condition fired, so run this" vocabulary
 - **agent** — the composition layer: wires blocks into an agent
+- **agentrun** — the config-struct composition layer: one `Options`
+  value validates and wires tools, store, artifacts, ask, budget,
+  and monitor behind a plan-versus-machine matrix check
+- **taskrun** — the ledger ceremony as one call: admit, claim, run
+  the work, complete, with replay and blocked sentinels
+- **subagent** — the SDK's blocks as tools: a runner spawns as a
+  subagent tool, spawns run in parallel behind a depth guard, and a
+  signed-message mailbox carries both directions between
+  orchestrators, subagents, and humans
+- **e2e** — the end-to-end scenario suite: real blocks wired
+  together, one full run per scenario, outputs asserted across the
+  handoffs
 
 The GitHub remote for this repo is private.
 
@@ -77,7 +92,7 @@ for the doc index and the reading order.
 
 Each block is one top-level package with one concern. A block is
 replaceable and testable on its own. Compose blocks through their
-public API. All twenty-one ship.
+public API. All twenty-seven ship.
 
 - **envelope** — the wire unit: Message, Ack, Sign, VerifyThread.
 - **room** — standing groups: roster, roles, message admission.
@@ -96,6 +111,9 @@ public API. All twenty-one ship.
   `a2aclient`.
 - **a2aclient** — the a2a-go client adapter: send a task, poll its
   status, fetch its result over gRPC.
+- **a2aack** — the remote step ack: a Wait func over one A2A task.
+- **dispatch** — the envelope endpoint: Handler, New, Send, and the
+  per-line receive ladder.
 - **tools** — the named-action registry: Tool, Registry, ExecutionProfile,
   Scope, RunScoped.
 - **contextbudget** — a pure budget check: Limits, Fits.
@@ -111,6 +129,13 @@ public API. All twenty-one ship.
 - **trigger** — condition-fired dispatch: Condition, Action, Registry.
 - **agent** — the composition layer. An agent wires the blocks; a
   block never imports the agent.
+- **agentrun** — the config-struct layer over `agent.Run`: Options,
+  New, Runner, ValidateMatrix, Artifacts, PayloadOf.
+- **taskrun** — the ledger ceremony as one call: Run, Options, Task.
+- **subagent** — the blocks as tools: AsTool, RunAll, ten internal
+  tools, Mailbox, SendTool, InboxTool.
+- **e2e** — the scenario harness: NewAgent, PrefixTool, EscalateTool,
+  Recorder, ThreadCapture.
 
 ## Install
 
@@ -302,6 +327,8 @@ heartbeat/           liveness tracking: Monitor, Beat, Alive, Dead
 discovery/           capability cards: Card, Parse, Match
 a2a/                 A2A v1.0 envelope mapping: ToPart, FromPart
 a2aclient/           the a2a-go client adapter: Send, Status, Result
+a2aack/              remote step ack: a Wait func over one A2A task
+dispatch/            envelope endpoint: NDJSON ladder, Send client
 tools/               named-action registry: profiles, scope, approval gating
 contextbudget/       a byte and event-count budget check: Limits, Fits
 mcp/                 MCP tool-calling client: Connect, ListTools, CallTool
@@ -313,6 +340,10 @@ channel/             ask-and-wait shape: Question, Answer, Notifier
 scheduler/           invoke-on-schedule: Job, Schedule, Scheduler
 trigger/             condition-fired dispatch: Condition, Action, Registry
 agent/               composition layer: wires blocks into an agent
+agentrun/            config-struct composition: Options, Runner, ValidateMatrix
+taskrun/             ledger ceremony as one call: Run around a work func
+subagent/            blocks as tools: AsTool, RunAll, internal tools, mailbox
+e2e/                 end-to-end scenario harness and suite
 docs/                index + architecture + package docs + examples
 api/                 exported-surface locks; check_api diffs them
 policy/              layers.json: the allowed internal import edges
@@ -320,8 +351,8 @@ scripts/             gates: docs, structure, deps, plan, api, semgrep
 semgrep/             pattern rules for the Semgrep scan
 .semgrepignore       Semgrep ignore list; test files are scanned again
 .githooks/           pre-commit runs make verify-fast on the staged snapshot
-Makefile             make verify, make verify-fast, make bench, make api-update,
-                     make install-hooks
+Makefile             make verify, make verify-fast, make verify-ledger-sqlite,
+                     make bench, make api-update, make install-hooks
 AGENTS.md            contribution rules for AI and human agents
 ```
 
@@ -332,7 +363,8 @@ Root holds no Go code. New concerns get new subpackages.
 ```bash
 make install-hooks   # once per clone; sets core.hooksPath to .githooks
 make verify-fast     # fast tier: fmt, vet, test, gates, semgrep scan
-make verify          # full tier: verify-fast, coverage floor, semgrep probes
+make verify          # full tier: verify-fast, coverage floor, semgrep
+                     # probes, and the SQLiteStore tier over its build tag
 ```
 
 The pre-commit hook runs `make verify-fast` on the staged snapshot.

@@ -65,6 +65,7 @@ package flow
   Needs []string
   To string
   Payload string
+  PayloadFrom func(rec machine.InOut) string
   Sub *Definition
   When Admission
   Route Route

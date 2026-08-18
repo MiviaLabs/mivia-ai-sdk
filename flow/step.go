@@ -38,26 +38,31 @@ const (
 // Step is one node in a workflow graph.
 // ID names the step. Needs lists the prerequisite step IDs.
 // To holds the target status a later step binds. Payload carries
-// caller data. Sub nests a child workflow; when Sub is non-nil,
-// Run ignores To and runs the child workflow to completion. A step
-// with no Needs is a root. When sets the admission rule this step's
-// needs must satisfy; the zero value is AdmissionOnFinished. Route
-// makes this step a branch step: after it fires, Run calls Route to
-// pick which of this step's direct dependents the run keeps. Retry
-// bounds and paces repeated Fire attempts; a nil Retry keeps the
-// single-attempt behavior. New rejects a non-nil Retry combined with
-// a non-nil Sub or panel membership. Loop, when non-nil, runs Sub
-// more than once, gated by LoopPolicy.Guard, before this step's own
-// transition and Confirm fire; New rejects a non-nil Loop combined
-// with a nil Sub or panel membership.
+// caller data; PayloadFrom derives it from the live record. New
+// rejects a step with both Payload and PayloadFrom set, and a
+// PayloadFrom on a member of a panel of two or more members; a
+// one-member panel keeps the field. Sub nests a child workflow; when
+// Sub is non-nil, Run ignores To and runs the child workflow to
+// completion. A step with no Needs is a root. When sets the admission
+// rule this step's needs must satisfy; the zero value is
+// AdmissionOnFinished. Route makes this step a branch step: after it
+// fires, Run calls Route to pick which of this step's direct
+// dependents the run keeps. Retry bounds and paces repeated Fire
+// attempts; a nil Retry keeps the single-attempt behavior. New rejects
+// a non-nil Retry combined with a non-nil Sub or panel membership.
+// Loop, when non-nil, runs Sub more than once, gated by
+// LoopPolicy.Guard, before this step's own transition and Confirm
+// fire; New rejects a non-nil Loop combined with a nil Sub or panel
+// membership.
 type Step struct {
-	ID      string
-	Needs   []string
-	To      string
-	Payload string
-	Sub     *Definition
-	When    Admission
-	Route   Route
-	Retry   *RetryPolicy
-	Loop    *LoopPolicy
+	ID          string
+	Needs       []string
+	To          string
+	Payload     string
+	PayloadFrom func(rec machine.InOut) string
+	Sub         *Definition
+	When        Admission
+	Route       Route
+	Retry       *RetryPolicy
+	Loop        *LoopPolicy
 }

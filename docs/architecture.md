@@ -89,7 +89,9 @@ flowchart LR
   count, and zero means unbounded, bounded only by the caller's own
   `ctx`. `Run` injects a `LoopState` into `ctx` before each `Guard`
   call, readable through `LoopStateFrom`; `New` rejects a `Loop`
-  combined with a nil `Sub` or panel membership. `Run` walks the
+  combined with a nil `Sub` or panel membership. `PayloadFrom`
+  resolves a step's payload against the live record at run time,
+  immediately before each gated `Confirm` call. `Run` walks the
   graph in topological order. A step named in no panel runs alone and
   gates on a confirmed ack. A step named in a panel runs as part of
   that panel's wave, in a goroutine, once every member is ready; the

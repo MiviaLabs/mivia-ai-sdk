@@ -12,14 +12,23 @@ The exported surface below mirrors `api/flow.txt`.
 
 - `Step` — one node in a workflow graph. A step has an ID, a list of
   prerequisite step IDs, a target status string, a payload, an
-  optional nested `Definition`, an `Admission` rule, an optional
-  `Route`, an optional `Retry`, and an optional `Loop`. A step with no
-  prerequisites is a root. For a chained step, `To` is ignored by `Run`
-  and may be empty; the child final status supplies the target status.
-  A step with a non-nil `Route` is a branch step. A step with a
-  non-nil `Retry` retries its own `Fire` call. See Retry below. A step
-  with a non-nil `Loop` repeats its `Sub` child workflow before its own
-  transition and `Confirm` fire. See Loop below.
+  optional `PayloadFrom` payload resolver, an optional nested
+  `Definition`, an `Admission` rule, an optional `Route`, an optional
+  `Retry`, and an optional `Loop`. A step with no prerequisites is a
+  root. For a chained step, `To` is ignored by `Run` and may be empty;
+  the child final status supplies the target status. A step with a
+  non-nil `Route` is a branch step. A step with a non-nil `Retry`
+  retries its own `Fire` call. See Retry below. A step with a non-nil
+  `Loop` repeats its `Sub` child workflow before its own transition
+  and `Confirm` fire. See Loop below.
+- `PayloadFrom` — a step's run-time payload resolver. The runner calls
+  it against the live record immediately before the step's `Confirm`
+  call. The resolved value rides the `Step` value handed to `Confirm`
+  through `Payload`. A nil `PayloadFrom` leaves `Step.Payload`
+  untouched. `flow.New` rejects a step that sets both `Payload` and
+  `PayloadFrom`, and a `PayloadFrom` on a member of a panel of two or
+  more members; a one-member panel keeps the field, because `Run` still
+  calls `Confirm` for its single member.
 - `Panel` — a group of step IDs that run together in parallel. The
   runner schedules a panel as one wave. A panel is a named list of
   strings.
@@ -445,8 +454,8 @@ requires a non-nil `Sub`.
 ## Attaching work to a step
 
 A step never names its own executor. `Step` holds graph data only: an
-ID, a dependency list, a target status, a payload, and an optional
-nested `Definition`.
+ID, a dependency list, a target status, a payload, an optional
+`PayloadFrom` resolver, and an optional nested `Definition`.
 
 The real work runs through one attachment mechanism outside `Step`
 itself.
@@ -459,7 +468,10 @@ itself.
 
 `Confirm` is an ack gate, not an attachment mechanism. It runs once
 per step after the transition fires. A caller reads `step.ID` or
-decodes `step.Payload` to route the ack to the right handler.
+decodes `step.Payload` to route the ack to the right handler. `Run`
+resolves `PayloadFrom` against the record current at the `Confirm`
+call, so a transition's written output reaches the ack through
+`step.Payload` without a captured pointer.
 
 Agents are one caller of this contract, not a special case inside
 `flow`. The `agent` package composes a `machine.Definition` and a

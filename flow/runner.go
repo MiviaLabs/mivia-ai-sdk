@@ -225,7 +225,7 @@ func runSingleton(
 				return cur, rec, err
 			}
 		}
-		if err := confirmStep(ctx, confirm, step); err != nil {
+		if err := confirmStep(ctx, confirm, step, rec); err != nil {
 			return cur, rec, err
 		}
 		emitStep(ctx, bus, step.ID)
@@ -243,7 +243,7 @@ func runSingleton(
 		return cur, rec, err
 	}
 
-	if err := confirmStep(ctx, confirm, step); err != nil {
+	if err := confirmStep(ctx, confirm, step, rec); err != nil {
 		return cur, rec, err
 	}
 	emitStep(ctx, bus, step.ID)

@@ -122,13 +122,26 @@ func fireStep(
 	return cur, rec, nil
 }
 
-// confirmStep calls confirm for step. A rejection wraps as
-// failureKindConfirm.
-func confirmStep(ctx context.Context, confirm Confirm, step Step) error {
+// confirmStep resolves step.PayloadFrom against rec, then calls
+// confirm for step. The resolved value rides the Step copy handed to
+// confirm. A rejection wraps as failureKindConfirm.
+func confirmStep(ctx context.Context, confirm Confirm, step Step, rec machine.InOut) error {
+	step = resolvePayload(step, rec)
 	if err := confirm(ctx, step); err != nil {
 		return newFailureError(failureKindConfirm, errorf("step %q: ack not confirmed: %w", step.ID, err))
 	}
 	return nil
+}
+
+// resolvePayload computes step.Payload from rec when step.PayloadFrom
+// is non-nil, on a local copy. A nil PayloadFrom leaves the copy
+// unchanged, so a step without the field behaves exactly as before.
+// Run never mutates the Definition's stored steps.
+func resolvePayload(step Step, rec machine.InOut) Step {
+	if step.PayloadFrom != nil {
+		step.Payload = step.PayloadFrom(rec)
+	}
+	return step
 }
 
 // admitsOnFailed evaluates the any-of admission rule AdmissionOnFailed

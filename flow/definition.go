@@ -27,8 +27,10 @@ type Definition struct {
 // rejects an invalid Retry policy, a Retry policy combined with Sub,
 // and a Retry policy on a panel member. It rejects an invalid Loop
 // policy, a Loop policy combined with a nil Sub, and a Loop policy on
-// a panel member. It deep-copies the input slices so later caller
-// mutation cannot change the built graph.
+// a panel member. It rejects a step that sets both Payload and
+// PayloadFrom, and a PayloadFrom on a member of a panel of two or more
+// members. It deep-copies the input slices so later caller mutation
+// cannot change the built graph.
 func New(steps []Step, panels []Panel) (*Definition, error) {
 	d := &Definition{
 		steps:  copySteps(steps),
@@ -51,6 +53,9 @@ func New(steps []Step, panels []Panel) (*Definition, error) {
 		return nil, err
 	}
 	if err := validateLoop(d.steps, d.panels, ids); err != nil {
+		return nil, err
+	}
+	if err := validatePayload(d.steps, d.panels, ids); err != nil {
 		return nil, err
 	}
 	if err := validatePanelChains(d.panels, d.steps, ids); err != nil {

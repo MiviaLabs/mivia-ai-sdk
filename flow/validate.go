@@ -121,6 +121,30 @@ func validatePanelIndependence(steps []Step, panels []Panel, ids map[string]int)
 	return nil
 }
 
+// validatePayload rejects a step that sets both Payload and
+// PayloadFrom, and a PayloadFrom on a member of a panel of two or more
+// members. A one-member panel keeps the field, because Run still calls
+// Confirm for its single member, so the field never stays a silent
+// no-op.
+func validatePayload(steps []Step, panels []Panel, ids map[string]int) error {
+	for i := range steps {
+		if steps[i].PayloadFrom != nil && steps[i].Payload != "" {
+			return errorf("step %q sets both Payload and PayloadFrom", steps[i].ID)
+		}
+	}
+	for i, p := range panels {
+		if len(p) < 2 {
+			continue
+		}
+		for _, id := range p {
+			if steps[ids[id]].PayloadFrom != nil {
+				return errorf("panel %d names payload-from step %q", i, id)
+			}
+		}
+	}
+	return nil
+}
+
 // ancestorsOf returns the transitive Needs closure of id: every step
 // id depends on, directly or through another dependency. It memoizes
 // each ID's closure so a shared dependency is walked once.

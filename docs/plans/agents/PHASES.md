@@ -290,9 +290,8 @@ walks a caller-chosen order of names through `provider.RunTurn`.
 `Route` falls through to the next name only when the caller's
 `Retryable` predicate approves the failure. It depends on the
 shipped `provider` package and one `policy/layers.json` edge. Its
-package plan lives at docs/plans/providerregistry.md; see
-docs/plans/agents/phase56_provider_registry.md for the design
-rationale.
+package plan lives at docs/plans/providerregistry.md; no
+standalone phase 56 plan file remains.
 
 Phase 60 has shipped. It changes no package surface: a loop child
 that ends every iteration on one status is representable, because

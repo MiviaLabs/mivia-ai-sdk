@@ -2,8 +2,7 @@
 
 Status: shipped. One composition package over the shipped `provider`
 contract (docs/plans/provider.md). It imports `provider` only, plus
-stdlib; no third-party import. Design rationale:
-docs/plans/agents/phase56_provider_registry.md.
+stdlib; no third-party import.
 
 ## Goal
 

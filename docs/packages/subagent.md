@@ -51,6 +51,16 @@ decode or dispatch fault onto `ErrBadCommand`.
 - `ChannelTool` — asks one human through a `Notifier`; an approved
   answer's payload returns, a decline fails naming the recipient.
 
+## Command wire
+
+Command tools decode one JSON payload struct per call: `RoomCommand`,
+`SchedulerCommand`, `HeartbeatCommand`, `LedgerCommand`,
+`MemoryCommand`, and `DiscoveryCommand`. Each names its operation
+with an `Op` constant: `OpAdmit`, `OpRemove`, `OpPromote`,
+`OpMembers`, `OpIsMember`, `OpEvery`, `OpAt`, `OpCancel`, `OpBeat`,
+`OpAlive`, `OpDead`, `OpRun`, `OpState`, `OpPut`, `OpGet`, and
+`OpMatch`.
+
 ## Message plane
 
 - `NewMailbox(capacity)` — a bounded inbox of signed messages for
@@ -61,7 +71,7 @@ decode or dispatch fault onto `ErrBadCommand`.
   surface: an orchestrator step, a sibling subagent, or human
   wiring.
 - `InboxTool(name, box)` — drains the mailbox and returns its
-  payloads as a JSON array, or `empty`.
+  payloads comma-joined, or `empty`.
 
 The room pattern: an orchestrator admits the subagent's signer
 through `RoomTool` before delegating; membership and messaging stay

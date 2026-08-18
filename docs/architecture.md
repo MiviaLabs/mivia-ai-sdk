@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the twenty-five packages and the import edges between
+The diagram shows the twenty-seven packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
 `provider`, `tools`, and `trigger` are leaves: they import no other
@@ -68,6 +68,31 @@ flowchart LR
     agentrun --> memory
     agentrun --> tools
     taskrun --> ledger
+    subagent --> agent
+    subagent --> agentrun
+    subagent --> channel
+    subagent --> discovery
+    subagent --> envelope
+    subagent --> events
+    subagent --> flow
+    subagent --> heartbeat
+    subagent --> identity
+    subagent --> ledger
+    subagent --> machine
+    subagent --> memory
+    subagent --> provider
+    subagent --> room
+    subagent --> scheduler
+    subagent --> taskrun
+    subagent --> tools
+    subagent --> trigger
+    e2e --> agent
+    e2e --> discovery
+    e2e --> envelope
+    e2e --> events
+    e2e --> flow
+    e2e --> identity
+    e2e --> tools
     contextbudget[contextbudget]
     discovery[discovery]
     durablefence[durablefence]
@@ -245,6 +270,15 @@ flowchart LR
   See [packages/agentrun.md](packages/agentrun.md).
 - `taskrun/` — the ledger admit, claim, run, complete ceremony around
   one work func. See [packages/taskrun.md](packages/taskrun.md).
+- `subagent/` — the SDK's blocks as tools. `AsTool` wraps a built
+  runner as a spawnable subagent tool behind a depth guard, `RunAll`
+  joins concurrent spawns, ten internal tools expose the blocks, and
+  a signed-message mailbox carries both directions between
+  orchestrators, subagents, and humans. See
+  [packages/subagent.md](packages/subagent.md).
+- `e2e/` — the end-to-end scenario harness and suite. Each scenario
+  wires real high-level blocks together and asserts one full run's
+  outputs. See [packages/e2e.md](packages/e2e.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
   a named action; a `Registry` resolves one by name and runs it. `Add`

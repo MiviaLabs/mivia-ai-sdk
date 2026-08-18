@@ -4,8 +4,9 @@
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, a2aack, dispatch,
 tools, contextbudget, mcp, ledger, durablefence, memory, provider,
-channel, trigger, scheduler, agent, agentrun, and taskrun. Each
-package covers one concern and composes through its exported API.
+channel, trigger, scheduler, agent, agentrun, subagent, taskrun,
+and e2e. Each package covers one concern and composes through its
+exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
 
@@ -14,6 +15,40 @@ every package's exported surface, and runnable-style walkthroughs.
 - [architecture.md](architecture.md) — the single design reference:
   the module map, the message flow, why the envelope is shaped this
   way, the gate system, and the invariants.
+
+## Agents and subagents
+
+The composition stack, bottom to top:
+
+- [packages/agent.md](packages/agent.md) — one identity, one card,
+  one plan, driven through signed, acked, hash-chained messages.
+- [packages/agentrun.md](packages/agentrun.md) — the config-struct
+  layer over `agent.Run`: tools, store, artifacts, ask, budget, and
+  monitor wired by one `Options` value.
+- [packages/subagent.md](packages/subagent.md) — the SDK's blocks as
+  tools: a runner becomes a spawnable subagent, spawns run in
+  parallel behind a depth guard, and a signed-message mailbox
+  carries both directions.
+- [packages/dispatch.md](packages/dispatch.md) and
+  [packages/a2aack.md](packages/a2aack.md) — the receive and remote
+  halves: an HTTP envelope endpoint, and a remote A2A task as one
+  step's ack.
+
+Internal tools an agent can be given, all optional, all registered
+into a `tools.Registry` through `subagent`:
+
+- `FlowTool` — run a flow plan, report the final status.
+- `LedgerTool` — record one completed task through the taskrun
+  ceremony, report key state.
+- `MemoryTool` — store and fetch blobs under content-addressed refs.
+- `RoomTool` — admit, remove, promote, list, and query membership.
+- `SchedulerTool` — schedule and cancel one bound job.
+- `HeartbeatTool` — beat, alive, and dead against a monitor.
+- `DiscoveryTool` — match one capability card against a need.
+- `ProviderTool` — one model turn through a caller's Completer.
+- `TriggerTool` — fire a named trigger.
+- `ChannelTool` — ask a human through a Notifier.
+- `SendTool` and `InboxTool` — the mailbox plane's two ends.
 
 ## Package reference
 

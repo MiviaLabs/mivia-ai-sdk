@@ -14,9 +14,11 @@ each block alone; e2e proves the handoffs. The harness below mirrors
   step records a distinct, deterministic result.
 - `EscalateTool` — fails with an error wrapping `agent.ErrEscalated`,
   so a wired `Ask` round trip can resolve it.
-- `Recorder` — counts every observed event, in arrival order.
-- `ThreadCapture` — confirms each step message and records the
-  signed thread for `envelope.VerifyThread`.
+- `Recorder` — `NewRecorder` builds one; `Handler` subscribes it;
+  `Names` reports every observed event name in arrival order.
+- `ThreadCapture` — `NewThreadCapture` builds one; `Wait` confirms
+  each step message and records it; `Messages` returns the signed
+  thread for `envelope.VerifyThread`.
 
 ## Scenarios
 
@@ -31,11 +33,17 @@ behavior:
   the NDJSON transport, approved and declined.
 - `taskrun_ceremony_test.go` — the ledger ceremony around one full
   pipeline run, with blocked and replayed tasks.
+- `subagent_parallel_test.go`, `subagent_tools_test.go`,
+  `subagent_observe_test.go`, `subagent_depth_test.go`, and
+  `subagent_messaging_test.go` — the subagent system: concurrent
+  spawns, internal tools, live observation, the depth bound, and the
+  two-direction message plane with a room admission.
+- `sqlite_ceremony_test.go` — behind the `ledger_sqlite` tag, the
+  ceremony over a SQLite file that is closed and reopened.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
-growth backlog. The next scenarios land with their phases: two
-agents over `dispatch` HTTP, a remote `a2aack`, MCP tools behind the
-chain, and scheduled liveness.
+growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP
+tools behind the chain, and scheduled liveness.
 
 ## Invariants
 

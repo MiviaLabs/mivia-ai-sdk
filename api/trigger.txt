@@ -1,0 +1,14 @@
+package trigger
+  func (r *Registry) Add(name string, c Condition, a Action) (error)
+  func (r *Registry) Fire(ctx context.Context, name string) (error)
+  func (r *Registry) Remove(name string) (bool)
+  func New() (*Registry)
+  type Action func(ctx context.Context) error
+  type Condition func(ctx context.Context) (bool, error)
+  type Registry struct {
+}
+  var ErrBlankName
+  var ErrConditionNotMet
+  var ErrDuplicateName
+  var ErrNilAction
+  var ErrUnknownName

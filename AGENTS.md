@@ -36,6 +36,9 @@ Go SDK for building AI agents. Module:
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
   Run. A leaf package; no internal imports. No caller yet; the agent
   binding is a later phase.
+- `trigger/` — the shared "condition fired, so run this" vocabulary:
+  Condition, Action, Registry, New, Add, Remove, Fire. A leaf package;
+  no internal imports.
 - `mcp/` — the MCP tool-calling client: Client, Connect, Transport,
   NewStdioTransport, NewStreamableHTTPTransport, ListTools, CallTool,
   and CallToolWithProgress. Imports tools internally and the official

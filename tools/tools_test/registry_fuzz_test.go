@@ -48,3 +48,26 @@ func FuzzAddGetRemove(f *testing.F) {
 		}
 	})
 }
+
+// FuzzScopeAllowed feeds arbitrary names through NewScope and
+// Scope.Allowed. It proves no name panics Allowed, and that a name in
+// ExtraDenylist is always denied, even when the same fuzzed name also
+// appears in Allowlist.
+func FuzzScopeAllowed(f *testing.F) {
+	f.Add("echo")
+	f.Add("")
+	f.Add("   ")
+	f.Add("\x00\x01")
+	f.Add("emoji-🔧-name")
+
+	f.Fuzz(func(t *testing.T, name string) {
+		scope := tools.NewScope(tools.ScopeOptions{
+			Allowlist:     []string{name},
+			ExtraDenylist: []string{name},
+		})
+		tool := &stubTool{name: name, result: "ok"}
+		if scope.Allowed(name, tool) {
+			t.Fatalf("Allowed(%q) = true, want false; denylist must win", name)
+		}
+	})
+}

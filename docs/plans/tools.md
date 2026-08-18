@@ -2,6 +2,13 @@
 
 Status: shipped. `Registry.Remove` was added for symmetry with
 `room.Room.Admit`/`Remove`, agreed in architecture review.
+`ExecutionClass`, `ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`,
+`PrivilegedTool`, `Scope`, `ScopeOptions`, `NewScope`,
+`ExecutionProfileOf`, `ResultBudgetOf`, `IsPrivileged`, `RunScoped`, and
+`ErrScopeDenied` were added by phase 31, folded into this plan the way
+phase 14 was folded in when it shipped. See
+`docs/plans/agents/phase31_tools_capabilities.md` for the design
+history.
 
 ## Goal
 
@@ -12,20 +19,65 @@ the tool. An unknown name fails the same way at lookup and at run.
 ## Scope
 
 Inside: the `Tool` interface, the `Registry`, and tool execution.
-Registration, lookup, removal, and run all live here.
+Registration, lookup, removal, and run all live here. Inside: optional
+execution-risk markers a `Tool` may implement (`ProfiledTool`,
+`ResultBudgetTool`, `PrivilegedTool`), the `ExecutionClass` enum and
+`ExecutionProfile` struct those markers publish, a `Scope` that narrows
+which tools a run may invoke, and `Registry.RunScoped`, the scoped
+counterpart to `Run`.
 
 Outside: the agent binding. A future phase wires a `Registry` into an
 agent. A tool never sees the agent. Outside: the memory store. Phase
 15 owns memory. The `tools` package does not import `agent` or a
-future `memory` package.
+future `memory` package. Outside: any mivia-specific field on
+`ExecutionProfile` or `Scope`. The shape stays generic so any caller in
+this module, or a future one, can reuse it. Outside: any change to
+`Tool`, `Registry.Add`, `Registry.Get`, `Registry.Remove`, or
+`Registry.Run`. Execution-profile checks are opt-in through the new
+`RunScoped` method, never a hidden check inside `Run`.
 
 Phase 16 runs the tool registry as a flow step. A panel step runs in
 its own goroutine, so more than one goroutine can call `Add`, `Get`,
-`Remove`, and `Run` on the same `Registry` at once, once that wiring
-lands. This plan states the concurrency contract now, ahead of that
-caller, matching how `room.Room`, `events.Bus`, and `heartbeat.Monitor`
-each state their contract in their own plan before every caller
-existed.
+`Remove`, `Run`, and `RunScoped` on the same `Registry` at once, once
+that wiring lands. This plan states the concurrency contract now,
+ahead of that caller, matching how `room.Room`, `events.Bus`, and
+`heartbeat.Monitor` each state their contract in their own plan before
+every caller existed.
+
+A tool that does not implement `ProfiledTool` is unclassified.
+`ExecutionProfileOf` reports `ExecutionClassUnclassified`, the zero
+value, for such a tool. Every tool shipped before phase 31 stays valid
+with no change.
+
+`Scope` narrows only. Built once from `ScopeOptions{Allowlist,
+ExtraDenylist}` through `NewScope`. `ExtraDenylist` always removes a
+name from the allowed set, even when `Allowlist` also names it.
+`Allowlist`, when non-empty, keeps only the named tools; when empty,
+every tool that is not denied and not privileged is allowed. A tool
+that implements `PrivilegedTool` and reports true is denied unless its
+name appears in `Allowlist`. No operation on a built `Scope` can re-add
+a name `ExtraDenylist` removed.
+
+`ExecutionProfileOf` and `RunScoped` never call `ExecutionClass.
+Validate`. `Scope.Allowed` reads only `PrivilegedTool`, `Allowlist`,
+and `ExtraDenylist`; it never reads `Class`. An out-of-enum `Class`
+value passes through `ExecutionProfileOf` unchanged and never blocks
+`RunScoped`. `Validate` exists for a caller that builds an
+`ExecutionProfile` by hand and wants to check it before registering the
+tool.
+
+### Timeout, ResourceKey, and MaxResultBytes: published, not enforced
+
+This phase publishes `ExecutionProfile.Timeout`, `ExecutionProfile.
+ResourceKey`, and `ResultBudgetTool.MaxResultBytes` as metadata only.
+No function in this phase reads `Timeout` to set a context deadline.
+No function reads `ResourceKey` to dedup a call. Neither `Run` nor
+`RunScoped` reads `ResultBudgetOf` to truncate or reject an oversized
+result. `RunScoped` runs the tool the same way `Run` does; it checks
+only `Scope.Allowed`. Enforcement is deferred to the future
+agent-binding caller named in the roadmap's "Precedent for shipping
+with no caller yet" section, the same caller that will wire a
+`Registry` into `agent.Run`.
 
 ## API
 
@@ -90,6 +142,54 @@ caller's type assertion instead.
   the registry.
 - `var ErrUnknownName` — `Get` reports `false` for an unknown name;
   `Run` returns this error when `Get` reports `false`.
+- `var ErrScopeDenied` — `RunScoped` returns this when `scope.Allowed`
+  returns false for the resolved tool.
+
+### Execution profile and scope (phase 31)
+
+- `type ExecutionClass string` — the enum. `Validate` enforces the
+  set.
+- `const ExecutionClassUnclassified ExecutionClass = ""` — the zero
+  value; the default for a tool with no `ExecutionProfile`.
+- `const ExecutionClassRead ExecutionClass = "read"`
+- `const ExecutionClassWrite ExecutionClass = "write"`
+- `const ExecutionClassExternal ExecutionClass = "external"`
+- `(ExecutionClass) Validate() error` — rejects any value outside the
+  four constants above.
+- `type ExecutionProfile struct { Class ExecutionClass; ResourceKey string; Timeout time.Duration }`
+  — execution-risk metadata for one tool: its class, its per-turn
+  dedup key, and its timeout.
+- `type ProfiledTool interface { ExecutionProfile() ExecutionProfile }`
+  — optional; a `Tool` implements it to publish an `ExecutionProfile`.
+- `type ResultBudgetTool interface { MaxResultBytes() int }` —
+  optional; a `Tool` implements it to bound its output size.
+- `type PrivilegedTool interface { Privileged() bool }` — optional; a
+  `Tool` implements it to mark itself as needing explicit
+  allowlisting.
+- `func ExecutionProfileOf(t Tool) ExecutionProfile` — returns
+  `t.ExecutionProfile()` when `t` implements `ProfiledTool`; else
+  returns the zero `ExecutionProfile`. Never calls `Validate`.
+- `func ResultBudgetOf(t Tool) (int, bool)` — returns
+  `t.MaxResultBytes()` and true when `t` implements `ResultBudgetTool`;
+  else returns `0, false`.
+- `func IsPrivileged(t Tool) bool` — returns `t.Privileged()` when `t`
+  implements `PrivilegedTool`; else returns false.
+- `type ScopeOptions struct { Allowlist []string; ExtraDenylist []string }`
+- `type Scope struct` — built only through `NewScope`; holds the
+  resolved allow and deny sets. Unexported fields.
+- `func NewScope(opts ScopeOptions) *Scope`
+- `(*Scope).Allowed(name string, t Tool) bool` — true when `name`
+  passes the denylist, the privileged check, and the allowlist.
+- `(*Registry).RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error)`
+  — resolves `name` through `Get`, checks `scope.Allowed` when `scope`
+  is non-nil, then calls the tool the same way `Run` does. Returns
+  `ErrUnknownName` for an unresolved name and `ErrScopeDenied` for a
+  name the scope excludes. A nil `scope` allows every resolved tool,
+  matching `Run`'s behavior.
+
+`Registry` is safe for concurrent `Add`, `Get`, `Remove`, `Run`, and
+`RunScoped`; the same `sync.RWMutex` that guards `Run` guards
+`RunScoped`.
 
 ## Tests
 
@@ -140,12 +240,85 @@ Test files live in `tools/tools_test/`, an external test package.
   hundred tools. Target under one microsecond per call. State the
   allocation budget for one `Run` call.
 
+### Execution profile and scope tests (phase 31)
+
+- `execution_profile_test.go` — red-green cases for
+  `ExecutionProfileOf`, `ResultBudgetOf`, and `IsPrivileged`. A tool
+  implementing `ProfiledTool` returns its published `ExecutionProfile`
+  unchanged. A tool that does not implement `ProfiledTool` returns the
+  zero `ExecutionProfile` with `Class == ExecutionClassUnclassified`. A
+  tool implementing `ResultBudgetTool` returns its bound and true; a
+  tool that does not returns zero and false. `ExecutionClass.Validate`
+  rejects a value outside the four constants. One case registers a
+  `ProfiledTool` that publishes an out-of-enum `Class` and proves
+  `ExecutionProfileOf` returns it unchanged and `RunScoped` still runs
+  the tool when the scope otherwise allows it. `ExecutionClass.
+  Validate` accepts all four declared constants, including the zero
+  value `ExecutionClassUnclassified`.
+- `scope_test.go` — red-green cases for `NewScope` and `Scope.Allowed`.
+  An empty `ScopeOptions` allows any non-privileged tool. A name in
+  `ExtraDenylist` is denied even when `Allowlist` also names it,
+  proving denylist wins. A name absent from a non-empty `Allowlist` is
+  denied. A privileged tool is denied when its name is absent from
+  `Allowlist`, and allowed when present. A combined case: a name in
+  both `ExtraDenylist` and `Allowlist`, on a tool that also reports
+  `Privileged() == true`, is denied. This proves the denylist,
+  privileged, and allowlist rules combine and do not depend on
+  evaluation order.
+- `registry_run_scoped_test.go` — red-green cases for `RunScoped`. An
+  unknown name returns `ErrUnknownName`. A denied name returns
+  `ErrScopeDenied` and never calls the tool's `Run`. An allowed name
+  runs and returns the tool's result. A nil `Scope` behaves like `Run`.
+- `execution_profile_integration_test.go` — register a read-class tool
+  and a write-class tool implementing `ProfiledTool` in one `Registry`.
+  Build a `Scope` that allowlists only the read tool. Prove `RunScoped`
+  runs the read tool and denies the write tool with `ErrScopeDenied`.
+  Prove `Registry.Run`, unscoped, still runs both, showing the phase 14
+  path is unchanged.
+- `registry_run_scoped_concurrent_test.go` — modeled on
+  `registry_concurrent_test.go`'s pattern, required for every method
+  that touches the tools map. A tool is registered. N goroutines call
+  `RunScoped` for its name under an allowing `Scope`, racing against N
+  goroutines calling `Remove` for the same name, all under
+  `go test -race`. Sub-case one uses an allowing `Scope`. Every
+  `RunScoped` call returns either the tool's result or
+  `ErrUnknownName` (removed before `Get` resolved it), never
+  `ErrScopeDenied`. A second sub-case adds a denying `Scope` racing the
+  same `Remove` goroutines and asserts every call returns either
+  `ErrScopeDenied` or `ErrUnknownName`. No call may panic. A third
+  sub-case races N goroutines calling `RunScoped` for a registered
+  name under an allowing `Scope` against N other goroutines calling
+  `Add` for N distinct other names, mirroring
+  `registry_concurrent_test.go`'s `Run`-versus-`Add` case. Every
+  `RunScoped` call must return the tool's result with no error, and a
+  following `Get` loop must find all N added names.
+- `registry_run_scoped_bench_test.go` — benchmark `RunScoped` on a
+  registry of one hundred tools behind a `Scope` with a fifty-name
+  allowlist. State the allocation budget next to `registry_bench_test.go`.
+
 ## Verification
 
 `make verify` passes. The coverage floor for `tools` holds at or above
 85 percent. The `tools` row in `policy/layers.json` lists its allowed
-imports. `api/tools.txt` lands via `make api-update` and locks `Tool`,
-`Registry`, `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`,
-`ErrNilTool`, `ErrBlankName`, `ErrDuplicateName`, and `ErrUnknownName`.
-`go test -race ./tools/...` passes, covering
-`registry_concurrent_test.go`.
+imports and stays `[]`. `api/tools.txt` lands via `make api-update` and
+locks `Tool`, `Registry`, `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`,
+`Run`, `ErrNilTool`, `ErrBlankName`, `ErrDuplicateName`,
+`ErrUnknownName`, `ExecutionClass`, `ExecutionClassUnclassified`,
+`ExecutionClassRead`, `ExecutionClassWrite`, `ExecutionClassExternal`,
+`ExecutionProfile`, `ProfiledTool`, `ResultBudgetTool`,
+`PrivilegedTool`, `ExecutionProfileOf`, `ResultBudgetOf`,
+`IsPrivileged`, `ScopeOptions`, `Scope`, `NewScope`, `RunScoped`, and
+`ErrScopeDenied`. `go test -race ./tools/...` passes, covering
+`registry_concurrent_test.go` and
+`registry_run_scoped_concurrent_test.go`.
+
+`semgrep/sdk-standards.yml`'s `sdk.go.no-enum-string-literals` rule
+gains `ExecutionClass` in its regex alternation, in the same change as
+the code. `python3 scripts/check_semgrep_probes.py` passes with the
+extended `viol_enum.go`/`clean_enum.go` probe pair, proving the rule
+fires on an `ExecutionClass("x")` violation and stays silent on the
+declared constants, alongside the existing `Intent` case.
+
+`docs/packages/tools.md` is amended in the same change to add the
+phase 31 symbols, the concurrency contract for `RunScoped`, and a usage
+note on `Scope`.

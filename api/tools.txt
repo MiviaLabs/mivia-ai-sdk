@@ -1,16 +1,48 @@
 package tools
+  const ExecutionClassExternal = "external"
+  const ExecutionClassRead = "read"
+  const ExecutionClassUnclassified = ""
+  const ExecutionClassWrite = "write"
+  func (c ExecutionClass) Validate() (error)
   func (r *Registry) Add(t Tool) (error)
   func (r *Registry) Get(name string) (Tool, bool)
   func (r *Registry) Remove(name string) (bool)
   func (r *Registry) Run(ctx context.Context, name string, in InOut) (Out, error)
+  func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error)
+  func (s *Scope) Allowed(name string, t Tool) (bool)
+  func ExecutionProfileOf(t Tool) (ExecutionProfile)
+  func IsPrivileged(t Tool) (bool)
   func New() (*Registry)
+  func NewScope(opts ScopeOptions) (*Scope)
+  func ResultBudgetOf(t Tool) (int, bool)
+  type ExecutionClass string
+  type ExecutionProfile struct {
+  Class ExecutionClass
+  ResourceKey string
+  Timeout time.Duration
+}
   type InOut struct {
   Value any
 }
   type Out struct {
   Value any
 }
+  type PrivilegedTool interface {
+	Privileged() bool
+}
+  type ProfiledTool interface {
+	ExecutionProfile() ExecutionProfile
+}
   type Registry struct {
+}
+  type ResultBudgetTool interface {
+	MaxResultBytes() int
+}
+  type Scope struct {
+}
+  type ScopeOptions struct {
+  Allowlist []string
+  ExtraDenylist []string
 }
   type Tool interface {
 	Name() string
@@ -19,4 +51,5 @@ package tools
   var ErrBlankName
   var ErrDuplicateName
   var ErrNilTool
+  var ErrScopeDenied
   var ErrUnknownName

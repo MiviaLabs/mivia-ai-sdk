@@ -69,7 +69,11 @@ Use `errors.Is` to test these.
   not model route-excluded or skipped-need paths. Each declared
   predecessor must hold exactly one row `From=p` `To=step.To`; zero rows
   and two rows both fail, naming the step, the predecessor, and the
-  target.
+  target. It recurses into every `Sub` child, whose own rows start
+  from the machine's initial status. A loop that can re-iterate needs
+  a re-entry row between every pair of distinct child finals. A loop
+  landing the same final twice always faults at run time:
+  `machine.New` forbids the self row it would need.
 - The built ack chain resolves a step's tool by `step.ID`. A non-string
   result fails with `ErrResultNotText`, naming the tool. An empty-string
   result is a runtime fault from `envelope.NewAck`, not

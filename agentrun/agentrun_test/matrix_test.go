@@ -86,6 +86,24 @@ func TestValidateMatrixPanel(t *testing.T) {
 		)
 		assertMatrixPasses(t, plan, complete)
 	})
+
+	t.Run("union needs every member predecessor", func(t *testing.T) {
+		// The mirror of the case above: sx-to-w exists, sy-to-w is
+		// absent. A union reduced to the first member would pass this
+		// machine; the full union must reject it.
+		plan := mustFlow(t, []flow.Step{
+			{ID: "x", To: "sx"},
+			{ID: "y", To: "sy"},
+			{ID: "a", To: "w", Needs: []string{"x"}},
+			{ID: "b", To: "w", Needs: []string{"y"}},
+		}, []flow.Panel{{"a", "b"}})
+		mirror := mustMachine(t, "queued",
+			tr("queued", "sx", "x"),
+			tr("queued", "sy", "y"),
+			tr("sx", "w", "xa"),
+		)
+		assertMatrixFails(t, plan, mirror, "sy", "w")
+	})
 }
 
 // TestValidateMatrixFallback proves a fallback step admits on a failed
@@ -233,8 +251,11 @@ func TestValidateMatrixChildWithInternalNeeds(t *testing.T) {
 		{ID: "tail", To: "done", Needs: []string{"sub1"}},
 	}, nil)
 
-	// Only the terminal cy feeds the parent; cx is an internal step.
+	// The child fires x from the initial status, then y from cx. The
+	// parent row targets the terminal cy; cx never crosses the parent.
 	ok := mustMachine(t, "queued",
+		tr("queued", "cx", "c"),
+		tr("cx", "cy", "d"),
 		tr("queued", "cy", "a"),
 		tr("cy", "done", "b"),
 	)

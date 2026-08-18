@@ -13,10 +13,15 @@ import (
 // It walks plan.Steps() and plan.Panels() and computes each logical
 // step's predecessor status set. For every predecessor the machine
 // must hold exactly one row From=p To=target. Zero rows and two rows
-// both fail, naming the step, the predecessor, and the target. It is
-// a static check; it does not prove the walk never aborts. Route
-// exclusions, skipped needs, and forward-type mismatches can still
-// abort mid-run after New passes.
+// both fail, naming the step, the predecessor, and the target. It
+// recurses into every Sub child at every depth: a child Run starts
+// from the machine's initial status, so the child's own rows are
+// checked the same way. A Loop step that can run a second iteration
+// also needs a re-entry row between every pair of distinct child
+// finals. It is a static check; it does not prove the walk never
+// aborts. Route exclusions, skipped needs, forward-type mismatches,
+// and a loop landing the same final twice (machine.New forbids the
+// self row that needs) can still abort mid-run after New passes.
 func ValidateMatrix(plan *flow.Definition, m *machine.Definition) error {
 	if plan == nil {
 		return fmt.Errorf("agentrun: plan must not be nil")
@@ -65,6 +70,37 @@ func (w *walker) walk(steps []flow.Step, panels []flow.Panel) error {
 		}
 		if err := w.checkUnit(s.ID, w.preds(steps, s), w.targets(s)); err != nil {
 			return err
+		}
+		if err := w.checkLoopReentry(s); err != nil {
+			return err
+		}
+		if s.Sub != nil {
+			if err := w.walk(s.Sub.Steps(), s.Sub.Panels()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkLoopReentry requires a row between every pair of distinct child
+// finals when s's loop policy can run a second iteration. machine.New
+// forbids a From-equals-To row, so a child that lands the same final
+// twice always faults at runtime; that limit stays disclosed in
+// ValidateMatrix's comment, not checked here.
+func (w *walker) checkLoopReentry(s flow.Step) error {
+	if s.Loop == nil || s.Loop.Max == 1 || s.Sub == nil {
+		return nil
+	}
+	finals := w.childFinals(s.Sub)
+	for _, from := range finals {
+		for _, to := range finals {
+			if from == to {
+				continue
+			}
+			if err := w.checkRow(from, to); err != nil {
+				return fmt.Errorf("agentrun: step %q: loop re-entry: %w", s.ID, err)
+			}
 		}
 	}
 	return nil

@@ -77,7 +77,10 @@ var ErrNoAgent, ErrNoMachine, ErrNoResolver, ErrAmbiguousWait,
 exclusive ack resolvers; one of them must be set. `Scope`, `Store`,
 `Ask`, and `Artifacts` each need `Tools`. `Ask` needs a non-empty
 `AskTo`. A set `Budget` must pass its own `Validate`. The transition
-matrix must pass `ValidateMatrix`. Every Confirm-gated step ID must
+matrix must pass `ValidateMatrix`. The check recurses into every
+`Sub` child, whose own rows start from the machine's initial status.
+A loop that can re-iterate needs re-entry rows between its distinct
+child finals. Every Confirm-gated step ID must
 resolve in the registry when `Tools` is set.
 
 The agent accessors added in this same change:
@@ -90,8 +93,8 @@ func (a *Agent) Signer() string
 The flow accessors added in this same change:
 
 ```go
-func (d Definition) Steps() []Step   // copy; Sub children nest
-func (d Definition) Panels() []Panel // copy
+func (d Definition) Steps() []Step   // deep copy; Sub children copy recursively
+func (d Definition) Panels() []Panel // deep copy
 ```
 
 ## Tests
@@ -101,19 +104,34 @@ following files exist:
 
 - `options_test.go` — table-driven over every `New` rejection, a case
   with neither resolver returning `ErrNoResolver`, and the accept path.
+- `resolution_test.go` — the tool-resolution rules: big-panel members
+  skip the check, `Sub` children resolve recursively, and a set
+  `Receiver` is accepted.
 - `matrix_test.go` — table-driven over `ValidateMatrix`: a root step
   missing a row; a dependent missing a row; a panel wave unioning its
-  members' sets; a fallback needing failed needs' predecessors and
-  final statuses; a fallback mixing failed and succeeded needs; `Sub`
-  and `Loop` needs checked against child finals; a deep multi-level
-  `Sub` chain; an ambiguous row pair; the route-exclusion scope limit;
-  the accept path.
+  members' sets, with the mirror machine for the second member; a
+  fallback needing failed needs' predecessors, final statuses, and
+  the pre-fire row; `Sub` and `Loop` needs checked against child
+  finals; a child with internal needs excluding its internal step; a
+  deep multi-level `Sub` chain; an ambiguous row pair; the
+  route-exclusion scope limit; the accept path.
+- `matrix_subrows_test.go` — `Sub` children validate their own rows
+  at every depth; a non-root `Sub` step needs terminal rows only; a
+  loop that can re-iterate needs re-entry rows between distinct
+  finals, and `Max: 1` exempts them.
 - `run_integration_test.go` — a real two-step agent; assert artifacts,
   stored refs, acked events, thread verification, the non-text result,
   and the empty-string result.
 - `escalation_integration_test.go` — a tool error wrapping
   `agent.ErrEscalated`, with `Ask` approving, declining, and erroring.
 - `budget_test.go` — a `Limits` value that trips on step two.
+- `artifacts_concurrent_test.go` — concurrent `Artifacts` use under
+  the race detector, plus the nil-receiver behavior.
+- `payloadof_test.go` — `PayloadOf` reads the stored artifact, and a
+  nil `Artifacts` reads as empty.
+- `scope_test.go` — privileged-tool denial and allowance through a
+  wired `Scope`.
+- `helpers_test.go` — the shared builders and test doubles.
 
 ## Verification
 

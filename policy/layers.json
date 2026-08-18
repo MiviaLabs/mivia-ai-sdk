@@ -10,6 +10,7 @@
     "heartbeat": ["events"],
     "identity": ["envelope"],
     "machine": ["events"],
-    "room": ["envelope", "heartbeat"]
+    "room": ["envelope", "heartbeat"],
+    "tools": []
   }
 }

@@ -49,11 +49,11 @@ func TestRetryLoopsReturnCtxErrOnLosingCompareAndSwap(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	ctx := context.Background()
-	if _, err := l.Admit(ctx, "k1", 1, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "k1", 1, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
 	fence := mustClaim(t, l, ctx, "k1", "owner-a")
-	if _, err := l.Admit(ctx, "k3", 1, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "k3", 1, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
 
@@ -62,23 +62,23 @@ func TestRetryLoopsReturnCtxErrOnLosingCompareAndSwap(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	if _, err := stuck.Admit(newFlakyCtx(), "k2", 1, nil); !errors.Is(err, context.Canceled) {
+	if _, err := stuck.Admit(newFlakyCtx(), testActor, "k2", 1, nil, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Admit: got %v, want context.Canceled", err)
 	}
-	if _, err := stuck.Claim(newFlakyCtx(), "k3", "owner-b", fixedLease, fixedNow); !errors.Is(err, context.Canceled) {
+	if _, err := stuck.Claim(newFlakyCtx(), testActor, "k3", "owner-b", fixedLease, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Claim: got %v, want context.Canceled", err)
 	}
-	if err := stuck.Renew(newFlakyCtx(), "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, context.Canceled) {
+	if err := stuck.Renew(newFlakyCtx(), testActor, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Renew: got %v, want context.Canceled", err)
 	}
-	if err := stuck.Release(newFlakyCtx(), "k1", "owner-a", fence); !errors.Is(err, context.Canceled) {
+	if err := stuck.Release(newFlakyCtx(), testActor, "k1", "owner-a", fence, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Release: got %v, want context.Canceled", err)
 	}
 	stale := fixedNow.Add(fixedLease)
-	if _, err := stuck.Takeover(newFlakyCtx(), "k1", "owner-b", fixedLease, stale); !errors.Is(err, context.Canceled) {
+	if _, err := stuck.Takeover(newFlakyCtx(), testActor, "k1", "owner-b", fixedLease, stale); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Takeover: got %v, want context.Canceled", err)
 	}
-	if err := stuck.Complete(newFlakyCtx(), "k1", "owner-a", fence, ledger.StatusCompleted); !errors.Is(err, context.Canceled) {
+	if err := stuck.Complete(newFlakyCtx(), testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Complete: got %v, want context.Canceled", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestBlockOneReturnsCtxErrOnLosingCompareAndSwap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if err := stuck.Complete(newFlakyCtx(), "root", "owner-a", fence, ledger.StatusFailed); !errors.Is(err, context.Canceled) {
+	if err := stuck.Complete(newFlakyCtx(), testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Complete: got %v, want context.Canceled", err)
 	}
 }
@@ -254,22 +254,22 @@ func TestMutatingMethodsPropagateLoadError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, err := lf.Admit(ctx, "k2", 1, nil); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Admit(ctx, testActor, "k2", 1, nil, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Admit: got %v, want errStoreBoom", err)
 	}
-	if _, err := lf.Claim(ctx, "k1", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Claim(ctx, testActor, "k1", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Claim: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Renew(ctx, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
+	if err := lf.Renew(ctx, testActor, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Renew: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Release(ctx, "k1", "owner-a", fence); !errors.Is(err, errStoreBoom) {
+	if err := lf.Release(ctx, testActor, "k1", "owner-a", fence, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Release: got %v, want errStoreBoom", err)
 	}
-	if _, err := lf.Takeover(ctx, "k1", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Takeover(ctx, testActor, "k1", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Takeover: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); !errors.Is(err, errStoreBoom) {
+	if err := lf.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Complete: got %v, want errStoreBoom", err)
 	}
 }
@@ -295,23 +295,23 @@ func TestMutatingMethodsPropagateCompareAndSwapError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, err := lf.Admit(ctx, "k2", 1, nil); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Admit(ctx, testActor, "k2", 1, nil, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Admit: got %v, want errStoreBoom", err)
 	}
-	if _, err := lf.Claim(ctx, "k3", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Claim(ctx, testActor, "k3", "owner-b", fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Claim: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Renew(ctx, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
+	if err := lf.Renew(ctx, testActor, "k1", "owner-a", fence, fixedLease, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Renew: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Release(ctx, "k1", "owner-a", fence); !errors.Is(err, errStoreBoom) {
+	if err := lf.Release(ctx, testActor, "k1", "owner-a", fence, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Release: got %v, want errStoreBoom", err)
 	}
 	stale := fixedNow.Add(fixedLease)
-	if _, err := lf.Takeover(ctx, "k1", "owner-b", fixedLease, stale); !errors.Is(err, errStoreBoom) {
+	if _, err := lf.Takeover(ctx, testActor, "k1", "owner-b", fixedLease, stale); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Takeover: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); !errors.Is(err, errStoreBoom) {
+	if err := lf.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Complete: got %v, want errStoreBoom", err)
 	}
 	restoreSnap := ledger.Snapshot{Tasks: []ledger.TaskState{{Key: "new", Status: ledger.StatusPending}}}
@@ -343,7 +343,7 @@ func TestRangeErrorPropagatesThroughSnapshotAndBlockDependents(t *testing.T) {
 	if _, err := lf.Snapshot(ctx); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Snapshot: got %v, want errStoreBoom", err)
 	}
-	if err := lf.Complete(ctx, "root", "owner-a", fence, ledger.StatusFailed); !errors.Is(err, errStoreBoom) {
+	if err := lf.Complete(ctx, testActor, "root", "owner-a", fence, ledger.StatusFailed, fixedNow); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Complete: got %v, want errStoreBoom", err)
 	}
 }

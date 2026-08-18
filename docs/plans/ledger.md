@@ -333,3 +333,9 @@ Phase 42 (`docs/plans/agents/phase42_ledger_durable_store.md`) adds
 under the `ledger_sqlite` build tag, and a second command,
 `make verify-ledger-sqlite`, holds the tag-gated build to the same 85%
 coverage floor.
+
+Phase 42c (`docs/plans/agents/phase42c_ledger_audit_metadata.md`) adds
+the `Actor` type and four `TaskState` audit fields (`CreatedBy`,
+`CreatedAt`, `UpdatedBy`, `UpdatedAt`), threaded through every
+mutating `Ledger` method, plus a `SQLiteStore` startup migration for a
+pre-phase database file.

@@ -28,11 +28,11 @@ func TestTakeoverRaceAgainstClaimExactlyOneWinner(t *testing.T) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		_, claimErr = l.Claim(ctx, "k1", "owner-b", fixedLease, stale)
+		_, claimErr = l.Claim(ctx, testActor, "k1", "owner-b", fixedLease, stale)
 	}()
 	go func() {
 		defer wg.Done()
-		_, takeoverErr = l.Takeover(ctx, "k1", "owner-c", fixedLease, stale)
+		_, takeoverErr = l.Takeover(ctx, testActor, "k1", "owner-c", fixedLease, stale)
 	}()
 	wg.Wait()
 

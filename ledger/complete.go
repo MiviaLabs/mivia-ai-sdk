@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
@@ -25,7 +26,7 @@ import (
 // On StatusFailed, Complete walks the dependency graph and sets
 // StatusBlocked, with BlockedBy set to the failed key, on every
 // record that transitively names it in Needs. See blockDependents.
-func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status) error {
+func (l *Ledger) Complete(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status, now time.Time) error {
 	if status != StatusCompleted && status != StatusFailed {
 		return ErrUnknownStatus
 	}
@@ -45,6 +46,8 @@ func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID
 		}
 		next := cur
 		next.Status = status
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err
@@ -52,7 +55,7 @@ func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID
 		if ok {
 			l.emit(ctx, CompletedEvent, fmt.Sprintf("key %s completed as %s by %s", key, status, owner))
 			if status == StatusFailed {
-				return l.blockDependents(ctx, key)
+				return l.blockDependents(ctx, actor, now, key)
 			}
 			return nil
 		}
@@ -78,7 +81,7 @@ func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID
 // record is already terminal, or ctx is canceled, per the
 // retry-and-reclassify contract every other mutating method in this
 // package follows.
-func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) error {
+func (l *Ledger) blockDependents(ctx context.Context, actor Actor, now time.Time, failed IdempotencyKey) error {
 	var list []TaskState
 	if err := l.store.Range(ctx, func(t TaskState) bool {
 		list = append(list, t)
@@ -96,7 +99,7 @@ func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) err
 		if !ok || isTerminalStatus(cur.Status) {
 			continue
 		}
-		if err := l.blockOne(ctx, k, cur, failed); err != nil {
+		if err := l.blockOne(ctx, actor, now, k, cur, failed); err != nil {
 			return err
 		}
 	}
@@ -109,11 +112,13 @@ func (l *Ledger) blockDependents(ctx context.Context, failed IdempotencyKey) err
 // one's own skip rule, so a concurrent write that lands the dependent
 // on StatusCompleted, StatusFailed, or StatusBlocked between the
 // Range snapshot and this call is never overwritten.
-func (l *Ledger) blockOne(ctx context.Context, k IdempotencyKey, cur TaskState, failed IdempotencyKey) error {
+func (l *Ledger) blockOne(ctx context.Context, actor Actor, now time.Time, k IdempotencyKey, cur TaskState, failed IdempotencyKey) error {
 	for {
 		next := cur
 		next.Status = StatusBlocked
 		next.BlockedBy = failed
+		next.UpdatedBy = actor
+		next.UpdatedAt = now
 		ok, err := l.store.CompareAndSwap(ctx, k, cur, next)
 		if err != nil {
 			return err

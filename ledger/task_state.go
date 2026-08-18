@@ -14,6 +14,11 @@ type IdempotencyKey string
 // OwnerID is the caller-chosen identity of a claimant.
 type OwnerID string
 
+// Actor is the caller-chosen identity of whoever performs a write: an
+// external user ID, an agent ID, or any other identifier the caller
+// finds meaningful. Ledger does not validate its shape.
+type Actor string
+
 // Sequence is the watermark a caller assigns per submission. Admit
 // rejects a sequence at or below the recorded one.
 type Sequence uint64
@@ -55,6 +60,10 @@ type TaskState struct {
 	BlockedBy  IdempotencyKey
 	Task       any
 	Rev        uint64
+	CreatedBy  Actor
+	CreatedAt  time.Time
+	UpdatedBy  Actor
+	UpdatedAt  time.Time
 }
 
 // isTerminalStatus reports whether s is a finished status: Admit

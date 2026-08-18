@@ -24,7 +24,7 @@ func newLedger(t *testing.T, bus *events.Bus) *ledger.Ledger {
 func TestAdmitFirstSucceeds(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	ok, err := l.Admit(ctx, "k1", 1, "payload")
+	ok, err := l.Admit(ctx, testActor, "k1", 1, "payload", fixedNow)
 	if err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
@@ -46,6 +46,41 @@ func TestAdmitFirstSucceeds(t *testing.T) {
 	}
 }
 
+// TestAdmitSetsAuditFieldsOnInsertAndRebase proves Admit's insert
+// branch sets CreatedBy/CreatedAt and UpdatedBy/UpdatedAt from its
+// actor/now arguments, and a later rebase, called with a different
+// actor/now, leaves CreatedBy/CreatedAt unchanged while updating
+// UpdatedBy/UpdatedAt.
+func TestAdmitSetsAuditFieldsOnInsertAndRebase(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	firstActor := ledger.Actor("actor-one")
+	firstNow := fixedNow
+	if _, err := l.Admit(ctx, firstActor, "k1", 1, "first", firstNow); err != nil {
+		t.Fatalf("Admit: %v", err)
+	}
+	st, _, _ := l.State(ctx, "k1")
+	if st.CreatedBy != firstActor || !st.CreatedAt.Equal(firstNow) {
+		t.Fatalf("CreatedBy/CreatedAt after insert = %q/%v, want %q/%v", st.CreatedBy, st.CreatedAt, firstActor, firstNow)
+	}
+	if st.UpdatedBy != firstActor || !st.UpdatedAt.Equal(firstNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt after insert = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, firstActor, firstNow)
+	}
+
+	secondActor := ledger.Actor("actor-two")
+	secondNow := fixedNow.Add(fixedLease)
+	if _, err := l.Admit(ctx, secondActor, "k1", 2, "second", secondNow); err != nil {
+		t.Fatalf("Admit: %v", err)
+	}
+	st, _, _ = l.State(ctx, "k1")
+	if st.CreatedBy != firstActor || !st.CreatedAt.Equal(firstNow) {
+		t.Fatalf("CreatedBy/CreatedAt after rebase = %q/%v, want unchanged %q/%v", st.CreatedBy, st.CreatedAt, firstActor, firstNow)
+	}
+	if st.UpdatedBy != secondActor || !st.UpdatedAt.Equal(secondNow) {
+		t.Fatalf("UpdatedBy/UpdatedAt after rebase = %q/%v, want %q/%v", st.UpdatedBy, st.UpdatedAt, secondActor, secondNow)
+	}
+}
+
 // TestAdmitDuplicateSequenceRejected proves a resubmission at the
 // same or a lower sequence is a no-op, not an error.
 func TestAdmitDuplicateSequenceRejected(t *testing.T) {
@@ -53,10 +88,10 @@ func TestAdmitDuplicateSequenceRejected(t *testing.T) {
 	cases := []ledger.Sequence{2, 1}
 	for _, seq := range cases {
 		l := newLedger(t, nil)
-		if _, err := l.Admit(ctx, "k1", 2, "first"); err != nil {
+		if _, err := l.Admit(ctx, testActor, "k1", 2, "first", fixedNow); err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
-		ok, err := l.Admit(ctx, "k1", seq, "second")
+		ok, err := l.Admit(ctx, testActor, "k1", seq, "second", fixedNow)
 		if err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
@@ -80,10 +115,10 @@ func TestAdmitRebasesPendingOrClaimed(t *testing.T) {
 
 	t.Run("pending", func(t *testing.T) {
 		l := newLedger(t, nil)
-		if _, err := l.Admit(ctx, "k1", 1, "first"); err != nil {
+		if _, err := l.Admit(ctx, testActor, "k1", 1, "first", fixedNow); err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
-		ok, err := l.Admit(ctx, "k1", 2, "second")
+		ok, err := l.Admit(ctx, testActor, "k1", 2, "second", fixedNow)
 		if err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
@@ -98,13 +133,13 @@ func TestAdmitRebasesPendingOrClaimed(t *testing.T) {
 
 	t.Run("claimed", func(t *testing.T) {
 		l := newLedger(t, nil)
-		if _, err := l.Admit(ctx, "k1", 1, "first"); err != nil {
+		if _, err := l.Admit(ctx, testActor, "k1", 1, "first", fixedNow); err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
-		if _, err := l.Claim(ctx, "k1", "owner-a", fixedLease, fixedNow); err != nil {
+		if _, err := l.Claim(ctx, testActor, "k1", "owner-a", fixedLease, fixedNow); err != nil {
 			t.Fatalf("Claim: %v", err)
 		}
-		ok, err := l.Admit(ctx, "k1", 2, "second")
+		ok, err := l.Admit(ctx, testActor, "k1", 2, "second", fixedNow)
 		if err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
@@ -135,7 +170,7 @@ func TestAdmitTerminalNeverRebases(t *testing.T) {
 			l := newLedger(t, nil)
 			sc.build(t, l, ctx)
 			before, _, _ := l.State(ctx, "k1")
-			ok, err := l.Admit(ctx, "k1", before.Sequence+10, "resubmit")
+			ok, err := l.Admit(ctx, testActor, "k1", before.Sequence+10, "resubmit", fixedNow)
 			if err != nil {
 				t.Fatalf("Admit: %v", err)
 			}
@@ -155,10 +190,10 @@ func TestAdmitTerminalNeverRebases(t *testing.T) {
 func TestAdmitRecordsNeeds(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
-	if _, err := l.Admit(ctx, "root", 1, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "root", 1, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
-	if _, err := l.Admit(ctx, "dep", 1, nil, "root"); err != nil {
+	if _, err := l.Admit(ctx, testActor, "dep", 1, nil, fixedNow, "root"); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
 	st, _, _ := l.State(ctx, "dep")
@@ -181,24 +216,24 @@ func TestAdmitEventFiresOnceOnSuccess(t *testing.T) {
 		t.Fatalf("Subscribe: %v", err)
 	}
 	l := newLedger(t, bus)
-	if _, err := l.Admit(ctx, "k1", 1, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "k1", 1, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
-	if _, err := l.Admit(ctx, "k1", 1, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "k1", 1, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
 	if count != 1 {
 		t.Fatalf("AdmittedEvent fired %d times, want 1", count)
 	}
 
-	if _, err := l.Claim(ctx, "k1", "owner-a", fixedLease, fixedNow); err != nil {
+	if _, err := l.Claim(ctx, testActor, "k1", "owner-a", fixedLease, fixedNow); err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	fence, _, _ := stateFence(t, l, ctx, "k1")
-	if err := l.Complete(ctx, "k1", "owner-a", fence, ledger.StatusCompleted); err != nil {
+	if err := l.Complete(ctx, testActor, "k1", "owner-a", fence, ledger.StatusCompleted, fixedNow); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
-	if _, err := l.Admit(ctx, "k1", 100, nil); err != nil {
+	if _, err := l.Admit(ctx, testActor, "k1", 100, nil, fixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
 	if count != 1 {

@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 )
@@ -48,8 +49,11 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 // false, nil, not an error, when the key already holds a record at
 // or above seq, or when the stored record is terminal: a duplicate or
 // late-arriving submission is a no-op against a finished task, not a
-// failure.
-func (l *Ledger) Admit(ctx context.Context, key IdempotencyKey, seq Sequence, task any, needs ...IdempotencyKey) (bool, error) {
+// failure. On first insert, Admit sets CreatedBy and CreatedAt from
+// actor and now; on a rebase over an existing non-terminal record, it
+// carries CreatedBy/CreatedAt forward unchanged. Every successful
+// write sets UpdatedBy to actor and UpdatedAt to now.
+func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq Sequence, task any, now time.Time, needs ...IdempotencyKey) (bool, error) {
 	needsCopy := append([]IdempotencyKey(nil), needs...)
 	for {
 		cur, found, err := l.store.Load(ctx, key)
@@ -57,18 +61,26 @@ func (l *Ledger) Admit(ctx context.Context, key IdempotencyKey, seq Sequence, ta
 			return false, err
 		}
 		var old TaskState
+		createdBy := actor
+		createdAt := now
 		if found {
 			if !admitEligible(cur, seq) {
 				return false, nil
 			}
 			old = cur
+			createdBy = cur.CreatedBy
+			createdAt = cur.CreatedAt
 		}
 		next := TaskState{
-			Key:      key,
-			Status:   StatusPending,
-			Sequence: seq,
-			Needs:    needsCopy,
-			Task:     task,
+			Key:       key,
+			Status:    StatusPending,
+			Sequence:  seq,
+			Needs:     needsCopy,
+			Task:      task,
+			CreatedBy: createdBy,
+			CreatedAt: createdAt,
+			UpdatedBy: actor,
+			UpdatedAt: now,
 		}
 		ok, err := l.store.CompareAndSwap(ctx, key, old, next)
 		if err != nil {

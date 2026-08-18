@@ -137,7 +137,16 @@ composition comes last.
   phase 45. See docs/plans/agents/phase42_ledger_durable_store.md,
   docs/plans/agents/phase42b_memstore_bounded_cap.md,
   docs/plans/agents/phase43_channel_reference_transport.md, and
-  docs/plans/agents/phase44_provider_token_estimation.md.
+  docs/plans/agents/phase44_provider_token_estimation.md. Phase 42c
+  is a follow-on to phase 42: it adds an `Actor` type and
+  `CreatedBy`/`CreatedAt`/`UpdatedBy`/`UpdatedAt` fields to
+  `TaskState`, threaded through every `Ledger` mutating method, plus
+  matching `SQLiteStore` columns and a startup migration for a
+  database file created under the pre-42c schema. It depends only on
+  phase 42, which has shipped, and is an exported-API break for
+  `Ledger`'s `Admit`, `Claim`, `Renew`, `Release`, `Takeover`, and
+  `Complete`. See
+  docs/plans/agents/phase42c_ledger_audit_metadata.md.
 - Verification: phase 46, a system integration suite: two new
   `agent/agent_test/` files proving the current, widened package
   surface composes end to end, using `ledger.MemStore` and a

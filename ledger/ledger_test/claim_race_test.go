@@ -29,7 +29,7 @@ func TestClaimRaceExactlyOneWinner(t *testing.T) {
 			if i == 1 {
 				owner = "owner-b"
 			}
-			fence, err := l.Claim(ctx, "k1", owner, fixedLease, fixedNow)
+			fence, err := l.Claim(ctx, testActor, "k1", owner, fixedLease, fixedNow)
 			errs[i] = err
 			fences[i] = fence
 		}(i)

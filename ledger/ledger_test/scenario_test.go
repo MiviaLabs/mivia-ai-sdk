@@ -79,14 +79,14 @@ func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) du
 
 	return durablefence.Scenario{
 		Claim: func(ctx context.Context) (string, error) {
-			fence, err := l.Claim(ctx, scenarioKey, scenarioOwner, scenarioLease, clk.now())
+			fence, err := l.Claim(ctx, testActor, scenarioKey, scenarioOwner, scenarioLease, clk.now())
 			if err != nil {
 				return "", err
 			}
 			return fenceToToken(fence), nil
 		},
 		Takeover: func(ctx context.Context) (string, error) {
-			fence, err := l.Takeover(ctx, scenarioKey, scenarioOwner, scenarioLease, clk.staleNow())
+			fence, err := l.Takeover(ctx, testActor, scenarioKey, scenarioOwner, scenarioLease, clk.staleNow())
 			if err != nil {
 				return "", err
 			}
@@ -97,14 +97,14 @@ func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) du
 			if err != nil {
 				return err
 			}
-			return l.Renew(ctx, scenarioKey, scenarioOwner, fence, scenarioLease, clk.now())
+			return l.Renew(ctx, testActor, scenarioKey, scenarioOwner, fence, scenarioLease, clk.now())
 		},
 		Release: func(ctx context.Context, token string) error {
 			fence, err := tokenToFence(token)
 			if err != nil {
 				return err
 			}
-			return l.Release(ctx, scenarioKey, scenarioOwner, fence)
+			return l.Release(ctx, testActor, scenarioKey, scenarioOwner, fence, clk.now())
 		},
 		IsHeld: func(ctx context.Context) (bool, error) {
 			st, found, err := l.State(ctx, scenarioKey)
@@ -120,7 +120,7 @@ func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) du
 				// this Scenario, so it is not fenced.
 				return false, nil
 			}
-			err = l.Renew(ctx, scenarioKey, scenarioOwner, fence, scenarioLease, clk.now())
+			err = l.Renew(ctx, testActor, scenarioKey, scenarioOwner, fence, scenarioLease, clk.now())
 			switch {
 			case err == nil:
 				return false, nil

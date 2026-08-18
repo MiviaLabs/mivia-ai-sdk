@@ -1,6 +1,7 @@
 package channel
   func (a Answer) Validate() (error)
   func (q Question) Validate() (error)
+  func NewNDJSONNotifier(r io.Reader, w io.Writer) (Notifier)
   type Answer struct {
   QuestionID string
   Approved bool
@@ -12,7 +13,9 @@ package channel
   Recipient string
   Payload string
 }
+  var ErrAnswerMismatch
   var ErrEmptyID
   var ErrEmptyPayload
   var ErrEmptyQuestionID
   var ErrEmptyRecipient
+  var ErrNotifierBusy

@@ -87,8 +87,10 @@ Go SDK for building AI agents. Module:
   imports. No concrete client ships in this SDK; a caller supplies its
   own `Completer`.
 - `channel/` — the ask-and-wait shape: Question, Answer, Notifier. A
-  leaf package; no internal imports. Ships no concrete transport; a
-  caller implements `Notifier` per real channel (terminal, Slack,
+  leaf package; no internal imports. Ships one reference transport,
+  `NewNDJSONNotifier`, speaking newline-delimited JSON over an
+  `io.Reader`/`io.Writer` pair; a caller builds any other transport
+  itself and implements `Notifier` per real channel (terminal, Slack,
   another agent).
 - `scheduler/` — the generic invoke-on-schedule primitive: Job,
   Schedule, Every, At, Scheduler, Add, Remove, Run. Fires each

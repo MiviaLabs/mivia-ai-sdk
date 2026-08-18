@@ -1,8 +1,8 @@
 # Plan: durablefence
 
-Status: ready to build. Phase contract:
-`docs/plans/agents/phase33_durablefence_kit.md`. Sequenced after
-`ledger` (phase 34; see `docs/plans/agents/phase34_ledger.md`).
+Status: shipped. Sequenced after `ledger` (phase 34; see
+`docs/plans/ledger.md`), which wires this kit into
+`ledger/ledger_test/scenario_test.go` as its named-caller proof.
 
 ### Amendment: close the missing happy-path Mutate check
 

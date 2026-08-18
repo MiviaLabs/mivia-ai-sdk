@@ -1,21 +1,12 @@
 # Phase 38: flow loop
 
-Status: future. Depends on phase 23
-(`docs/plans/agents/phase23_flow_fallback.md`) landing first. Phases
-21 and 22 shipped: `Outcome`, `Report`, `Admission`, and `Route`
-already exist in `flow`'s code and locked API; see
-`docs/plans/flow.md`. Phase 23 still adds the fallback path. As of
-this writing, `flow`'s tree (`flow/runner.go`, `api/flow.txt`,
-`flow/flow_test/`) carries no fallback vocabulary; it exists only in
-the phase 23 plan file, marked "Status: ready to build", but not yet
-shipped. This phase is not independently buildable today. Per
-`docs/plans/agents/PHASES.md`, a phase does not pull in a later
-phase, so a builder must not start this phase until phase 23 is
-shipped and `FailureFrom` exists in `flow`'s code and locked API.
-Phase 30 (flow retry, plan-only, `docs/plans/agents/phase30_flow_retry.md`)
-shares the same dependency and may land before or after this phase;
-the two phases touch disjoint step fields and neither blocks the
-other.
+Status: future. Plan-only; it has not yet gone through plan review.
+Phases 21, 22, and 23 have all shipped: `Outcome`, `Report`,
+`Admission`, `Route`, `Failure`, and `FailureFrom` all exist in
+`flow`'s code and locked API; see `docs/plans/flow.md`. This phase is
+now independently buildable. Phase 30 (flow retry,
+`docs/plans/agents/phase30_flow_retry.md`, ready to build) touches
+disjoint step fields and neither blocks the other.
 
 ## Why repeated chaining, not a graph cycle
 

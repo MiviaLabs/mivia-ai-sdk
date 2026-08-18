@@ -112,31 +112,26 @@ composition comes last.
   conformance kit, ledger durable admission, tool approval gating,
   escalation and notification channel abstraction, flow loop
   iteration, scheduled invocation, and trigger composition. Phase 30
-  depends on phase 23 landing first, now that phase 22 has shipped.
-  Phase 33 depends on phase 34. Phase 36 depends on phase 31 landing
-  first. Phase 37 ships independently; it adds a new leaf package with
-  no dependency on any other phase in this group. Phase 38 depends on
-  phase 23 landing first, the same dependency phase 30 carries, now
-  that phase 22 has shipped. Phase 39 ships independently; it adds a
-  new leaf-shaped package with no dependency on any other phase in
-  this group. Phase 40 composes with phase 39 and phase 37 through
-  caller-owned closures only, so it adds no import edge to either and
-  ships independently of both. The rest ship independently of each
+  and phase 38 each depended on phase 23 landing first; phase 23 has
+  since shipped, so both are now independently buildable. Phase 33
+  depended on phase 34; both have since shipped. Phase 36 depended on
+  phase 31, which has since shipped. Phase 37, phase 39, and phase 40
+  each shipped as a new leaf-shaped package with no dependency on any
+  other phase in this group. The rest ship independently of each
   other.
 
 Each plan names its phase number and its dependency on the prior phase.
-Phase 35 depends on phase 14 (tools) landing first.
+Phase 35 depended on phase 14 (tools), which has since shipped.
 
-Phases 22, 25, 29, 31, 32, 35, 36, 37, and 40 have shipped; see
-docs/plans/flow.md, docs/plans/provider.md, docs/plans/tools.md,
+Phases 22, 23, 25, 29, 31, 32, 33, 34, 35, 36, 37, 39, and 40 have
+shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
+docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
 docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
-and docs/plans/trigger.md. Phase 30 passed plan review in three rounds
-and depends on phase 23 landing first, now that phase 22 has shipped.
-Phase 33 passed in three rounds and depends on phase 34, which passed
-in five rounds; both are ready to build. Phase 38 (flow loop) and
-phase 39 (scheduler) are plan-only; neither has gone through plan
-review yet. Phase 38 depends on phase 23 landing first, now that
-phase 22 has shipped. Phase 39 is independently buildable today.
+docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 30 passed
+plan review in three rounds and is ready to build, now that phase 23
+has shipped. Phase 38 (flow loop) is plan-only; it has not gone
+through plan review yet, but is independently buildable now that
+phase 23 has shipped.
 
 ## Gate interactions
 

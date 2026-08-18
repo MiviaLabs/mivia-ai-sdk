@@ -1,18 +1,9 @@
 # Phase 30: flow retry
 
-Status: future. Depends on phase 23
-(`docs/plans/agents/phase23_flow_fallback.md`) landing first. Phase 21
-shipped: `Outcome` and `Report` already exist in `flow`'s code and
-locked API; see `docs/plans/flow.md`. Phase 22 shipped too:
-`Admission` and `Route` already exist in `flow`'s code and locked API;
-see `docs/plans/flow.md`. Phase 23 still owns the fallback path. As of
-this writing, `flow`'s tree (`flow/runner.go`, `api/flow.txt`,
-`flow/flow_test/`) carries no fallback vocabulary; it exists only in
-the phase 23 plan file, marked "Status: ready to build", but not yet
-shipped. This phase is not independently buildable today.
-Per `docs/plans/agents/PHASES.md`, a phase does not pull in a later
-phase, so a builder must not start this phase until phase 23 is
-shipped and `FailureFrom` exists in `flow`'s code and locked API. This
+Status: ready to build. Phases 21, 22, and 23 have all shipped:
+`Outcome`, `Report`, `Admission`, `Route`, `Failure`, and
+`FailureFrom` all exist in `flow`'s code and locked API; see
+`docs/plans/flow.md`. This phase is now independently buildable. This
 phase must keep every one of `Admission`, `Route`, and `FailureFrom`'s
 behaviors intact.
 

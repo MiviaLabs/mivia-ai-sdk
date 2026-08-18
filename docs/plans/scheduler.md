@@ -1,4 +1,8 @@
-# scheduler plan
+# Plan: scheduler
+
+Status: shipped. One new package, `scheduler`, importing `events`
+only, for one typed event-name constant, matching `heartbeat`'s
+precedent.
 
 ## Goal
 
@@ -269,8 +273,8 @@ repo's flat test layout.
 
 ## Verification
 
-`make verify` passes once this package's code lands. The coverage
-floor for `scheduler` holds at 85 or above. `api/scheduler.txt` is
+`make verify` passes. The coverage floor for `scheduler` holds at 85
+or above. `api/scheduler.txt` is
 created by `make api-update` in the same change, locking `Job`,
 `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`, `Run`,
 `JobFailedEvent`, and the four sentinel errors.

@@ -2,15 +2,14 @@
 
 Status: the step graph, the sequential runner, the parallel panel
 waves, chaining, per-step outcomes, the admission rule, branch
-routing, and the checkpoint pause/resume pair ship. One more phase is
-planned: failure routing. This plan expands the earlier step-list
-design into a step runner for v1. Rationale in
-docs/research-state-machine.md. `Run` returns a `Report` holding every
-step's terminal `Outcome`, replacing the boolean done map. Phase 22
-shipped the admission rule, the skip semantics, and the branch step.
-Phase 25 shipped the checkpoint, the pause rule, and `Resume`. Phase
-23 owns the fallback path and the failure context; see
-docs/plans/agents/phase23_flow_fallback.md.
+routing, the checkpoint pause/resume pair, and failure routing ship.
+This plan expands the earlier step-list design into a step runner for
+v1. Rationale in docs/research-state-machine.md. `Run` returns a
+`Report` holding every step's terminal `Outcome`, replacing the
+boolean done map. Phase 22 shipped the admission rule, the skip
+semantics, and the branch step. Phase 23 shipped the fallback path and
+the failure context. Phase 25 shipped the checkpoint, the pause rule,
+and `Resume`.
 
 ## Goal
 
@@ -38,8 +37,22 @@ branch step picks its successors at run time from its declared
 dependents, through `Step.Route`. The status walk advances only
 through executed steps. A skipped step never fires a transition.
 
-Planned for phase 23: failure routing. A fallback step admits on a
-failed need and receives the failure context.
+Shipped in phase 23: failure routing. A step declares a fallback
+through `AdmissionOnFailed`, the third `Admission` value, an any-of
+rule over its `Needs`: it admits once at least one need ends
+`OutcomeFailed`, no matter what the other needs resolve to, unlike the
+all-of rule the other `Admission` values keep. `Run` injects a
+`Failure` into the fallback's transition `ctx`, readable through
+`FailureFrom`; a step outside every failure's `Needs` set never sees
+one. A failure without a declared `AdmissionOnFailed` dependent stays
+fatal, keeping fail-fast the default. Only a `Fire` failure and a
+`Route` error are catchable; a `Confirm` rejection and a
+`pickTransition` failure always abort, since no fallback can repair a
+missing transition row or an explicit reject. A panel failure catches
+only when every failed member has its own fallback; one uncaught
+member aborts the whole wave. `New` rejects an `AdmissionOnFailed`
+step with no needs and one named in a panel, since a panel's shared
+`ctx` has no clean home for a per-member `Failure`.
 
 Shipped in phase 25: a `Checkpoint` of the current status, the
 record, and the completed step IDs; a pause rule keyed on context
@@ -97,8 +110,9 @@ pattern sources.
   admits a need that ended `OutcomeSucceeded` or `OutcomeSkipped`.
   `AdmissionOnSucceeded` admits only a succeeded need; a skipped need
   skips the step too, and the skip can cascade to that step's own
-  dependents. `Step` gains `When Admission`. `AdmissionOnFailed` lands
-  in phase 23, for the fallback path.
+  dependents. `Step` gains `When Admission`. `AdmissionOnFailed`,
+  shipped in phase 23, is the third value, for the fallback path: see
+  the Scope section above.
 - `type Route func(ctx context.Context, cur machine.Status, rec machine.InOut) ([]string, error)`
   as the branch step's routing function, shipped in phase 22. `Step`
   gains `Route Route`; a non-nil `Route` makes the step a branch step.
@@ -138,8 +152,15 @@ pattern sources.
   `applyRoute` runs `Route` and marks unchosen dependents skipped;
   `nextReadyGroup`, in `runner.go`, calls into both.
 - `type Failure struct { Step string; Err error }` and
-  `FailureFrom(ctx)` as the failure context a fallback step reads.
-  These land in phase 23.
+  `func FailureFrom(ctx context.Context) (Failure, bool)` — shipped in
+  phase 23, the failure context a fallback step reads. `Failure.Step`
+  names the first failed need in the step's `Needs` declaration order;
+  `Failure.Err` is that need's recorded error, wrapped
+  `flow: step %q: %w`. `FailureFrom`'s boolean is false outside a
+  fallback firing. A wave member whose `Fire` did not itself error but
+  whose wave failed still becomes `OutcomeFailed`; a fallback that
+  needs such a member receives the joined wave error through
+  `Failure.Err`.
 - `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string; Skipped []string }`
   — shipped in phase 25, extended after ship to add `Skipped`, the full
   resumable state of a run. `Done` lists the lexicographically sorted
@@ -253,10 +274,9 @@ The policy/layers.json row for flow is `"flow": ["events", "machine"]`.
 The `events` import carries the step outcome bus emit.
 `flow` never imports `envelope`. The audit thread stays caller-owned.
 The runner enforces the gate; the caller provides the transport.
-Outcomes, phase 22, and phase 25 added no import edge; phase 23 adds
-none either. `Checkpoint` uses only `encoding/json`, which is stdlib.
-The failure context travels through `context.Context`, which is
-stdlib.
+Outcomes, phase 22, phase 23, and phase 25 added no import edge.
+`Checkpoint` uses only `encoding/json`, which is stdlib. The failure
+context travels through `context.Context`, which is stdlib.
 
 ## Tests
 
@@ -307,9 +327,44 @@ Phase 22's routing tests live in `flow/flow_test/`:
   overhead, so the benchmark reports the allocs/op ratio instead of a
   fixed allocation budget.
 
-Phase 23 covers the fallback: a handled failure lets the run
-complete, the fallback reads the failure context, and an unhandled
-failure still aborts.
+The fallback tests, shipped in phase 23, live in `flow/flow_test/`:
+
+- `fallback_test.go` — red-green cases: `New` rejects an
+  `AdmissionOnFailed` root and an `AdmissionOnFailed` panel member,
+  each with a pinned message; a failed step with a fallback lets the
+  run complete, and `FailureFrom` inside the fallback returns the
+  failed step's ID and a wrapped error satisfying `errors.Is`; a
+  fallback with two failed needs receives the first in `Needs`
+  declaration order; a fallback needing an error-free wave member
+  receives the joined wave error; `FailureFrom` inside a happy-path
+  step returns false; a failed step with no fallback still aborts; an
+  `AdmissionOnFailed` step whose needs all succeeded becomes
+  `OutcomeSkipped`, and a happy-path dependent of a handled failure
+  does too; a branch step that leaves a handled failure's sole handler
+  unchosen aborts with the recorded error; a `Confirm` rejection
+  aborts even when a fallback exists; a wave failure with a fallback
+  for every failed member continues, but aborts when only one failed
+  member has one; a panel's shared, pre-spawn `pickTransition` failure
+  aborts uncatchably even when every member has a fallback declared; a
+  chained step's own nested-`Run` failure aborts uncatchably at the
+  parent level, even with a parent-level fallback declared for it; a
+  `Route` error on a branch step with a fallback continues down the
+  fallback path; a fallback with mixed needs (one failed, one
+  succeeded) still admits, pinning the any-of rule; a fallback step's
+  own `Fire` failure is itself catchable by a second, nested fallback;
+  an `AdmissionOnFailed` step that is also a `Route` branch step works
+  exactly as phase 22 describes; two independent failed steps each
+  keep their own pending-handler set, so skipping the last handler of
+  one never touches the other's still-pending handler.
+- `fallback_integration_test.go` — a graph end to end with a rejecting
+  guard, a fallback that records its `Failure`, and a final join;
+  asserts the report outcomes, the final status, and that the fallback
+  read the failed step's ID. Runs the confirm-rejection abort case and
+  a panel failure case under the race detector.
+- `fallback_bench_test.go` — benchmarks the failure-plus-fallback path
+  against the all-success path on the same graph and reports the
+  ratio, with no fixed allocation budget, since error wrapping and the
+  context injection vary with the wave's goroutine count.
 
 The checkpoint tests, shipped in phase 25, live in `flow/flow_test/`:
 
@@ -398,11 +453,13 @@ already pins the nil-bus behavior.
 rationale lives in docs/research-state-machine.md. `api/flow.txt`
 lands via make api-update. Phase 22 extended `api/flow.txt` with
 `Admission`, its two constants, the `Route` type, and the two new
-`Step` fields. Phase 25 extended it with `Checkpoint`, its `Validate`,
-`Encode`, and `Decode`, `Resume`, and the changed seven-argument `Run`
-signature. Both left `api/machine.txt` and `policy/layers.json`
-unchanged. Phase 23 extends `api/flow.txt` the same way, in its own
-change.
+`Step` fields. Phase 23 extended it with `AdmissionOnFailed`, the
+`Failure` type, and `FailureFrom`; every helper `flow/failure.go`
+defines to implement the continue rule stays unexported and does not
+appear in the lock. Phase 25 extended it with `Checkpoint`, its
+`Validate`, `Encode`, and `Decode`, `Resume`, and the changed
+seven-argument `Run` signature. All three left `api/machine.txt` and
+`policy/layers.json` unchanged.
 
 No conformance-vector change from phase 25: `Checkpoint` carries no
 signed or threaded wire form, so `envelope/testdata/vectors/` and

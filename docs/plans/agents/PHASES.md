@@ -115,10 +115,9 @@ composition comes last.
 
 Each plan names its phase number and its dependency on the prior phase.
 
-Phases 29, 30, 31, and 33 passed plan review. Phases 32 and 34 went
-through three review rounds and stayed at REVISE. Both wait on a user
-decision before a builder starts them. See each plan's Status line for
-the open finding.
+Phases 29 and 30 passed plan review in three rounds. Phase 31 and 33
+passed in three rounds each. Phase 32 passed in four rounds. Phase 34
+passed in five rounds. Every phase in this group is ready to build.
 
 ## Gate interactions
 

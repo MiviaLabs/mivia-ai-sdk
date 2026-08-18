@@ -1,6 +1,6 @@
 # Phase 34: ledger durable admission and claim primitive
 
-Status: revision round 4, ready to plan review. New top-level package.
+Status: ready to build. New top-level package.
 Depends on the shipped `machine` and `events` packages only; `ledger`
 does not import `heartbeat` (see the Scope note on staleness below).
 Composes, once both land, with `durablefence`'s `Scenario` harness

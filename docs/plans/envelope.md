@@ -137,12 +137,54 @@ Additions (bug fix and test-gap round):
   fallback only changes behavior on an already-invalid Message that
   Validate would reject; the other two items are test-only.
 
+## Metamorphic test suite
+
+New file `envelope/metamorphic_test.go`, package `envelope`, following
+the round-trip convention already used in `a2a/mapping_test.go`,
+`agent/agent_test/exchange_integration_test.go`, and
+`identity/sign_integration_test.go`. Each case is a property pair:
+apply a transformation to a valid input, assert the stated outcome.
+Table-driven; one `TestMetamorphic*` function per property.
+
+- `TestMetamorphicDecodeEncodeHashStable` — property: decode then
+  re-encode preserves `Hash()`. Table of valid messages varying
+  `Intent`, `Epistemic`, `PrevHash`, signed and unsigned. For each:
+  `Encode`, `Decode`, `Encode` again. Assert the decoded message's
+  `Hash()` equals the original's `Hash()`. Confirmed true against
+  `message.go`: `Decode` unmarshals into the fixed-field `Message`
+  struct, so `json.Marshal` always emits fields in struct order
+  regardless of input key order, and `Hash` marshals the same way.
+- `TestMetamorphicThreadReorderBreaksVerify` — property: reordering
+  two messages in a thread breaks `VerifyThread`. Generalizes the one
+  fixed `"reordered": {m1, m3, m2}` case already in
+  `envelope/thread_test.go:36` to a table of valid threads, length
+  three to five, each entry naming which two positions to swap
+  (adjacent and non-adjacent cases). Build the chain with `Sign` and
+  `PrevHash` links, swap the two named positions, assert
+  `VerifyThread` returns a non-nil error. Confirmed true against
+  `thread.go`: a swap either breaks the first-message
+  `PrevHash == ""` rule or breaks a middle `PrevHash` match, since
+  swapped messages carry different `Hash()` values.
+- `TestMetamorphicDecodeRoundTrips` — property: any accepted decode
+  round-trips. Table of raw JSON byte inputs that `Decode` accepts:
+  reordered JSON keys, added whitespace, and one added unknown field,
+  each layered over an otherwise-valid message. For each: `Decode`,
+  then `Encode` the result, then `Decode` again. Assert the two
+  decoded `Message` values are equal (`reflect.DeepEqual`) and their
+  `Hash()` values match. Confirmed true against `message.go`: unknown
+  fields are dropped by `json.Unmarshal` into a typed struct, and
+  `Validate` runs identically on both decodes.
+
 ## Verification
 
 `make verify`. Adds the conformance-vector convention: every schema or
 rule change adds a `valid_`, `invalid_decode_`, or `invalid_sig_` file.
 The duplicate-ID rule and the VerifySignature marshal error land with
 their docs/architecture.md update in the same change.
+
+The metamorphic suite above is test-only: no exported symbol changes,
+`make api-update` must produce no diff for `api/envelope.txt`.
+`go test -race ./envelope/...` covers the new file.
 
 Bug fix and test-gap round: `make verify` covers gofmt, vet, tests,
 doc gate, structure gate, Semgrep, and probes; run it after the

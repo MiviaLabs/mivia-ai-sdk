@@ -302,6 +302,15 @@ package in this module. It ships with no caller, the same way
 phase 14 shipped `tools`. Its package plan lives at
 docs/plans/hooks.md; no standalone phase 57 plan file remains.
 
+Phase 59 (`trace`) has shipped. It adds one package: a `Span`
+records one named operation, a `Tracer` links spans through `ctx`,
+and `SpanFrom` reads the current span back. `End`, `SetAttribute`,
+and `Attributes` are safe for concurrent use on one shared span. It
+depends on no unshipped phase and imports no other package in this
+module. It ships with no caller, the same way phase 57 shipped
+`hooks`. Its package plan lives at docs/plans/trace.md; no
+standalone phase 59 plan file remains.
+
 Phase 60 has shipped. It changes no package surface: a loop child
 that ends every iteration on one status is representable, because
 the parent re-enters without a transition row when its standing

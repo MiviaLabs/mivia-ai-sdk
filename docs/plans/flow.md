@@ -140,18 +140,26 @@ pattern sources.
 - `type Failure struct { Step string; Err error }` and
   `FailureFrom(ctx)` as the failure context a fallback step reads.
   These land in phase 23.
-- `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string }`
-  — shipped in phase 25, the full resumable state of a run. `Done`
-  lists the lexicographically sorted step IDs of every
-  `OutcomeSucceeded` entry at the moment the checkpoint is built; the
-  sort is not a completion order. `(Checkpoint).Validate() error`
-  rejects an empty `Status`; `Encode` and `Decode` both call it.
-  `Encode` marshals with `encoding/json`; a caller whose `Input` or
-  `Output` must survive the round-trip is responsible for
-  JSON-primitive-compatible types or its own re-hydration after
-  `Decode`, since `encoding/json` decodes an `any` field back to
-  `map[string]interface{}`, never the original concrete type. `flow`
-  performs no type-fidelity handling and no registry lookup.
+- `type Checkpoint struct { Status machine.Status; Record machine.InOut; Done []string; Skipped []string }`
+  — shipped in phase 25, extended after ship to add `Skipped`, the full
+  resumable state of a run. `Done` lists the lexicographically sorted
+  step IDs of every `OutcomeSucceeded` entry at the moment the
+  checkpoint is built; `Skipped` lists the lexicographically sorted
+  step IDs of every `OutcomeSkipped` entry at the same moment. Neither
+  list's order is a completion order. A route exclusion
+  (`flow/routing.go`'s `applyRoute`) or an admission skip
+  (`flow/runner.go`'s `nextReadyGroup`) is final regardless of the
+  excluding step's later outcome; `Skipped` preserves that decision
+  across a pause and a `Resume` the same way `Done` preserves a
+  success. `(Checkpoint).Validate() error` rejects an empty `Status`
+  and a step ID named in both `Done` and `Skipped`; `Encode` and
+  `Decode` both call it. `Encode` marshals with `encoding/json`; a
+  caller whose `Input` or `Output` must survive the round-trip is
+  responsible for JSON-primitive-compatible types or its own
+  re-hydration after `Decode`, since `encoding/json` decodes an `any`
+  field back to `map[string]interface{}`, never the original concrete
+  type. `flow` performs no type-fidelity handling and no registry
+  lookup.
 - `Run` gains a trailing `onCheckpoint func(Checkpoint)` parameter,
   shipped in phase 25: `Run(ctx, d, m, in, confirm, bus, onCheckpoint) (Report, error)`.
   `onCheckpoint` is nil-safe, matching the existing nil-tolerant `bus`
@@ -163,23 +171,26 @@ pattern sources.
   workflow is not independently resumable, only the parent step's
   completion is captured.
 - `func Resume(ctx, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)`
-  — shipped in phase 25. Seeds `outcomes` from `checkpoint.Done` (every
-  listed ID set to `OutcomeSucceeded`), `cur` from `checkpoint.Status`,
-  and `rec` from `checkpoint.Record`, then continues the same graph
-  walk `Run` uses. `Resume` never re-runs a step already in `Done`,
-  since `nextReadyGroup` skips any step ID already present in the
-  seeded `outcomes`. `Resume` runs five entry checks in order before
-  seeding any state, the first failing check returning immediately
-  with no step run: `d` nil, `m` nil, `confirm` nil (matching `Run`'s
-  own nil-check order), `checkpoint.Validate()` failing, and
-  `checkpoint.Done` naming a step ID absent from `d`'s steps. `Resume`
-  performs no topology check across `Done` beyond that: a
-  topologically-inconsistent checkpoint surfaces indirectly, when the
-  seeded walk's `pickTransition` or `machine.Fire` call fails against
-  a status the walk can no longer reach that step from. `Resume` on an
-  all-done checkpoint returns the checkpoint's status and record
-  without calling `confirm` or `onCheckpoint` again; there is no
-  remaining work.
+  — shipped in phase 25, extended after ship to seed `Skipped` too.
+  Seeds `outcomes` from `checkpoint.Done` (every listed ID set to
+  `OutcomeSucceeded`) and `checkpoint.Skipped` (every listed ID set to
+  `OutcomeSkipped`), `cur` from `checkpoint.Status`, and `rec` from
+  `checkpoint.Record`, then continues the same graph walk `Run` uses.
+  `Resume` never re-runs a step already in `Done`, and never
+  re-evaluates a step already in `Skipped`, since `nextReadyGroup`
+  skips any step ID already present in the seeded `outcomes`. `Resume`
+  runs five entry checks in order before seeding any state, the first
+  failing check returning immediately with no step run: `d` nil, `m`
+  nil, `confirm` nil (matching `Run`'s own nil-check order),
+  `checkpoint.Validate()` failing, and `checkpoint.Done` or
+  `checkpoint.Skipped` naming a step ID absent from `d`'s steps.
+  `Resume` performs no topology check across `Done` or `Skipped`
+  beyond that: a topologically-inconsistent checkpoint surfaces
+  indirectly, when the seeded walk's `pickTransition` or
+  `machine.Fire` call fails against a status the walk can no longer
+  reach that step from. `Resume` on an all-done checkpoint returns the
+  checkpoint's status and record without calling `confirm` or
+  `onCheckpoint` again; there is no remaining work.
 
   A caller pauses a run by canceling `ctx`: at the top of each loop
   iteration, before the next step or wave starts, the loop checks
@@ -303,8 +314,9 @@ failure still aborts.
 The checkpoint tests, shipped in phase 25, live in `flow/flow_test/`:
 
 - `checkpoint_test.go` — red-green cases: `Checkpoint.Validate` rejects
-  an empty `Status`; `Encode` then `Decode` round-trips `Status`,
-  `Record`, and `Done`, and a decoded `Record.Input` comes back as
+  an empty `Status`, and rejects a step ID named in both `Done` and
+  `Skipped`; `Encode` then `Decode` round-trips `Status`, `Record`,
+  `Done`, and `Skipped`, and a decoded `Record.Input` comes back as
   `map[string]interface{}`, not the original struct type; `Decode`
   rejects malformed JSON and runs `Validate` on the parsed result; a
   zero-step `Definition` with a non-nil `onCheckpoint` never calls it;
@@ -319,11 +331,19 @@ The checkpoint tests, shipped in phase 25, live in `flow/flow_test/`:
   all-done checkpoint, including the one-step short-circuit case,
   returns the checkpoint's status and record and calls neither
   `confirm` nor `onCheckpoint`; `Resume` rejects a nil `d`, `m`, or
-  `confirm`, in that order, then an invalid checkpoint, then a
-  `Done` entry naming a step absent from `d`, matching the five-check
-  entry order; a `Done` entry naming a real step whose own `Needs`
-  entry is absent from `Done` surfaces as an error through the
+  `confirm`, in that order, then an invalid checkpoint, then a `Done`
+  or a `Skipped` entry naming a step absent from `d`, matching the
+  five-check entry order; a `Done` entry naming a real step whose own
+  `Needs` entry is absent from `Done` surfaces as an error through the
   seeded walk's own transition check, not a dedicated `Resume` check.
+- `checkpoint_skip_resume_test.go` — closes the gap where a route
+  exclusion or an admission skip, once dropped from a checkpoint, came
+  back to life on `Resume`. A three-step graph pauses right after the
+  branch step's checkpoint fires and resumes: the excluded step stays
+  `OutcomeSkipped` and never runs, matching an uninterrupted `Run`. A
+  five-step chain repeats the case for an admission-only skip that
+  cascades from a route exclusion two hops away, through
+  `nextReadyGroup` rather than `applyRoute`.
 - `checkpoint_integration_test.go` — a multi-step graph end to end with
   a real `onCheckpoint` that appends `Encode`d bytes to an in-memory
   slice, standing in for caller-owned storage. Cancel `ctx` after the

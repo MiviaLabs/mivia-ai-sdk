@@ -21,6 +21,7 @@ package flow
   Status machine.Status
   Record machine.InOut
   Done []string
+  Skipped []string
 }
   type Confirm func(ctx context.Context, step Step) error
   type Definition struct {

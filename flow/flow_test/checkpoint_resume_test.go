@@ -251,6 +251,38 @@ func TestResumeRejectsUnknownDoneStepID(t *testing.T) {
 	}
 }
 
+// TestResumeRejectsUnknownSkippedStepID proves Resume rejects a
+// checkpoint whose Skipped names a step ID absent from d, naming that
+// ID before any step runs. Mirrors
+// TestResumeRejectsUnknownDoneStepID for the Skipped seeding loop.
+func TestResumeRejectsUnknownSkippedStepID(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	m := singleTransitionMachine(t)
+	checkpoint := flow.Checkpoint{Status: statusStart, Skipped: []string{"ghost"}}
+	var confirmCalls, checkpointCalls int
+	confirm := func(ctx context.Context, step flow.Step) error {
+		confirmCalls++
+		return nil
+	}
+	onCheckpoint := func(c flow.Checkpoint) {
+		checkpointCalls++
+	}
+	_, err := flow.Resume(context.Background(), d, m, checkpoint, confirm, nil, onCheckpoint)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), `"ghost"`) {
+		t.Fatalf("error %q should name the unknown step ID", err.Error())
+	}
+	if confirmCalls != 0 {
+		t.Fatalf("confirm called %d times, want 0", confirmCalls)
+	}
+	if checkpointCalls != 0 {
+		t.Fatalf("onCheckpoint called %d times, want 0", checkpointCalls)
+	}
+}
+
 // TestResumeNilDWinsOverInvalidCheckpoint proves the nil-d error wins
 // when both d is nil and the checkpoint fails Validate: checks 1
 // through 3 run before check 4.

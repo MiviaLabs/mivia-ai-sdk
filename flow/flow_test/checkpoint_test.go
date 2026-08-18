@@ -31,13 +31,14 @@ func TestCheckpointValidateRejectsEmptyStatus(t *testing.T) {
 }
 
 // TestCheckpointEncodeDecodeRoundTrips proves Encode then Decode
-// round-trips Status, Record, and Done.
+// round-trips Status, Record, Done, and Skipped.
 func TestCheckpointEncodeDecodeRoundTrips(t *testing.T) {
 	t.Parallel()
 	c := flow.Checkpoint{
-		Status: statusDone,
-		Record: machine.InOut{Input: "in", Output: "out"},
-		Done:   []string{"a", "b"},
+		Status:  statusDone,
+		Record:  machine.InOut{Input: "in", Output: "out"},
+		Done:    []string{"a", "b"},
+		Skipped: []string{"c", "d"},
 	}
 	data, err := c.Encode()
 	if err != nil {
@@ -55,6 +56,25 @@ func TestCheckpointEncodeDecodeRoundTrips(t *testing.T) {
 	}
 	if len(got.Done) != len(c.Done) || got.Done[0] != c.Done[0] || got.Done[1] != c.Done[1] {
 		t.Fatalf("Done = %v, want %v", got.Done, c.Done)
+	}
+	if len(got.Skipped) != len(c.Skipped) || got.Skipped[0] != c.Skipped[0] || got.Skipped[1] != c.Skipped[1] {
+		t.Fatalf("Skipped = %v, want %v", got.Skipped, c.Skipped)
+	}
+}
+
+// TestCheckpointValidateRejectsDoneSkippedOverlap proves Validate
+// rejects a Checkpoint whose Done and Skipped both name the same step
+// ID: a step cannot have resolved both OutcomeSucceeded and
+// OutcomeSkipped.
+func TestCheckpointValidateRejectsDoneSkippedOverlap(t *testing.T) {
+	t.Parallel()
+	c := flow.Checkpoint{Status: statusDone, Done: []string{"a"}, Skipped: []string{"a"}}
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("expected error for a step named in both Done and Skipped, got nil")
+	}
+	if !strings.Contains(err.Error(), `"a"`) {
+		t.Fatalf("error %q should name the overlapping step ID", err.Error())
 	}
 }
 

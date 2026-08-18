@@ -39,9 +39,10 @@ type Confirm func(ctx context.Context, step Step) error
 //
 // onCheckpoint, when non-nil, fires immediately after each step or
 // wave resolves OutcomeSucceeded, with a fresh Checkpoint holding the
-// current status, the current record, and the sorted step IDs
-// resolved so far. A nil onCheckpoint skips the call. See Checkpoint
-// and Resume.
+// current status, the current record, the sorted step IDs of every
+// OutcomeSucceeded step resolved so far, and the sorted step IDs of
+// every OutcomeSkipped step resolved so far. A nil onCheckpoint skips
+// the call. See Checkpoint and Resume.
 //
 // Before each step or wave starts, Run checks ctx for cancellation. A
 // canceled ctx stops the walk before the next step starts and returns

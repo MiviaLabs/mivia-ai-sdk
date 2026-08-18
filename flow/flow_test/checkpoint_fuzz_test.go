@@ -14,7 +14,7 @@ import (
 // never panic, and anything it accepts must re-encode cleanly.
 // Run: go test -fuzz=FuzzCheckpointDecode ./flow/flow_test/
 func FuzzCheckpointDecode(f *testing.F) {
-	valid := flow.Checkpoint{Status: statusDone, Done: []string{"a", "b"}}
+	valid := flow.Checkpoint{Status: statusDone, Done: []string{"a", "b"}, Skipped: []string{"c"}}
 	seed, err := valid.Encode()
 	if err != nil {
 		f.Fatalf("Encode seed: %v", err)
@@ -24,6 +24,7 @@ func FuzzCheckpointDecode(f *testing.F) {
 	f.Add([]byte("{}"))
 	f.Add([]byte(`{"Status":"done"`))
 	f.Add([]byte(`{"Status":"","Done":["a"]}`))
+	f.Add([]byte(`{"Status":"done","Done":["a"],"Skipped":["a"]}`))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		c, err := flow.Decode(data)
 		if err != nil {

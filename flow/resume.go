@@ -9,12 +9,17 @@ import (
 
 // Resume restarts a graph walk from a stored checkpoint. It seeds
 // outcomes from checkpoint.Done (every listed ID set to
-// OutcomeSucceeded), cur from checkpoint.Status, and rec from
-// checkpoint.Record, then continues the same graph walk Run uses.
-// Resume runs five entry checks in order, before any seeding happens:
-// a nil d, a nil m, a nil confirm, a checkpoint that fails Validate,
-// and a checkpoint.Done entry naming a step ID absent from d. The
-// first failing check returns an error immediately; no step runs.
+// OutcomeSucceeded) and checkpoint.Skipped (every listed ID set to
+// OutcomeSkipped), cur from checkpoint.Status, and rec from
+// checkpoint.Record, then continues the same graph walk Run uses. A
+// route exclusion or an admission skip captured before the pause
+// stays skipped after Resume; nextReadyGroup and admissionVerdict
+// never re-evaluate a step already seeded in outcomes. Resume runs
+// five entry checks in order, before any seeding happens: a nil d, a
+// nil m, a nil confirm, a checkpoint that fails Validate, and a
+// checkpoint.Done or checkpoint.Skipped entry naming a step ID absent
+// from d. The first failing check returns an error immediately; no
+// step runs.
 //
 // Resume performs no topology check across Done: it never confirms
 // that a step named in Done has every one of its own Needs also named
@@ -42,13 +47,20 @@ func Resume(
 		return Report{status: machine.Status(""), record: checkpoint.Record}, err
 	}
 
-	outcomes := make(map[string]Outcome, len(checkpoint.Done))
+	outcomes := make(map[string]Outcome, len(checkpoint.Done)+len(checkpoint.Skipped))
 	for _, id := range checkpoint.Done {
 		if !hasStep(d.steps, id) {
 			return Report{status: checkpoint.Status, record: checkpoint.Record},
 				errorf("resume: checkpoint names unknown step %q", id)
 		}
 		outcomes[id] = OutcomeSucceeded
+	}
+	for _, id := range checkpoint.Skipped {
+		if !hasStep(d.steps, id) {
+			return Report{status: checkpoint.Status, record: checkpoint.Record},
+				errorf("resume: checkpoint names unknown step %q", id)
+		}
+		outcomes[id] = OutcomeSkipped
 	}
 
 	return runLoop(ctx, d, m, checkpoint.Status, checkpoint.Record, outcomes, confirm, bus, onCheckpoint)
@@ -109,12 +121,13 @@ func runLoop(
 }
 
 // fireCheckpoint calls onCheckpoint with a fresh Checkpoint built from
-// cur, rec, and the OutcomeSucceeded entries of outcomes. A nil
-// onCheckpoint skips the call; the loop pays no cost building the
-// checkpoint value when the hook is nil.
+// cur, rec, the OutcomeSucceeded entries of outcomes, and the
+// OutcomeSkipped entries of outcomes. A nil onCheckpoint skips the
+// call; the loop pays no cost building the checkpoint value when the
+// hook is nil.
 func fireCheckpoint(onCheckpoint func(Checkpoint), cur machine.Status, rec machine.InOut, outcomes map[string]Outcome) {
 	if onCheckpoint == nil {
 		return
 	}
-	onCheckpoint(Checkpoint{Status: cur, Record: rec, Done: doneFrom(outcomes)})
+	onCheckpoint(Checkpoint{Status: cur, Record: rec, Done: doneFrom(outcomes), Skipped: skippedFrom(outcomes)})
 }

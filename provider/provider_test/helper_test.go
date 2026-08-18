@@ -76,3 +76,34 @@ type capableFake struct {
 
 func (c *capableFake) ContextWindow() int      { return c.contextWindow }
 func (c *capableFake) ReasoningEffort() string { return c.reasoningEffort }
+
+// tokenEstimatingFake implements TokenEstimator only, on top of the
+// required Completer methods.
+type tokenEstimatingFake struct {
+	fakeCompleter
+	tokens int
+	err    error
+}
+
+func (t *tokenEstimatingFake) EstimateTokens(req provider.Request) (int, error) {
+	if t.err != nil {
+		return 0, t.err
+	}
+	return t.tokens, nil
+}
+
+// capableTokenEstimatingFake implements ContextAccountant,
+// ReasoningPolicy, and TokenEstimator together, for the composition
+// test between EstimateTokens and ContextWindow.
+type capableTokenEstimatingFake struct {
+	capableFake
+	tokens int
+	err    error
+}
+
+func (c *capableTokenEstimatingFake) EstimateTokens(req provider.Request) (int, error) {
+	if c.err != nil {
+		return 0, c.err
+	}
+	return c.tokens, nil
+}

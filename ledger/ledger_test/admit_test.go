@@ -19,6 +19,21 @@ func newLedger(t *testing.T, bus *events.Bus) *ledger.Ledger {
 	return l
 }
 
+// TestAdmitRejectsEmptyKey proves Admit returns an error and does not
+// touch the store when the idempotency key is empty.
+func TestAdmitRejectsEmptyKey(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	_, err := l.Admit(ctx, testActor, "", 1, "payload", fixedNow)
+	if err == nil {
+		t.Fatalf("Admit with empty key: want error, got nil")
+	}
+	_, found, _ := l.State(ctx, "")
+	if found {
+		t.Fatalf("Admit with empty key must not create a record")
+	}
+}
+
 // TestAdmitFirstSucceeds proves the first Admit for a key stores a
 // StatusPending record and reports success.
 func TestAdmitFirstSucceeds(t *testing.T) {

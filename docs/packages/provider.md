@@ -23,6 +23,9 @@ below mirrors `api/provider.txt`.
   model's maximum token count.
 - `ReasoningPolicy` — an optional capability exposing the configured
   reasoning-effort level.
+- `TokenEstimator` — an optional capability exposing a best-effort
+  token count for a given `Request`, ahead of a `Chat` or `ChatStream`
+  call.
 
 ## Functions and methods
 

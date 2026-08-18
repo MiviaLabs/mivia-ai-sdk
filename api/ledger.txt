@@ -70,6 +70,7 @@ package ledger
   UpdatedBy Actor
   UpdatedAt time.Time
 }
+  var ErrEmptyOwner
   var ErrFenced
   var ErrLeaseActive
   var ErrNoKey

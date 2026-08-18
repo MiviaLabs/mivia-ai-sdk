@@ -54,6 +54,9 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 // carries CreatedBy/CreatedAt forward unchanged. Every successful
 // write sets UpdatedBy to actor and UpdatedAt to now.
 func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq Sequence, task any, now time.Time, needs ...IdempotencyKey) (bool, error) {
+	if key == "" {
+		return false, fmt.Errorf("ledger: idempotency key must not be empty")
+	}
 	needsCopy := append([]IdempotencyKey(nil), needs...)
 	for {
 		cur, found, err := l.store.Load(ctx, key)

@@ -139,6 +139,13 @@ via `make api-update`.
   optional context-size capability.
 - `type ReasoningPolicy interface { ReasoningEffort() string }` is
   the optional reasoning-policy capability.
+- `type TokenEstimator interface { EstimateTokens(req Request) (int, error) }`
+  is the optional token-estimation capability, added in phase 44
+  (`docs/plans/agents/phase44_provider_token_estimation.md`). It
+  exposes a best-effort token count for a given `Request`, ahead of a
+  `Chat` or `ChatStream` call. `EstimateTokens` returns a non-nil
+  error when it cannot produce an estimate; it returns `(0, nil)` only
+  for a `Request` the implementation judges to cost zero tokens.
 
 No constructor. `provider` defines no concrete type to construct; a
 caller builds its own `Completer` implementation and passes it where

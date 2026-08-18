@@ -1,7 +1,9 @@
 // Package channel gives every part of this SDK that must ask a
 // question and wait for a typed answer one shared shape to build a
 // closure from: Question, Answer, and Notifier. channel supplies the
-// shape only. It sends no bytes over any real transport.
+// shape and one reference transport, NewNDJSONNotifier, which speaks
+// newline-delimited JSON over an io.Reader and io.Writer pair. Callers
+// build any other transport themselves and implement Notifier.
 package channel
 
 import (
@@ -73,7 +75,8 @@ func (a Answer) Validate() error {
 
 // Notifier is a caller-implemented channel: prompt a human, call
 // Slack, call another agent, or any transport the caller owns.
-// channel ships no implementation. Notifier is a func type with no
-// method, so a caller assigns any matching closure with no wrapper
-// type.
+// channel also ships NewNDJSONNotifier, a reference Notifier that
+// speaks newline-delimited JSON over an io.Reader and io.Writer pair.
+// Notifier is a func type with no method, so a caller assigns any
+// matching closure with no wrapper type.
 type Notifier func(ctx context.Context, q Question) (Answer, error)

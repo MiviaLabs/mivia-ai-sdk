@@ -266,7 +266,7 @@ flowchart LR
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Response`,
   `Chunk`, `Chunk.Validate`, `ContextAccountant`, `ReasoningPolicy`,
-  and the sentinels `ErrToolCallIDUnexpected`, `ErrToolCallIDRequired`,
+  `TokenEstimator`, and the sentinels `ErrToolCallIDUnexpected`, `ErrToolCallIDRequired`,
   `ErrUnknownRole`, `ErrChunkErrDoneConflict`, and
   `ErrStreamClosedEarly`. `Completer` has no
   implementation in this SDK; a caller supplies its own concrete type.

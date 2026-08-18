@@ -10,6 +10,24 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 )
 
+// TestTakeoverRejectsEmptyOwner proves Takeover returns ErrEmptyOwner
+// and does not touch the store when owner is empty.
+func TestTakeoverRejectsEmptyOwner(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	mustAdmit(t, l, ctx, "k1", 1)
+	mustClaim(t, l, ctx, "k1", "owner-a")
+	stale := fixedNow.Add(fixedLease)
+	_, err := l.Takeover(ctx, testActor, "k1", "", fixedLease, stale)
+	if !errors.Is(err, ledger.ErrEmptyOwner) {
+		t.Fatalf("Takeover: got %v, want ErrEmptyOwner", err)
+	}
+	st, _, _ := l.State(ctx, "k1")
+	if st.Owner != "owner-a" {
+		t.Fatalf("Owner = %q, want owner-a", st.Owner)
+	}
+}
+
 // TestTakeoverWhileLeaseLiveRejected proves Takeover while LeaseUntil
 // is still after now returns ErrNotStale.
 func TestTakeoverWhileLeaseLiveRejected(t *testing.T) {

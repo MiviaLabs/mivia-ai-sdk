@@ -9,7 +9,7 @@ the decision below.
 ## Why this phase exists
 
 A prior review confirmed a real gap: `provider.ContextAccountant`
-(`provider/completer.go:19`) exposes only a model's context-window
+(`provider/completer.go:20`) exposes only a model's context-window
 ceiling, `ContextWindow() int`. No `Completer` capability answers how
 many tokens a given `Request` would cost before a caller calls `Chat`
 or `ChatStream`. `contextbudget.Limits`
@@ -21,12 +21,12 @@ estimate a `Request`'s token cost ahead of the call.
 ## The fix: one more optional capability interface
 
 `provider` gains a second optional `Completer` capability, parallel
-to `ContextAccountant`'s existing shape (`provider/completer.go:19`):
+to `ContextAccountant`'s existing shape (`provider/completer.go:20`):
 a small interface a concrete `Completer` implementation opts into, and
 a caller reaches through a type assertion, never a required method on
 `Completer` itself. This mirrors `ContextAccountant` and
-`ReasoningPolicy`'s existing pattern exactly (`provider/completer.go:19`
-and `:27`): a required two-method-plus-`Name` core, plus narrow,
+`ReasoningPolicy`'s existing pattern exactly (`provider/completer.go:20`
+and `:28`): a required two-method-plus-`Name` core, plus narrow,
 independently-adoptable extensions.
 
 `provider` ships no tokenizer. `Completer` already has zero
@@ -86,6 +86,26 @@ two-or-more-real-callers bar this repo already applies elsewhere
 own "three call sites" justification). This phase does not add that
 field speculatively.
 
+## Decision: `EstimateTokens` returns `(int, error)`
+
+`ContextAccountant.ContextWindow() int` and `ReasoningPolicy.
+ReasoningEffort() string` take no input; a static model property
+cannot fail. `EstimateTokens` takes a caller-supplied `Request`, the
+same way `Message.Validate() error` (`provider/types.go:55`) and
+`Chunk.Validate() error` (`provider/types.go:143`) take
+caller-supplied values; both of those return `error` when the input
+cannot be processed. `EstimateTokens` follows that precedent: its
+signature is `EstimateTokens(Request) (int, error)`, not
+`EstimateTokens(Request) int`.
+
+An `int`-only signature needs a sentinel value for "cannot estimate,"
+and 0 is not a safe sentinel: a `Request` with an empty `Messages`
+slice can legitimately estimate to 0 tokens, so a 0 return would be
+ambiguous between "empty input, zero cost" and "estimation failed."
+Returning `error` removes that ambiguity without inventing a new
+convention. This is the smaller, more consistent choice: it reuses an
+existing SDK pattern instead of documenting a bespoke sentinel rule.
+
 ## Scope
 
 Inside: `provider.TokenEstimator`, the new optional interface;
@@ -101,25 +121,30 @@ own phase. Outside: any change to `ContextAccountant` or
 `ReasoningPolicy`; both stay unchanged.
 
 `provider` gains no new import. `TokenEstimator`'s method signature
-uses only `provider.Request`, already defined in the package, and
-`int`, so no `policy/layers.json` change and no new stdlib import.
+uses only `provider.Request`, already defined in the package, plus
+the builtin `int` and `error` types, so no `policy/layers.json` change
+and no new stdlib import.
 
 ## API
 
 The surface below lands in `api/provider.txt` via `make api-update`.
 
-- `type TokenEstimator interface { EstimateTokens(Request) int }` —
+- `type TokenEstimator interface { EstimateTokens(Request) (int, error) }` —
   an optional `Completer` capability exposing a best-effort token
   count for a given `Request`, ahead of a `Chat` or `ChatStream`
   call. A caller type-asserts: `if te, ok :=
-  c.(provider.TokenEstimator); ok { n := te.EstimateTokens(req) }`,
+  c.(provider.TokenEstimator); ok { n, err := te.EstimateTokens(req) }`,
   the same pattern `ContextAccountant` and `ReasoningPolicy` already
   use. `EstimateTokens` takes the same `Request` value the caller
   intends to pass to `Chat`, so an implementation can account for
   every field: `Messages`, `Tools`, and any provider-specific
   overhead a real tokenizer adds for message framing. The estimate is
   best-effort and provider-defined; `provider` states no accuracy
-  guarantee and computes no estimate itself.
+  guarantee and computes no estimate itself. `EstimateTokens` returns
+  a non-nil `error` when it cannot produce an estimate for the given
+  `Request`; it returns `(0, nil)` only for a `Request` the
+  implementation judges to cost zero tokens, never as a failure
+  signal, per the decision above.
 
 No change to `Completer`, `ContextAccountant`, `ReasoningPolicy`,
 `Request`, `Response`, `RunTurn`, or any existing sentinel error. No
@@ -129,25 +154,43 @@ concrete.
 
 ## Tests
 
+`provider/provider_test/helper_test.go` gains two new fixture types.
+`capableFake` (`provider/provider_test/helper_test.go:71`) stays
+unchanged, so it continues to satisfy `ContextAccountant` and
+`ReasoningPolicy` but not `TokenEstimator`.
+
+- `tokenEstimatingFake` — embeds `fakeCompleter`; adds
+  `EstimateTokens(req Request) (int, error)`, returning a configured
+  `tokens` field and `err` field. It implements `TokenEstimator`
+  only, no `ContextAccountant` and no `ReasoningPolicy`.
+- `capableTokenEstimatingFake` — embeds `capableFake`; adds the same
+  `EstimateTokens` method. It implements `ContextAccountant`,
+  `ReasoningPolicy`, and `TokenEstimator` together, for the
+  composition test below. It is a distinct type from `capableFake`,
+  so `capableFake` itself keeps failing the `TokenEstimator` type
+  assertion.
+
 Test files live in `provider/provider_test/`:
 
-- `token_estimator_test.go` — a new red-green case file. A fake
-  `Completer` (reusing `completer_test.go`'s existing fake shape) that
-  additionally implements `TokenEstimator`, returning a fixed count
-  from a table of `Request` inputs; the type assertion succeeds and
-  `EstimateTokens` returns the configured count. A second fake that
-  implements `ContextAccountant` and `ReasoningPolicy` but not
-  `TokenEstimator`; the type assertion for `TokenEstimator` fails
-  cleanly (`ok == false`), proving the three optional capabilities
-  are independently adoptable, matching `completer_test.go`'s
-  existing "second fake implements both, third implements neither"
-  case shape for the other two capabilities.
-- `token_estimator_integration_test.go` — a fake `Completer`
+- `token_estimator_test.go` — a new red-green case file. A
+  `tokenEstimatingFake` returning a fixed count from a table of
+  `Request` inputs; the type assertion for `TokenEstimator` succeeds
+  and `EstimateTokens` returns the configured count and a nil error.
+  A second case sets the fake's `err` field and asserts
+  `EstimateTokens` returns that error unwrapped and a 0 count. A
+  third case uses the existing `capableFake`, unchanged; the type
+  assertion for `TokenEstimator` fails cleanly (`ok == false`),
+  proving the three optional capabilities are independently
+  adoptable, matching `completer_test.go`'s existing
+  `TestOptionalCapabilityInterfaces` case shape
+  (`provider/provider_test/completer_test.go:83`).
+- `token_estimator_integration_test.go` — a `capableTokenEstimatingFake`
   implementing both `ContextAccountant` and `TokenEstimator`; the
   test performs the caller-side comparison this plan recommends,
-  `EstimateTokens(req) < ContextWindow()`, for a `Request` under the
-  window and a `Request` over it, asserting the boolean result each
-  way. This proves the two interfaces compose in caller code with no
+  checking `EstimateTokens`'s error first, then comparing
+  `n < ContextWindow()`, for a `Request` under the window and a
+  `Request` over it, asserting the boolean result each way. This
+  proves the two interfaces compose in caller code with no
   `provider`-internal glue, matching the "no `contextbudget` change"
   decision above.
 
@@ -169,6 +212,13 @@ the fake's own body, not anything `provider` contributes.
 - `docs/packages/provider.md` gains a `TokenEstimator` entry next to
   `ContextAccountant` and `ReasoningPolicy`, stating the same
   type-assertion usage pattern.
+- `docs/plans/provider.md`'s API section gains a `TokenEstimator`
+  bullet next to its existing `ContextAccountant` and
+  `ReasoningPolicy` bullets, in the same change, so the plan's locked
+  surface stays current with `api/provider.txt`.
+- `docs/architecture.md:268`'s `provider/` symbol list gains
+  `TokenEstimator` next to `ContextAccountant` and `ReasoningPolicy`,
+  in the same change.
 - `docs/packages/contextbudget.md` is unchanged; this phase makes no
   claim requiring an update there.
 - No conformance vector change: `provider` defines no wire format,

@@ -9,6 +9,22 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 )
 
+// TestClaimRejectsEmptyOwner proves Claim returns ErrEmptyOwner and
+// does not touch the store when owner is empty.
+func TestClaimRejectsEmptyOwner(t *testing.T) {
+	ctx := context.Background()
+	l := newLedger(t, nil)
+	mustAdmit(t, l, ctx, "k1", 1)
+	_, err := l.Claim(ctx, testActor, "k1", "", fixedLease, fixedNow)
+	if !errors.Is(err, ledger.ErrEmptyOwner) {
+		t.Fatalf("Claim: got %v, want ErrEmptyOwner", err)
+	}
+	st, _, _ := l.State(ctx, "k1")
+	if st.Status != ledger.StatusPending {
+		t.Fatalf("Status = %q, want StatusPending", st.Status)
+	}
+}
+
 // TestClaimOnPendingSucceeds proves Claim on a pending record
 // succeeds and returns a nonzero FenceToken.
 func TestClaimOnPendingSucceeds(t *testing.T) {

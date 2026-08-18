@@ -31,6 +31,23 @@ deleting it, so idempotency holds for every key `MemStore` ever
 admitted, evicted or not. See "Eviction rule: tombstone, not delete"
 below for the exact fields a tombstone keeps and drops.
 
+## Revision note (round 3, closes the remaining two findings)
+
+Two gaps remained after round 3 review, both plan-text only. First,
+the eviction loop's stop condition named only "`liveCount` back at or
+under the cap," omitting the already-documented "terminal queue
+empty" case; a builder coding the count check alone would pop from an
+empty FIFO queue. "Eviction rule: tombstone, not delete" now states
+both stop conditions together, and also names and defines `liveCount`
+itself, since the prior text drove the trigger off `len(tasks)`, a
+counter that never shrinks once tombstoning replaces rather than
+deletes a map entry. Second, the plan never addressed
+`Ledger.Restore`'s interaction with `liveCount` or the eviction queue
+on a `MaxEntries`-bounded `MemStore`. The Scope section's "Outside"
+list now states this out of scope, with the reasoning: `Restore`
+targets cold-start recovery into a fresh `Store`, not replay into an
+already-bounded, already-evicting instance.
+
 ## Goal
 
 Give `MemStore` an optional bound on how many records it holds in
@@ -155,7 +172,20 @@ store has no equivalent in-process-growth concern the way `MemStore`
 does, since its cost lives on disk, not in the process's own heap.
 Outside: any way to recover a tombstoned record's original `Task` or
 `Needs` value; once evicted, that data is gone, by design, and a
-caller who cannot accept that must not enable `MaxEntries`.
+caller who cannot accept that must not enable `MaxEntries`. Outside:
+`Ledger.Restore`'s (`ledger/snapshot.go:36-47`) interaction with
+`liveCount` or the eviction queue on a `MaxEntries`-bounded `MemStore`.
+`Restore` is for cold-start recovery into a fresh `Store`
+(`ledger/snapshot.go:36-37`'s own doc comment), not for replaying a
+snapshot into the same, already-bounded, already-evicting store
+instance. Every restored key inserts through the same zero-old
+`CompareAndSwap` path `Admit` uses, so `liveCount` would count a
+restored tombstone-shaped record as live: no `TaskState` field marks a
+record as an original tombstone versus a genuine live one. `Restore`
+also has no original-insertion-order signal to rebuild the FIFO queue
+in true admission order. A caller who calls `Restore` against a
+`MaxEntries`-bounded `MemStore` accepts that `liveCount` and eviction
+order may not reflect the pre-snapshot state.
 
 ## API
 
@@ -200,12 +230,26 @@ sets.
 status, appended to exactly once per key, on the same `CompareAndSwap`
 call that writes the terminal status. A terminal record is never
 rewritten again, by `Complete`'s own existing rule, so no key is ever
-queued twice. When `MaxEntries` is positive and `len(tasks)` exceeds
-it after a successful write, `CompareAndSwap` pops the oldest-queued
-key and replaces its map entry with the tombstone described above
-(`Task` and `Needs` cleared, `Owner` and `LeaseUntil` zeroed, every
-other field unchanged), repeating until the map is back at or under
-the cap, mirroring `memory.Store`'s own oldest-inserted eviction
+queued twice. `MemStore` also keeps a `liveCount` counter, separate
+from `len(tasks)`: `liveCount` counts every key with a real, non-
+tombstoned record, incremented on each new key `Admit` inserts and
+decremented on each key `CompareAndSwap` tombstones. `len(tasks)`
+alone cannot drive eviction: tombstoning replaces a map entry rather
+than deleting it, so `len(tasks)` never shrinks and would leave the
+cap permanently exceeded after the first breach, forcing every
+terminal record to tombstone immediately instead of the bounded set
+`MaxEntries` promises.
+
+When `MaxEntries` is positive and `liveCount` exceeds it after a
+successful write, `CompareAndSwap` pops the oldest-queued key and
+replaces its map entry with the tombstone described above (`Task` and
+`Needs` cleared, `Owner` and `LeaseUntil` zeroed, every other field
+unchanged), decrementing `liveCount`. The loop repeats until one of
+two stop conditions is met, whichever comes first: `liveCount` is back
+at or under the cap, or the terminal queue is empty. A builder must
+code both conditions, not just the count check, or the loop pops from
+an empty queue once terminal keys run out before the cap is satisfied.
+Eviction order mirrors `memory.Store`'s own oldest-inserted eviction
 order. Once a key is tombstoned, it is never queued or tombstoned
 again: replacing its map entry does not touch the FIFO queue further
 for that key.

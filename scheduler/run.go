@@ -111,25 +111,30 @@ type dueJob struct {
 // each one's next fire time through sched.Next(now) before releasing
 // the lock, and drops an entry whose recomputed next is the zero
 // time. It then fires each due job in its own goroutine, tracked by
-// wg, so a slow Job never blocks the scheduling loop.
+// wg, so a slow Job never blocks the scheduling loop. The locked
+// collection runs in an anonymous function with defer Unlock so a
+// caller-supplied Schedule.Next panic cannot leak the mutex.
 func (s *Scheduler) fireDue(ctx context.Context, bus *events.Bus, wg *sync.WaitGroup) {
 	now := time.Now()
 
-	s.mu.Lock()
-	due := make([]dueJob, 0)
-	for id, e := range s.entries {
-		if e.next.IsZero() || e.next.After(now) {
-			continue
+	due := func() []dueJob {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		due := make([]dueJob, 0)
+		for id, e := range s.entries {
+			if e.next.IsZero() || e.next.After(now) {
+				continue
+			}
+			due = append(due, dueJob{id: id, job: e.job})
+			next := e.sched.Next(now)
+			if next.IsZero() {
+				delete(s.entries, id)
+			} else {
+				e.next = next
+			}
 		}
-		due = append(due, dueJob{id: id, job: e.job})
-		next := e.sched.Next(now)
-		if next.IsZero() {
-			delete(s.entries, id)
-		} else {
-			e.next = next
-		}
-	}
-	s.mu.Unlock()
+		return due
+	}()
 
 	for _, d := range due {
 		wg.Add(1)

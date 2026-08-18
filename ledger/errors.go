@@ -25,3 +25,6 @@ var ErrNoKey = errors.New("ledger: key has no record")
 // ErrUnknownStatus is returned by Complete when status is neither
 // StatusCompleted nor StatusFailed.
 var ErrUnknownStatus = errors.New("ledger: status must be StatusCompleted or StatusFailed")
+
+// ErrEmptyOwner is returned by Claim or Takeover when owner is empty.
+var ErrEmptyOwner = errors.New("ledger: owner must not be empty")

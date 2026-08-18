@@ -20,6 +20,9 @@ import (
 // ineligible; Claim reports that with ErrNotClaimed, matching
 // Takeover's vocabulary for a non-claimable status.
 func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
+	if owner == "" {
+		return 0, ErrEmptyOwner
+	}
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -157,6 +160,9 @@ func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, o
 // StatusPending or terminal record: Takeover never admits or claims a
 // never-claimed record; a caller uses Claim for that.
 func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
+	if owner == "" {
+		return 0, ErrEmptyOwner
+	}
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {

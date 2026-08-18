@@ -145,11 +145,12 @@ go get github.com/MiviaLabs/mivia-ai-sdk
 
 ## Quick start
 
-Compose an agent from an identity, a capability card, and a one-step
-plan, then run it. The step's content comes from a model provider, so
-swap `stubCompleter` for a real one to change what it asks. `Run`
-signs the step as an envelope message, a room checks the signer is a
-member, and the receiver acks it back.
+Compose a pipeline from an identity, a capability card, a two-step
+plan, and one tool per step. One `agentrun.Options` literal wires it
+all: `New` validates the plan-versus-machine transition matrix and
+the tool names, subscribes the bus, and builds the ack chain. `Run`
+signs each step as an envelope message, chains it into one
+verifiable thread, runs the step's tool, and records the result.
 
 ```go
 package main
@@ -159,116 +160,100 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
+	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
-	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
-	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/room"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// stubCompleter stands in for a real model client (OpenAI, Anthropic,
-// a local model). Swap it for one that calls a real API.
-type stubCompleter struct{}
-
-func (stubCompleter) Name() string { return "stub" }
-
-func (stubCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
-	return provider.Response{
-		Message: provider.Message{
-			Role:    provider.RoleAssistant,
-			Content: "Summarize the release notes in 3 bullets.",
-		},
-	}, nil
+// prefixTool returns its prefix joined to the step's payload, so each
+// step records a distinct, deterministic result.
+type prefixTool struct {
+	name   string
+	prefix string
 }
 
-func (stubCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
-	return nil, fmt.Errorf("stub: streaming not implemented")
+func (t prefixTool) Name() string { return t.name }
+
+func (t prefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	s, _ := in.Value.(string)
+	return tools.Out{Value: t.prefix + s}, nil
 }
 
 func main() {
-	id, err := identity.New() // this agent's key pair
-	if err != nil {
-		panic(err)
-	}
-	receiver, err := identity.New() // the agent it talks to
-	if err != nil {
-		panic(err)
-	}
-
-	// Generate the step's content through a model provider, before the
-	// plan builds. RunTurn dispatches to Chat or ChatStream; a real
-	// Completer wraps a hosted API, a stub wraps a canned response.
-	turn, err := provider.RunTurn(context.Background(), stubCompleter{}, provider.Request{
-		Messages: []provider.Message{
-			{Role: provider.RoleUser, Content: "Draft a one-line task for summarizing release notes."},
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	card := discovery.Card{Name: "summarizer", Capabilities: []string{"summarize"}}
+	artifacts := &agentrun.Artifacts{}
 	plan, err := flow.New([]flow.Step{
-		{ID: "ask", To: "asked", Payload: turn.Message.Content},
+		{ID: "review", To: "reviewed", Payload: "invoice 42"},
+		{ID: "ship", To: "shipped", Needs: []string{"review"},
+			PayloadFrom: agentrun.PayloadOf("review", artifacts)},
 	}, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	a, err := agent.New(id, card, plan) // compose: identity + capability + plan
+	id, err := identity.New()
+	if err != nil {
+		panic(err)
+	}
+	a, err := agent.New(id, discovery.Card{
+		Name: "invoice-agent", Capabilities: []string{"invoice.review"},
+	}, plan)
 	if err != nil {
 		panic(err)
 	}
 
-	rm, err := room.New("standup", receiver.Signer())
-	if err != nil {
-		panic(err)
-	}
-	if err := rm.Admit(id.Signer(), receiver.Signer()); err != nil {
-		panic(err)
-	}
+	reg := tools.New()
+	_ = reg.Add(prefixTool{name: "review", prefix: "reviewed: "})
+	_ = reg.Add(prefixTool{name: "ship", prefix: "shipped: "})
 
-	// wait plays the receiving agent: check membership, then build and
-	// confirm an ack.
-	wait := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
-		if err := rm.Accepts(msg); err != nil {
-			return envelope.Ack{}, err
-		}
-		ack, err := envelope.NewAck(msg, receiver.Signer(), "got it: "+msg.Payload)
-		if err != nil {
-			return envelope.Ack{}, err
-		}
-		return ack.Confirm(), nil
-	}
-
-	m, err := machine.New("queued", machine.Transition{From: "queued", To: "asked", Trigger: "send"})
+	m, err := machine.New("queued",
+		machine.Transition{From: "queued", To: "reviewed", Trigger: "run"},
+		machine.Transition{From: "reviewed", To: "shipped", Trigger: "run"},
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	// Run emits to bus; a caller must subscribe before it fires.
-	bus := events.New()
-	noop := func(context.Context, events.Event) error { return nil }
-	_ = bus.Subscribe(agent.MessageDeliveredEvent, noop)
-	_ = bus.Subscribe(agent.MessageAckedEvent, noop)
-	_ = bus.Subscribe(agent.ThreadVerifiedEvent, noop)
-
-	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, wait, bus, nil, rm.ID(), nil)
+	// One Options literal wires everything. New validates the
+	// plan-versus-machine matrix and the tool names, subscribes the
+	// bus, and builds the ack chain that runs each step's tool.
+	runner, err := agentrun.New(agentrun.Options{
+		Agent: a, Machine: m, Tools: reg, Artifacts: artifacts,
+	})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("status:", status) // prints "status: asked"
+
+	status, _, err := runner.Run(context.Background(), "thread-1", machine.InOut{})
+	if err != nil {
+		panic(err)
+	}
+	ship, _ := artifacts.Get("ship")
+	fmt.Println("status:", status)      // prints "status: shipped"
+	fmt.Println("ship artifact:", ship) // prints "shipped: reviewed: invoice 42"
 }
 ```
 
-See [docs/examples/agent-dispatch.md](docs/examples/agent-dispatch.md)
-for the full walkthrough, including a heartbeat monitor and captured
-events. See [docs/examples/envelope-flow.md](docs/examples/envelope-flow.md)
-and [docs/examples/room-flow.md](docs/examples/room-flow.md) for the
-envelope and room blocks on their own.
+Step two reads step one's result through `PayloadOf`, so the two
+tools chain without shared variables. From here the stack widens:
+
+- A model in the loop: swap the hand-written tool for
+  `subagent.ProviderTool` over a caller-supplied `Completer`; see
+  [docs/examples/provider-completer-turn.md](docs/examples/provider-completer-turn.md).
+- A subordinate agent as a step: wrap another runner with
+  `subagent.AsTool` and register it like any tool; see
+  [docs/packages/subagent.md](docs/packages/subagent.md).
+- A second agent answering over HTTP: the `dispatch` endpoint and
+  its `Send` client carry the same envelope messages across a
+  process boundary; see [docs/packages/dispatch.md](docs/packages/dispatch.md).
+- The raw exchange, with rooms and hand-written acks:
+  [docs/examples/agent-dispatch.md](docs/examples/agent-dispatch.md)
+  keeps the full walkthrough the quick start replaced, and
+  [docs/examples/envelope-flow.md](docs/examples/envelope-flow.md)
+  and [docs/examples/room-flow.md](docs/examples/room-flow.md) cover
+  the envelope and room blocks alone.
 
 ## Concepts
 

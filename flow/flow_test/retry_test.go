@@ -47,6 +47,16 @@ func TestRetryPolicyValidateRejectsZeroMaxDelay(t *testing.T) {
 	}
 }
 
+// TestRetryPolicyValidateAcceptsValidPolicy proves Validate returns
+// nil for a policy that meets both rules.
+func TestRetryPolicyValidateAcceptsValidPolicy(t *testing.T) {
+	t.Parallel()
+	p := flow.RetryPolicy{MaxAttempts: 1, BaseDelay: time.Millisecond, MaxDelay: time.Second}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
+
 // TestNextDelayDoublesAndClamps proves NextDelay returns BaseDelay
 // for attempt 1, doubles for later attempts, and clamps at MaxDelay.
 func TestNextDelayDoublesAndClamps(t *testing.T) {
@@ -71,6 +81,21 @@ func TestNextDelayDoublesAndClamps(t *testing.T) {
 		if got := p.NextDelay(tt.attempt); got != tt.want {
 			t.Errorf("NextDelay(%d) = %v, want %v", tt.attempt, got, tt.want)
 		}
+	}
+}
+
+// TestNextDelayClampsBaseDelayAboveMaxDelay proves the post-loop
+// clamp bounds a BaseDelay that already exceeds MaxDelay, even on the
+// first attempt where the doubling loop never runs.
+func TestNextDelayClampsBaseDelayAboveMaxDelay(t *testing.T) {
+	t.Parallel()
+	p := flow.RetryPolicy{
+		MaxAttempts: 5,
+		BaseDelay:   2 * time.Second,
+		MaxDelay:    time.Second,
+	}
+	if got := p.NextDelay(1); got != time.Second {
+		t.Fatalf("NextDelay(1) = %v, want %v", got, time.Second)
 	}
 }
 
@@ -158,6 +183,42 @@ func TestNextDelayAtMaxAttemptsStaysBounded(t *testing.T) {
 				t.Fatalf("NextDelay(%d) = %v, want in [0, %v]", tt.maxAttempts, got, tt.maxDelay)
 			}
 		})
+	}
+}
+
+// TestNewRejectsStepRetryWithZeroMaxAttempts pins the exact message
+// New returns when a step's RetryPolicy has MaxAttempts < 1, proving
+// New enforces RetryPolicy.Validate's rule itself, not only when a
+// caller calls Validate directly.
+func TestNewRejectsStepRetryWithZeroMaxAttempts(t *testing.T) {
+	t.Parallel()
+	_, err := flow.New([]flow.Step{
+		{ID: "a", To: "done", Retry: &flow.RetryPolicy{MaxAttempts: 0, MaxDelay: time.Second}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	want := `flow: step "a" retry: max attempts must be at least 1`
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+// TestNewRejectsStepRetryWithZeroMaxDelay pins the exact message New
+// returns when a step's RetryPolicy has a zero MaxDelay, proving New
+// enforces RetryPolicy.Validate's rule itself, not only when a caller
+// calls Validate directly.
+func TestNewRejectsStepRetryWithZeroMaxDelay(t *testing.T) {
+	t.Parallel()
+	_, err := flow.New([]flow.Step{
+		{ID: "a", To: "done", Retry: &flow.RetryPolicy{MaxAttempts: 3, MaxDelay: 0}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	want := `flow: step "a" retry: max delay must be positive`
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}
 }
 

@@ -2,10 +2,10 @@
 
 Status: the step graph, the sequential runner, the parallel panel
 waves, chaining, per-step outcomes, the admission rule, branch
-routing, the failure fallback path, and the checkpoint pause/resume
-pair ship. One more phase is planned: a bounded retry loop around a
-step's `Fire` call. This plan expands the earlier step-list design
-into a step runner for v1. Rationale in docs/research-state-machine.md.
+routing, the failure fallback path, the checkpoint pause/resume pair,
+and a bounded retry loop around a step's `Fire` call all ship. This
+plan expands the earlier step-list design into a step runner for v1.
+Rationale in docs/research-state-machine.md.
 `Run` returns a `Report` holding every step's terminal `Outcome`,
 replacing the boolean done map. Phase 22 shipped the admission rule,
 the skip semantics, and the branch step. Phase 23 shipped the fallback

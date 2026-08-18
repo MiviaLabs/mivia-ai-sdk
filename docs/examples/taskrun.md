@@ -70,7 +70,7 @@ func main() {
 
 ## Output
 
-The program prints `broke returned: true` and `replay: task already
-completed`. The third `Run` never runs its work. The ledger holds the
-`build` key at `StatusCompleted` and the `broke` key at
-`StatusFailed`.
+The program prints `broke returned: true` and
+`replay: taskrun: task already completed`. The third `Run` never runs
+its work. The ledger holds the `build` key at `StatusCompleted` and
+the `broke` key at `StatusFailed`.

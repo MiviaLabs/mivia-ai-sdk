@@ -4,8 +4,9 @@
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, tools, contextbudget,
 mcp, ledger, durablefence, memory, provider, channel, trigger,
-scheduler, and agent. Each package covers one concern and composes
-through its exported API. This doc tree covers the module map, the
+scheduler, agent, agentrun, and taskrun. Each package covers one
+concern and composes through its exported API. This doc tree covers
+the module map, the
 wire-protocol rationale, every package's exported surface, and
 runnable-style walkthroughs.
 
@@ -38,6 +39,8 @@ runnable-style walkthroughs.
 - [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.
 - [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive: a `Job`, a `Schedule`, and a `Scheduler` that fires each due job on its own timer.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
+- [packages/agentrun.md](packages/agentrun.md) — the config-struct composition layer: one `Options` value validated and wired into a `Runner` that drives `agent.Run`.
+- [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
 
 ## Examples
 
@@ -65,6 +68,8 @@ runnable-style walkthroughs.
 - [examples/discovery-capability-match.md](examples/discovery-capability-match.md) — a parsed capability card checked against a matching and a non-matching request.
 - [examples/identity-agent-key.md](examples/identity-agent-key.md) — a generated agent key signing an envelope message and matching its own hex signer.
 - [examples/a2a-mapping-roundtrip.md](examples/a2a-mapping-roundtrip.md) — a signed message mapped to an A2A `Part` and back, verified bit-for-bit.
+- [examples/agentrun.md](examples/agentrun.md) — a two-step plan run through the `agentrun` composition layer with a tool, an artifact, and a store.
+- [examples/taskrun.md](examples/taskrun.md) — the `taskrun` ledger ceremony: a successful build, a failed build, and a replay sentinel.
 
 ## Internal records
 

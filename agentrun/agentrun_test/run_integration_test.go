@@ -147,6 +147,37 @@ func (emptyTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	return tools.Out{Value: ""}, nil
 }
 
+// plainErrTool returns a fixed, non-escalated error.
+type plainErrTool struct{ err error }
+
+// Name returns the tool's registry name.
+func (plainErrTool) Name() string { return "boom" }
+
+// Run returns the fixed error without an escalation sentinel.
+func (t plainErrTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	return tools.Out{}, t.err
+}
+
+// TestRunToolPlainError proves a tool error that is not ErrEscalated
+// propagates from the built chain.
+func TestRunToolPlainError(t *testing.T) {
+	ctx := context.Background()
+	plan := mustFlow(t, []flow.Step{{ID: "boom", To: "resolved", Payload: "p"}}, nil)
+	boom := errors.New("steady fault")
+	runner, err := agentrun.New(agentrun.Options{
+		Agent:   mustAgent(t, plan),
+		Machine: oneStepMachine(t),
+		Tools:   registryOf(t, plainErrTool{err: boom}),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, _, err = runner.Run(ctx, "thread-boom", machine.InOut{})
+	if !errors.Is(err, boom) {
+		t.Fatalf("Run error = %v, want the tool's own error", err)
+	}
+}
+
 // TestRunRespectsRoom proves a Room stamps onto built messages without
 // changing the happy path.
 func TestRunRespectsRoom(t *testing.T) {

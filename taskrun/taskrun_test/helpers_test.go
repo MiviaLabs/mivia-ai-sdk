@@ -36,9 +36,10 @@ var errProbe = errors.New("probe: compare and swap failed")
 // CompareAndSwap and to fail a selected one.
 type probeStore struct {
 	ledger.Store
-	fence ledger.FenceToken
-	calls int
-	fail  int
+	fence    ledger.FenceToken
+	calls    int
+	fail     int
+	failLoad int
 }
 
 // CompareAndSwap records the incoming fence and, on the fail-th call,
@@ -50,4 +51,15 @@ func (s *probeStore) CompareAndSwap(ctx context.Context, key ledger.IdempotencyK
 		return false, errProbe
 	}
 	return s.Store.CompareAndSwap(ctx, key, old, new)
+}
+
+// Load returns errProbe on the failLoad-th call, else delegates.
+func (s *probeStore) Load(ctx context.Context, key ledger.IdempotencyKey) (ledger.TaskState, bool, error) {
+	if s.failLoad > 0 {
+		s.failLoad--
+		if s.failLoad == 0 {
+			return ledger.TaskState{}, false, errProbe
+		}
+	}
+	return s.Store.Load(ctx, key)
 }

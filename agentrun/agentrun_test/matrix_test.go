@@ -184,6 +184,19 @@ func TestValidateMatrixSubLoops(t *testing.T) {
 	})
 }
 
+// TestValidateMatrixNilGuards proves ValidateMatrix rejects a nil
+// plan and a nil machine before it walks anything.
+func TestValidateMatrixNilGuards(t *testing.T) {
+	m := mustMachine(t, "queued", tr("queued", "done", "x"))
+	if err := agentrun.ValidateMatrix(nil, m); err == nil {
+		t.Fatal("ValidateMatrix(nil, m) returned nil, want a nil-plan error")
+	}
+	plan := mustFlow(t, []flow.Step{{ID: "s", To: "done"}}, nil)
+	if err := agentrun.ValidateMatrix(plan, nil); err == nil {
+		t.Fatal("ValidateMatrix(plan, nil) returned nil, want a nil-machine error")
+	}
+}
+
 // assertMatrixPasses requires ValidateMatrix to return nil.
 func assertMatrixPasses(t *testing.T, plan *flow.Definition, m *machine.Definition) {
 	t.Helper()

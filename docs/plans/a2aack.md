@@ -56,8 +56,9 @@ The `AckWait` loop sends once, then polls `Status` every `Poll`,
 bounded by `Timeout` and `ctx`. Completed fetches the result and
 re-verifies its signature. Failed and canceled return a wrapped
 `ErrRemoteFailed`. The deadline or `ctx` returns a wrapped
-`ErrTimeout` with the last seen state. A Send that returns a context
-error maps to `ErrTimeout`; any other Send error propagates unwrapped.
+`ErrTimeout` with the last seen state. A Send, Status, or Result
+error that is a context error maps to `ErrTimeout` with the last
+seen state. Any other transport error propagates unwrapped.
 
 ## Tests
 

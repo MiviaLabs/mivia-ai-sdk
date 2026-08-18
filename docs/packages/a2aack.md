@@ -34,8 +34,9 @@ mirrors `api/a2aack.txt`.
 The returned `AckWait` runs the whole exchange for one message:
 
 1. Create a deadline from `Timeout` with `context.WithTimeout`.
-2. `Send` the message. A Send that returns a context error maps to a
-   wrapped `ErrTimeout`; any other Send error propagates unwrapped.
+2. `Send` the message. Any Send, Status, or Result error that is a
+   context error wraps `ErrTimeout` with the last seen state; any
+   other transport error propagates unwrapped.
 3. Select on a `Poll` ticker and the deadline ctx on every tick, and
    read `Status` on each tick. Non-terminal states — `StateSubmitted`,
    `StateWorking`, `StateUnspecified` — record the last state and

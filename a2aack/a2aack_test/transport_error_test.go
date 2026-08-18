@@ -32,6 +32,22 @@ func TestTransportResultError(t *testing.T) {
 	}
 }
 
+// TestTransportResultContextError proves a Result error that is a
+// context error wraps ErrTimeout, the same rule as Send and Status.
+func TestTransportResultContextError(t *testing.T) {
+	fake := &fakeRemote{statusStates: []a2aclient.State{a2aclient.StateCompleted},
+		resultErr: context.DeadlineExceeded}
+	msg := signedMessage(t)
+	ackFn, err := a2aack.Wait(fake, a2aack.Options{Poll: errPoll, Timeout: errTimeout})
+	if err != nil {
+		t.Fatalf("Wait returned validation error %v", err)
+	}
+	_, err = ackFn(context.Background(), msg)
+	if !errors.Is(err, a2aack.ErrTimeout) {
+		t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout) for a Result context error", err)
+	}
+}
+
 // TestTransportSignatureRejected proves an unsigned or tampered result
 // fails a2aack's own signature re-verification.
 func TestTransportSignatureRejected(t *testing.T) {

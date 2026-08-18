@@ -2,6 +2,7 @@ package a2aack_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -63,8 +64,8 @@ func TestPollInvariants(t *testing.T) {
 		if elapsed > 5*poll {
 			t.Fatalf("ackFn took %v after cancel, want return near the first poll tick", elapsed)
 		}
-		if ackErr == nil {
-			t.Fatal("ackFn() expected an error after ctx cancellation")
+		if !errors.Is(ackErr, a2aack.ErrTimeout) {
+			t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout) after ctx cancellation", ackErr)
 		}
 	})
 }

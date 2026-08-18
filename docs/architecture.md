@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the twenty-one packages and the import edges between
+The diagram shows the twenty-four packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
 `provider`, `tools`, and `trigger` are leaves: they import no other
@@ -49,6 +49,21 @@ flowchart LR
     a2aclient --> envelope
     mcp --> tools
     scheduler --> events
+    a2aack --> a2aclient
+    a2aack --> agent
+    a2aack --> envelope
+    agentrun --> agent
+    agentrun --> channel
+    agentrun --> contextbudget
+    agentrun --> envelope
+    agentrun --> events
+    agentrun --> flow
+    agentrun --> heartbeat
+    agentrun --> identity
+    agentrun --> machine
+    agentrun --> memory
+    agentrun --> tools
+    taskrun --> ledger
     contextbudget[contextbudget]
     discovery[discovery]
     durablefence[durablefence]
@@ -200,6 +215,17 @@ flowchart LR
   dial dependency `a2a-go`'s gRPC transport needs; this is the
   module's first external network call.
   See [packages/a2aclient.md](packages/a2aclient.md).
+- `a2aack/` — the remote step ack. It provides `Options`,
+  `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
+  an `agent.AckWait` that sends a gated step as a remote task, polls
+  `Status`, fetches `Result`, re-verifies its signature, and builds a
+  confirmed ack keyed off the sent message. `a2aack` imports
+  `a2aclient`, `agent`, and `envelope`. It carries no a2a-go import of
+  its own. See [packages/a2aack.md](packages/a2aack.md).
+- `agentrun/` — the config-struct composition layer over `agent.Run`.
+  See [packages/agentrun.md](packages/agentrun.md).
+- `taskrun/` — the ledger admit, claim, run, complete ceremony around
+  one work func. See [packages/taskrun.md](packages/taskrun.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
   a named action; a `Registry` resolves one by name and runs it. `Add`

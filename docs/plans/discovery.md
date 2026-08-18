@@ -1,8 +1,7 @@
 # Plan: discovery
 
-Status: shipped. Phase 11 of the agent work. The phase contract is
-docs/plans/agents/phase11_discovery.md. This package has no internal
-imports. See docs/research-agents.md for the capability-card decision.
+Status: shipped. This package has no internal imports. See
+docs/research-agents.md for the capability-card decision.
 
 ## Goal
 
@@ -22,8 +21,7 @@ never matches.
 
 Outside: fetching a card over a network, the a2a integration, and a
 multi-card registry. Those belong to a later composition phase. This
-package owns no transport and no client. See
-docs/plans/agents/phase11_discovery.md for the phase boundary.
+package owns no transport and no client.
 
 The package imports nothing of this module. It stays a leaf block,
 like envelope and events. Stdlib only: encoding/json, errors, fmt,

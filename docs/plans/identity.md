@@ -1,10 +1,8 @@
 # Plan: identity
 
-Status: shipped. Phase 8 of the agent work. The phase contract is
-docs/plans/agents/phase08_identity.md. This package depends on
-envelope, which is shipped. Later phases own the agent card, the
-trust policy, and the registry. A Validate hardening follows below
-to reject split-brain key files.
+Status: shipped. This package depends on envelope, which is shipped.
+The agent card, the trust policy, and the registry live elsewhere. A
+Validate hardening follows below to reject split-brain key files.
 
 ## Goal
 
@@ -57,11 +55,6 @@ The builder applies these doc-truth corrections in the same change:
   seed-derived key."
 - AGENTS.md Layout — add discovery/ and agent/ bullets.
 - docs/README.md:49 — change "tdd, and perf" to "unit, and benchmark."
-
-Do not touch docs/plans/agent.md,
-docs/plans/agents/phase13_agent_run.md,
-docs/protocol-design.md, or policy/layers.json. Those have uncommitted
-user edits from phase-13 work.
 
 ## API
 

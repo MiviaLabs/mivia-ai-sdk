@@ -1,16 +1,11 @@
 # Plan: agent
 
-Status: phase 12, phase 20, and phase 13 shipped. Phase 26 and phase
-28 are ready to build. Phase 13's contract is docs/plans/agents/
-phase13_agent_run.md. Phase 20's contract is docs/plans/agents/
-phase20_envelope_composition.md. Phase 26's contract is docs/plans/
-agents/phase26_agent_heartbeat.md. Phase 28's contract is docs/plans/
-agents/phase28_agent_run_room.md. Phase 12 depends on identity,
-discovery, and flow, all shipped. Phase 20 adds envelope and events,
-both shipped. Phase 13 adds the execution loop, descoped to the
-in-process runner (see below); phase 14 adds tools. Phase 26 adds an
-optional step-liveness heartbeat to `Run`. Phase 28 adds an optional
-room name to `Run`, so a built step message can pass `room.Room.Accepts`.
+Status: shipped. `Agent` depends on identity, discovery, and flow,
+all shipped. The envelope-to-events translator adds envelope and
+events. The execution loop is the in-process runner (see below); the
+`tools` package adds the tool registry separately. `Run` also carries
+an optional step-liveness heartbeat and an optional room name, so a
+built step message can pass `room.Room.Accepts`.
 
 ## Goal
 
@@ -25,19 +20,18 @@ Inside: the Agent type, New, Name, and Capabilities. New wires an
 identity, a discovery card, and a flow plan into one Agent.
 
 Outside: the execution loop, the tool registry, the memory store, and
-the transport binding. Those belong to phase 13 and later phases. This
+the transport binding. Those belong to `Run` and later additions. This
 package owns no goroutine, no context.Context walk, and no network
 call.
 
-The package imports identity, discovery, and flow. No other internal
-import through phase 12. Stdlib only: errors and fmt, for the sentinel
-errors and the wrapped card error. The policy row was
-`"agent": ["identity", "discovery", "flow"]` through phase 12.
+The package imports identity, discovery, and flow only, for the
+`Agent` definition itself. Stdlib only: errors and fmt, for the sentinel
+errors and the wrapped card error. The later additions below widen the
+policy row.
 
-### Phase 20 addition: scope
+### The envelope-to-events translator: scope
 
-Phase contract: docs/plans/agents/phase20_envelope_composition.md.
-This phase adds a thin translator inside the same `agent` package. It
+This adds a thin translator inside the same `agent` package. It
 turns a delivered `envelope.Message`, an `envelope.Ack`, or an
 `envelope.VerifyThread` outcome into one `events.Event`. It emits that
 event onto a caller-owned `events.Bus`. The translator is
@@ -58,27 +52,23 @@ policy row becomes `"agent": ["identity", "discovery", "flow",
 "envelope", "events"]`. `envelope`'s row and `events`'s row stay
 empty. Neither package gains an import of the other or of `agent`.
 
-### Phase 13 addition: scope
+### The run entry point: scope
 
-Phase contract: docs/plans/agents/phase13_agent_run.md. This phase
-adds the run entry point: `(*Agent).Run` drives the agent's bound
-`*flow.Definition` through `flow.Run`, in-process. It signs each
-gated step as an `envelope.Message`, waits on a caller-supplied ack
-resolver, and emits the phase 20 translator events at the right
-points. It routes an escalated step back to the caller through a
-sentinel error.
+`(*Agent).Run` drives the agent's bound `*flow.Definition` through
+`flow.Run`, in-process. It signs each gated step as an
+`envelope.Message`, waits on a caller-supplied ack resolver, and
+emits the translator events above at the right points. It routes an
+escalated step back to the caller through a sentinel error.
 
-The phase sketch proposed sending each step "through the a2a adapter
-or the in-process runner." The `a2a` package carries no code; its plan
-stays status future. This phase descopes to the in-process path only.
-`Run` never imports or assumes a network transport. See
-docs/plans/agents/phase13_agent_run.md for the full descoping
-rationale and the ack-resolution design.
+An earlier sketch proposed sending each step "through the a2a adapter
+or the in-process runner." `Run` descopes to the in-process path only
+and never imports or assumes a network transport; the `a2aclient`
+package owns the remote-send path separately.
 
 Inside: `Run`, the `AckWait` function type, and three new sentinels
-(`ErrEscalated`, `ErrNoWait`, `ErrNoThread`). `Run` reuses the phase 20
+(`ErrEscalated`, `ErrNoWait`, `ErrNoThread`). `Run` reuses the
 translator functions (`EmitMessageDelivered`, `EmitMessageAcked`,
-`EmitThreadVerified`) and the phase 20 sentinel `ErrNoBus`; it adds no
+`EmitThreadVerified`) and the translator's sentinel `ErrNoBus`; it adds no
 new emit function. Outside: the tool registry and the memory store
 (phases 14 and 15). Outside: any network transport binding; that
 belongs to the future `a2a` package.
@@ -89,18 +79,15 @@ becomes `"agent": ["identity", "discovery", "flow", "envelope",
 "events", "machine"]`. `machine`'s own row stays `["events"]`; it gains
 no new import.
 
-### Phase 26 addition: scope
+### Step-liveness heartbeat: scope
 
-Phase contract: docs/plans/agents/phase26_agent_heartbeat.md. This
-phase closes the one real liveness gap in `Run`: the caller-supplied
+This closes the one real liveness gap in `Run`: the caller-supplied
 `wait` call can block forever, with no stall signal. `Run` gains one
 trailing, optional parameter, `hb *heartbeat.Monitor`. `Run` beats it
 once per gated step, right before `wait`, and forgets it once, on
 every return path. `Run` never reads `Dead` itself; an external
 caller, holding the same `Monitor`, polls `Dead` and reacts on its
-own, for example by canceling `ctx`. See
-docs/plans/agents/phase26_agent_heartbeat.md for the full beat-id and
-beat-timing design.
+own, for example by canceling `ctx`.
 
 Inside: the new `hb` parameter, one beat call, one deferred forget
 call. Outside: a `Dead` check inside `Run`, a retry or cancellation
@@ -111,27 +98,24 @@ the kind `confirmStep` gates behind `wait`. `flow.Run`'s panel wave
 runs every panel member concurrently with no `Confirm` or `wait` call
 at all, so a panel of two or more members never reaches a beat call
 and `hb.Dead` can never report a stalled panel member. This is a
-known, disclosed limit, not a bug this phase fixes; see
-docs/plans/agents/phase26_agent_heartbeat.md's "Disclosed scope
-limit" section.
+known, disclosed limit, not a bug.
 
-The package imports gain `heartbeat` in this phase. The policy row
-becomes `"agent": ["identity", "discovery", "flow", "envelope",
+The package imports `heartbeat`. The policy row is
+`"agent": ["identity", "discovery", "flow", "envelope",
 "events", "machine", "heartbeat"]`. `heartbeat`'s own row stays
 `["events"]`; it gains no new import and does not import `agent`.
 
-`Run` does not add a `*machine.Definition` field to `Agent`. `Agent`
-stays the declarative binding `New` built in phase 12: an identity, a
+`Run` adds no `*machine.Definition` field to `Agent`. `Agent` stays
+the declarative binding `New` builds: an identity, a
 card, and a plan, no per-run state. The status model and the starting
 record are `Run` parameters, matching `flow.Run`'s own shape, so one
 `Agent` value can run against more than one machine model or resume
 with more than one starting record, without `New`'s signature or
 `Agent`'s fields changing.
 
-### Phase 28 addition: scope
+### Room stamping: scope
 
-Phase contract: docs/plans/agents/phase28_agent_run_room.md. This
-phase closes a room-admission gap: `Run` never sets `Message.Room`
+This closes a room-admission gap: `Run` never sets `Message.Room`
 before it signs a step message, so a `room.Room.Accepts` call can
 never admit a `Run`-built message. `Run` gains one trailing, optional
 parameter, `room string`. `confirmStep` stamps it onto each built
@@ -143,11 +127,12 @@ Inside: the new `room` parameter, one field assignment inside
 `confirmStep`, guarded so an empty `room` reproduces today's exact
 behavior (`Message.Room` stays the zero value). Outside: a `Room`
 field on `Agent`, a generic pre-sign decorator hook, and any change to
-`room.Room.Accepts` or to `envelope.Sign`. See
-docs/plans/agents/phase28_agent_run_room.md for the three rejected
-alternatives and why.
+`room.Room.Accepts` or to `envelope.Sign`. A `Room` field on `Agent`
+was rejected because room membership is a per-run concern, not part
+of the agent's declarative binding; a decorator hook was rejected as
+speculative generality with no second caller.
 
-The package's imports do not change in this phase. `agent` already
+The package's imports do not change here. `agent` already
 imports `envelope`, which already declares `Message.Room`; the policy
 row stays `["identity", "discovery", "flow", "envelope", "events",
 "machine", "heartbeat"]`.
@@ -160,7 +145,7 @@ make api-update.
 - `type Agent struct` holds an `*identity.Identity`, a
   `discovery.Card`, and a `*flow.Definition`. All three fields stay
   unexported. A caller reaches them through `Name`, `Capabilities`,
-  and `Run`, which phase 13 adds.
+  and `Run`, added below.
 - `func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)`
   builds an Agent from the three parts. It checks id for nil, calls
   card.Validate(), then checks plan for nil, in that order. It returns
@@ -258,7 +243,7 @@ Two reasons support the pointer choice. First, Agent holds an
 `*identity.Identity` field directly: a value receiver on Agent would
 still share the same underlying key material through that pointer, so
 copying Agent by value buys no isolation and only hides the shared
-state behind a false copy. Second, phase 13 adds mutable execution
+state behind a false copy. Second, `Run` adds mutable execution
 state, such as a tool registry and a memory store, to this same
 struct. Starting with a pointer receiver now avoids a receiver-style
 break when that state lands.
@@ -276,11 +261,11 @@ package agent
   var ErrNoPlan
 ```
 
-### Phase 20 addition: the envelope-to-events translator
+### The envelope-to-events translator: the API lock target
 
 Three exported functions, three exported `events.Name` constants, and
-one exported sentinel land in this phase. They join the phase 12
-surface above. Nothing from phase 12 changes.
+one exported sentinel land with the translator. They join the
+surface above. Nothing above changes.
 
 - `const MessageDeliveredEvent events.Name = "agent.message_delivered"`
   names the event `EmitMessageDelivered` emits.
@@ -338,13 +323,13 @@ on.
    name only. A free function states that plainly.
 4. The race test targets the translator's call path, not the bus
    directly. `events.Bus` already proves its own concurrency safety in
-   its own test suite. Phase 20's race test proves the translator adds
+   its own test suite. The translator's race test proves it adds
    no shared mutable state of its own. Many goroutines call
    `EmitMessageDelivered`, `EmitMessageAcked`, and `EmitThreadVerified`
    against one shared bus. An atomic counter proves each call still
    delivers exactly once.
 
-The expected `api/agent.txt` lock, phase 20 lines included:
+The expected `api/agent.txt` lock, translator lines included:
 
 ```text
 package agent
@@ -364,10 +349,7 @@ package agent
   var ErrNoPlan
 ```
 
-### Phase 13 addition: the run entry point
-
-Full design in docs/plans/agents/phase13_agent_run.md; this section
-states the API lock target.
+### The run entry point: the API lock target
 
 - `type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, error)`
   is the caller-supplied ack resolver. `Run` calls it once per step
@@ -406,10 +388,10 @@ states the API lock target.
 
 `Run` adds no new field to `Agent` and no new emit function. It reuses
 `EmitMessageDelivered`, `EmitMessageAcked`, `EmitThreadVerified`, and
-`ErrNoBus`, all already exported by the phase 20 translator.
+`ErrNoBus`, all already exported by the translator above.
 
-The expected `api/agent.txt` lock, phase 13 lines added to the phase
-20 block above:
+The expected `api/agent.txt` lock, run-entry-point lines added to the
+translator block above:
 
 ```text
   func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
@@ -419,17 +401,14 @@ The expected `api/agent.txt` lock, phase 13 lines added to the phase
   var ErrNoWait
 ```
 
-### Phase 26 addition: the heartbeat parameter
-
-Full design in docs/plans/agents/phase26_agent_heartbeat.md; this
-section states the API lock target.
+### The heartbeat parameter: the API lock target
 
 `Run`'s signature gains one trailing parameter:
 
 `func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)`
 
 `hb == nil` skips every heartbeat call; `Run` behaves exactly as the
-phase 13 section above describes. `hb != nil` adds, per gated step,
+run-entry-point section above describes. `hb != nil` adds, per gated step,
 one `hb.Beat(a.id.Signer()+":"+threadID, time.Now())` call right
 before `wait`, using one id for the whole `Run` call, and one deferred
 `hb.Forget` call on that same id that runs once, on every return path.
@@ -438,35 +417,33 @@ stay unchanged; `hb` gets no nil-check sentinel of its own, because a
 nil `Monitor` is a valid, supported "no telemetry" choice, not a
 caller error.
 
-The expected `api/agent.txt` diff, against the phase 13 block above:
+The expected `api/agent.txt` diff, against the run-entry-point block
+above:
 
 ```text
 - func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
 + func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
 ```
 
-This is a breaking change to every existing call site of `Run`. The
-full list of the 20 call sites that gain a trailing `nil` argument
-lives in docs/plans/agents/phase26_agent_heartbeat.md.
+This is a breaking change to every existing call site of `Run`. Every
+call site gains a trailing `nil` argument for `hb`.
 
-### Phase 28 addition: the room parameter
-
-Full design in docs/plans/agents/phase28_agent_run_room.md; this
-section states the API lock target.
+### The room parameter: the API lock target
 
 `Run`'s signature gains one trailing parameter:
 
 `func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)`
 
-`room == ""` skips the assignment; `Run` behaves exactly as the phase
-26 section above describes. `room != ""` sets `msg.Room = room` inside
-`confirmStep`, on every gated step's built message, before
-`a.id.Sign(msg)` runs. No new sentinel, constant, or type. `Run`'s
-existing sentinel checks stay unchanged; `room` gets no nil-or-empty
-check of its own, because an empty room is a valid, supported "no
-room" choice, not a caller error.
+`room == ""` skips the assignment; `Run` behaves exactly as the
+heartbeat-parameter section above describes. `room != ""` sets
+`msg.Room = room` inside `confirmStep`, on every gated step's built
+message, before `a.id.Sign(msg)` runs. No new sentinel, constant, or
+type. `Run`'s existing sentinel checks stay unchanged; `room` gets no
+nil-or-empty check of its own, because an empty room is a valid,
+supported "no room" choice, not a caller error.
 
-The expected `api/agent.txt` diff, against the phase 26 block above:
+The expected `api/agent.txt` diff, against the heartbeat-parameter
+block above:
 
 ```text
 - func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
@@ -474,10 +451,8 @@ The expected `api/agent.txt` diff, against the phase 26 block above:
 ```
 
 This is a breaking change to every existing call site of `Run`. Every
-call site listed in the phase 26 section above gains a trailing `""`
-argument in this change, since no existing test supplies a room name
-yet. The full rollout list lives in docs/plans/agents/
-phase28_agent_run_room.md.
+call site gains a trailing `""` argument in this change, since no
+existing test supplies a room name yet.
 
 ## Tests
 
@@ -533,9 +508,9 @@ Test files live in `agent/agent_test/`:
   the allocation budget; the builder records the measured baseline in
   this file.
 
-### Phase 20 addition: translator tests
+### Translator tests
 
-Test files land in `agent/agent_test/`, alongside the phase 12 files:
+Test files land in `agent/agent_test/`, alongside the definition files:
 
 - `translator_test.go` — the red-green cases. Start with the
   assertions; confirm they fail against the empty package, then
@@ -573,7 +548,7 @@ Test files land in `agent/agent_test/`, alongside the phase 12 files:
   EmitX functions against one shared bus. An atomic counter proves
   each call still delivers exactly once, with no data race.
 
-### Phase 20 gap-closure: nil-bus check-order coverage
+### Gap closure: nil-bus check-order coverage
 
 A review found a gap. TestEmitNilBusReturnsErrNoBus paired bus == nil
 only with valid envelope fixtures. A valid envelope passes verify
@@ -611,9 +586,7 @@ order. No exported symbol changes, so api/agent.txt does not change.
 No import edge changes, so policy/layers.json does not change. The
 builder edits only agent/agent_test/translator_test.go.
 
-### Phase 13 addition: run-loop tests
-
-Full test list in docs/plans/agents/phase13_agent_run.md. Summary:
+### Run-loop tests
 
 - `run_test.go` — red-green table cases for `Run`'s own checks: the
   nil-`wait`, nil-`bus`, and empty-`threadID` sentinels and their
@@ -637,18 +610,15 @@ Full test list in docs/plans/agents/phase13_agent_run.md. Summary:
 - `run_bench_test.go` — a two-step run with an in-process,
   synchronous `AckWait`, target under two milliseconds, with an
   `AllocsPerRun` budget recorded by the builder.
-- `lifecycle_integration_test.go` — the full-lifecycle proof this
-  phase adds beyond the original phase 13 test list: one one-member
+- `lifecycle_integration_test.go` — the full-lifecycle proof beyond
+  the run-loop table above: one one-member
   panel step and one sequential step, a real identity, card, plan, and
   machine model, asserting the exact ordered event sequence for a
   successful run and that a forced ack failure halts the walk without
   erasing the events already emitted for the steps that already
   passed.
 
-### Phase 26 addition: liveness tests
-
-Full test list in docs/plans/agents/phase26_agent_heartbeat.md.
-Summary:
+### Liveness tests
 
 - `liveness_test.go` — red-green cases for `hb == nil` (fully inert),
   `hb != nil` (beat lands before `wait`, `Forget` runs after `Run`
@@ -667,10 +637,7 @@ Summary:
 - `run_bench_test.go` gains `BenchmarkRunWithHeartbeat`, compared
   against the existing nil-`hb` benchmark.
 
-### Phase 28 addition: room-stamping tests
-
-Full test list in docs/plans/agents/phase28_agent_run_room.md.
-Summary:
+### Room-stamping tests
 
 - `run_test.go` gains two cases in the existing `Run` table: a
   non-empty `room` argument proves the built message's `Room` equals
@@ -684,7 +651,7 @@ Summary:
   the same setup with `room` left empty and asserts `Accepts` now
   returns a non-nil error, pinning the gap as a regression check.
 - Every existing call site to `a.Run(...)` gains a trailing `""`
-  argument, mirroring phase 26's mechanical rollout across the same
+  argument, mirroring the heartbeat parameter's mechanical rollout across the same
   files. No existing assertion changes.
 - `docs/examples/agent-dispatch.md` gets fixed in the same phase:
   thread the room string through the example's `Run` call using the
@@ -706,7 +673,7 @@ Summary:
 - The phase adds no conformance vectors. Agent composes existing
   wire-validated blocks; it defines no new wire schema of its own.
 
-### Phase 20 addition: verification
+### Translator: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.
@@ -729,7 +696,7 @@ Summary:
   schema. It composes envelope.Message, envelope.Ack, and
   envelope.VerifyThread, all already vector-covered in envelope.
 
-### Phase 20 gap-closure: verification
+### Gap closure: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.
@@ -753,7 +720,7 @@ Summary:
   fresh failures across the three scratch mutations, one per new
   case, where the old suite passed on all three.
 
-### Phase 13 addition: verification
+### Run entry point: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.
@@ -777,7 +744,7 @@ Summary:
 - docs/plans/a2a.md stays status future. This phase does not add code
   to a2a and does not require it.
 
-### Phase 26 addition: verification
+### Heartbeat: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.
@@ -798,7 +765,7 @@ Summary:
 - This phase adds no conformance vector. `Run`'s heartbeat addition
   carries no wire form of its own.
 
-### Phase 28 addition: verification
+### Room stamping: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.

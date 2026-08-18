@@ -1,15 +1,6 @@
 # Plan: a2aclient
 
-Status: phase 10, future. Builds on the landed phase 9 `a2a` package
-(`docs/plans/a2a.md`). See `docs/plans/agents/phase10_a2a_client.md`
-for the phase-tracking record and `docs/plans/agents/PHASES.md` for
-the phase order.
-
-Revision note: this plan was revised after a plan-reviewer round that
-found five gaps in the first draft: a missing Semgrep exception, a
-missing AGENTS.md amendment, an unverified dependency-footprint claim,
-a thin test list, and an unstated teardown story. All five are fixed
-below.
+Status: shipped. Builds on the landed `a2a` package (`docs/plans/a2a.md`).
 
 ## Goal
 

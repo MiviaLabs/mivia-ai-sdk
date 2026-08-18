@@ -1,8 +1,7 @@
 # Plan: tools
 
-Status: done. Build phase in docs/plans/agents/phase14_tools.md. This
-plan adds one item over that phase contract: `Registry.Remove`, agreed
-in an architecture review for symmetry with `room.Room.Admit`/`Remove`.
+Status: shipped. `Registry.Remove` was added for symmetry with
+`room.Room.Admit`/`Remove`, agreed in architecture review.
 
 ## Goal
 
@@ -61,14 +60,13 @@ existed.
 ### InOut and Out: a new type, not a reused one
 
 `machine.InOut` bundles one input and one output field in a single
-struct, shaped for a transition that mutates a record in place. The
-`Tool.Run` signature in the phase 14 contract takes one input value
-and returns a separate output value: `Run(ctx, in InOut) (Out, error)`.
-Reusing `machine.InOut` as the input type would leave its `Output`
-field unused and would still need a distinct `Out` return type the
-phase contract already names. It would also add a `tools` to `machine`
-import edge that no other requirement in this plan or the phase
-contract asks for. The `tools` package defines its own `InOut` and
+struct, shaped for a transition that mutates a record in place.
+`Tool.Run` takes one input value and returns a separate output value:
+`Run(ctx, in InOut) (Out, error)`. Reusing `machine.InOut` as the
+input type would leave its `Output` field unused and would still need
+a distinct `Out` return type. It would also add a `tools` to `machine`
+import edge that no requirement in this plan asks for. The `tools`
+package defines its own `InOut` and
 `Out` types instead. Each wraps one `any` payload, matching the shape
 `machine.InOut` uses for a single field, without pulling in
 `machine`'s transition-specific `Output` field or its import edge.

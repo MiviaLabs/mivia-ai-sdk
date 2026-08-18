@@ -1,8 +1,7 @@
 # Plan: room
 
-Status: the roster and admission surface below shipped before the
-phase system existed. Phase 27 adds membership staleness and is ready
-to build; its contract is docs/plans/agents/phase27_room_heartbeat.md.
+Status: shipped. The roster, admission, and membership-staleness
+surface below are all live.
 
 ## Goal
 
@@ -16,24 +15,40 @@ Remove/Promote, Leave, last-moderator protection, Accepts admission
 gate (signature verification plus membership of signer and recipients).
 Outside: message semantics (envelope), persistence, federation.
 
-### Phase 27 addition: scope
+### Membership staleness
 
-Phase contract: docs/plans/agents/phase27_room_heartbeat.md. `Room`
-tracks admission only; it never tracks activity. This phase adds
-`Room.StaleMembers`, backed by a caller-supplied `*heartbeat.Monitor`,
-which reports current roster members that have gone silent.
+`Room` tracks admission only; it never tracks activity on its own.
+`StaleMembers` reports current roster members that have gone silent,
+backed by a caller-supplied `*heartbeat.Monitor`. It intersects the
+`Monitor`'s `Dead` result with `Room`'s own roster, under `Room`'s own
+lock, so a removed id never appears even if the `Monitor` still holds
+a beat record for it.
 
-Inside: `StaleMembers` and one new sentinel, `ErrNoMonitor`.
-`StaleMembers` intersects the `Monitor`'s `Dead` result with `Room`'s
-own roster, under `Room`'s own lock. Outside: a `Room`-owned
-`Monitor`, a `Beat` passthrough method, and an automatic beat inside
-`Accepts`. See docs/plans/agents/phase27_room_heartbeat.md for the
-ownership, reconciliation, and `Accepts`-coupling design and its
-reasoning.
+`Room` does not own a `Monitor` itself. `New` takes no configuration,
+and a staleness timeout is caller-specific: two rooms plausibly want
+two different windows, a decision for the moderator, not `Room`. A
+caller that wants tracking builds one `Monitor` and passes it to
+`StaleMembers`; a caller that does not want it never builds one, and
+`Room`'s existing surface stays unchanged.
 
-The package imports gain `heartbeat` in this phase. The policy row
-becomes `"room": ["envelope", "heartbeat"]`. `heartbeat`'s own row
-stays `["events"]`; it gains no new import and does not import `room`.
+`Accepts` stays a pure admission gate with no side effect. It records
+no beat automatically, so it never forces a `Monitor` argument or a
+nil check onto a caller who does not want tracking. A caller that
+wants tracking beats explicitly after a successful `Accepts`:
+
+```go
+if err := r.Accepts(msg); err == nil {
+    _ = hb.Beat(msg.Signer, time.Now())
+}
+```
+
+`msg.Signer` is the same id space the roster keys by, so this beat and
+`StaleMembers`'s intersection line up without translation. `Room`
+gains no `Beat` passthrough method; `hb.Beat` already does the job.
+
+The package imports `heartbeat`. The policy row is
+`"room": ["envelope", "heartbeat"]`. `heartbeat`'s own row stays
+`["events"]`; it gains no new import and does not import `room`.
 
 ## API
 
@@ -44,10 +59,7 @@ signatures itself so callers cannot skip authentication. The lock
 gains the six sentinel `var` lines when api_surface learns vars;
 see gates.md; the api_surface fixes changed no symbol.
 
-### Phase 27 addition: the staleness API
-
-Full design in docs/plans/agents/phase27_room_heartbeat.md; this
-section states the API lock target.
+### The staleness API
 
 - `func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)`
   returns the sorted, defensively copied current roster members that
@@ -75,12 +87,10 @@ Leave, Remove, and Accepts against one Room. Synchronize with
 sync.WaitGroup; never time.Sleep. This makes `go test -race` exercise
 the mutex-guarded roster instead of passing vacuously.
 
-### Phase 27 addition: staleness tests
+### The staleness tests
 
-Full test list in docs/plans/agents/phase27_room_heartbeat.md.
-Summary, new files `room/liveness_test.go` and
-`room/liveness_integration_test.go`, matching room's existing flat
-layout:
+`room/liveness_test.go` and `room/liveness_integration_test.go`,
+matching room's existing flat layout:
 
 - `liveness_test.go` — a nil `hb` (`ErrNoMonitor`), no beats recorded
   (empty result), a mixed alive/stale current-member set, a stale id
@@ -96,14 +106,12 @@ layout:
   and `Promote` calls against one shared `Room` and `Monitor`, under
   `go test -race`.
 
-No new benchmark file; see docs/plans/agents/phase27_room_heartbeat.md
-for the reasoning.
+No new benchmark file; `StaleMembers` is a set intersection under an
+already-benchmarked lock, with no allocation-sensitive hot path.
 
 ## Verification
 
 `make verify` plus `go test -race ./...` for the mutex-guarded roster.
-
-### Phase 27 addition: verification
 
 - `make verify` passes: gofmt, vet, tests, the python gates, the
   Semgrep scan and probes, and the coverage block.

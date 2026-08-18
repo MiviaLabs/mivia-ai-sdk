@@ -1,9 +1,8 @@
 # Plan: a2a
 
-Status: phase 9 lands now. Phases 10 and 11 are future and stay out
-of scope until their own review. See
-`docs/plans/agents/phase09_a2a_mapping.md` and
-`docs/plans/agents/PHASES.md`.
+Status: shipped. The `a2aclient` package (`docs/plans/a2aclient.md`)
+builds on this package's mapping. Agent Card discovery through A2A
+stays future and out of scope until its own review.
 
 ## Goal
 
@@ -13,7 +12,7 @@ network call and no third-party import.
 
 ## Scope
 
-Phase 9 (this slice, landing now):
+Inside this package:
 
 - The `Part` type: a package-local struct that mirrors the A2A v1.0
   wire shape (`docs/research-a2a.md`, `docs/research-agents.md`). A2A
@@ -24,7 +23,7 @@ Phase 9 (this slice, landing now):
 - Conformance vectors for the mapped form.
 - Zero imports outside the standard library and `envelope`.
 
-Deferred to phase 10 (`docs/plans/agents/phase10_a2a_client.md`):
+Outside this package, owned by `a2aclient` instead:
 
 - The `a2a-go` client import (`a2aproject/a2a-go`) and the
   stdlib-only exception that import needs.
@@ -32,13 +31,13 @@ Deferred to phase 10 (`docs/plans/agents/phase10_a2a_client.md`):
   `Message` and `Task` wrapper types.
 - Any network call.
 
-Deferred to phase 11:
+Deferred to a future phase:
 
 - Discovery through A2A Agent Cards.
 
-Phase 9 is a client of nothing. It has no `Send`, no `Status`, no
-`Result`, and no `AgentCard`. Those symbols are phase 10 and 11 work;
-this plan drops the earlier draft that proposed them under phase 9.
+This package is a client of nothing. It has no `Send`, no `Status`, no
+`Result`, and no `AgentCard`. Those symbols belong to `a2aclient` and
+a future discovery phase.
 
 ## API
 
@@ -87,18 +86,17 @@ func FromPart(mapped Mapped) (envelope.Message, error)
 
 Design notes:
 
-- The phase-9 sketch in `docs/plans/agents/phase09_a2a_mapping.md`
-  pinned a two-value signature: `ToPart(m) (a2a.Part, error)` and
-  `FromPart(p) (envelope.Message, error)`. This plan supersedes that
-  signature: `Part` cannot carry message-level fields (`ContextID`,
-  `MessageID`), so the round-1 fix moved those fields off `Part` and
-  onto a separate return value. The phase's semantic mapping contract
+- An earlier sketch pinned a two-value signature: `ToPart(m) (a2a.Part,
+  error)` and `FromPart(p) (envelope.Message, error)`. This plan
+  supersedes that signature: `Part` cannot carry message-level fields
+  (`ContextID`, `MessageID`), so the fix moved those fields off `Part`
+  and onto a separate return value. The semantic mapping contract
   still holds under the new shape: `contextId` maps to `thread_id`,
   and `messageId` maps to `id`.
 - `Part` carries only part-level content: `Text`, `Data`, `Raw`,
   `URL`. `ContextID` and `MessageID` are A2A Message-level fields in
   the real wire shape, so they never sit on `Part`; they live on
-  `Mapped` instead. Phase 10 wires `Mapped.ContextID` and
+  `Mapped` instead. `a2aclient` wires `Mapped.ContextID` and
   `Mapped.MessageID` into `a2aproject/a2a-go`'s `Message` type without
   touching `Part`'s shape.
 - `ToPart` performs no signing and no mutation. The caller signs
@@ -126,18 +124,18 @@ Design notes:
   this codebase (`envelope`, `identity`, `room`, `machine`, `flow`)
   returns more than two values, and two adjacent string returns
   (`contextID`, `messageID`) invite an accidental swap at the call
-  site. `Mapped` is exported because phase 10 callers need `Part`,
+  site. `Mapped` is exported because `a2aclient` callers need `Part`,
   `ContextID`, and `MessageID` together.
-- `Part` carries no `Metadata` field. Phase 9 has no caller that reads
-  or writes A2A part metadata; a future phase adds it only when a
-  concrete caller needs it.
+- `Part` carries no `Metadata` field. No caller reads or writes A2A
+  part metadata; a future phase adds it only when a concrete caller
+  needs it.
 - No string literal replaces an existing envelope constant; `Part`
   introduces no new enum.
 
 `policy/layers.json` gains one row: `"a2a": ["envelope"]`. No other
-internal import is allowed in phase 9. `a2a` stays a leaf against the
-standard library: no third-party import lands until phase 10 grants
-the one exception `docs/plans/agents/phase10_a2a_client.md` proposes.
+internal import is allowed here. `a2a` stays a leaf against the
+standard library; `a2aclient` is the only package granted the
+third-party exception, in `docs/plans/a2aclient.md`.
 
 ## Tests
 

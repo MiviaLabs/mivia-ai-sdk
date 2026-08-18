@@ -4,13 +4,7 @@ Status: the step graph, the sequential runner, the parallel panel
 waves, and chaining ship. Three more phases are planned: step
 outcomes, branch routing, and failure routing. This plan expands
 the earlier step-list design into a step runner for v1. Rationale in
-docs/research-state-machine.md. The build phases live in
-docs/plans/agents/. See phases 4 through 7. Phase 4 owns the step graph
-and the cycle check. Phase 5 owns the sequential `Run` and the
-`Confirm` ack gate; see docs/plans/agents/phase05_flow_runner.md for
-its exact API and error contract. Phase 6 owns the parallel panel
-waves; see docs/plans/agents/phase06_flow_panels.md for its exact API
-and error contract. Phase 7 owns the chaining. Phase 21 owns the
+docs/research-state-machine.md. Phase 21 owns the
 per-step outcomes and the run `Report`; see
 docs/plans/agents/phase21_flow_outcomes.md. Phase 22 owns the
 admission rule, the skip semantics, and the branch step; see
@@ -81,12 +75,12 @@ pattern sources.
 - `New(steps []Step, panels []Panel) (*Definition, error)` to build a
   definition and reject cycles with Kahn's algorithm.
 - `type Confirm func(ctx context.Context, step Step) error` as the ack
-  gate a caller supplies. Phase 5 ships this shape.
+  gate a caller supplies.
 - `Run(ctx, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm) (machine.Status, machine.InOut, error)`
   to execute the graph and return the final status and record. Phase 21
   changes the return to `Report`.
-- A chained step nests another Definition as one step. Phase 7 ships
-  this through `Step.Sub`.
+- A chained step nests another Definition as one step, through
+  `Step.Sub`.
 - `type Outcome int` with `OutcomeSucceeded`, `OutcomeFailed`, and
   `OutcomeSkipped` as the terminal states. This lands in phase 21.
 - `type Report struct` with `Status`, `Record`, `Outcome`, and
@@ -156,7 +150,7 @@ fallback field. A fallback field would duplicate the Needs edge and
 can drift from it.
 
 The policy/layers.json row for flow is `"flow": ["events", "machine"]`.
-Phase 19 adds the `events` import for the step outcome bus emit.
+The `events` import carries the step outcome bus emit.
 `flow` never imports `envelope`. The audit thread stays caller-owned.
 The runner enforces the gate; the caller provides the transport.
 Phases 21 through 23 add no import edge. The failure context travels
@@ -165,9 +159,9 @@ through `context.Context`, which is stdlib.
 ## Tests
 
 Topological order on a diamond DAG. Cycle detection rejects a bad
-graph. Phase 5 covers the sequential case: linear order, the
+graph. The sequential case covers: linear order, the
 declaration-order tie-break, a gate failure, and an unconfirmed ack.
-A panel of independent steps runs in parallel; phase 6 covers a
+A panel of independent steps runs in parallel, covering a
 successful wave, a rejected member, and a cross-panel scheduling
 stall. Chaining runs a nested workflow and returns its status; this
 lands in phase 7. The audit thread verifies with VerifyThread after the run,

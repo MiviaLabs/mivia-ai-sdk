@@ -398,3 +398,41 @@ func TestConfirmRejectionAbortsDespiteFallback(t *testing.T) {
 		t.Fatal("\"fallback\" resolved despite the uncatchable confirm rejection")
 	}
 }
+
+// TestFallbackTwoNeedsWaitsForBothBeforeAdmitting proves a fallback
+// with two needs, declared between them, stays at verdictWait once its
+// first need fails and its second need is still unresolved: it runs
+// only after both needs settle, and it still catches the failure once
+// they do. admitsOnFailed returns verdictWait, not a premature
+// verdict, while any need has not yet resolved: this pins the
+// unresolved-need branch nextReadyGroup's declaration-order scan does
+// not otherwise reach, because a later step with no needs of its own
+// always resolves before the scan revisits a still-waiting fallback.
+func TestFallbackTwoNeedsWaitsForBothBeforeAdmitting(t *testing.T) {
+	t.Parallel()
+	riskyErr := errors.New("risky boom")
+	d, err := flow.New([]flow.Step{
+		{ID: "risky", To: "r"},
+		{ID: "fallback", Needs: []string{"risky", "safe"}, When: flow.AdmissionOnFailed, To: "f"},
+		{ID: "safe", To: "s"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: machine.Status("r"), Trigger: machine.Trigger("goR"),
+			Guard: rejectingGuard(riskyErr)},
+		machine.Transition{From: statusStart, To: machine.Status("s"), Trigger: machine.Trigger("goS")},
+		machine.Transition{From: machine.Status("s"), To: machine.Status("f"), Trigger: machine.Trigger("goF")},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	mustOutcome(t, report, "risky", flow.OutcomeFailed)
+	mustOutcome(t, report, "safe", flow.OutcomeSucceeded)
+	mustOutcome(t, report, "fallback", flow.OutcomeSucceeded)
+}

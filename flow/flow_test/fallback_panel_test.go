@@ -356,3 +356,75 @@ func TestTwoIndependentFailuresPendingDoesNotLeak(t *testing.T) {
 		t.Fatal("\"fallbackSecond\" resolved despite never running")
 	}
 }
+
+// TestRouteSkipLeavesUnrelatedPendingHandlerUntouched proves
+// prunePendingOnRoute's inner scan skips a pending entry whose
+// handlers set does not name the Route-skipped dependent: an
+// unrelated failure's fallback keeps its pending entry and still runs
+// to completion after the unrelated Route event. Pins that
+// prunePendingOnRoute only ever removes the skipped dependent from
+// the entries that actually declare it as a handler.
+func TestRouteSkipLeavesUnrelatedPendingHandlerUntouched(t *testing.T) {
+	t.Parallel()
+	otherErr := errors.New("other boom")
+	d, err := flow.New([]flow.Step{
+		{ID: "other", To: "o"},
+		{ID: "branch", To: "b", Route: keeping("kept")},
+		{ID: "otherFallback", Needs: []string{"other"}, When: flow.AdmissionOnFailed, To: "of"},
+		{ID: "kept", Needs: []string{"branch"}, To: "k"},
+		{ID: "dropped", Needs: []string{"branch"}, To: "d"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: machine.Status("o"), Trigger: machine.Trigger("goO"),
+			Guard: rejectingGuard(otherErr)},
+		machine.Transition{From: statusStart, To: machine.Status("b"), Trigger: machine.Trigger("goB")},
+		machine.Transition{From: machine.Status("b"), To: machine.Status("of"), Trigger: machine.Trigger("goOF")},
+		machine.Transition{From: machine.Status("of"), To: machine.Status("k"), Trigger: machine.Trigger("goK")},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	mustOutcome(t, report, "other", flow.OutcomeFailed)
+	mustOutcome(t, report, "otherFallback", flow.OutcomeSucceeded)
+	mustOutcome(t, report, "kept", flow.OutcomeSucceeded)
+	mustOutcome(t, report, "dropped", flow.OutcomeSkipped)
+}
+
+// TestOneMemberPanelFailureCaughtByFallback proves a step that is the
+// sole member of a one-member Panel follows the same catchable-failure
+// path as an ordinary singleton step: advanceGroup's scanPanel case,
+// for a one-member group, calls resolveCatchable exactly like
+// scanSingleton does, and a declared fallback catches the failure the
+// same way.
+func TestOneMemberPanelFailureCaughtByFallback(t *testing.T) {
+	t.Parallel()
+	riskyErr := errors.New("risky boom")
+	d, err := flow.New([]flow.Step{
+		{ID: "risky", To: "r"},
+		{ID: "fallback", Needs: []string{"risky"}, When: flow.AdmissionOnFailed, To: "f"},
+	}, []flow.Panel{{"risky"}})
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New(statusStart,
+		machine.Transition{From: statusStart, To: machine.Status("r"), Trigger: machine.Trigger("goR"),
+			Guard: rejectingGuard(riskyErr)},
+		machine.Transition{From: statusStart, To: machine.Status("f"), Trigger: machine.Trigger("goF")},
+	)
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	mustOutcome(t, report, "risky", flow.OutcomeFailed)
+	mustOutcome(t, report, "fallback", flow.OutcomeSucceeded)
+}

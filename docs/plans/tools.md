@@ -1,6 +1,6 @@
 # Plan: tools
 
-Status: new. Build phase in docs/plans/agents/phase14_tools.md. This
+Status: done. Build phase in docs/plans/agents/phase14_tools.md. This
 plan adds one item over that phase contract: `Registry.Remove`, agreed
 in an architecture review for symmetry with `room.Room.Admit`/`Remove`.
 

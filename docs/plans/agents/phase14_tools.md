@@ -1,8 +1,9 @@
 # Phase 14: tools registry
 
-Status: future. Builds the tools block. A tool is a named action the
+Status: done. Builds the tools block. A tool is a named action the
 agent can call. The registry holds the tools and resolves a name to an
-action. This phase owns the registry and the execution.
+action. This phase owns the registry and the execution. See
+docs/plans/tools.md for the shipped plan.
 
 ## Goal
 
@@ -23,10 +24,13 @@ registry in this phase. The memory bind follows in phase 15.
 - `(*Registry).Add(t Tool) error`
 - `(*Registry).Get(name string) (Tool, bool)`
 - `(*Registry).Run(ctx context.Context, name string, in InOut) (Out, error)`
+- `(*Registry).Remove(name string) bool`
 
 `Add` rejects a duplicate name. `Get` returns false for an unknown
-name. `Run` wraps `Get` and the action. A tool never sees the agent.
-The interface earns its place because tools are many and replaceable.
+name. `Run` wraps `Get` and the action. `Remove` reports whether a
+name was present, added in `docs/plans/tools.md` for symmetry with
+`room.Room.Admit`/`Remove`. A tool never sees the agent. The interface
+earns its place because tools are many and replaceable.
 
 ## Tests
 

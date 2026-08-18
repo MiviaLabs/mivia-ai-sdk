@@ -121,9 +121,10 @@ composition comes last.
   other.
 - Documentation: phase 45, a runnable example composing `agent.Run`
   with `provider`, `tools`, `mcp`, `ledger`, and `memory` through their
-  existing composition seams. Depends only on already-shipped
-  packages. It adds no code and no new `policy/layers.json` edge; see
-  docs/plans/agents/phase45_agent_composition_example.md.
+  existing composition seams (shipped; see docs/packages/agent.md and
+  docs/examples/agent-composition.md; no standalone phase 45 plan file
+  remains). Depended only on already-shipped packages. It added no
+  code and no new `policy/layers.json` edge.
 - Durability and reference gaps: phase 42, a `ledger.Store` backed by
   the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
   tag (shipped; see docs/plans/ledger.md); phase 42b, a
@@ -156,6 +157,15 @@ composition comes last.
   without changing that file, and stays separate from phase 45's doc
   walkthrough. See
   docs/plans/agents/phase46_system_integration_suite.md.
+- Concurrency verification: phase 47, a concurrency integration
+  suite: the race detector joins `make verify`, and five new test
+  files close the gaps phase 46 leaves open: concurrent `agent.Run`
+  calls over shared blocks, the `channel.Notifier`-to-approval wiring,
+  the `ledger` Renew-Complete race, `mcp` concurrent calls, and a
+  loopback `a2a-go` server round trip. It depends on phase 46 and on
+  already-shipped packages, adds no exported symbol, and needs no new
+  `policy/layers.json` row. See
+  docs/plans/agents/phase47_concurrency_integration_suite.md.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
@@ -167,10 +177,10 @@ docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
 docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
 loop) shipped; see docs/plans/flow.md's Phase 38 subsection. Phase 43's
 own plan folded into docs/plans/channel.md on shipping; no standalone
-phase 43 plan file remains. Phase 45
-(agent composition example) is plan-only; it has not gone through plan
-review yet. It depends only on already-shipped packages and adds no
-code, so it is independently buildable now.
+phase 43 plan file remains. Phase 45's own plan folded into
+docs/packages/agent.md and docs/examples/agent-composition.md on
+shipping; no standalone phase 45 plan file remains. It depended only
+on already-shipped packages and added no code to any package.
 
 Phase 42 (ledger durable store) has shipped: `SQLiteStore` landed
 behind the `ledger_sqlite` build tag, backed by the pure-Go
@@ -196,6 +206,11 @@ through plan review yet. It is independently buildable now: every
 package it exercises has already shipped, and it needs neither phase
 42's durable backend nor phase 43's reference transport, using
 `ledger.MemStore` and a test-local closure in their place.
+
+Phase 47 (concurrency integration suite) is plan-only; it has not
+gone through plan review yet. It is buildable once phase 46 lands,
+since its shared-block suite extends phase 46's fixture. Its Makefile
+step strengthens `make verify`; it weakens no existing gate.
 
 ## Gate interactions
 

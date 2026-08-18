@@ -19,6 +19,7 @@ verify-fast:
 	python3 scripts/check_semgrepignore.py
 		python3 scripts/check_labels.py
 		python3 scripts/check_names.py
+		python3 scripts/check_examples_sync.py
 	$(SEMGREP_SCAN)
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 

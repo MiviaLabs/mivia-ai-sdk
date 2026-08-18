@@ -168,7 +168,10 @@ flowchart LR
   step. A panel step reaches no `Fits` check either. `agent` imports
   `envelope`, `events`, `machine`, `heartbeat`, and `contextbudget`;
   none of those five packages imports `agent` or any of the other
-  four. See [packages/agent.md](packages/agent.md).
+  four. `provider`, `tools`, `mcp`, `ledger`, and `memory` compose
+  around `Run` through `AckWait` and plan construction, not through a
+  direct import edge; the flowchart above draws no new arrow for them.
+  See [packages/agent.md](packages/agent.md).
 - `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
   `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
   `MissedEvent`. `Monitor` tracks liveness by time: it records the

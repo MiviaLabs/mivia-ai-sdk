@@ -150,6 +150,38 @@ composes signing, workflow stepping, event emission, liveness
 tracking, and budget accounting without any of those packages knowing
 an agent exists.
 
+## Composing with provider, tools, mcp, ledger, and memory
+
+`agent` imports none of `provider`, `tools`, `mcp`, `ledger`, or
+`memory`. Each composes with `Run` through a seam `Run` already
+exposes, not through a new import.
+
+- `provider`. A caller calls `provider.RunTurn` against a `Completer`
+  while building a step's `Payload` string, before `flow.New` runs.
+  `Run` fixes `Payload` before it starts; `wait` has no way to feed
+  generated content back into an already-signed message. Plan-
+  construction time is the only place a model turn's output plugs in.
+- `tools`. An `AckWait` closure reads `msg.Payload`, decides which
+  tool call it names, and calls `Registry.RunScoped(ctx, name, in,
+  scope)` before it builds the returned `envelope.Ack`. `AckWait`'s
+  existing signature already gives the closure everything `RunScoped`
+  needs. A nil `scope` skips both `Allowed` and `approve`.
+- `mcp`. `mcp.RegisterAll` maps an MCP server's tools onto
+  `tools.Tool` and adds them to a `tools.Registry`, the same `Registry`
+  an `AckWait` closure already holds. A caller calls it once before
+  `Run` starts; `agent` never needs to import `mcp`.
+- `ledger`. A caller calls `ledger.Claim`, runs `agent.Run` as the
+  claimed task's body, then calls `ledger.Complete` with the status
+  `Run`'s own returned error decides: `ledger.StatusFailed` on a
+  non-nil error, `ledger.StatusCompleted` otherwise.
+- `memory`. A caller puts shared context into a `memory.Store` at
+  plan-construction time and threads the returned ref into a
+  `Step.Payload`, or puts a tool's result into the `Store` inside
+  `AckWait` after `RunScoped` returns.
+
+See [../examples/agent-composition.md](../examples/agent-composition.md)
+for a runnable program composing all five.
+
 ## Cross-references
 
 - [identity.md](identity.md) — the key `New` binds and `Run` signs

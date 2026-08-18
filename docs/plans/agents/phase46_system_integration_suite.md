@@ -17,8 +17,9 @@ suite tests in-process composition, not a real stdio pipe.
 
 ### Relation to phase 45
 
-Phase 45 (`docs/plans/agents/phase45_agent_composition_example.md`)
-adds one narrated, non-asserting doc example,
+Phase 45 (shipped; see `docs/packages/agent.md` and
+`docs/examples/agent-composition.md`; no standalone phase 45 plan file
+remains) adds one narrated, non-asserting doc example,
 `docs/examples/agent-composition.md`. It shows `provider`, `tools`,
 `mcp`, `ledger`, and `memory` composing around `agent.Run` through
 existing seams. It is prose with one runnable program; a reader

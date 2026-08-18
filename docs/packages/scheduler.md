@@ -59,8 +59,6 @@ Use `errors.Is` to test these.
 
 ## Invariants
 
-- `Add` rejects a blank id, a nil `sched`, a nil `job`, and a
-  duplicate id, each with its own sentinel error.
 - `Add` never calls `sched.Next` itself. It registers the entry
   pending; `Run`'s own loop goroutine computes the first
   `Next(time.Now())` the next time that loop wakes. Every `Next` call

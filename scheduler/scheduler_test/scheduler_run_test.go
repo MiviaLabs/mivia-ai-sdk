@@ -257,6 +257,50 @@ func TestRunAtScheduleFullyInPastNeverFires(t *testing.T) {
 	}
 }
 
+// staleSchedule always returns a fixed time already in the past,
+// violating Schedule's "strictly after after" contract on purpose.
+
+type staleSchedule struct{ fixed time.Time }
+
+// Next always returns fixed, regardless of after.
+func (s staleSchedule) Next(after time.Time) time.Time {
+	return s.fixed
+}
+
+// TestRunStaleScheduleFiresImmediatelyWithoutHanging covers a Schedule
+// whose Next reports a time already in the past by the time Run reads
+// it: Run must still fire the job promptly, proving Run fires an
+// entry promptly for a stale or misbehaving Schedule instead of
+// hanging.
+func TestRunStaleScheduleFiresImmediatelyWithoutHanging(t *testing.T) {
+	s := scheduler.New()
+	rec := &recorder{}
+	job := func(ctx context.Context) error {
+		rec.record("stale")
+		return nil
+	}
+	stale := staleSchedule{fixed: time.Now().Add(-time.Hour)}
+	if err := s.Add("stale", stale, job); err != nil {
+		t.Fatalf("Add error = %v, want nil", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx, nil) }()
+
+	deadline := time.After(2 * time.Second)
+	for rec.count("stale") < 1 {
+		select {
+		case <-deadline:
+			t.Fatal("stale job never fired; wait<0 clamp did not run")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	cancel()
+	<-done
+}
+
 // TestRunRemoveMidRunStopsFutureFirings covers Remove called while
 // Run is blocked: the removed job's future firings stop.
 func TestRunRemoveMidRunStopsFutureFirings(t *testing.T) {

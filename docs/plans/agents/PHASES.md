@@ -98,7 +98,7 @@ composition comes last.
   wire form, flow step graph, flow sequential runner, flow parallel
   panels, flow chaining.
 - Transport and identity: identity key wrap, a2a mapping, a2a client,
-  discovery agent card.
+  discovery agent card, MCP tool-calling client.
 - Composition: agent definition, agent execution loop, tools
   registry, memory context store.
 - System: the end-to-end two-agent exchange.
@@ -109,15 +109,18 @@ composition comes last.
   of each other.
 - Model and durability: model provider interface, flow retry policy,
   tools capability markers, agent context budget, durable-fence
-  conformance kit, ledger durable admission. Phase 30 depends on
-  phases 21 through 23 landing first. Phase 33 depends on phase 34.
-  The rest ship independently of each other.
+  conformance kit, ledger durable admission, tool approval gating.
+  Phase 30 depends on phases 21 through 23 landing first. Phase 33
+  depends on phase 34. Phase 36 depends on phase 31 landing first. The
+  rest ship independently of each other.
 
 Each plan names its phase number and its dependency on the prior phase.
+Phase 35 depends on phase 14 (tools) landing first.
 
 Phases 29 and 30 passed plan review in three rounds. Phase 31 and 33
 passed in three rounds each. Phase 32 passed in four rounds. Phase 34
 passed in five rounds. Every phase in this group is ready to build.
+Phase 36 is plan-only; it has not yet gone through plan review.
 
 ## Gate interactions
 

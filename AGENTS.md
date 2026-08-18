@@ -36,6 +36,13 @@ Go SDK for building AI agents. Module:
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
   Run. A leaf package; no internal imports. No caller yet; the agent
   binding is a later phase.
+- `ledger/` — the durable-task-admission primitive: idempotency-keyed
+  admission, a leased claim with a monotonic fence, renewal, a stale
+  takeover, and dependency-driven blocking on failure. Imports
+  machine and events only.
+- `memory/` — the shared context store: Store, New, Put, Get, keyed
+  by `envelope.ContextRef`. A size budget evicts the oldest-inserted
+  blobs. Imports envelope only.
 - `agent/` — the composition layer: wires blocks into an agent.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.

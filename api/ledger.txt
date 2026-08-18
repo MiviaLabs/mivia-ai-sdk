@@ -1,0 +1,66 @@
+package ledger
+  const AdmittedEvent = "ledger.admitted"
+  const BlockedEvent = "ledger.blocked"
+  const ClaimedEvent = "ledger.claimed"
+  const CompletedEvent = "ledger.completed"
+  const ReleasedEvent = "ledger.released"
+  const RenewedEvent = "ledger.renewed"
+  const StatusBlocked = "blocked"
+  const StatusClaimed = "claimed"
+  const StatusCompleted = "completed"
+  const StatusFailed = "failed"
+  const StatusPending = "pending"
+  const TakenOverEvent = "ledger.taken_over"
+  func (l *Ledger) Admit(ctx context.Context, key IdempotencyKey, seq Sequence, task any, needs ...IdempotencyKey) (bool, error)
+  func (l *Ledger) Blocked(ctx context.Context, key IdempotencyKey) (IdempotencyKey, bool, error)
+  func (l *Ledger) Claim(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
+  func (l *Ledger) Complete(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, status machine.Status) (error)
+  func (l *Ledger) Release(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken) (error)
+  func (l *Ledger) Renew(ctx context.Context, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) (error)
+  func (l *Ledger) Restore(ctx context.Context, s Snapshot) (error)
+  func (l *Ledger) Snapshot(ctx context.Context) (Snapshot, error)
+  func (l *Ledger) State(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+  func (l *Ledger) Takeover(ctx context.Context, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
+  func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
+  func (m *MemStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+  func (m *MemStore) Range(ctx context.Context, fn func(TaskState) bool) (error)
+  func (s Snapshot) Encode() ([]byte, error)
+  func (s Snapshot) Validate() (error)
+  func (s TaskState) Validate() (error)
+  func Decode(data []byte) (Snapshot, error)
+  func New(store Store, bus *events.Bus) (*Ledger, error)
+  func NewMemStore() (*MemStore)
+  type FenceToken uint64
+  type IdempotencyKey string
+  type Ledger struct {
+}
+  type MemStore struct {
+}
+  type OwnerID string
+  type Sequence uint64
+  type Snapshot struct {
+  Tasks []TaskState
+}
+  type Store interface {
+	Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+	CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
+	Range(ctx context.Context, fn func(TaskState) bool) error
+}
+  type TaskState struct {
+  Key IdempotencyKey
+  Status machine.Status
+  Sequence Sequence
+  Owner OwnerID
+  Fence FenceToken
+  LeaseUntil time.Time
+  Needs []IdempotencyKey
+  BlockedBy IdempotencyKey
+  Task any
+  Rev uint64
+}
+  var ErrFenced
+  var ErrLeaseActive
+  var ErrNoKey
+  var ErrNotClaimed
+  var ErrNotStale
+  var ErrUnknownStatus

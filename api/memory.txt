@@ -1,0 +1,9 @@
+package memory
+  func (s *Store) Get(ref string) ([]byte, error)
+  func (s *Store) Put(content []byte) (ref string, err error)
+  func New(maxBytes int) (*Store, error)
+  type Store struct {
+}
+  var ErrBudgetExceeded
+  var ErrNoBudget
+  var ErrUnknownRef

@@ -14,6 +14,8 @@
     "identity": ["envelope"],
     "ledger": ["machine", "events"],
     "machine": ["events"],
+    "mcp": ["tools"],
+    "memory": ["envelope"],
     "provider": [],
     "room": ["envelope", "heartbeat"],
     "tools": []

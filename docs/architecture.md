@@ -9,13 +9,15 @@ the invariants the architecture enforces. See
 [packages/flow.md](packages/flow.md),
 [packages/identity.md](packages/identity.md),
 [packages/events.md](packages/events.md),
-[packages/a2a.md](packages/a2a.md), and
-[packages/a2aclient.md](packages/a2aclient.md) for the exported API
+[packages/a2a.md](packages/a2a.md),
+[packages/a2aclient.md](packages/a2aclient.md),
+[packages/ledger.md](packages/ledger.md), and
+[packages/memory.md](packages/memory.md) for the exported API
 references.
 
 ## Package map
 
-The diagram shows the twelve packages and the import edges between
+The diagram shows the fourteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `discovery`, `envelope`, `events`, and `tools` are leaves: they
 import no other package in this module.
@@ -34,6 +36,9 @@ flowchart LR
     heartbeat --> events
     identity --> envelope
     machine --> events
+    ledger --> machine
+    ledger --> events
+    memory --> envelope
     room --> envelope
     room --> heartbeat
     a2a --> envelope
@@ -149,6 +154,26 @@ flowchart LR
   imports no other package in this module; no package yet imports
   `tools`, and the agent binding is a later phase. See
   [packages/tools.md](packages/tools.md).
+- `ledger/` — the durable-task-admission primitive. It provides
+  `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
+  `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,
+  `Restore`, the `Store` interface, and `MemStore`. `Admit` dedupes a
+  task by `IdempotencyKey` and a sequence watermark. `Claim` and
+  `Takeover` read `LeaseUntil` against a caller-supplied `now` as the
+  only staleness signal; a `FenceToken` bumped on every claim fences a
+  dispossessed owner's late write. `Complete` on a failed status walks
+  the `Needs` graph and marks every transitive dependent
+  `StatusBlocked`. `ledger` reuses `machine.Status` for its five task
+  states and imports `events` for its typed event names; it imports
+  no other package. See [packages/ledger.md](packages/ledger.md).
+- `memory/` — the content-addressed context store. It provides
+  `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
+  `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's
+  ref with `envelope.ContextRef` and stores it under a fixed byte
+  budget; a blob that would exceed the budget evicts the
+  oldest-inserted blobs, in insertion order, until it fits. `memory`
+  imports `envelope` only, for `ContextRef`. See
+  [packages/memory.md](packages/memory.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

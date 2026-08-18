@@ -1,8 +1,8 @@
 # Phase 42c: ledger audit metadata (actor and timestamps)
 
-Status: plan only. Follow-on to phase 42
-(`docs/plans/agents/phase42_ledger_durable_store.md`, shipped at
-commit 2d6e1cb, merged at dddd8dc). This document supersedes
+Status: plan only. Follow-on to phase 42 (`SQLiteStore`, shipped at
+commit 2d6e1cb, merged at dddd8dc; see `docs/packages/ledger.md`'s
+"SQLiteStore" section). This document supersedes
 `docs/plans/agents/phase42c_sqlite_store_timestamps.md`, an
 uncommitted planner draft from this same working session, never
 committed to git, superseded before commit. That draft planned two
@@ -66,9 +66,8 @@ Outside:
   "Tests").
 - A schema-version table or a general migration framework. Phase 42
   declined both ("no migration tooling, no schema-version table" in
-  `docs/plans/agents/phase42_ledger_durable_store.md`'s Goal
-  section). This phase's migration step is a second, equally fixed,
-  hardcoded, idempotent `PRAGMA table_info` check plus up to four
+  its Goal section). This phase's migration step is a second, equally
+  fixed, hardcoded, idempotent `PRAGMA table_info` check plus up to four
   `ALTER TABLE ... ADD COLUMN` statements. It adds no version table
   and no general-purpose migration runner, so it stays inside that
   boundary.

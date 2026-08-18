@@ -1,11 +1,10 @@
 # Plan: ledger
 
-Status: shipped. New top-level package, from phase 34.
-`docs/plans/agents/phase42_ledger_durable_store.md` (phase 42) later
+Status: shipped. New top-level package, from phase 34. Phase 42 later
 adds a second `Store` implementation, `SQLiteStore`, behind the
-`ledger_sqlite` build tag. See that document's own Goal, Scope, and
-Verification sections for the addition. This document covers the
-phase-34 surface `ledger` shipped with: `MemStore` and everything
+`ledger_sqlite` build tag. See `docs/packages/ledger.md`'s
+"SQLiteStore" section for the shipped surface. This document covers
+the phase-34 surface `ledger` shipped with: `MemStore` and everything
 above it. Depends on the
 shipped `machine` and `events` packages only; `ledger` does not import
 `heartbeat`. `LeaseUntil` compared against a caller-supplied `now` is
@@ -56,7 +55,7 @@ transitive dependency blocking on failure (`Complete`); a pluggable
 Outside (at phase 34): a shipped durable backend beyond `MemStore`.
 Phase 42 later adds `SQLiteStore`, an opt-in, `ledger_sqlite`-
 build-tag-gated `Store` backed by `modernc.org/sqlite`, next to
-`MemStore`; see `docs/plans/agents/phase42_ledger_durable_store.md`.
+`MemStore`; see `docs/packages/ledger.md`'s "SQLiteStore" section.
 `MemStore` stays the default, zero-dependency `Store`; `New`'s
 nil-`Store` fallback is unchanged by that addition. Outside:
 distributed consensus — `ledger` does not elect a leader or replicate
@@ -327,10 +326,9 @@ entry; `docs/packages/ledger.md` documents the exported surface;
 `AGENTS.md` gains a `ledger/` layout bullet. No conformance vector
 changes: `ledger` carries no signed or threaded wire form.
 
-Phase 42 (`docs/plans/agents/phase42_ledger_durable_store.md`) adds
-`SQLiteStore` next to `MemStore`, verified separately: the default
-`make verify` stays green unchanged, since `SQLiteStore` compiles only
-under the `ledger_sqlite` build tag, and a second command,
+Phase 42 adds `SQLiteStore` next to `MemStore`, verified separately:
+the default `make verify` stays green unchanged, since `SQLiteStore`
+compiles only under the `ledger_sqlite` build tag, and a second command,
 `make verify-ledger-sqlite`, holds the tag-gated build to the same 85%
 coverage floor.
 

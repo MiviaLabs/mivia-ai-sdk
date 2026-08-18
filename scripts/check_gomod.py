@@ -5,7 +5,7 @@ exceptions: a2aclient wraps github.com/a2aproject/a2a-go (see
 docs/plans/a2aclient.md), mcp wraps
 github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md), and
 ledger wraps modernc.org/sqlite behind the ledger_sqlite build tag
-(see docs/plans/agents/phase42_ledger_durable_store.md).
+(see docs/packages/ledger.md's "SQLiteStore" section).
 ALLOWED_MODULES is the union of all three modules' verified dependency
 closures, reconciled against real `go mod tidy` output; a require or
 go.sum line for any other module path fails the gate. `replace`,

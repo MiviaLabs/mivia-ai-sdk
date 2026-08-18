@@ -242,7 +242,8 @@ Phase 49 (`agentrun`) has shipped. It adds the config-struct
 composition layer over `agent.Run` as one top-level package, with
 up-front validators including the plan-versus-machine transition-matrix
 check. It depends on phase 48 and adds one `policy/layers.json` edge.
-Its package plan lives at docs/plans/agentrun.md.
+Its package plan lives at docs/plans/agentrun.md; no standalone
+phase 49 plan file remains.
 
 Phases 51 and 52 are plan-only; none has gone through plan
 review yet.

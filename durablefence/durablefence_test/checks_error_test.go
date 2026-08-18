@@ -191,6 +191,37 @@ func TestCheckIsFencedFalseForUnknownTokenPropagatesBackendErrors(t *testing.T) 
 	})
 }
 
+// TestCheckMutateSucceedsForCurrentOwnerPropagatesBackendErrors proves
+// CheckMutateSucceedsForCurrentOwner fails loud when the initial Claim
+// or the closing Release returns a backend error. A Mutate backend
+// error is not a separate case here: for this check, Mutate returning
+// any non-nil error for the current, non-fenced owner is the exact
+// condition TestCheckMutateSucceedsForCurrentOwnerCatchesBrokenMutate
+// in checks_negative_test.go already exercises.
+func TestCheckMutateSucceedsForCurrentOwnerPropagatesBackendErrors(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		mutate func(*durablefence.Scenario)
+	}{
+		{"claim-error", func(s *durablefence.Scenario) {
+			s.Claim = func(context.Context) (string, error) { return "", errInjected }
+		}},
+		{"release-error", func(s *durablefence.Scenario) {
+			s.Release = func(context.Context, string) error { return errInjected }
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newReferenceClaim().scenario()
+			c.mutate(&s)
+			expectCheckFail(t, "CheckMutateSucceedsForCurrentOwner", func(t *testing.T) {
+				durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
+			})
+		})
+	}
+}
+
 // TestChecksFailOnIncompleteScenario proves every Check* function
 // calls Scenario.Validate first and fails loud on an incomplete
 // Scenario, before it calls any field.

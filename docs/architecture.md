@@ -184,7 +184,7 @@ flowchart LR
   states and imports `events` for its typed event names; it imports
   no other package. See [packages/ledger.md](packages/ledger.md).
 - `durablefence/` — a test-only conformance kit. It provides
-  `Scenario`, `Validate`, `ErrIncompleteScenario`, six `Check*`
+  `Scenario`, `Validate`, `ErrIncompleteScenario`, seven `Check*`
   functions, and `RunAll`. A caller wires its own claim, takeover,
   mutate, release, and fence-reading calls into a `Scenario` literal
   and runs `RunAll` to prove the claim-and-fence invariants hold,

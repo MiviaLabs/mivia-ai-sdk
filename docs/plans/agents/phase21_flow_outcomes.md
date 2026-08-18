@@ -34,8 +34,9 @@ ships now because the enum is one type and phase 22 needs it.
   outcome. The boolean is false when the step never resolved.
 - `func (r Report) Outcomes() map[string]Outcome` — a copy of every
   resolved outcome. Caller mutation cannot change the report.
-- `Run(ctx, d, m, in, confirm) (Report, error)` — the signature
-  changes. The first three returns collapse into the `Report`.
+- `Run(ctx, d, m, in, confirm, bus) (Report, error)` — the signature
+  keeps all six parameters. Only the return type changes: the first
+  three returns collapse into the `Report`.
 
 The internal `done map[string]bool` becomes
 `outcomes map[string]Outcome`. `needsMet` reads the new map: a need
@@ -49,27 +50,41 @@ A `Fire` failure marks the step `OutcomeFailed` before the return.
 A `Confirm` rejection marks the step `OutcomeFailed` before the
 return. Later steps stay absent from the outcomes map.
 
+On any wave error, no member of that wave is marked in the outcomes
+map. This mirrors `markDone`'s current all-or-nothing rule at
+runner.go:118. A wave can join one member's `Fire` failure with
+siblings that succeeded. Successful siblings inside a failed wave are
+not marked `OutcomeSucceeded`. The failing member is not marked
+`OutcomeFailed` either. The wave-level error is attributed at the
+wave level, not per member.
+
 The nil-argument contract keeps its pinned messages. A nil `d` or a
-nil `m` returns the zero `Report`. A nil `confirm` returns a report
-holding `m.Initial()` and the incoming record, matching today's
-returns.
+nil `m` returns a `Report` holding the zero `Status` and the caller's
+original `in` as the `Record`. This is not a zero-value `InOut`; the
+caller's `in` still comes back, matching today's `(machine.Status(""),
+in, err)` return. A nil `confirm` returns a report holding
+`m.Initial()` and the incoming record, matching today's returns.
 
 ## Tests
 
 Test files live in `flow/flow_test/`.
 
-The signature change touches every existing caller. Ten test files
-destructure the three-value return, 51 call sites in total:
-`run_test.go`, `run_integration_test.go`, `run_bench_test.go`,
-`panel_test.go`, `panel_integration_test.go`,
-`panel_bench_test.go`, `chain_test.go`,
-`chain_integration_test.go`, `chain_bench_test.go`, and
-`chain_new_test.go`. Every file moves to the `Report` API in
+The signature change touches every existing caller. Eleven test
+files destructure the three-value return, 60 call sites in total:
+`run_test.go` (11), `run_integration_test.go` (5),
+`run_bench_test.go` (2), `panel_test.go` (9),
+`panel_integration_test.go` (4), `panel_bench_test.go` (2),
+`chain_test.go` (12), `chain_integration_test.go` (3),
+`chain_bench_test.go` (5), `chain_new_test.go` (1), and
+`emit_test.go` (6). Every file moves to the `Report` API in
 the same change. Each file keeps its assertions; only the return
 handling changes. The `new_test.go`, `new_integration_test.go`,
 `new_bench_test.go`, and `panel_new_test.go` files test `New`,
 whose signature stays unchanged. `chain_new_test.go` also holds
 one `Run` call site; it moves to the `Report` API with the rest.
+`emit_test.go` covers the event-bus behavior, including
+`TestEmitNoneOnConfirmFailure`, the confirm-rejection abort case;
+its six `Run` call sites move to the `Report` API too.
 
 - `outcomes_test.go` — the red-green cases. Red step: the file
   does not compile on the empty phase, because `Report` and `Outcome`
@@ -81,8 +96,11 @@ one `Run` call site; it moves to the `Report` API with the rest.
     `OutcomeSucceeded` and the failing step `OutcomeFailed`. Later
     steps report `false` from `Outcome`.
   - A `Confirm` rejection marks the rejected step `OutcomeFailed`.
-  - A nil `d` returns the zero `Report` and the pinned error. A nil
-    `m` likewise. Both-nil keeps the `d` error and never panics.
+  - A nil `d` returns the pinned error and a `Report` holding the
+    zero `Status` and the caller's `in`. The test passes a non-zero
+    `in` and asserts `Report.Record()` equals that `in`, not just
+    the error. A nil `m` likewise. Both-nil keeps the `d` error and
+    never panics.
   - A nil `confirm` returns the pinned error and a report holding the
     initial status and the incoming record.
   - Mutating the map `Outcomes` returns never changes a later

@@ -107,8 +107,18 @@ composition comes last.
 - Liveness: agent step-liveness heartbeat, room membership staleness.
   Both build on the shipped `heartbeat` package and ship independently
   of each other.
+- Model and durability: model provider interface, flow retry policy,
+  tools capability markers, agent context budget, durable-fence
+  conformance kit, ledger durable admission. Phase 30 depends on
+  phases 21 through 23 landing first. Phase 33 depends on phase 34.
+  The rest ship independently of each other.
 
 Each plan names its phase number and its dependency on the prior phase.
+
+Phases 29, 30, 31, and 33 passed plan review. Phases 32 and 34 went
+through three review rounds and stayed at REVISE. Both wait on a user
+decision before a builder starts them. See each plan's Status line for
+the open finding.
 
 ## Gate interactions
 

@@ -3,14 +3,18 @@
   "allowed_imports": {
     "a2a": ["envelope"],
     "a2aclient": ["a2a", "envelope"],
-    "agent": ["identity", "discovery", "flow", "envelope", "events", "machine", "heartbeat"],
+    "agent": ["identity", "discovery", "flow", "envelope", "events", "machine", "heartbeat", "contextbudget"],
+    "contextbudget": [],
     "discovery": [],
+    "durablefence": [],
     "envelope": [],
     "events": [],
     "flow": ["events", "machine"],
     "heartbeat": ["events"],
     "identity": ["envelope"],
+    "ledger": ["machine", "events"],
     "machine": ["events"],
+    "provider": [],
     "room": ["envelope", "heartbeat"],
     "tools": []
   }

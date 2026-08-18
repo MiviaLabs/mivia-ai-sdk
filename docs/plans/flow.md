@@ -474,6 +474,46 @@ combination.
 phase. `flow`'s existing row, `["events", "machine"]`, already covers
 every edge this phase needs.
 
+### Phase 48 (shipped): run-time payloads, graph accessors, and derived transitions
+
+Phase 48 widens `flow` in three ways. `Step.PayloadFrom` derives a
+step's payload from the live record at run time. `Definition.Steps`
+and `Definition.Panels` expose copied graph views. `TransitionsFor`
+derives a machine transition table from a definition.
+
+`PayloadFrom func(rec machine.InOut) string` resolves immediately
+before each gated `Confirm` call, against the record that transition
+produced. The resolved value rides the `Step` copy handed to
+`Confirm`. `New` rejects a step that sets both `Payload` and
+`PayloadFrom`, and a `PayloadFrom` on a member of a panel of two or
+more members. A nil `PayloadFrom` keeps the prior behavior exactly.
+The field never crosses the wire and never enters a checkpoint.
+
+`Steps` returns a deep copy of the step graph, recursion into `Sub`
+definitions included. `Panels` returns a copy of the panel list.
+Both follow `Roots`: value receivers, fresh backing arrays, and no
+way for a caller to mutate the stored graph.
+
+`TransitionsFor(d *Definition, initial machine.Status)`
+`([]machine.Transition, error)` derives the transition rows a walk of
+`d` needs. Each plain step contributes one row per predecessor
+status, with the step ID as trigger. A root's predecessor set is
+`{initial}`. A need contributes its effective final statuses: its
+`To` when it has no `Sub`, its child graph's final statuses
+otherwise. A chained step, looped or not, targets its child's final
+statuses; its own `To` stays unused. A panel of two or more members
+contributes one shared row per predecessor, triggered by the first
+member's ID. A fallback step also gains each failed need's
+predecessor statuses, because a failed `Fire` leaves the pre-fire
+status.
+
+`TransitionsFor` rejects a nil definition, an empty initial status,
+and a step that needs a target status but carries none. It rejects
+two derived rows that share one `From` and `To`, because
+`pickTransition` matches on `To` alone. It rejects a self loop. The
+derived table models the declared happy path; route-excluded paths
+stay the caller's own rows.
+
 ## Tests
 
 Topological order on a diamond DAG. Cycle detection rejects a bad
@@ -728,6 +768,39 @@ Test files land in `flow/flow_test/`:
   ratio, since `LoopState` construction per iteration varies the
   allocation count.
 
+### Phase 48 (shipped) tests
+
+`flow/flow_test/payload_test.go` holds the red-green cases for
+`PayloadFrom`. `New` rejects both fields set, admits the func with
+an empty static payload, and rejects the func on a two-member panel
+member. The resolved value reaches `Confirm`; a step without the
+func behaves byte for byte as before. A step reads its own
+transition's output. A chain carries one step's output into the
+next step's `PayloadFrom`. A child resolves against a fresh record.
+A looped child resolves per iteration. A fallback resolves against
+the failure context's record. A resumed step re-resolves; a done
+step never resolves again. A one-member panel member resolves like
+any gated step.
+
+`flow/flow_test/payload_integration_test.go` runs one three-step
+chain end to end through a real machine.
+
+`flow/flow_test/graph_accessors_test.go` proves the copies. Mutating
+a returned step, need, or panel never changes the stored
+definition. `Sub` graphs and their steps copy recursively.
+
+`flow/flow_test/derive_test.go` drives `TransitionsFor` by table. A
+chain derives one row per step. A diamond merge derives two rows
+for the joining step. A panel wave derives one shared row. A
+chained step targets its child's finals, not its own `To`. A
+fallback gains the failed need's predecessors. The rejection cases
+cover a nil definition, an empty initial, a missing `To`, a
+`From`-`To` collision, and a self loop.
+
+`flow/flow_test/derive_integration_test.go` builds a graph, derives
+its rows, builds the machine from them, and walks it to completion.
+No hand-written transition row survives in the test.
+
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
@@ -792,4 +865,18 @@ retry loop, and the unbounded-by-default contract. `AGENTS.md` updates
 its `flow/` layout bullet in the same change, naming the loop
 vocabulary next to outcome, admission, route, fallback, and retry. No
 conformance-vector change: `LoopPolicy` carries no signed or threaded
+wire form.
+
+### Phase 48 (shipped) verification
+
+`make verify` passes, and the `flow` coverage floor holds.
+`api/flow.txt` gains `Step.PayloadFrom`, `Definition.Steps`,
+`Definition.Panels`, and `TransitionsFor`, via `make api-update`;
+the `api/` diff is committed in the same change.
+`policy/layers.json` stays unchanged: `flow`'s allowed imports
+already cover every edge. `docs/packages/flow.md` and
+`docs/architecture.md` describe the run-time resolution, the
+accessors, and the derivation helper in the same change as the code.
+`AGENTS.md` updates its `flow/` layout bullet. No conformance-vector
+change: none of the three additions carries a signed or threaded
 wire form.

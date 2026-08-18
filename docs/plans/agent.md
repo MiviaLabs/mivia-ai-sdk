@@ -504,6 +504,16 @@ This is a breaking change to every existing call site of `Run`. Every
 call site gains a trailing `nil` argument for `budget` in this
 change.
 
+### Plan and signer accessors: the API lock target
+
+`func (a *Agent) Plan() *flow.Definition` returns the bound plan
+unchanged, the same pointer `New` stored. `func (a *Agent)
+Signer() string` returns the identity's signer hex. Both exist for
+composition layers that validate a plan before a run. Phase 49's
+`agentrun` matrix check is the first caller. The methods follow
+`Name` and `Capabilities`: pointer receivers, and no nil-receiver
+guarantee beyond what `New` already ensures.
+
 ## Tests
 
 Test files live in `agent/agent_test/`:
@@ -708,6 +718,12 @@ builder edits only agent/agent_test/translator_test.go.
   real `room.Room`'s `ID()`, and change the example's `wait` closure
   to return the `Accepts` error instead of only printing it, so the
   final printed status honestly reflects the run's real outcome.
+
+### Accessor tests
+
+`agent/agent_test/accessors_test.go` proves `Plan` returns the bound
+definition pointer and `Signer` matches the identity's own `Signer`
+value.
 
 ## Verification
 
@@ -918,3 +934,10 @@ symbol and no new package, so no `api/*.txt` file and no
 `policy/layers.json` row changes. It adds no conformance vector: it
 composes `envelope.Message`, `envelope.Ack`, and `a2a.Mapped`, each
 already vector-covered in its own package.
+
+### Accessors: verification
+
+`make verify` passes. `api/agent.txt` gains the two methods via
+`make api-update`, committed in the same change.
+`policy/layers.json` stays unchanged. `docs/packages/agent.md`
+documents both accessors in the same change as the code.

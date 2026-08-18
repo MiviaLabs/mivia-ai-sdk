@@ -166,6 +166,17 @@ composition comes last.
   already-shipped packages, adds no exported symbol, and needs no new
   `policy/layers.json` row. It has shipped; its plan folded into this
   file on shipping.
+- Composition wave: phase 48, run-time payload resolution on
+  `flow.Step` through a `PayloadFrom` func reading the live record;
+  phase 49, `agentrun`, the config-struct composition layer over
+  `agent.Run` with up-front validators, including the
+  plan-versus-machine transition-matrix check; phase 50, `taskrun`,
+  the ledger admit-claim-complete ceremony around a work func;
+  phase 51, `a2aack`, the remote step ack over `a2aclient`; phase
+  52, `dispatch`, a stdlib NDJSON and HTTP envelope endpoint for the
+  receive ladder; phase 53, `a2aserver`, an `a2a-go` server bridge,
+  deferred behind two gates. See each phase plan under
+  docs/plans/agents/.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
@@ -214,6 +225,24 @@ Phase 47 (concurrency integration suite) has shipped. It adds
 files close the concurrent-run, approval-transport, ledger race,
 `mcp` concurrency, and loopback gRPC gaps. It strengthens
 `make verify`; it weakens no existing gate.
+
+Phase 48 has shipped. It widens the shipped `flow` package with
+`Step.PayloadFrom`, the `Definition.Steps` and `Definition.Panels`
+accessors, and `TransitionsFor`, and adds the `agent` `Plan` and
+`Signer` accessors ahead of phase 49's validators. The shipped
+contract lives in docs/plans/flow.md and docs/plans/agent.md.
+
+Phases 49 through 52 are plan-only; none has gone through plan
+review yet. Phase 49 adds `agentrun`; its accessors already shipped
+with phase 48. It depends on phase 48, because its artifact flow
+reads `PayloadFrom`.
+Phases 50, 51, and 52 each add one package and depend on no unshipped
+phase; they ship independently of each other and of phase 49.
+
+Phase 53 is plan-only and not scheduled. It builds nothing until two
+gates open: phase 52 proving the receive ladder, and the user
+authorizing a widened `a2a-go` import exception. See
+docs/plans/agents/phase53_a2a_go_server.md.
 
 ## Gate interactions
 

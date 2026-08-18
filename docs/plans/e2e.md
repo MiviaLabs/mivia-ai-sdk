@@ -131,11 +131,31 @@ is ranked by value; each closes a confirmed gap.
   run completes and `PayloadOf` still answers.
 
 A subagent adapter is a missing concept, not a scenario: nothing
-exposes a runner or agent as a `tools.Tool`, so an orchestrator
-cannot place a subordinate agent in its registry. `flow.Sub` covers
-in-process child graphs; `a2aack` covers one remote step. The
-adapter, discovery-driven routing, and a result contract beyond one
-string need their own phase.
+exposes a runner or agent as a `tools.Tool`. Phase 55 plans the
+`subagent` package: `AsTool`, `RunAll`, and the internal
+`FlowTool`, `LedgerTool`, and `MemoryTool`. The system scenarios
+below land with it.
+
+## System scenarios
+
+These scenarios exercise the whole system once phase 55 ships. Each
+lands as its own file, in this order:
+
+- `subagent_parallel_test.go` — one orchestrator holds two subagent
+  tools in a panel wave. Both spawn concurrently, both artifacts
+  feed a joining step, and the parent thread verifies.
+- `subagent_tools_test.go` — one subagent's registry holds
+  `FlowTool`, `LedgerTool`, and `MemoryTool`. It runs a child flow,
+  reports its outcome, completes ledger work, and exchanges a
+  memory ref with the parent.
+- `subagent_observe_test.go` — the parent's bus receives a spawned
+  run's delivered, acked, and verified events live; a failing
+  subagent surfaces its error through the parent's step.
+- `subagent_depth_test.go` — a self-spawning subagent stops at the
+  depth bound with `ErrMaxDepth`.
+- `subagent_remote_test.go` — a remote subagent composed from
+  `a2aack` behind `AsTool`, then a `dispatch`-backed variant; the
+  orchestrator step completes over the real transport.
 
 ## Tests
 

@@ -273,6 +273,86 @@ func TestRunPausesWhenContextAlreadyCanceled(t *testing.T) {
 	}
 }
 
+// TestRunSingleStepChecksCanceledCtx proves Run checks ctx for
+// cancellation before starting a one-step Definition's only step, the
+// same as it does before each step of a multi-step graph. The
+// one-step branch is a separate code path from the loop the
+// multi-step case exercises, so a multi-step-only pause test cannot
+// catch a missing check here.
+func TestRunSingleStepChecksCanceledCtx(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	m := singleTransitionMachine(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var confirmed int
+	confirm := func(ctx context.Context, step flow.Step) error {
+		confirmed++
+		return nil
+	}
+	report, err := flow.Run(ctx, d, m, machine.InOut{}, confirm, nil, nil)
+	if err == nil {
+		t.Fatal("expected the pause error, got nil")
+	}
+	if !strings.Contains(err.Error(), "run paused") {
+		t.Fatalf("error %q should contain the pause message", err.Error())
+	}
+	if confirmed != 0 {
+		t.Fatalf("confirm called %d times, want 0", confirmed)
+	}
+	if report.Status() != statusStart {
+		t.Fatalf("status = %q, want the initial status %q", report.Status(), statusStart)
+	}
+}
+
+// TestRunSingleStepFiresCheckpointOnce proves Run fires onCheckpoint
+// once, with Done holding the single step's ID, when a one-step
+// Definition completes. The one-step branch builds its Checkpoint on
+// a different return path than the multi-step loop; a multi-step-only
+// checkpoint test cannot catch a missing call here.
+func TestRunSingleStepFiresCheckpointOnce(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	m := singleTransitionMachine(t)
+	var calls int
+	var lastDone []string
+	onCheckpoint := func(c flow.Checkpoint) {
+		calls++
+		lastDone = append([]string(nil), c.Done...)
+	}
+	report, err := flow.Run(context.Background(), d, m, machine.InOut{}, noopConfirm, nil, onCheckpoint)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Status() != statusDone {
+		t.Fatalf("status = %q, want %q", report.Status(), statusDone)
+	}
+	if calls != 1 {
+		t.Fatalf("onCheckpoint called %d times, want 1", calls)
+	}
+	if len(lastDone) != 1 || lastDone[0] != "a" {
+		t.Fatalf("Done = %v, want [a]", lastDone)
+	}
+}
+
+// TestCheckpointEncodeRejectsInvalidStatus proves Encode runs Validate
+// before it marshals, returning the Validate error for a Checkpoint
+// whose Status is empty, instead of a marshaled empty-status payload.
+func TestCheckpointEncodeRejectsInvalidStatus(t *testing.T) {
+	t.Parallel()
+	c := flow.Checkpoint{Status: machine.Status("")}
+	data, err := c.Encode()
+	if err == nil {
+		t.Fatal("expected error for empty status, got nil")
+	}
+	if !strings.Contains(err.Error(), "status must not be empty") {
+		t.Fatalf("error %q should contain the Validate message", err.Error())
+	}
+	if data != nil {
+		t.Fatalf("data = %v, want nil on a rejected Encode", data)
+	}
+}
+
 // TestRunPausesMidGraph proves Run returns the pinned pause error
 // mid-graph, after at least one step completed and its checkpoint
 // fired, when ctx cancels before the next step starts.

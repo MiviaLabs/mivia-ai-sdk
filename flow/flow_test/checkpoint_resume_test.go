@@ -267,6 +267,54 @@ func TestResumeNilDWinsOverInvalidCheckpoint(t *testing.T) {
 	}
 }
 
+// TestResumeNilMWinsOverNilConfirm proves the m-nil check runs before
+// the confirm-nil check, pinning that link in the five-check order.
+func TestResumeNilMWinsOverNilConfirm(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	checkpoint := flow.Checkpoint{Status: statusDone}
+	_, err := flow.Resume(context.Background(), d, nil, checkpoint, nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "flow: m must not be nil") {
+		t.Fatalf("error %q should contain the m-nil message, not a confirm-nil error", err.Error())
+	}
+}
+
+// TestResumeNilConfirmWinsOverInvalidCheckpoint proves the
+// confirm-nil check runs before Checkpoint.Validate, pinning that
+// link in the five-check order.
+func TestResumeNilConfirmWinsOverInvalidCheckpoint(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	m := singleTransitionMachine(t)
+	checkpoint := flow.Checkpoint{Status: machine.Status("")}
+	_, err := flow.Resume(context.Background(), d, m, checkpoint, nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "flow: confirm must not be nil") {
+		t.Fatalf("error %q should contain the confirm-nil message, not a Validate error", err.Error())
+	}
+}
+
+// TestResumeNilMWinsOverInvalidCheckpoint proves the m-nil check runs
+// before Checkpoint.Validate, pinning that link in the five-check
+// order.
+func TestResumeNilMWinsOverInvalidCheckpoint(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	checkpoint := flow.Checkpoint{Status: machine.Status("")}
+	_, err := flow.Resume(context.Background(), d, nil, checkpoint, noopConfirm, nil, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "flow: m must not be nil") {
+		t.Fatalf("error %q should contain the m-nil message, not a Validate error", err.Error())
+	}
+}
+
 // TestResumeRejectsTopologicallyInconsistentDone proves Resume on a
 // checkpoint whose Done names a real step in d while that step's own
 // Needs entry is absent from Done returns an error rather than a

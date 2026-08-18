@@ -100,6 +100,9 @@ func runLoop(
 		if _, done := outcomes[d.steps[0].ID]; done {
 			return Report{status: cur, record: rec, outcomes: outcomes}, nil
 		}
+		if err := ctx.Err(); err != nil {
+			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("run paused: %w", err)
+		}
 		var err error
 		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes)
 		if err != nil {

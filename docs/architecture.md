@@ -13,10 +13,10 @@ the invariants the architecture enforces. See
 
 ## Package map
 
-The diagram shows the ten packages and the import edges between
+The diagram shows the eleven packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`discovery`, `envelope`, and `events` are leaves: they import no
-other package in this module.
+`discovery`, `envelope`, `events`, and `tools` are leaves: they
+import no other package in this module.
 
 ```mermaid
 flowchart LR
@@ -38,6 +38,7 @@ flowchart LR
     discovery[discovery]
     envelope[envelope]
     events[events]
+    tools[tools]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
@@ -123,6 +124,13 @@ flowchart LR
   a `Message`, with the caller-supplied `ContextID`/`MessageID`
   overriding any value embedded in the part. `a2a` imports `envelope`
   only; it carries no network call. See [packages/a2a.md](packages/a2a.md).
+- `tools/` — the tool registry. It provides `Tool`, `Registry`,
+  `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
+  a named action; a `Registry` resolves one by name and runs it. `Add`
+  and `Remove` mirror `room.Room`'s membership symmetry. `tools`
+  imports no other package in this module; no package yet imports
+  `tools`, and the agent binding is a later phase. See
+  [packages/tools.md](packages/tools.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

@@ -18,10 +18,11 @@ references.
 
 ## Package map
 
-The diagram shows the seventeen packages and the import edges between
+The diagram shows the eighteen packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`contextbudget`, `discovery`, `envelope`, `events`, `provider`, and
-`tools` are leaves: they import no other package in this module.
+`contextbudget`, `discovery`, `envelope`, `events`, `provider`,
+`tools`, and `trigger` are leaves: they import no other package in
+this module.
 
 ```mermaid
 flowchart LR
@@ -53,6 +54,7 @@ flowchart LR
     events[events]
     provider[provider]
     tools[tools]
+    trigger[trigger]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
@@ -243,6 +245,16 @@ flowchart LR
   type that asks a question and returns a typed `Answer`; `channel`
   ships no concrete transport. `channel` imports no other package in
   this module. See [packages/channel.md](packages/channel.md).
+- `trigger/` — a leaf primitive. It provides `Condition`, `Action`,
+  `Registry`, `New`, `Add`, `Remove`, `Fire`, and the sentinels
+  `ErrBlankName`, `ErrNilAction`, `ErrDuplicateName`, `ErrUnknownName`,
+  and `ErrConditionNotMet`. A `Registry` maps a name to one `Condition`
+  and one `Action`; `Fire` evaluates the named `Condition` and, when
+  true, calls the `Action`. `Condition` matches `machine.Guard`'s
+  signature; `Action` is shaped to match a planned scheduler package's
+  job signature once that package lands. `trigger` imports no other
+  package in this module. See
+  [packages/trigger.md](packages/trigger.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine

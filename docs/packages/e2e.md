@@ -35,6 +35,11 @@ wrapping `ErrFault`; every other call passes through.
   `Chat` or `ChatStream` call faults.
 - `FaultWait` — wraps an `agent.AckWait`. Its `FaultOn`-th ack
   resolution faults.
+- `HangCompleter` — blocks `Chat` and `ChatStream` until the context
+  cancels, then returns the context error.
+
+`HangCompleter` blocks instead of faulting. It models a provider that
+never answers unless the caller cancels.
 
 A block behind a concrete type carries no decorator. memory's `Store`
 is such a case and stays out of the kit.
@@ -67,6 +72,9 @@ behavior:
 - `faults_subagent_test.go` — one of three subagents fails through
   `RunAll`; the siblings land and the failing spec's `Err` is
   reported.
+- `faults_hang_test.go` — a provider that never answers; the run
+  returns once the deadline fires and the error wraps
+  `context.DeadlineExceeded`.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
 growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP

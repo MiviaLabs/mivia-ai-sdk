@@ -139,3 +139,24 @@ func (f *FaultWait) Wait(ctx context.Context, msg envelope.Message) (envelope.Ac
 	}
 	return f.Inner(ctx, msg)
 }
+
+// HangCompleter is a provider.Completer whose Chat and ChatStream block
+// until ctx is done, then return ctx.Err(). It models a provider whose
+// response never arrives unless the caller cancels, so a scenario
+// asserts a runner with a deadline surfaces the timeout, not a hang.
+type HangCompleter struct{}
+
+// Name returns a fixed label.
+func (h *HangCompleter) Name() string { return "hang-completer" }
+
+// Chat blocks until ctx is done, then returns ctx.Err().
+func (h *HangCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	<-ctx.Done()
+	return provider.Response{}, ctx.Err()
+}
+
+// ChatStream blocks until ctx is done, then returns ctx.Err().
+func (h *HangCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}

@@ -331,6 +331,20 @@ the five `*_race_test.go` files run under `go test -race`
   `Store`-level context checks, `Snapshot.Encode`'s and `Restore`'s
   error paths, and `Blocked`'s `Store.Load` error propagation.
   `helpers_test.go` holds the shared fixtures every other file reuses.
+- `stress_test.go` — races every mutating operation across a shared key
+  space with an injected clock, then checks the recorded history
+  linearizes against the independent `modelApply` model. A second,
+  larger storm asserts every final record still passes
+  `TaskState.Validate`.
+  `sqlite_ledger_race_test.go` reruns the claim race, the complete
+  race, and a compact linearizable storm over a file-backed
+  `SQLiteStore`, under the `ledger_sqlite` build tag.
+- `lease_semantics_test.go` — pins the rule that lease expiry alone
+  never fences: a stale, never-taken-over owner still renews and
+  completes under the original token.
+- `eviction_race_test.go` — races admit-claim-complete writers against
+  re-admission of a tombstoned key on a capped `MemStore`, asserting
+  idempotency holds across concurrent eviction.
 
 ## Metamorphic test suite
 
@@ -379,7 +393,8 @@ changes.
 gate, the Semgrep scan and probes, and the coverage floor. `ledger`'s
 own coverage and the module total both clear 85%; the measured
 `ledger` package coverage is 93.3%. `go test -race ./ledger/...`
-passes, covering all five race files. `api/ledger.txt` lands through
+passes, covering every race, stress, and lease-semantics file.
+`api/ledger.txt` lands through
 `make api-update` in the same change as the code. The
 `policy/layers.json` row `"ledger": ["machine", "events"]` predates
 this change. `docs/architecture.md` gains the `ledger` package-map

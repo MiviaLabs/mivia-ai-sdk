@@ -85,7 +85,15 @@ func (f *FaultCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 
 type FaultWait struct{ Inner agent.AckWait; FaultOn int32 }
 func (f *FaultWait) Wait(...) (envelope.Ack, error)
+
+type HangCompleter struct{}
+func (h *HangCompleter) Name() string
+func (h *HangCompleter) Chat(...) (provider.Response, error)
+func (h *HangCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 ```
+
+`HangCompleter` blocks instead of erroring. It models a provider
+that never answers unless the caller cancels.
 
 The kit raises the seam only where the block already exposes an
 interface. A block behind a concrete type keeps no decorator: memory's
@@ -145,6 +153,11 @@ Each scenario states its wiring, inputs, and asserted outputs.
   the failing spec's Err matches `ErrFault`, and the orchestrator run
   reports it. A second test pins `FaultWait` failing the run on the
   first ack.
+- `faults_hang_test.go` — wires subagent, agentrun, and the harness
+  `HangCompleter`. Input: a one-step runner whose provider never
+  answers, with a run context that carries a deadline. Outputs: the
+  run returns once the deadline fires, and the error wraps
+  `context.DeadlineExceeded`.
 
 A fallback step stays out of the pipeline scenario by design. In an
 agentrun run the tool chain answers inside the ack, and a rejected

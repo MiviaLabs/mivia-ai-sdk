@@ -1,0 +1,46 @@
+package agentloop
+  const ErrorPolicyFail = "fail"
+  const ErrorPolicyReport = ""
+  const StopHookVeto = "hook_veto"
+  const StopMaxIterations = "max_iterations"
+  const StopNoToolCalls = "no_tool_calls"
+  func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
+  func (o Options) Validate() (error)
+  func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)
+  func New(opts Options) (*Loop, error)
+  type ErrorPolicy string
+  type Loop struct {
+}
+  type Options struct {
+  Completer provider.Completer
+  Tools *tools.Registry
+  Scope *tools.Scope
+  Model string
+  MaxIterations int
+  MaxCallsPerTurn int
+  MaxTotalTokens int
+  OnToolError ErrorPolicy
+  Hooks *hooks.Registry
+  Tracer *trace.Tracer
+  Usage *usage.Accumulator
+  SessionID string
+  Bus *events.Bus
+  Budget *contextbudget.Limits
+  Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+}
+  type Result struct {
+  Final provider.Message
+  History []provider.Message
+  Iterations int
+  Usage provider.Usage
+  Stop StopReason
+}
+  type StopReason string
+  var ErrCallsPerTurnExceeded
+  var ErrMaxIterations
+  var ErrNoCompleter
+  var ErrNoSchemas
+  var ErrNoTools
+  var ErrOverBudget
+  var ErrTokenBudgetExceeded
+  var ErrUnrenderableResult

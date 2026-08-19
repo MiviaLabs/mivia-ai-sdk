@@ -9,12 +9,14 @@ package tools
   func (r *Registry) Remove(name string) (bool)
   func (r *Registry) Run(ctx context.Context, name string, in InOut) (Out, error)
   func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *Scope) (Out, error)
+  func (r *Registry) Tools() ([]Tool)
   func (s *Scope) Allowed(name string, t Tool) (bool)
   func ExecutionProfileOf(t Tool) (ExecutionProfile)
   func IsPrivileged(t Tool) (bool)
   func New() (*Registry)
   func NewScope(opts ScopeOptions) (*Scope)
   func ResultBudgetOf(t Tool) (int, bool)
+  func SchemaOf(t Tool) ([]byte, bool)
   type ExecutionClass string
   type ExecutionProfile struct {
   Class ExecutionClass
@@ -37,6 +39,11 @@ package tools
 }
   type ResultBudgetTool interface {
 	MaxResultBytes() int
+}
+  type SchemaTool interface {
+	ParameterSchema() []byte
+
+	DecodeArguments(raw []byte) (InOut, error)
 }
   type Scope struct {
 }

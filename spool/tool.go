@@ -14,9 +14,10 @@ const toolGrantBudget = 64 * 1024 * 1024
 
 // spoolTool wraps inner, spooling an oversized string result to store
 // under the ctx principal. It never declares tools.ProfiledTool,
-// tools.ResultBudgetTool, or tools.PrivilegedTool itself; SpoolTool
-// composes one of the wrapper variants below so the returned
-// tools.Tool implements exactly the optional interfaces inner does.
+// tools.ResultBudgetTool, tools.PrivilegedTool, or tools.SchemaTool
+// itself; SpoolTool composes one of the wrapper variants below so the
+// returned tools.Tool implements exactly the optional interfaces
+// inner does.
 type spoolTool struct {
 	name     string
 	maxBytes int
@@ -81,11 +82,33 @@ func (c privilegedCap) Privileged() bool {
 	return tools.IsPrivileged(c.inner)
 }
 
-// The eight spoolTool variants below embed *spoolTool plus exactly the
-// capability structs matching the optional interfaces inner
+// schemaCap adds ParameterSchema and DecodeArguments, forwarded from
+// inner through tools.SchemaOf and inner's own DecodeArguments. A
+// wrapper that stripped this capability would silently make inner
+// unreachable to an agentloop.Loop's model, since
+// agentloop.Definitions skips a tool with no published schema.
+type schemaCap struct{ inner tools.Tool }
+
+// ParameterSchema forwards inner's schema through tools.SchemaOf.
+func (c schemaCap) ParameterSchema() []byte {
+	schema, _ := tools.SchemaOf(c.inner)
+	return schema
+}
+
+// DecodeArguments forwards raw to inner's own DecodeArguments. c.inner
+// is known to implement tools.SchemaTool whenever schemaCap is
+// composed onto a wrapper variant, so the type assertion always
+// succeeds there.
+func (c schemaCap) DecodeArguments(raw []byte) (tools.InOut, error) {
+	return c.inner.(tools.SchemaTool).DecodeArguments(raw)
+}
+
+// The sixteen spoolTool variants below embed *spoolTool plus exactly
+// the capability structs matching the optional interfaces inner
 // implements, so a type assertion against tools.ProfiledTool,
-// tools.ResultBudgetTool, or tools.PrivilegedTool on the returned
-// tools.Tool succeeds only when inner itself satisfies it.
+// tools.ResultBudgetTool, tools.PrivilegedTool, or tools.SchemaTool on
+// the returned tools.Tool succeeds only when inner itself satisfies
+// it.
 
 type spoolToolPlain struct{ *spoolTool }
 
@@ -104,6 +127,11 @@ type spoolToolPrivileged struct {
 	privilegedCap
 }
 
+type spoolToolSchema struct {
+	*spoolTool
+	schemaCap
+}
+
 type spoolToolProfiledBudget struct {
 	*spoolTool
 	profiledCap
@@ -116,10 +144,56 @@ type spoolToolProfiledPrivileged struct {
 	privilegedCap
 }
 
+type spoolToolProfiledSchema struct {
+	*spoolTool
+	profiledCap
+	schemaCap
+}
+
 type spoolToolBudgetPrivileged struct {
 	*spoolTool
 	budgetCap
 	privilegedCap
+}
+
+type spoolToolBudgetSchema struct {
+	*spoolTool
+	budgetCap
+	schemaCap
+}
+
+type spoolToolPrivilegedSchema struct {
+	*spoolTool
+	privilegedCap
+	schemaCap
+}
+
+type spoolToolProfiledBudgetPrivileged struct {
+	*spoolTool
+	profiledCap
+	budgetCap
+	privilegedCap
+}
+
+type spoolToolProfiledBudgetSchema struct {
+	*spoolTool
+	profiledCap
+	budgetCap
+	schemaCap
+}
+
+type spoolToolProfiledPrivilegedSchema struct {
+	*spoolTool
+	profiledCap
+	privilegedCap
+	schemaCap
+}
+
+type spoolToolBudgetPrivilegedSchema struct {
+	*spoolTool
+	budgetCap
+	privilegedCap
+	schemaCap
 }
 
 type spoolToolAll struct {
@@ -127,6 +201,7 @@ type spoolToolAll struct {
 	profiledCap
 	budgetCap
 	privilegedCap
+	schemaCap
 }
 
 // SpoolTool wraps inner so any string result longer than maxBytes
@@ -137,11 +212,11 @@ type spoolToolAll struct {
 // through unchanged. A call with no principal in ctx returns
 // ErrNoPrincipal.
 // The returned tools.Tool implements tools.ProfiledTool,
-// tools.ResultBudgetTool, and tools.PrivilegedTool only when inner
-// itself does, forwarding each call straight to inner: SpoolTool
-// changes only Run's result handling, not inner's declared execution
-// class, result budget, or privilege, and it never fakes a budget or
-// profile inner does not publish.
+// tools.ResultBudgetTool, tools.PrivilegedTool, and tools.SchemaTool
+// only when inner itself does, forwarding each call straight to
+// inner: SpoolTool changes only Run's result handling, not inner's
+// declared execution class, result budget, privilege, or schema, and
+// it never fakes a capability inner does not publish.
 func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) tools.Tool {
 	sp := &Spool{
 		store:         store,
@@ -153,22 +228,51 @@ func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) 
 	_, profiled := inner.(tools.ProfiledTool)
 	_, budgeted := inner.(tools.ResultBudgetTool)
 	_, privileged := inner.(tools.PrivilegedTool)
+	_, schemaed := inner.(tools.SchemaTool)
+
+	return buildSpoolTool(base, inner, profiled, budgeted, privileged, schemaed)
+}
+
+// buildSpoolTool composes the spoolTool variant matching exactly the
+// four booleans, each true when inner implements the matching
+// optional interface.
+func buildSpoolTool(base *spoolTool, inner tools.Tool, profiled, budgeted, privileged, schemaed bool) tools.Tool {
+	p := profiledCap{inner}
+	b := budgetCap{inner}
+	r := privilegedCap{inner}
+	s := schemaCap{inner}
 
 	switch {
+	case profiled && budgeted && privileged && schemaed:
+		return &spoolToolAll{spoolTool: base, profiledCap: p, budgetCap: b, privilegedCap: r, schemaCap: s}
 	case profiled && budgeted && privileged:
-		return &spoolToolAll{spoolTool: base, profiledCap: profiledCap{inner}, budgetCap: budgetCap{inner}, privilegedCap: privilegedCap{inner}}
+		return &spoolToolProfiledBudgetPrivileged{spoolTool: base, profiledCap: p, budgetCap: b, privilegedCap: r}
+	case profiled && budgeted && schemaed:
+		return &spoolToolProfiledBudgetSchema{spoolTool: base, profiledCap: p, budgetCap: b, schemaCap: s}
+	case profiled && privileged && schemaed:
+		return &spoolToolProfiledPrivilegedSchema{spoolTool: base, profiledCap: p, privilegedCap: r, schemaCap: s}
+	case budgeted && privileged && schemaed:
+		return &spoolToolBudgetPrivilegedSchema{spoolTool: base, budgetCap: b, privilegedCap: r, schemaCap: s}
 	case profiled && budgeted:
-		return &spoolToolProfiledBudget{spoolTool: base, profiledCap: profiledCap{inner}, budgetCap: budgetCap{inner}}
+		return &spoolToolProfiledBudget{spoolTool: base, profiledCap: p, budgetCap: b}
 	case profiled && privileged:
-		return &spoolToolProfiledPrivileged{spoolTool: base, profiledCap: profiledCap{inner}, privilegedCap: privilegedCap{inner}}
+		return &spoolToolProfiledPrivileged{spoolTool: base, profiledCap: p, privilegedCap: r}
+	case profiled && schemaed:
+		return &spoolToolProfiledSchema{spoolTool: base, profiledCap: p, schemaCap: s}
 	case budgeted && privileged:
-		return &spoolToolBudgetPrivileged{spoolTool: base, budgetCap: budgetCap{inner}, privilegedCap: privilegedCap{inner}}
+		return &spoolToolBudgetPrivileged{spoolTool: base, budgetCap: b, privilegedCap: r}
+	case budgeted && schemaed:
+		return &spoolToolBudgetSchema{spoolTool: base, budgetCap: b, schemaCap: s}
+	case privileged && schemaed:
+		return &spoolToolPrivilegedSchema{spoolTool: base, privilegedCap: r, schemaCap: s}
 	case profiled:
-		return &spoolToolProfiled{spoolTool: base, profiledCap: profiledCap{inner}}
+		return &spoolToolProfiled{spoolTool: base, profiledCap: p}
 	case budgeted:
-		return &spoolToolBudget{spoolTool: base, budgetCap: budgetCap{inner}}
+		return &spoolToolBudget{spoolTool: base, budgetCap: b}
 	case privileged:
-		return &spoolToolPrivileged{spoolTool: base, privilegedCap: privilegedCap{inner}}
+		return &spoolToolPrivileged{spoolTool: base, privilegedCap: r}
+	case schemaed:
+		return &spoolToolSchema{spoolTool: base, schemaCap: s}
 	default:
 		return &spoolToolPlain{spoolTool: base}
 	}

@@ -135,6 +135,45 @@ func TestRun(t *testing.T) {
 	})
 }
 
+// TestTools covers the empty-registry and populated-registry cases,
+// proving the result is sorted by name and mutating it does not
+// affect the Registry.
+func TestTools(t *testing.T) {
+	t.Run("empty registry", func(t *testing.T) {
+		r := tools.New()
+		got := r.Tools()
+		if got == nil {
+			t.Fatalf("Tools() = nil, want a non-nil empty slice")
+		}
+		if len(got) != 0 {
+			t.Fatalf("Tools() len = %d, want 0", len(got))
+		}
+	})
+	t.Run("sorted snapshot, mutation-safe", func(t *testing.T) {
+		r := tools.New()
+		for _, name := range []string{"charlie", "alpha", "bravo"} {
+			if err := r.Add(&stubTool{name: name}); err != nil {
+				t.Fatalf("Add(%s) error = %v, want nil", name, err)
+			}
+		}
+		got := r.Tools()
+		if len(got) != 3 {
+			t.Fatalf("Tools() len = %d, want 3", len(got))
+		}
+		wantOrder := []string{"alpha", "bravo", "charlie"}
+		for i, name := range wantOrder {
+			if got[i].Name() != name {
+				t.Fatalf("Tools()[%d].Name() = %s, want %s", i, got[i].Name(), name)
+			}
+		}
+		got[0] = &stubTool{name: "mutated"}
+		again := r.Tools()
+		if again[0].Name() != "alpha" {
+			t.Fatalf("mutating the returned slice changed the Registry: Tools()[0].Name() = %s, want alpha", again[0].Name())
+		}
+	})
+}
+
 // TestRemove covers the present, absent, and post-removal cases.
 func TestRemove(t *testing.T) {
 	t.Run("present name", func(t *testing.T) {

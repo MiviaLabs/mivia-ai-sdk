@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -95,6 +96,24 @@ func (r *Registry) Remove(name string) bool {
 	}
 	delete(r.tools, name)
 	return true
+}
+
+// Tools returns a snapshot of every registered Tool, sorted by name.
+// The result is a fresh slice; mutating it does not affect the
+// Registry. The result is empty and non-nil for an empty Registry.
+func (r *Registry) Tools() []Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Tool, 0, len(r.tools))
+	names := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		out = append(out, r.tools[name])
+	}
+	return out
 }
 
 // Run resolves name through Get and calls the tool's Run. Returns

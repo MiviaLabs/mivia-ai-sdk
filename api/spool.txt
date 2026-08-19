@@ -2,6 +2,8 @@ package spool
   func (c budgetCap) MaxResultBytes() (int)
   func (c privilegedCap) Privileged() (bool)
   func (c profiledCap) ExecutionProfile() (tools.ExecutionProfile)
+  func (c schemaCap) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (c schemaCap) ParameterSchema() ([]byte)
   func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error)
   func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error)
   func (t *spoolTool) Name() (string)

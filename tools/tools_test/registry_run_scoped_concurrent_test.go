@@ -128,3 +128,45 @@ func TestConcurrentRunScopedAndAdd(t *testing.T) {
 		}
 	}
 }
+
+// TestConcurrentToolsAndAdd races N goroutines calling Tools() against
+// N goroutines calling Add for N distinct names. Tools() reads the
+// same map as Add under the same mutex, so every call must return a
+// consistent, non-corrupt snapshot, and no call may panic.
+func TestConcurrentToolsAndAdd(t *testing.T) {
+	r := tools.New()
+	const n = 100
+	if err := r.Add(&stubTool{name: "shared", result: "shared-result"}); err != nil {
+		t.Fatalf("Add(shared) error = %v, want nil", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2 * n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			snapshot := r.Tools()
+			for _, tl := range snapshot {
+				if tl == nil || tl.Name() == "" {
+					t.Errorf("Tools() snapshot held a nil or blank-named entry")
+				}
+			}
+		}()
+	}
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			name := fmt.Sprintf("added-%03d", i)
+			if err := r.Add(&stubTool{name: name}); err != nil {
+				t.Errorf("Add(%s) error = %v, want nil", name, err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	final := r.Tools()
+	if len(final) != n+1 {
+		t.Fatalf("final Tools() len = %d, want %d", len(final), n+1)
+	}
+}

@@ -1,0 +1,87 @@
+package agentloop
+
+import (
+	"context"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
+	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
+	"github.com/MiviaLabs/mivia-ai-sdk/usage"
+)
+
+// Result holds a Run call's outcome. See docs/plans/agentloop.md's
+// Result-shape rule for how each field behaves on a graceful stop
+// versus a hard-fail error return.
+type Result struct {
+	// Final is the last message the model produced. Zero value when
+	// the stop happened before a new response arrived, or on
+	// StopHookVeto and StopMaxIterations by design, and on every
+	// hard-fail return.
+	Final provider.Message
+	// History carries every message appended so far, including the
+	// caller's starting messages.
+	History []provider.Message
+	// Iterations counts the number of Completer calls that completed.
+	Iterations int
+	// Usage sums provider.Usage across every completed Completer call.
+	Usage provider.Usage
+	// Stop names why Run stopped gracefully. Zero value on a hard-fail
+	// error return.
+	Stop StopReason
+}
+
+// Loop is a bound, ready-to-run tool-calling loop. Built only through
+// New.
+type Loop struct {
+	completer       provider.Completer
+	reg             *tools.Registry
+	scope           *tools.Scope
+	model           string
+	maxIterations   int
+	maxCallsPerTurn int
+	maxTotalTokens  int
+	onToolError     ErrorPolicy
+	hooksReg        *hooks.Registry
+	tracer          *trace.Tracer
+	usageAcc        *usage.Accumulator
+	sessionID       string
+	bus             *events.Bus
+	budget          *contextbudget.Limits
+	trim            func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	defs            []provider.ToolDefinition
+}
+
+// New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
+// and binds the result onto Loop. Run reuses that same
+// []provider.ToolDefinition slice for Request.Tools on every
+// iteration.
+func New(opts Options) (*Loop, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	defs, _, err := Definitions(opts.Tools, opts.Scope)
+	if err != nil {
+		return nil, err
+	}
+	return &Loop{
+		completer:       opts.Completer,
+		reg:             opts.Tools,
+		scope:           opts.Scope,
+		model:           opts.Model,
+		maxIterations:   opts.MaxIterations,
+		maxCallsPerTurn: opts.MaxCallsPerTurn,
+		maxTotalTokens:  opts.MaxTotalTokens,
+		onToolError:     opts.OnToolError,
+		hooksReg:        opts.Hooks,
+		tracer:          opts.Tracer,
+		usageAcc:        opts.Usage,
+		sessionID:       opts.SessionID,
+		bus:             opts.Bus,
+		budget:          opts.Budget,
+		trim:            opts.Trim,
+		defs:            defs,
+	}, nil
+}

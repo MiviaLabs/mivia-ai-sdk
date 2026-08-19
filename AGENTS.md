@@ -129,8 +129,12 @@ Go SDK for building AI agents. Module:
   envelope, events, and room. Stdlib-only; carries no third-party or
   a2a-go import.
 - `tools/` — the tool registry: Tool, Registry, New, Add, Get, Remove,
-  Run. A leaf package; no internal imports. No caller yet; the agent
-  binding is a later phase.
+  Run, RunScoped. SchemaTool, an optional interface a Tool implements
+  to publish a parameter schema and decode raw argument bytes;
+  SchemaOf reads it. Registry.Tools returns every registered Tool,
+  sorted by name. A leaf package; no internal imports. agentloop's
+  Definitions walks Registry.Tools and calls SchemaOf on each tool to
+  build the offered tool set.
 - `trigger/` — the shared "condition fired, so run this" vocabulary:
   Condition, Action, Registry, New, Add, Remove, Fire. A leaf package;
   no internal imports.
@@ -170,6 +174,16 @@ Go SDK for building AI agents. Module:
   ErrCompile, ErrMalformedPayload, and ErrValidation. Imports
   `github.com/santhosh-tekuri/jsonschema/v6` externally and no internal
   package.
+- `agentloop/` — a second composition path beside flow: a tool-calling
+  loop over a provider.Completer and a tools.Registry. Run offers the
+  registry's schema-bearing tools, runs the model's requested calls
+  through RunScoped, appends the results, and repeats until the model
+  stops asking or a bound trips (MaxIterations, MaxCallsPerTurn,
+  MaxTotalTokens, Budget, or ctx cancellation). A wired Hooks registry
+  fires PointPreTool and PointPostTool per tool call, and PointStop
+  once on every return path out of Run. Imports provider, tools,
+  trace, hooks, usage, events, and contextbudget. Never imports
+  subagent; subagent imports agentloop starting in phase 70.
 - `e2e/` — the end-to-end scenario harness: deterministic tools,
   an event recorder, and a thread-capturing resolver. The scenarios
   in `e2e/e2e_test/` wire real high-level blocks together and assert

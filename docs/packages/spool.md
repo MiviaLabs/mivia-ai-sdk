@@ -76,10 +76,11 @@ Use `errors.Is` to test these.
   no store write. `inner`'s own error passes through unchanged, with
   no spooling attempted.
 - `SpoolTool`'s returned `tools.Tool` implements `tools.ProfiledTool`,
-  `tools.ResultBudgetTool`, and `tools.PrivilegedTool` only when
-  `inner` itself does, forwarding each call straight to `inner`.
-  `SpoolTool` changes only `Run`'s result handling, never `inner`'s
-  declared execution class, result budget, or privilege.
+  `tools.ResultBudgetTool`, `tools.PrivilegedTool`, and
+  `tools.SchemaTool` only when `inner` itself does, forwarding each
+  call straight to `inner`. `SpoolTool` changes only `Run`'s result
+  handling, never `inner`'s declared execution class, result budget,
+  privilege, or schema.
 
 ## Why this shape
 
@@ -97,8 +98,10 @@ refs happen to be `envelope.ContextRef` values today. See
 ## Cross-references
 
 - [tools.md](tools.md) — `SpoolTool` wraps a `tools.Tool` and forwards
-  its optional `ProfiledTool`, `ResultBudgetTool`, and `PrivilegedTool`
-  interfaces.
+  its optional `ProfiledTool`, `ResultBudgetTool`, `PrivilegedTool`,
+  and `SchemaTool` interfaces. Stripping `SchemaTool` would make a
+  wrapped tool unreachable to an `agentloop.Loop`'s model, since
+  `agentloop.Definitions` skips a tool with no published schema.
 - [memory.md](memory.md) — `memory.Store` satisfies `ContentStore`
   with no import needed on either side.
 

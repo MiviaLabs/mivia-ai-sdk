@@ -82,8 +82,8 @@ Go SDK for building AI agents. Module:
   to read it back, and returns a bounded view plus a reference.
   SpoolTool wraps a tools.Tool: an oversized string result spools
   instead of returning in full, and the wrapper forwards
-  ExecutionProfile, MaxResultBytes, and Privileged from the wrapped
-  tool whenever it implements them. Imports tools only.
+  ExecutionProfile, MaxResultBytes, Privileged, and SchemaTool from
+  the wrapped tool whenever it implements them. Imports tools only.
 
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.

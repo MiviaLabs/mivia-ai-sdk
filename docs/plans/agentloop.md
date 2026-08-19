@@ -126,11 +126,12 @@ message appended so far, `Iterations` carries the completed iteration
 count, and `Usage` carries the tokens summed so far. `Final` carries
 the last message appended, or the zero value when the stop happened
 before a new response arrived, as with `StopHookVeto`. On every
-hard-fail error return — a canceled ctx, `ErrOverBudget`,
-`ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`, a `Trim` error, a
-post-`Trim` `provider.Message.Validate` error, a tool error under
-`ErrorPolicyFail`, or a non-veto `hooks.Fire` error — `Run` also
-returns the partial `Result` alongside the error, not the zero value.
+hard-fail error return — a canceled ctx, a `Completer.Chat` error,
+`ErrOverBudget`, `ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`,
+a `Trim` error, a post-`Trim` `provider.Message.Validate` error, a
+tool error under `ErrorPolicyFail`, or a non-veto `hooks.Fire` error
+— `Run` also returns the partial `Result` alongside the error, not
+the zero value.
 `History`, `Iterations`, and `Usage` carry the same partial state as
 the graceful-stop case; `Final` and `Stop` stay the zero value, since
 the run did not reach a stop condition — it failed one. This list is
@@ -357,12 +358,13 @@ same footprint the package already holds.
   alongside a `Result` whose `History`, `Iterations`, and `Usage`
   carry that prior iteration's accumulated state, and whose `Final`
   and `Stop` stay the zero value. Every hard-fail case above — the
-  canceled ctx, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
-  `ErrCallsPerTurnExceeded`, the `Trim` error, the post-`Trim`
-  validation error, the `ErrorPolicyFail` tool error, and the
-  non-veto hook error — asserts the returned `Result` carries the
-  accumulated `History`, `Iterations`, and `Usage` at the point of
-  failure, not the zero value when any iteration already completed.
+  canceled ctx, the `Completer.Chat` error, `ErrOverBudget`,
+  `ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`, the `Trim`
+  error, the post-`Trim` validation error, the `ErrorPolicyFail` tool
+  error, and the non-veto hook error — asserts the returned `Result`
+  carries the accumulated `History`, `Iterations`, and `Usage` at the
+  point of failure, not the zero value when any iteration already
+  completed.
 - `render_test.go` — the render order (string, then UTF-8 bytes,
   then JSON fallback), the unrenderable case asserting
   `errors.Is(err, ErrUnrenderableResult)`, and the `ResultBudgetOf`

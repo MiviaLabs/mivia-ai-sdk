@@ -93,9 +93,10 @@ carries the completed iteration count, and `Usage` carries the tokens
 summed so far. `Final` carries the last message appended, or the zero
 value when the stop happened before a new response arrived.
 
-On every hard-fail error return — a canceled ctx, `ErrOverBudget`,
-`ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`, a `Trim` error, a
-post-`Trim` `provider.Message.Validate` error, a tool error under
+On every hard-fail error return — a canceled ctx, a `Completer.Chat`
+error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
+`ErrCallsPerTurnExceeded`, a `Trim` error, a post-`Trim`
+`provider.Message.Validate` error, a tool error under
 `ErrorPolicyFail`, or a non-veto `hooks.Fire` error — `Run` also
 returns the partial `Result` alongside the error, not the zero value,
 once at least one iteration has completed. `Final` and `Stop` stay

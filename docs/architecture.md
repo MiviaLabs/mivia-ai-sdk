@@ -19,7 +19,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-one packages and the import edges between
+The diagram shows the forty-two packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `channel`, `contextbudget`, `contextstate`, `discovery`,
 `durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
@@ -57,6 +57,13 @@ flowchart LR
     a2aclient --> envelope
     mcp --> tools
     spool --> tools
+    agentloop --> provider
+    agentloop --> tools
+    agentloop --> trace
+    agentloop --> hooks
+    agentloop --> usage
+    agentloop --> events
+    agentloop --> contextbudget
     usage --> provider
     providerregistry --> provider
     scheduler --> events
@@ -301,20 +308,36 @@ flowchart LR
 - `e2e/` — the end-to-end scenario harness and suite. Each scenario
   wires real high-level blocks together and asserts one full run's
   outputs. See [packages/e2e.md](packages/e2e.md).
+- `agentloop/` — a second composition path beside `flow`: a
+  tool-calling loop over a `provider.Completer` and a `tools.Registry`.
+  `New` validates `Options` and calls `Definitions` once; `Run` offers
+  the cached tool definitions, calls `Registry.RunScoped` for each
+  model-requested call, appends the results, and repeats until the
+  model asks for no more tools or a bound trips (`MaxIterations`,
+  `MaxCallsPerTurn`, `MaxTotalTokens`, `Budget`, or ctx cancellation).
+  A wired `Hooks` registry fires `PointPreTool` and `PointPostTool` per
+  tool call and `PointStop` once, on every return path. `agentloop`
+  imports `provider`, `tools`, `trace`, `hooks`, `usage`, `events`, and
+  `contextbudget`; it never imports `subagent`. See
+  [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
-  `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, and `Run`. A `Tool` is
-  a named action; a `Registry` resolves one by name and runs it. `Add`
-  and `Remove` mirror `room.Room`'s membership symmetry. It also
+  `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A
+  `Tool` is a named action; a `Registry` resolves one by name and runs
+  it. `Add` and `Remove` mirror `room.Room`'s membership symmetry.
+  `Tools` returns every registered `Tool`, sorted by name. It also
   provides `ExecutionClass`, `ExecutionProfile`, `ProfiledTool`,
-  `ResultBudgetTool`, `PrivilegedTool`, `Scope`, `ScopeOptions`,
-  `NewScope`, and `RunScoped`: optional execution-risk markers a
-  `Tool` may implement, and a `Scope` that narrows which tools a run
-  may invoke. `ScopeOptions.Approve` and `ScopeOptions.ApprovalThreshold`
+  `ResultBudgetTool`, `PrivilegedTool`, `SchemaTool`, `SchemaOf`,
+  `Scope`, `ScopeOptions`, `NewScope`, and `RunScoped`: optional
+  execution-risk and schema markers a `Tool` may implement, and a
+  `Scope` that narrows which tools a run may invoke. `SchemaTool`
+  publishes a parameter schema and decodes model-supplied arguments;
+  `agentloop.Definitions` skips a tool that does not implement it.
+  `ScopeOptions.Approve` and `ScopeOptions.ApprovalThreshold`
   add a synchronous approval gate: `RunScoped` calls `Approve` with a
   `ToolCall` after `Allowed` passes and before it runs the tool,
   returning `ErrToolDeclined` for a decline. `tools` imports no other
-  package in this module; `mcp` imports `tools`, and the agent binding
-  is a later phase. See [packages/tools.md](packages/tools.md).
+  package in this module; `mcp`, `spool`, and `agentloop` import
+  `tools`. See [packages/tools.md](packages/tools.md).
 - `spool/` — a principal-scoped grant store for oversized content. It
   provides `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`,
   `ContentStore`, `WithPrincipal`, `PrincipalFrom`, and `SpoolTool`.
@@ -324,9 +347,9 @@ flowchart LR
   evicts the oldest grants, by insertion order, once a new grant would
   exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
   `maxBytes` spools instead of returning in full, and the wrapper
-  forwards `ExecutionProfile`, `MaxResultBytes`, and `Privileged` from
-  the wrapped tool whenever it implements them. `spool` imports
-  `tools` only. See [packages/spool.md](packages/spool.md).
+  forwards `ExecutionProfile`, `MaxResultBytes`, `Privileged`, and
+  `SchemaTool` from the wrapped tool whenever it implements them.
+  `spool` imports `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
   `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,

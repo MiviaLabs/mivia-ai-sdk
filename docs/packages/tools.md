@@ -41,6 +41,11 @@ unknown name fails. The exported surface below mirrors
 - `ToolCall` — `Name`, `In`, and `Profile`, describing one call
   `RunScoped` is about to make. Passed to a `Scope`'s `Approve`
   function.
+- `SchemaTool` — optional interface. A `Tool` implements
+  `ParameterSchema() []byte` and `DecodeArguments(raw []byte) (InOut,
+  error)` to publish a model-facing parameter schema and decode
+  model-supplied arguments. `agentloop.Definitions` skips a tool that
+  does not implement it.
 
 ## Functions and methods
 
@@ -50,6 +55,9 @@ unknown name fails. The exported surface below mirrors
   for an unknown name.
 - `Registry.Remove(name)` — drops `name` from the registry. Returns
   whether it was present.
+- `Registry.Tools()` — returns a fresh slice of every registered
+  `Tool`, sorted by name. Mutating the slice does not affect the
+  `Registry`.
 - `Registry.Run(ctx, name, in)` — resolves `name` through `Get` and
   runs the tool.
 - `Registry.RunScoped(ctx, name, in, scope)` — resolves `name` through
@@ -65,6 +73,8 @@ unknown name fails. The exported surface below mirrors
   `0, false` when `t` does not implement `ResultBudgetTool`.
 - `IsPrivileged(t)` — returns `t.Privileged()`, or false when `t` does
   not implement `PrivilegedTool`.
+- `SchemaOf(t)` — returns `t.ParameterSchema()` and true when `t`
+  implements `SchemaTool`, or `nil, false` when it does not.
 - `NewScope(opts)` — builds a `Scope` from `ScopeOptions`.
 - `Scope.Allowed(name, t)` — true when `name` passes the denylist, the
   privileged check, and the allowlist.
@@ -134,6 +144,11 @@ Use `errors.Is` to test these.
 - `Approve` returning `(true, nil)` runs the tool. `(false, nil)`
   returns `ErrToolDeclined` and never runs the tool. A non-nil error
   returns that error unchanged and never runs the tool.
+- `Tools` returns tools sorted by name, so two calls against an
+  unchanged `Registry` return equal slices in the same order.
+- A tool that does not implement `SchemaTool` is unschema'd.
+  `SchemaOf` reports `nil, false`; this package never synthesizes a
+  schema.
 
 ## Why this shape
 
@@ -187,6 +202,13 @@ all. An unrecognized `Class` must not let a tool skip approval.
   bounds a whole model call's context. `ResultBudgetTool.
   MaxResultBytes` bounds one tool call's output. The two types do not
   import each other.
+- [agentloop.md](agentloop.md) — `agentloop.Definitions` builds a
+  model's offered tool set from `Registry.Tools()` and `SchemaOf`, and
+  `agentloop.Loop.Run` decodes model-supplied arguments through
+  `SchemaTool.DecodeArguments`.
+- [spool.md](spool.md) — `spool.SpoolTool` forwards `SchemaTool` from
+  the wrapped tool to the returned `tools.Tool` only when the wrapped
+  tool implements it.
 
 ## Usage
 

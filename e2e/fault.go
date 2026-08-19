@@ -176,13 +176,13 @@ type HangCompleter struct{}
 func (h *HangCompleter) Name() string { return "hang-completer" }
 
 // Chat blocks until ctx is done, then returns ctx.Err().
-func (h *HangCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+func (h *HangCompleter) Chat(ctx context.Context, _ provider.Request) (provider.Response, error) {
 	<-ctx.Done()
 	return provider.Response{}, ctx.Err()
 }
 
 // ChatStream blocks until ctx is done, then returns ctx.Err().
-func (h *HangCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+func (h *HangCompleter) ChatStream(ctx context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

@@ -68,6 +68,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/dispatch.md](packages/dispatch.md) — the NDJSON envelope endpoint: an `http.Handler` that runs the receive ladder per line and answers with confirmed acks, plus `Send`, the client-side counterpart.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
 - [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
+- [packages/contextstate.md](packages/contextstate.md) — the durable context contract and the canonical content-reference minter: sessions, checkpoints, commit validation, retention classes, volume `Limits`, and the in-memory store.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
 - [packages/durablefence.md](packages/durablefence.md) — a leaf, test-only conformance kit that proves claim, takeover, and fence invariants against any implementation.

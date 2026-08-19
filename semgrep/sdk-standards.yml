@@ -118,13 +118,13 @@ rules:
   - id: sdk.go.hash-prefix-centralized
     languages: [go]
     severity: ERROR
-    message: Use the hashPrefix const (envelope/message.go); the literal may appear in its definition only.
+    message: Use the HashPrefix const (contextstate/ref.go); the literal may appear in its definition only.
     paths:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go", "/scripts/**"]
     patterns:
       - pattern-regex: '"sha256:"|`sha256:`|"sha256"\s*\+\s*":"'
-      - pattern-not-regex: 'hashPrefix\s*=\s*"sha256:"|hashPrefix\s*=\s*`sha256:`|hashPrefix\s*=\s*"sha256"\s*\+\s*":"'
+      - pattern-not-regex: 'HashPrefix\s*=\s*"sha256:"|HashPrefix\s*=\s*`sha256:`|HashPrefix\s*=\s*"sha256"\s*\+\s*":"'
 
   - id: sdk.go.marshal-via-encode
     languages: [go]

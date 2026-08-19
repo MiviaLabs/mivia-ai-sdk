@@ -1,0 +1,126 @@
+package contextstate
+  const HashPrefix = "sha256:"
+  const MaxIdentifierBytes = 128
+  const MaxPayloadReferenceBytes = 256
+  const MaxSourceRangeEvents = 100_000
+  const RetentionCompliance = "compliance"
+  const RetentionSession = "session"
+  func (b BindingRevision) Validate() (error)
+  func (c Checkpoint) Validate() (error)
+  func (c CheckpointID) Validate() (error)
+  func (e *ValidationError) Error() (string)
+  func (e *ValidationError) Unwrap() (error)
+  func (e SourceEvent) Validate() (error)
+  func (id SourceID) Validate() (error)
+  func (l Limits) Validate() (error)
+  func (m *MemStore) Checkpoint(req CommitRequest) (error)
+  func (m *MemStore) Get(ref ContentRef) (PayloadRecord, error)
+  func (m *MemStore) Put(record PayloadRecord) (error)
+  func (m *MemStore) Session(id string) (Session, error)
+  func (p PayloadRecord) Validate() (error)
+  func (r CommitRequest) Validate() (error)
+  func (r ContentRef) Validate() (error)
+  func (r SourceRange) Validate() (error)
+  func Digest(chunks ...[]byte) (string)
+  func IsRef(ref string) (bool)
+  func Mint(chunks ...[]byte) (string)
+  func New(limits Limits) (*MemStore, error)
+  func NewCommitRequest(sessionID string, expected Revision, expectedBinding BindingRevision, events []SourceEvent, payloads []PayloadRecord, checkpoint Checkpoint, newBinding BindingRevision, turnID uint64) (CommitRequest, error)
+  func NewContentRef(namespace string, workspaceID string, sessionID string, subjectID string, chunks ...[]byte) (ContentRef, error)
+  func Reassemble(ref ContentRef, retention RetentionClass, chunks ...[]byte) (PayloadRecord, error)
+  type BindingRevision struct {
+  Provider string `json:"provider"`
+  Model string `json:"model"`
+  Generation uint64 `json:"generation"`
+}
+  type Checkpoint struct {
+  ID CheckpointID `json:"id"`
+  Revision Revision `json:"revision"`
+  Binding BindingRevision `json:"binding"`
+  ActiveContext []byte `json:"active_context"`
+  TurnID uint64 `json:"turn_id"`
+}
+  type CheckpointID struct {
+  SessionID string `json:"session_id"`
+  SourceRange SourceRange `json:"source_range"`
+  Algorithm string `json:"algorithm"`
+  SchemaVersion uint32 `json:"schema_version"`
+  IdempotencyKey string `json:"idempotency_key"`
+}
+  type CommitRequest struct {
+  OperationID string `json:"operation_id"`
+  SessionID string `json:"session_id"`
+  Expected Revision `json:"expected"`
+  ExpectedBinding BindingRevision `json:"expected_binding"`
+  NewSourceEvents []SourceEvent `json:"new_source_events"`
+  Payloads []PayloadRecord `json:"payloads,omitempty"`
+  Checkpoint Checkpoint `json:"checkpoint"`
+  NewSession uint64 `json:"new_session"`
+  NewDurable uint64 `json:"new_durable"`
+  NewSourceSequence uint64 `json:"new_source_sequence"`
+  NewBinding BindingRevision `json:"new_binding"`
+  TurnID uint64 `json:"turn_id"`
+}
+  type ContentRef struct {
+  Ref string `json:"ref"`
+  Namespace string `json:"namespace"`
+  SHA256 string `json:"sha256"`
+  WorkspaceID string `json:"workspace_id"`
+  SessionID string `json:"session_id"`
+  SubjectID string `json:"subject_id"`
+  Size int `json:"size"`
+}
+  type Limits struct {
+  CheckpointBytes int
+  CommitEvents int
+  CommitEventBytes int
+}
+  type MemStore struct {
+}
+  type PayloadRecord struct {
+  Ref ContentRef `json:"ref"`
+  Retention RetentionClass `json:"retention"`
+  Revoked bool `json:"revoked"`
+  Data []byte `json:"data,omitempty"`
+}
+  type RetentionClass string
+  type Revision struct {
+  Session uint64 `json:"session"`
+  Durable uint64 `json:"durable"`
+  Source uint64 `json:"source"`
+}
+  type Session struct {
+  Revision Revision `json:"revision"`
+  Binding BindingRevision `json:"binding"`
+  Active Checkpoint `json:"active"`
+  Source []SourceEvent `json:"source"`
+}
+  type SourceEvent struct {
+  ID SourceID `json:"id"`
+  Kind string `json:"kind"`
+  Role string `json:"role"`
+  ToolCallID string `json:"tool_call_id,omitempty"`
+  PayloadRef string `json:"payload_ref,omitempty"`
+  Provenance string `json:"provenance"`
+  RedactionStatus string `json:"redaction_status"`
+  Size int `json:"size"`
+}
+  type SourceID struct {
+  SessionID string `json:"session_id"`
+  Sequence uint64 `json:"sequence"`
+}
+  type SourceRange struct {
+  Start SourceID `json:"start"`
+  End SourceID `json:"end"`
+}
+  type ValidationError struct {
+  Field string
+  Reason string
+}
+  var ErrCheckpointConflict
+  var ErrInvalidRecord
+  var ErrOverLimit
+  var ErrPayloadNotFound
+  var ErrSessionNotFound
+  var ErrStaleBinding
+  var ErrStaleRevision

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 )
 
 // Version is the only supported schema version. Decode rejects others.
@@ -15,8 +17,9 @@ import (
 const Version = "v1"
 
 // hashPrefix prefixes every content address (ContextRef, Hash, refs).
-// The only place the literal may appear; semgrep enforces this.
-const hashPrefix = "sha256:"
+// Alias of contextstate.HashPrefix; the literal lives there only,
+// and semgrep enforces that.
+const hashPrefix = contextstate.HashPrefix
 
 // Intent classifies what a Message does. Validate enforces the set.
 type Intent string
@@ -78,8 +81,7 @@ type Message struct {
 // ContextRef returns the canonical (lowercase hex) content address of a
 // shared context blob. Refs are comparable: same content, same string.
 func ContextRef(content string) string {
-	sum := sha256.Sum256([]byte(content))
-	return hashPrefix + hex.EncodeToString(sum[:])
+	return contextstate.Mint([]byte(content))
 }
 
 // Hash returns the content address of m (sha256 of its canonical JSON).

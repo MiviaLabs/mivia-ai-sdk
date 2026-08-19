@@ -46,6 +46,14 @@ Go SDK for building AI agents. Module:
   field means no cap. Fits reports whether a candidate total stays
   under both caps. Imports no internal package; agent imports it for
   Run's optional budget check.
+- `contextstate/` — the durable context contract and the canonical
+  content-reference minter: HashPrefix, Digest, Mint, IsRef;
+  ContentRef, PayloadRecord, Reassemble; SourceEvent, Checkpoint,
+  Session; CommitRequest with NewCommitRequest and Validate; Limits;
+  and a MemStore with New, Put, Get, Checkpoint, and Session. A leaf
+  package; envelope imports it — ContextRef delegates to Mint, so
+  every ref in this SDK has one form. Volume Limits are caller-owned
+  and enforced at the store; a zero field means uncapped.
 - `envfile/` — dotenv loading: Load parses `KEY=VALUE` lines into a
   map without leaking parsed values into an error. A leaf package; no
   internal imports.

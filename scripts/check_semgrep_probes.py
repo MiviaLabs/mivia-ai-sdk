@@ -56,7 +56,7 @@ PROBES = [
         "viol_hash.go",
         'package p\n\nfunc f() {\n\ta := "sha256:" + "x"\n\tb := `sha256:` + "x"\n\tc := "sha256" + ":" + "x"\n\t_, _, _ = a, b, c\n}\n',
         "clean_hash.go",
-        'package p\n\nconst hashPrefix = "sha256:"\n\nfunc f() {\n\t_ = hashPrefix\n}\n',
+        'package p\n\nconst HashPrefix = "sha256:"\n\nfunc f() {\n\t_ = HashPrefix\n}\n',
     ),
     (
         "sdk.go.marshal-via-encode",

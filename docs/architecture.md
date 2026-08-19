@@ -18,12 +18,12 @@ references.
 
 ## Package map
 
-The diagram shows the thirty-three packages and the import edges
+The diagram shows the thirty-four packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `discovery`, `durablefence`,
-`envelope`, `events`, `hooks`, `provider`, `schema`, `skills`, `tools`,
-`trace`, and `trigger` are leaves: they import no other package in
-this module.
+imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
+`durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
+`tools`, `trace`, and `trigger` are leaves: they import no other
+package in this module. `envelope` imports `contextstate` alone.
 
 ```mermaid
 flowchart LR
@@ -35,6 +35,7 @@ flowchart LR
     agent --> machine
     agent --> heartbeat
     agent --> contextbudget
+    envelope --> contextstate
     flow --> events
     flow --> machine
     heartbeat --> events
@@ -117,7 +118,8 @@ flowchart LR
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. One package per concern. See
+  VerifyThread. `ContextRef` delegates to `contextstate.Mint`, so
+  every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
   message admission. It also provides `StaleMembers` and the sentinel
@@ -370,6 +372,19 @@ flowchart LR
   at or under their caps; it keeps no running total of its own.
   `contextbudget` imports no other package in this module; `agent`
   imports it for `Run`'s optional budget check.
+- `contextstate/` — the durable context contract and the canonical
+  content-reference minter. It provides `HashPrefix`, `Digest`,
+  `Mint`, `IsRef`, the contract types (`ContentRef`,
+  `NewContentRef`, `PayloadRecord`, `Reassemble`, `SourceID`,
+  `SourceRange`, `SourceEvent`, `Revision`, `BindingRevision`,
+  `CheckpointID`, `Checkpoint`, `Session`), `CommitRequest` with
+  `NewCommitRequest` and `Validate`, `Limits` with `Validate`, and
+  the `MemStore` with `New`, `Put`, `Get`, `Checkpoint`, and
+  `Session`. `Mint` mints the `sha256:`-prefixed ref; a reused
+  `OperationID` with an equal request is a no-op success, and with a
+  different request it wraps `ErrCheckpointConflict`. `envelope`
+  imports it: `ContextRef` delegates to `Mint`, so every ref in this
+  SDK has one form. See [packages/contextstate.md](packages/contextstate.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Response`,

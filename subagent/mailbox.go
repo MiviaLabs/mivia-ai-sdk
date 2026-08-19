@@ -124,7 +124,7 @@ type inboxTool struct {
 func (t *inboxTool) Name() string { return t.name }
 
 // Run drains the mailbox and reports its payloads.
-func (t *inboxTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (t *inboxTool) Run(ctx context.Context, _ tools.InOut) (tools.Out, error) {
 	msgs := t.box.Take()
 	if len(msgs) == 0 {
 		return tools.Out{Value: inboxEmpty}, nil

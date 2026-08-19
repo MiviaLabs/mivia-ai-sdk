@@ -57,7 +57,7 @@ func (t *workspaceReadTool) ExecutionProfile() tools.ExecutionProfile {
 }
 
 // Run reads the file at args.Path, relative to t.ft's bound root.
-func (t *workspaceReadTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (t *workspaceReadTool) Run(_ context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceReadArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)

@@ -47,10 +47,25 @@ Use `errors.Is` to test these.
   inner result needs a grant.
 - `ErrNoBudget` ("spool: maxGrantBytes must be positive") — `NewSpool`
   wraps it for a non-positive `maxGrantBytes`.
+- `ErrGrantTooLarge` ("spool: content exceeds grant budget") —
+  `Spool.Spool` wraps it when `data` alone is longer than
+  `maxGrantBytes`: no eviction could ever make room for it, so `Spool`
+  rejects the call before writing to `store`.
+- `ErrPrincipalConflict` ("spool: ref already granted to a different
+  principal") — `Spool.Spool` wraps it when `store` returns a `ref`
+  that already has a live grant for a different principal. A
+  content-addressed `ContentStore` returns the same `ref` for
+  identical bytes regardless of caller; without this check, a second
+  principal spooling the same content would silently take over the
+  first principal's grant.
 
 ## Invariants
 
 - `NewSpool` rejects a non-positive `maxGrantBytes` with `ErrNoBudget`.
+- `Spool.Spool` rejects `data` longer than `maxGrantBytes` with
+  `ErrGrantTooLarge`, before it calls `store.Put`.
+- `Spool.Spool` rejects a `ref` collision across principals with
+  `ErrPrincipalConflict`; the earlier grant is left unchanged.
 - `Spool.Spool` evicts the oldest grants, by insertion order, until
   the new grant fits `maxGrantBytes`. A dropped grant's `Load` fails,
   even when the underlying `ContentStore` still holds the bytes.

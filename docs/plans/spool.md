@@ -45,7 +45,7 @@ Inside:
   silently downgrade every spooled tool to the unclassified,
   unbudgeted, unprivileged default.
 - Sentinels: `ErrUnknownRef`, `ErrWrongPrincipal`, `ErrNoPrincipal`,
-  `ErrNoBudget`.
+  `ErrNoBudget`, `ErrGrantTooLarge`, `ErrPrincipalConflict`.
 
 Outside:
 
@@ -82,7 +82,13 @@ func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error)
 // Spool writes data to the underlying store, grants principal the
 // right to read it back, and returns a bounded view of data plus the
 // content's reference. Spool evicts the oldest grants, by insertion
-// order, until the new grant fits the byte budget.
+// order, until the new grant fits the byte budget. Spool wraps
+// ErrGrantTooLarge when data alone exceeds maxGrantBytes, and
+// ErrPrincipalConflict when the store's ref already belongs to a
+// different principal's live grant: a content-addressed ContentStore
+// returns the same ref for identical bytes regardless of caller, so
+// this check stops a second principal from silently taking over the
+// first principal's grant.
 func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error)
 
 // Load returns the full bytes stored under ref. It wraps
@@ -118,10 +124,12 @@ func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) 
 
 // Sentinel errors for Spool and SpoolTool; test with errors.Is.
 var (
-	ErrUnknownRef     = errors.New("spool: unknown ref")
-	ErrWrongPrincipal = errors.New("spool: wrong principal")
-	ErrNoPrincipal    = errors.New("spool: no principal in context")
-	ErrNoBudget       = errors.New("spool: maxGrantBytes must be positive")
+	ErrUnknownRef        = errors.New("spool: unknown ref")
+	ErrWrongPrincipal    = errors.New("spool: wrong principal")
+	ErrNoPrincipal       = errors.New("spool: no principal in context")
+	ErrNoBudget          = errors.New("spool: maxGrantBytes must be positive")
+	ErrGrantTooLarge     = errors.New("spool: content exceeds grant budget")
+	ErrPrincipalConflict = errors.New("spool: ref already granted to a different principal")
 )
 ```
 
@@ -152,7 +160,19 @@ var (
   closure over `tools.Tool`, so it can carry optional-interface
   methods (`ExecutionProfile`, `MaxResultBytes`, `Privileged`) that
   type-assert to `inner`'s own methods. A plain function value could
-  not implement those interfaces at all.
+  not implement those interfaces at all. `SpoolTool` builds one of
+  several concrete wrapper types, chosen by which optional interfaces
+  `inner` implements, so `tools.ResultBudgetOf` and the other
+  `*Of`/`Is*` helpers never see a wrapper claiming a capability
+  `inner` lacks.
+- `Spool` gained two sentinels not in the original sketch,
+  `ErrGrantTooLarge` and `ErrPrincipalConflict`, found during review.
+  A single grant larger than `maxGrantBytes` could never be evicted
+  down to fit, so it now fails fast instead of silently exceeding the
+  budget forever. A ref collision across principals, which a
+  content-addressed `ContentStore` produces whenever two principals
+  spool identical bytes, now fails instead of silently transferring
+  the earlier principal's grant to the later caller.
 
 ## Tests
 
@@ -172,6 +192,12 @@ var (
 - Grant expiry: spooling past `maxGrantBytes` drops the oldest grant
   first; its `Load` then fails with `ErrUnknownRef` even though the
   newest grant still loads.
+- `Spool` with data longer than `maxGrantBytes` fails with
+  `ErrGrantTooLarge`, and never calls `ContentStore.Put`.
+- `Spool` with a second principal spooling byte-identical content
+  already granted to a first principal fails with
+  `ErrPrincipalConflict`; the first principal's grant is unchanged and
+  still loads.
 - `WithPrincipal` then `PrincipalFrom` round trips the principal
   string; `PrincipalFrom` on a bare context reports `false`.
 - `SpoolTool`: a result at or under `maxBytes` passes through with the

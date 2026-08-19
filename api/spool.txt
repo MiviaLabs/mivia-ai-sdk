@@ -16,7 +16,9 @@ package spool
 }
   type Spool struct {
 }
+  var ErrGrantTooLarge
   var ErrNoBudget
   var ErrNoPrincipal
+  var ErrPrincipalConflict
   var ErrUnknownRef
   var ErrWrongPrincipal

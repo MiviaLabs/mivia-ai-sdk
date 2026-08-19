@@ -215,6 +215,52 @@ func TestSpoolReSpoolSameContentRefreshesOrder(t *testing.T) {
 	}
 }
 
+func TestSpoolCrossPrincipalCollisionFails(t *testing.T) {
+	store := newFakeStore()
+	sp, err := spool.NewSpool(store, 100)
+	if err != nil {
+		t.Fatalf("NewSpool: %v", err)
+	}
+	ctx := context.Background()
+	data := []byte("shared content")
+
+	_, ref, err := sp.Spool(ctx, "alice", data)
+	if err != nil {
+		t.Fatalf("Spool alice: %v", err)
+	}
+
+	// bob spools byte-identical content. A content-addressed store
+	// returns the same ref; the grant must stay alice's, not silently
+	// transfer to bob.
+	if _, _, err := sp.Spool(ctx, "bob", data); !errors.Is(err, spool.ErrPrincipalConflict) {
+		t.Fatalf("Spool bob (collision) err = %v, want ErrPrincipalConflict", err)
+	}
+
+	if _, err := sp.Load(ctx, "alice", ref); err != nil {
+		t.Errorf("Load alice after bob's failed collision: err = %v, want nil (grant unchanged)", err)
+	}
+	if _, err := sp.Load(ctx, "bob", ref); !errors.Is(err, spool.ErrWrongPrincipal) {
+		t.Errorf("Load bob err = %v, want ErrWrongPrincipal (never granted)", err)
+	}
+}
+
+func TestSpoolGrantExceedsBudgetFails(t *testing.T) {
+	store := newFakeStore()
+	sp, err := spool.NewSpool(store, 10)
+	if err != nil {
+		t.Fatalf("NewSpool: %v", err)
+	}
+	ctx := context.Background()
+	oversized := []byte("this is eleven")
+
+	if _, _, err := sp.Spool(ctx, "alice", oversized); !errors.Is(err, spool.ErrGrantTooLarge) {
+		t.Fatalf("Spool oversized err = %v, want ErrGrantTooLarge", err)
+	}
+	if store.putCalls != 0 {
+		t.Errorf("store.putCalls = %d, want 0: the budget check must reject before writing to the store", store.putCalls)
+	}
+}
+
 func TestSpoolReSpoolSameContentMovesToBackOfOrder(t *testing.T) {
 	store := newFakeStore()
 	sp, err := spool.NewSpool(store, 20)

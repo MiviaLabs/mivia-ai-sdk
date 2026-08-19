@@ -28,6 +28,16 @@ var (
 	ErrNoPrincipal = errors.New("spool: no principal in context")
 	// ErrNoBudget is NewSpool's error for a non-positive maxGrantBytes.
 	ErrNoBudget = errors.New("spool: maxGrantBytes must be positive")
+	// ErrGrantTooLarge is Spool's error when data alone exceeds
+	// maxGrantBytes: no eviction can ever make room for it.
+	ErrGrantTooLarge = errors.New("spool: content exceeds grant budget")
+	// ErrPrincipalConflict is Spool's error when the store returns a
+	// ref already granted to a different principal. A content-addressed
+	// ContentStore returns the same ref for identical bytes regardless
+	// of caller; without this check, a second principal spooling the
+	// same content would silently take over the first principal's
+	// grant.
+	ErrPrincipalConflict = errors.New("spool: ref already granted to a different principal")
 )
 
 // ContentStore is the storage a Spool writes spooled bytes to and
@@ -75,25 +85,40 @@ func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error) {
 // Spool writes data to the underlying store, grants principal the
 // right to read it back, and returns a bounded view of data plus the
 // content's reference. Spool evicts the oldest grants, by insertion
-// order, until the new grant fits the byte budget.
+// order, until the new grant fits the byte budget. Spool wraps
+// ErrGrantTooLarge when data alone exceeds maxGrantBytes, and
+// ErrPrincipalConflict when the store's ref already belongs to a
+// different principal's live grant.
 func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error) {
+	if len(data) > s.maxGrantBytes {
+		return "", "", fmt.Errorf("%w: %d bytes exceeds budget %d", ErrGrantTooLarge, len(data), s.maxGrantBytes)
+	}
+
 	ref, err = s.store.Put(data)
 	if err != nil {
 		return "", "", err
 	}
 
 	s.mu.Lock()
-	s.recordGrant(ref, principal, len(data))
+	err = s.recordGrant(ref, principal, len(data))
 	s.mu.Unlock()
+	if err != nil {
+		return "", "", err
+	}
 
 	return buildView(data, maxViewBytes, ref), ref, nil
 }
 
 // recordGrant registers ref under principal and evicts the oldest
-// grants, in insertion order, until the budget fits the new grant.
-// Called with s.mu held.
-func (s *Spool) recordGrant(ref, principal string, size int) {
+// grants, in insertion order, until the budget fits the new grant. It
+// wraps ErrPrincipalConflict, leaving state unchanged, when ref
+// already has a live grant for a different principal. Called with
+// s.mu held.
+func (s *Spool) recordGrant(ref, principal string, size int) error {
 	if existing, ok := s.grants[ref]; ok {
+		if existing.principal != principal {
+			return fmt.Errorf("%w: %s", ErrPrincipalConflict, ref)
+		}
 		s.removeFromOrder(ref)
 		s.total -= existing.size
 		delete(s.grants, ref)
@@ -107,6 +132,7 @@ func (s *Spool) recordGrant(ref, principal string, size int) {
 	s.grants[ref] = grant{principal: principal, size: size}
 	s.order = append(s.order, ref)
 	s.total += size
+	return nil
 }
 
 // removeFromOrder drops ref from the insertion-order slice. Called

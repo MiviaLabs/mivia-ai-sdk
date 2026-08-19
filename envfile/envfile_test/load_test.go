@@ -131,6 +131,15 @@ func TestLoadBytesCRLF(t *testing.T) {
 		t.Fatalf("LoadBytes(LF): %v", err)
 	}
 	assertPairs(t, gotCRLF, gotLF)
+
+	// A blank or comment line in CRLF form is the case the trailing
+	// "\r" trim exists for. On a KEY=VALUE line the value parser's own
+	// TrimSpace hides the trim, so only these lines discriminate.
+	got, err := envfile.LoadBytes([]byte("FOO=bar\r\n\r\n# note\r\nBAZ=qux\r\n"))
+	if err != nil {
+		t.Fatalf("LoadBytes(CRLF with blank and comment lines): %v", err)
+	}
+	assertPairs(t, got, map[string]string{"FOO": "bar", "BAZ": "qux"})
 }
 
 // TestLoadReadsFileAndDelegates pins that Load reads the file and

@@ -27,7 +27,7 @@ below mirrors `api/envfile.txt`.
 - A CRLF line ending parses the same as its LF equivalent; each
   line's trailing `\r` strips before parsing.
 - No returned error contains a parsed value, quoted or unquoted. An
-  error names only a line number and, where relevant, a key.
+  error names only a line number.
 
 ## Failure modes
 

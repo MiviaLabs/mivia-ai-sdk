@@ -609,3 +609,260 @@ sibling under the 500-line limit:
   `docs/plans/contextstate.md`: `MemStore.Revoke`, `MemStore.Status`,
   and the new `Get` contract must exist before `contextplan` can
   compile against `contextstate.ErrPayloadRevoked`.
+
+## Change: compaction policy
+
+Status: plan, ready for plan review. Ports the structural retention
+half of `mivia-agent/internal/contextmgr/planner.go` into
+`contextplan`, under this task's changed defaults and hard rules.
+
+### Change goal
+
+Compact a message history that reaches the window trigger down to a
+target, through a fixed retention set plus a contiguous recent-tail
+fill. Produce a deterministic idempotency key. Compaction here is
+structure only: the LLM summary that must accompany it lives in
+`contextsummary`, and the caller that joins the two is `agentloop`.
+
+### Change scope
+
+Inside:
+
+- `Compaction`, the threshold and retention configuration, embedded in
+  `Window` as a new `Compaction` field.
+- `Compact`, one pure function over `[]provider.Message`. No store, no
+  LLM call, no state.
+- The retention set port: the system message at index zero when its
+  role is `RoleSystem`, the latest `RoleUser` message, every message
+  whose `Name` is in `PreserveNames`, and the latest complete
+  assistant-plus-tool unit.
+- The recent-tail fill: contiguous units, newest first, bounded by
+  count and by the target tokens.
+- The idempotency key, fingerprinted through `contextstate` over the
+  retained set, under the algorithm string `context-compact-v1`.
+- A mutex inside `Calibrated`, guarding `factor` and `lastEst`. No
+  API change: `EstimateTokens` and `Observe` become safe for
+  concurrent use on one shared value. `agentloop` calls both per
+  iteration, and concurrent `Run` calls on one shared `Loop` share one
+  `Calibrated`, so the unguarded fields are a data race.
+
+Outside:
+
+- Any LLM call. `Compact` never dials a provider. The task's hard rule
+  reverses the reference: compaction is LLM-only at the caller, so
+  `contextplan` carries no structural fallback and no `Force` flag,
+  and no manual compact entry point exists.
+- Any loop wiring, usage observation, or prompt-too-long recovery.
+  `agentloop` owns those; see `docs/plans/agentloop.md`.
+- Changes to `Plan`, `Elision`, `StubContent`, or `Calibrated`'s API
+  or EWMA semantics; the one internal change is the concurrency guard
+  the Inside section adds. The session-store planner keeps its
+  shipped behavior.
+- Tool-schema pricing. The reference priced tool schemas into the
+  trigger; this port estimates messages only, matching what `Plan`
+  already estimates.
+
+### Change API
+
+One addition to `api/contextplan.txt`, landed through `make
+api-update`:
+
+```go
+// DefaultTriggerPercent compacts at this percent of Window.Budget().
+const DefaultTriggerPercent = 100
+
+// DefaultTargetPercent compacts down to this percent of Budget().
+const DefaultTargetPercent = 10
+
+// DefaultRecentTail is the message-count bound of the tail fill.
+const DefaultRecentTail = 8
+
+// MaxRecentTail is the highest tail bound a caller may set.
+const MaxRecentTail = 64
+
+// CompactionAlgorithm names the idempotency-key fingerprint scheme.
+const CompactionAlgorithm = "context-compact-v1"
+
+// Compaction configures compaction thresholds and retention. The zero
+// value means the defaults, never "disabled": TriggerPercent zero
+// means DefaultTriggerPercent, TargetPercent zero means
+// DefaultTargetPercent, RecentTail zero means DefaultRecentTail.
+type Compaction struct {
+    TriggerPercent int
+    TargetPercent  int
+    TargetTokens   int
+    RecentTail     int
+    PreserveNames  []string
+}
+
+// Validate rejects percents outside (0, 100], a negative TargetTokens
+// or RecentTail, a RecentTail over MaxRecentTail, an empty but
+// present PreserveNames entry, and duplicate PreserveNames entries.
+// When TargetTokens is zero, a TargetPercent at or above the resolved
+// TriggerPercent is rejected; when TargetTokens is positive, that
+// comparison is skipped and Window.Validate instead rejects
+// a TargetTokens at or above Budget().
+func (c Compaction) Validate() error
+
+// Window gains one field: Compaction Compaction. Window.Validate now
+// also runs Compaction.Validate and rejects a positive TargetTokens at
+// or above Budget().
+type Window struct {
+    MaxTokens  int
+    Reserve    int
+    Compaction Compaction
+}
+
+// CompactTrigger returns the trigger in tokens: Budget times
+// TriggerPercent, floored.
+func (w Window) CompactTrigger() int
+
+// CompactTarget returns the target in tokens: TargetTokens when
+// positive, else Budget times TargetPercent, floored.
+func (w Window) CompactTarget() int
+
+// CompactResult is Compact's output.
+type CompactResult struct {
+    Kept          []provider.Message
+    Dropped       []provider.Message
+    BeforeTokens  int
+    AfterTokens   int
+    TriggerTokens int
+    TargetTokens  int
+    Compacted     bool
+    Key           string
+}
+
+// Compact applies the trigger check and the retention policy. An
+// invalid window fails Window.Validate before any estimate. A
+// request at or above the trigger compacts; below it passes through
+// with Compacted false. The retention set is mandatory; the tail fill
+// is optional and stops at the first unit that breaks contiguity, the
+// message-count bound, or the target. Kept preserves the original
+// relative order. The Key is deterministic per input.
+func Compact(msgs []provider.Message, w Window, e provider.TokenEstimator) (CompactResult, error)
+
+// Sentinel errors for Compact; test with errors.Is.
+var (
+    ErrNoMessages        = errors.New("contextplan: no messages to compact")
+    ErrEstimateFailed    = errors.New("contextplan: token estimate failed")
+    ErrRetentionOverflow = errors.New("contextplan: retention set alone exceeds the window")
+    ErrNoObjective       = errors.New("contextplan: no user message to retain as objective")
+)
+```
+
+### Retention rules, exact
+
+- `Compact` validates `w` through `Window.Validate`, which runs
+  `Compaction.Validate`; an invalid window fails before any estimate
+  runs.
+- A unit is one `RoleAssistant` message that carries `ToolCalls`
+  together with the contiguous `RoleTool` replies that directly follow
+  it. The unit ends at the first reply whose `ToolCallID` is not one
+  of that assistant's call ids; that reply is its own single-message
+  unit. Every other message is one single-message unit. Selection is
+  atomic per unit.
+- A `PreserveNames` match on any message of a unit selects the whole
+  unit.
+- The latest complete assistant-plus-tool unit is the newest unit
+  whose assistant message carries `ToolCalls` and whose replies are
+  all present directly after it.
+- When no `RoleUser` message exists anywhere in the input, `Compact`
+  fails closed with `ErrNoObjective` and no partial result. The
+  objective is mandatory, mirroring the reference's missing-objective
+  failure.
+- The tail fill walks units newest to oldest, skips selected ones,
+  stops at the first unselected unit that would break the message
+  count or the target, and never resumes past it. The retained
+  optional tail stays a contiguous suffix.
+- `BeforeTokens` and `AfterTokens` come from `e.EstimateTokens` over
+  the input and the kept list. An estimator error fails `Compact`
+  with `ErrEstimateFailed`; it never degrades to a silent pass.
+- When the retention set alone estimates above `w.Budget()`, `Compact`
+  fails closed with `ErrRetentionOverflow` and no partial result. This
+  is the fail-closed distinct error the task requires.
+- The `Key` is `CompactionAlgorithm`, a colon, then
+  `contextstate.Mint` over the canonical JSON fingerprint: algorithm,
+  budget, trigger tokens, target tokens, and one fingerprint record
+  per kept message, fields role, content, tool call id, name, and for
+  every tool call its id and its arguments, matching the reference
+  fingerprint shape. Repeated `Compact` calls on equal inputs return
+  equal keys; inputs differing in one tool call's arguments return
+  different keys. `encoding/json` over a struct is deterministic; no
+  map appears in the fingerprint.
+- `Compact` reads `provider.Message.Name` for `PreserveNames`. That
+  field lands through `docs/plans/provider.md` in the same change
+  window; `Compact` does not compile before it exists.
+
+### Deviations from the reference
+
+- Trigger 100 percent and target 10 percent, where the reference used
+  80 and 50. The task overrides the defaults.
+- No `Force` flag, no structural-only path, no manual compact. The
+  task forbids all three.
+- No `OutputReserve`, `CalibrationRatio`, `ContextAccounting`, source
+  ranges, or revision plumbing. The caller's `Window` and its own
+  calibrated estimator carry those concerns.
+- The key prefix reuses `contextstate.Mint`'s canonical address form,
+  where the reference minted a bare `compact-` prefix. One ref form
+  per SDK.
+
+### Change tests
+
+In `contextplan/contextplan_test/compact_test.go`:
+
+- `Compaction.Validate` table: each bound above, plus the zero value
+  passing as defaults. One case pins the two target modes: a
+  `TargetPercent` at or above the trigger fails in percent mode and
+  passes in override mode, where `Window.Validate`'s `Budget()` bound
+  applies instead.
+- `Window.Validate` rejects a positive `TargetTokens` at or above
+  `Budget()`.
+- `CompactTrigger` and `CompactTarget` math: defaults, explicit
+  percents, the `TargetTokens` override, and flooring.
+- Below trigger: everything kept, `Compacted` false, `Dropped` empty.
+- At trigger: compacts; the retention set survives; the tail is a
+  contiguous suffix under `RecentTail`; `AfterTokens` lands at or
+  under the target or the fill stopped at contiguity.
+- Preserve names: a named message survives regardless of age; a match
+  inside a unit keeps the whole unit.
+- The latest complete assistant-plus-tool unit survives whole; an
+  assistant message with a missing reply is not selected as the latest
+  unit.
+- Unit boundary: a `RoleTool` reply whose `ToolCallID` is not one of
+  the preceding assistant's call ids ends the unit there. The
+  mismatching reply forms its own single-message unit and is never
+  folded into the assistant's unit.
+- No objective: an input with no `RoleUser` message fails
+  `ErrNoObjective`, whatever the budget headroom.
+- Tail cap: a `RecentTail` of one drops every optional unit older than
+  the newest; `MaxRecentTail` bounds the fill.
+- Retention overflow: a mandatory set priced above `Budget()` fails
+  `ErrRetentionOverflow`, with no kept-list truncation.
+- Empty input fails `ErrNoMessages`; an estimator error fails
+  `ErrEstimateFailed`; an invalid window fails `Window.Validate`.
+- Idempotency: two `Compact` calls on equal input return equal `Key`,
+  equal `Kept`, and equal `Dropped`. A second case differs in one
+  tool call's arguments only; its key differs from the first case's.
+- Unit integrity: no kept `RoleTool` message replies to a dropped
+  assistant call.
+- Calibrated concurrency, in `calibrated_test.go` or a sibling under
+  the 500-line limit: goroutines call `EstimateTokens` and `Observe`
+  on one shared `*Calibrated` under `go test -race`. No race, no
+  panic, and the correction factor stays inside the clamp bounds after
+  every join.
+
+### Change verification
+
+- `make verify` passes; `contextplan` holds the 85 coverage floor.
+- `api/contextplan.txt` gains the compaction surface through `make
+  api-update`, in the same change as the code.
+- `go test -race ./contextplan/...` passes.
+- `python3 scripts/check_plan.py`, `check_deps.py`, and
+  `check_prose.py` pass. The `contextplan` row in
+  `policy/layers.json` is unchanged; it already allows
+  `contextstate` and `provider`.
+- `docs/packages/contextplan.md` gains the compaction surface in the
+  same change as the code.
+- This change lands with or after the `provider` `Message.Name`
+  change; `Compact` reads that field.

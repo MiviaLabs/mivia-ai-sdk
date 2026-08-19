@@ -386,3 +386,149 @@ In `spool/spool_test/spool_test.go`:
 - `docs/plans/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
+
+## Change: read-back tool and grant expiry
+
+Status: plan, ready for plan review. Two additions: a model-facing
+read-back tool, and time-based grant expiry.
+
+### Change goal
+
+Let the model page a spooled body back by reference, one bounded page
+per call. Let a grant carry an expiry, fail its `Load` after that
+expiry with a distinct error, and give the caller a way to mark and
+observe expiry.
+
+### Change scope
+
+Inside:
+
+- `ReadOutputTool`, a `tools.Tool` bound to a caller-supplied `*Spool`
+  at construction. The model supplies a ref, an offset, and a limit.
+- Principal enforcement through the existing
+  `WithPrincipal`/`PrincipalFrom` pair: the tool loads under the ctx
+  principal.
+- `SpoolExpiring`, `Expire`, and `GrantExpiry`: grant creation with a
+  TTL, immediate marking, and observation.
+- `ErrExpired`, returned by `Load` after expiry.
+
+Outside:
+
+- Any new filesystem or registry concern. The tool is patterned on
+  `subagent`'s file tools: bound at construction, never to a
+  model-chosen store.
+- Wall-clock eviction sweeps. Expiry is lazy: `Load` checks and drops
+  an expired grant, freeing its budget.
+- Changes to `Spool`, `Load`, or `SpoolTool` signatures. The shipped
+  surface stays as locked; expiry arrives through new methods.
+
+### Change API
+
+One addition to `api/spool.txt`, landed through `make api-update`:
+
+```go
+// SpoolExpiring writes data, grants principal read-back, and sets a
+// time-to-live on the grant. A non-positive ttl wraps
+// ErrInvalidExpiry.
+func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte, ttl time.Duration) (view string, ref string, err error)
+
+// Expire marks one live grant expired immediately. Unknown ref wraps
+// ErrUnknownRef.
+func (s *Spool) Expire(ref string) error
+
+// GrantExpiry reports a grant's expiry. The second return is false
+// for no live grant. A zero time means no expiry.
+func (s *Spool) GrantExpiry(ref string) (time.Time, bool)
+
+// ReadOutputTool builds the model-facing read-back tool over sp. The
+// model pages a spooled body back by ref, offset, and limit. A nil
+// sp wraps ErrNilSpool; a non-positive maxPageBytes wraps
+// ErrInvalidLimit.
+func ReadOutputTool(sp *Spool, maxPageBytes int) (tools.Tool, error)
+
+// MoreMarker ends a page with more bytes after it, naming the next
+// offset.
+const MoreMarker = "[more: offset=%d]"
+
+// Sentinel errors; test with errors.Is.
+var (
+    ErrExpired       = errors.New("spool: grant expired")
+    ErrInvalidExpiry = errors.New("spool: ttl must be positive")
+    ErrNilSpool      = errors.New("spool: spool is required")
+    ErrInvalidLimit  = errors.New("spool: maxPageBytes must be positive")
+    ErrBadArguments  = errors.New("spool: bad arguments")
+)
+```
+
+Behavior rules, exact:
+
+- `Load` checks in this order: no live grant wraps `ErrUnknownRef`;
+  a principal mismatch wraps `ErrWrongPrincipal`, even on an expired
+  grant, so a wrong principal probing an expired grant learns nothing
+  about it; an expired grant under the right principal wraps
+  `ErrExpired` and the grant is dropped, freeing its budget.
+- `SpoolExpiring` stores `time.Now().Add(ttl)` on the grant. Re-spool
+  an existing ref under the same principal refreshes the expiry, the
+  same way `Spool` refreshes insertion order today.
+- `ReadOutputTool` returns a `tools.Tool` that also implements
+  `tools.SchemaTool`: it publishes one parameter schema for ref,
+  offset, and limit, and decodes its own arguments.
+- The tool's `Run` reads the ctx principal through `PrincipalFrom` and
+  fails `ErrNoPrincipal` when absent.
+- A limit of zero means one full page of `maxPageBytes` bytes. A
+  limit over `maxPageBytes` clamps to it.
+- `ErrBadArguments` covers a malformed argument decode, a mistyped
+  `Run` call, a negative offset, and a negative limit — the same
+  coverage `subagent`'s file tools give their `ErrBadArguments`.
+- The page text carries `MoreMarker` with the next offset when bytes
+  remain after the page, and nothing extra on the final page.
+- `ErrWrongPrincipal`, expired grants, and unknown refs surface as the
+  tool's own error return, so a caller's error policy decides what the
+  model sees.
+- An offset past the body's end returns an empty page with no marker.
+
+### Change tests
+
+In `spool/spool_test/`:
+
+- `SpoolExpiring` then `Load` before expiry round trips the bytes.
+- `Load` after expiry fails `ErrExpired`, not `ErrUnknownRef`; the
+  same ref re-granted after expiry loads again.
+- `Load` under a wrong principal on an expired grant fails
+  `ErrWrongPrincipal`, not `ErrExpired`: the principal check runs
+  first, so a probing principal learns nothing about the expiry.
+- A non-positive ttl fails `ErrInvalidExpiry` before any store write.
+- `Expire` marks a live grant; its `Load` then fails `ErrExpired`;
+  `Expire` on an unknown ref fails `ErrUnknownRef`.
+- `GrantExpiry` reports the stored time, false for an unknown ref, and
+  the zero time for a grant from plain `Spool`.
+- An expired grant frees budget: after expiry and one `Load`, a new
+  grant of the same size fits without evicting others.
+- `ReadOutputTool`: nil spool and non-positive page budget fail at
+  construction.
+- Paging: a body three pages long pages back in order; the marker
+  names the next offset; the last page carries none; offset past the
+  end yields an empty page.
+- Zero limit and an over-limit limit both yield at most
+  `maxPageBytes` bytes; a negative offset, a negative limit, and
+  a malformed argument decode each fail `ErrBadArguments`.
+- The tool reads the ctx principal: `WithPrincipal` with the granting
+  principal succeeds; the wrong principal surfaces `ErrWrongPrincipal`
+  from `Run`; no principal surfaces `ErrNoPrincipal`.
+- An unknown ref surfaces `ErrUnknownRef` from `Run`.
+- The tool's published schema and `DecodeArguments` round trip the
+  three arguments; `agentloop.Definitions` would offer it.
+- Concurrency: goroutines page, expire, and load one shared `*Spool`
+  under `go test -race`; no panic, no torn page.
+
+### Change verification
+
+- `make verify` passes; `spool` holds the 85 coverage floor.
+- `api/spool.txt` gains the new surface through `make api-update`, in
+  the same change as the code.
+- `go test -race ./spool/...` passes.
+- `python3 scripts/check_plan.py`, `check_deps.py`, and
+  `check_prose.py` pass. The `spool` row stays `["tools"]`; no new
+  import edge exists.
+- `docs/packages/spool.md` gains the tool and the expiry surface in
+  the same change as the code.

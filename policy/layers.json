@@ -35,7 +35,9 @@
       "usage",
       "events",
       "contextbudget",
-      "schema"
+      "schema",
+      "contextplan",
+      "contextsummary"
     ],
     "agentrun": [
       "agent",
@@ -60,6 +62,9 @@
       "memory"
     ],
     "contextstate": [],
+    "contextsummary": [
+      "provider"
+    ],
     "diff": [],
     "discovery": [],
     "dispatch": [
@@ -103,6 +108,7 @@
       "machine",
       "events"
     ],
+    "longtermmemory": [],
     "machine": [
       "events"
     ],

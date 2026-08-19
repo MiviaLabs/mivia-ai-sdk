@@ -1298,3 +1298,308 @@ no other package: `l.reg.Get`, `l.scope.Allowed`, and
 `schema.Compiled.Validate` all stay unchanged, and
 `policy/layers.json`'s `agentloop` row is unchanged, since the fix
 adds no new import.
+
+## Addendum: context planning and prompt-too-long recovery
+
+Status: plan, ready for plan review. This addendum wires the ported
+compaction policy into `Run`. It changes `options.go` and `run.go`.
+It adds two internal imports and no new package.
+
+### Addendum goal
+
+Plan every iteration against a `contextplan.Window` before the request
+is built, run compaction through the LLM summarizer whenever the
+trigger trips, keep the EWMA correction live, and recover once from a
+prompt-too-long rejection. Compaction is LLM-only: no fallback path
+exists anywhere in `Run`.
+
+### Addendum scope
+
+Inside:
+
+- Per-iteration planning: estimate the history, compare against
+  `Window.CompactTrigger`, and compact through `contextsummary` when
+  the trigger trips.
+- Per-iteration observation: after every `Chat` that returns, call
+  `Calibrated.Observe` with the response's `Usage.TotalTokens`.
+- Prompt-too-long recovery: on `provider.ErrPromptTooLong`, compact to
+  a fixed 16K-token target, or `Budget` over four when smaller, append
+  one model-visible notice, and retry that iteration exactly once.
+- Three new `Options` fields and five new sentinels.
+
+Outside:
+
+- Any structural-only compaction, manual compact, or force path. The
+  task forbids all three. When the summarizer call cannot be made or
+  fails, the iteration fails and nothing is sent.
+- Sending an over-budget prompt as a fallback. The final estimate
+  check fails the iteration instead.
+- Changes to `Options.Trim`. `Trim` stays exactly as locked; a nil
+  `Window` keeps today's `Trim` behavior unchanged.
+- Changes to `contextplan.Plan` or the session-store planner. The
+  wiring uses the new `contextplan.Compact` over the loop's own
+  history.
+- Any second retry of a rejected prompt. A second rejection
+  propagates.
+
+### Addendum API
+
+New `Options` fields:
+
+```go
+// Window plans every iteration against a token budget. A nil Window
+// disables planning; the loop then runs exactly as before. A non-nil
+// Window requires Summarizer and Calibrated, and excludes Trim.
+Window *contextplan.Window
+
+// Summarizer runs the LLM summary every compaction requires. Required
+// when Window is set.
+Summarizer *contextsummary.Summarizer
+
+// Calibrated estimates tokens for planning and receives one Observe
+// call after every Chat. Required when Window is set.
+Calibrated *contextplan.Calibrated
+```
+
+New sentinels:
+
+```go
+// ErrPlanFailed is Run's error when the planning step cannot produce
+// an estimate or a plan: an estimator error or an invalid Window at
+// iteration time. Test with errors.Is.
+var ErrPlanFailed = errors.New("agentloop: context planning failed")
+
+// ErrCompactionFailed is Run's error when a required compaction
+// cannot complete: the retention set alone exceeds the window
+// (wrapping contextplan.ErrRetentionOverflow), the summarizer call
+// failed (wrapping the contextsummary sentinel), or the compacted
+// history still exceeds the window. Test with errors.Is.
+var ErrCompactionFailed = errors.New("agentloop: compaction failed")
+
+// ErrSummarizerRequired is Options.Validate's error when Window is
+// set and Summarizer is nil. Test with errors.Is.
+var ErrSummarizerRequired = errors.New("agentloop: Window requires Summarizer")
+
+// ErrEstimatorRequired is Options.Validate's error when Window is set
+// and Calibrated is nil. Test with errors.Is.
+var ErrEstimatorRequired = errors.New("agentloop: Window requires Calibrated")
+
+// ErrTrimExcluded is Options.Validate's error when both Window and
+// Trim are set. Test with errors.Is.
+var ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
+```
+
+New constants:
+
+```go
+// RecoveryTargetTokens is the fixed compaction target of the
+// prompt-too-long recovery path.
+const RecoveryTargetTokens = 16384
+
+// CompactionNotice is the user-role message content Run appends after
+// a recovery compaction, so the model sees that compaction occurred.
+const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
+```
+
+`Options.Validate` gains four rules, in order after the existing ones:
+a non-nil `Window` passes `Window.Validate`, wrapping any
+`contextplan` validation error; a non-nil `Window` with a nil
+`Summarizer` fails `ErrSummarizerRequired`; a non-nil `Window` with
+a nil `Calibrated` fails `ErrEstimatorRequired`; a non-nil `Window`
+with a non-nil `Trim` fails `ErrTrimExcluded`.
+
+### Planning step, exact
+
+Before each `Completer.Chat`, when `l.window` is non-nil, `Run`:
+
+- Calls `l.calibrated.EstimateTokens` over a `provider.Request`
+  carrying the history. An estimate error fails the iteration with
+  `ErrPlanFailed`, wrapped with the iteration count.
+- Passes through unchanged when the estimate is under
+  `l.window.CompactTrigger()`.
+- Otherwise runs the compaction sequence below, then proceeds with the
+  compacted history.
+
+The compaction sequence:
+
+- Copies the caller's `Window` value and appends
+  `contextsummary.SummaryMessageName` to the copy's
+  `Compaction.PreserveNames` only when absent, into a freshly
+  allocated slice. The append never mutates the caller's backing
+  array, and a caller already listing the name never trips
+  `Compaction.Validate`'s duplicate rule. The injected summary
+  therefore survives every later compaction whatever the caller
+  configured.
+- Removes any prior message named `SummaryMessageName` from the
+  history and holds it aside. At most one summary message exists at
+  any time; the prior one becomes summarizer input, not silently
+  dropped content.
+- Calls `contextplan.Compact` with the adjusted window and
+  `l.calibrated`. `Compact` itself rejects an invalid window through
+  `Window.Validate`, which runs `Compaction.Validate`. A `Compact`
+  error fails the iteration with `ErrCompactionFailed`, wrapped with
+  the iteration count and the underlying sentinel.
+- Skips the summarizer call and the injection when `Compact`'s
+  `Dropped` is empty and no prior summary message was held aside.
+  Nothing droppable means nothing to summarize; the run proceeds with
+  the retained history.
+- Otherwise calls `l.summarizer.Summarize` over the prior summary
+  message, when one was held aside, prepended to `Compact`'s
+  `Dropped`. Any summarizer error fails the iteration with
+  `ErrCompactionFailed`, wrapped with the iteration count and the
+  contextsummary sentinel. This is the hard rule: no request, no
+  messages, no tool calls are sent for that iteration.
+- Injects `contextsummary.SummaryMessage(s)` directly after the
+  leading system message, or at index zero when none leads.
+- Re-estimates the rebuilt history. Above the effective window's
+  `Budget()`, the iteration fails with `ErrCompactionFailed`
+  wrapping `contextplan.ErrRetentionOverflow`. An over-budget prompt
+  is never sent.
+- Replaces `history` with the compacted history only after the whole
+  sequence succeeds. A failed compaction returns the pre-compaction
+  history in `Result.History`, per the Result-shape rule.
+
+The compacted history serves this iteration and every later one;
+`Result.History` carries it after the run.
+
+### Observation step, exact
+
+After every `Completer.Chat` that returns a response, `Run` calls
+`l.calibrated.Observe(resp.Usage.TotalTokens)` when `l.calibrated` is
+non-nil. A non-positive `TotalTokens` is a no-op inside `Observe`, so
+an under-reporting `Completer` cannot corrupt the correction factor.
+The observation runs before the `MaxTotalTokens` check, on both the
+normal path and a recovery retry.
+
+### Recovery path, exact
+
+When `Completer.Chat` returns an error matching
+`errors.Is(err, provider.ErrPromptTooLong)` and `l.window` is
+non-nil, `Run`:
+
+- Builds a recovery window: a copy of `l.window` whose
+  `Compaction.TriggerPercent` is 1, the minimum legal value, and
+  whose `Compaction.TargetTokens` is `max(1, min(
+  RecoveryTargetTokens, l.window.Budget()/4))`. The trigger override
+  makes recovery compact even when the pre-Chat estimate sat below
+  the configured trigger, which is exactly the rejected case
+  recovery exists for. The floor keeps `TargetTokens` positive, so
+  `Compaction.Validate` skips the percent comparison and the window
+  stays valid for every budget of two tokens or more. A budget of
+  one token hosts no legal target; recovery there fails closed with
+  `ErrCompactionFailed` wrapping the window error.
+- Runs the compaction sequence above against the recovery window,
+  with one addition: one `RoleUser` message whose content is
+  `CompactionNotice` is appended directly after the summary
+  injection, before the sequence's final re-estimate. The budget
+  check therefore prices the notice bytes too. A summarizer failure
+  here propagates the same way, per the same hard rule.
+- Retries the same iteration's `Chat` exactly once with the rebuilt
+  history. Any error from the retry, including a second
+  `ErrPromptTooLong`, propagates as a hard failure.
+- Treats a `Compact` result with `Compacted` false as unrecoverable:
+  the history estimates under one percent of `Budget()`, so no
+  compaction the policy allows can shrink it. `Run` returns the
+  original `ErrPromptTooLong` error unchanged, with no retry and no
+  notice.
+
+A nil `l.window` propagates the rejection unchanged; recovery needs
+the window, the summarizer, and the estimator together.
+
+These failures join the plan's closed hard-fail list: an
+`ErrPlanFailed` estimate failure, an `ErrCompactionFailed` compaction
+failure, and a propagated second rejection each return the partial
+`Result` with `History`, `Iterations`, and `Usage` accumulated so far,
+per the existing Result-shape rule.
+
+### Addendum placement and import policy
+
+`agentloop`'s `policy/layers.json` row gains two entries:
+
+```json
+"agentloop": ["provider", "tools", "trace", "hooks", "usage", "events", "contextbudget", "schema", "contextplan", "contextsummary"]
+```
+
+`contextplan` and `contextsummary` are declared before any code lands.
+`agentloop` still imports no package that imports it.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/`, new file `compaction_test.go` with one
+scripted `Completer` and one scripted `Summarizer` per case:
+
+- `Options.Validate`: a `Window` without `Summarizer` fails with
+  `ErrSummarizerRequired`; without `Calibrated` fails with
+  `ErrEstimatorRequired`; with both, and with `Trim` nil, passes;
+  a `Window` and a `Trim` together fail `ErrTrimExcluded`; an invalid
+  `Window` fails, wrapping the `contextplan` validation error. Every
+  failing case asserts `errors.Is` against its sentinel.
+- Under trigger: no summarizer call, history unchanged, `Observe`
+  recorded after `Chat`.
+- Over trigger: `Compact` ran, one summarizer call over the dropped
+  messages, the summary message sits after the system message, its
+  `Name` is `contextsummary.SummaryMessageName`, and the request the
+  `Completer` received carries the compacted history.
+- At trigger with nothing droppable: an all-mandatory history at the
+  trigger yields an empty `Dropped`; the summarizer is never called,
+  no summary is injected, and the run sends the retained history
+  normally.
+- Summarizer failure: `Run` fails with `errors.Is(err,
+  ErrCompactionFailed)` reaching the contextsummary sentinel; the
+  `Completer` was never called that iteration; no tool call ran. The
+  returned `Result.History` holds the pre-compaction history,
+  unchanged, proving the replacement happens only on success.
+- Retention overflow: a `Window` smaller than the mandatory set fails
+  with `ErrCompactionFailed` reaching `contextplan.ErrRetentionOverflow`
+  before any request.
+- Prior summary replacement: a second compaction removes the earlier
+  summary message, passes it inside the summarizer input, and leaves
+  exactly one summary message in the sent history.
+- Preserve-name injection: a caller `Window` whose `PreserveNames`
+  omits the summary name still keeps the injected summary after a
+  later compaction, proving `Run` appended it.
+- Preserve-name duplicate: a caller `Window` whose `PreserveNames`
+  already lists the summary name compacts successfully and preserves
+  exactly one summary message, proving the append is
+  duplicate-safe and never mutates the caller's slice.
+- Recovery: the `Completer` returns `provider.ErrPromptTooLong` once,
+  then succeeds. `Run` retries exactly once, sends the notice message,
+  and the retried request's estimated size lands at or under the
+  recovery target, notice bytes included. `Observe` ran for the
+  successful retry.
+- Recovery with a low estimator: an estimator that under-reports,
+  below the configured trigger, still compacts on recovery down to
+  `max(1, min(RecoveryTargetTokens, Budget over four))` and retries
+  once, proving the trigger override works. A tiny `Budget()` clamps
+  the target to one token and recovery still proceeds.
+- Recovery with a tiny history: a history estimated under one percent
+  of `Budget()` returns the original `ErrPromptTooLong` with no
+  notice and no retry.
+- Recovery twice: the `Completer` returns `ErrPromptTooLong` twice;
+  the second rejection propagates with no third call.
+- Recovery summarizer failure: the summarizer fails on the recovery
+  path; `Run` fails with `ErrCompactionFailed` and no retry.
+- Recovery without `Window`: the rejection propagates unchanged.
+- Concurrency: goroutines call `Run` on one shared `*Loop` with
+  `Window`, `Summarizer`, and `Calibrated` set, under
+  `go test -race`. No race and no panic; the `Calibrated` mutex this
+  change window adds in `docs/plans/contextplan.md` carries the
+  shared estimator.
+- Nil `Window`: the full existing suite passes unchanged, proving the
+  planning path adds no behavior when disabled.
+
+### Addendum verification
+
+- `make verify` passes, including the deps gate against the widened
+  `agentloop` row and the API gate against the regenerated
+  `api/agentloop.txt`.
+- `go test -race ./agentloop/...` passes.
+- `make api-update` runs; the `api/agentloop.txt` diff, the three
+  `Options` fields, five sentinels, and two constants land in the same
+  change as the code.
+- Coverage floor of 85 holds for `agentloop` and the total.
+- `docs/packages/agentloop.md` gains the planning and recovery surface
+  in the same change as the code.
+- This addendum lands with or after the `contextplan` compaction
+  change, the `contextsummary` package, and the `provider`
+  `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.

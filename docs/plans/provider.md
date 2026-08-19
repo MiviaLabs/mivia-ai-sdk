@@ -256,3 +256,120 @@ Test files live in `provider/provider_test/`:
 - No `agent` change lands in this phase. `agent`'s row in
   `policy/layers.json` stays unchanged; wiring `provider` into `agent`
   is a later phase's plan.
+
+## Change: message names and the prompt-too-long sentinel
+
+Status: plan, ready for plan review. Two additions: a `Name` field on
+`Message` with validation rules, and one sentinel error for
+prompt-too-long rejections. No other shape changes.
+
+### Change goal
+
+Carry a name on a message, so a host frame and a tool result name
+survive the trip through compaction and wire adapters. Name one
+sentinel for a provider's context-window rejection, so a caller can
+detect it with `errors.Is`.
+
+### Change scope
+
+Inside:
+
+- `Name string` on `Message`.
+- Two sentinels and one bound constant for `Name` validation.
+- `ErrPromptTooLong`, one sentinel error. No behavior attaches to it
+  here; `provider` ships no completer that returns it.
+
+Outside:
+
+- Any `Request` change. `Request` gains no `MaxTokens`, no
+  temperature, and no session field. The summarizer bound decision in
+  `docs/plans/contextsummary.md` relies on this.
+- Any cross-message pairing check. `Message.Validate` still checks one
+  message alone; a tool result's name matching its call stays the
+  caller's concern, as the shipped plan already states for pairing.
+- Any wire or transport work. The field is an in-process value.
+
+### Change API
+
+```go
+// MaxNameBytes bounds Message.Name when set.
+const MaxNameBytes = 128
+
+// ErrNameUnexpected is Validate's error when Name is non-empty on a
+// Role other than RoleUser or RoleTool.
+var ErrNameUnexpected = errors.New("provider: name unexpected outside RoleUser and RoleTool")
+
+// ErrNameInvalid is Validate's error when a non-empty Name exceeds
+// MaxNameBytes, is not valid UTF-8, or carries a control character.
+var ErrNameInvalid = errors.New("provider: name is invalid or too long")
+
+// ErrPromptTooLong marks a provider's rejection of a prompt that
+// exceeds the model's context window. A Completer returns or wraps
+// it; provider ships no implementation itself.
+var ErrPromptTooLong = errors.New("provider: prompt exceeds the model context window")
+
+// Message gains one field:
+type Message struct {
+    Role       Role
+    Content    string
+    Name       string
+    ToolCallID string
+    ToolCalls  []ToolCall
+}
+```
+
+Rule decision, stated: a `Name` is legal on `RoleUser` and on
+`RoleTool`, and illegal on `RoleSystem` and `RoleAssistant`. The two
+legal carriers are exactly the two the port needs: a host frame rides
+`RoleUser` (the injected `context-summary` message), and a tool result
+names its tool on `RoleTool`. The reference allowed the same two
+carriers and masked user names for its shape gate; this SDK has no
+cross-message gate, so the per-message rule stands alone.
+
+`Message.Validate` inserts the name checks after the role check and
+before the `ToolCallID` pairing check: a non-empty `Name` on
+`RoleSystem` or `RoleAssistant` returns `ErrNameUnexpected`; a
+non-empty `Name` on any role then passes the form check against
+`MaxNameBytes`, UTF-8 validity, and control characters, returning
+`ErrNameInvalid` on failure. An empty `Name` is always legal.
+
+`RunTurn` changes nothing: it already calls `Message.Validate` on
+every entry, so the new rules apply on both paths with no new code.
+
+### Change tests
+
+In `provider/provider_test/types_test.go`, table-driven additions:
+
+- A named `RoleUser` message and a named `RoleTool` message validate.
+- A named `RoleSystem` message and a named `RoleAssistant` message
+  fail `ErrNameUnexpected`.
+- A `Name` over `MaxNameBytes`, a `Name` with invalid UTF-8, and a
+  `Name` with a control character each fail `ErrNameInvalid`.
+- An empty `Name` passes on every role.
+- Precedence: an unknown role with a non-empty name still returns
+  `ErrUnknownRole`; a `RoleSystem` message with both a name and a
+  `ToolCallID` returns `ErrNameUnexpected` before
+  `ErrToolCallIDUnexpected`.
+- `ErrPromptTooLong` exists and is distinct from every other sentinel,
+  asserted by string inequality across the sentinel set.
+
+`completer_test.go` gains one `RunTurn` case: a request message
+carrying an illegal name fails validation before either `Completer`
+method runs.
+
+### Change verification
+
+- `make verify` passes; `provider` holds the 85 coverage floor.
+- `api/provider.txt` gains `Name`, `MaxNameBytes`,
+  `ErrNameUnexpected`, `ErrNameInvalid`, and `ErrPromptTooLong`
+  through `make api-update`, in the same change as the code.
+- `python3 scripts/check_plan.py`, `check_deps.py`, and
+  `check_prose.py` pass. The `provider` row stays empty; it remains a
+  leaf with stdlib-only imports.
+- `docs/packages/provider.md` gains the field, the constant, and both
+  sentinels in the same change as the code.
+- No conformance vector: `envelope` owns the wire; this field is
+  in-process only.
+- Consumers in this change window: `contextplan.Compact` reads
+  `Name` for `PreserveNames`; `contextsummary.SummaryMessage` sets it;
+  `agentloop` tests `ErrPromptTooLong`. Each lands its own plan.

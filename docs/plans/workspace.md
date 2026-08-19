@@ -997,3 +997,6 @@ Change two only:
   See `docs/plans/secrets.md`. `api/secretpath.txt` does not change.
 - Coverage for `workspace` and `secretpath` each stay at or above the
   85 percent floor.
+- `workspace` holds a mutation-kill floor of 96, in
+  `scripts/mutation_denylist/workspace.json`. Run `make mutation-gate`
+  to check it.

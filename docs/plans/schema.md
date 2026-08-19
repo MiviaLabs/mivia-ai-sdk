@@ -432,3 +432,6 @@ the code:
 - `docs/plans/agents/PHASES.md` gains a phase 64 entry once the phase
   ships, following the phase 62 entry's pattern. This is a Stage 5
   concern for the delivery loop, not a change this plan itself makes.
+- `schema` holds a mutation-kill floor of 83, in
+  `scripts/mutation_denylist/schema.json`. Run `make mutation-gate`
+  to check it.

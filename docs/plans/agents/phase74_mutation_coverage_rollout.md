@@ -91,18 +91,35 @@ rounded down to the nearest integer, matching the existing
 `envelope`/`ledger`/`machine` convention of locking at the measured
 value, not below it with an arbitrary buffer.
 
+Workspace, subagent, agentloop, mcp, dispatch, a2aclient, and schema
+each run goroutines against the package under test in their own test
+suites, alongside ledger's stress and eviction suites. A mutant near
+a race-sensitive boundary can flip killed or survived by scheduling
+timing alone, not by a true coverage gap. Any future re-sweep of any
+of these eight packages, including ledger's re-measurement below,
+must run twice and lock a new floor only when both runs agree on
+survivor count. If the two runs disagree, the re-sweeper locks the
+lower of the two rates as the floor and records the flake in this
+plan or a follow-up. The floors this plan locks today came from one
+sweep each, per the measured-rate table below; this two-run rule
+governs every re-sweep from this plan forward.
+
 1. `workspace` — filesystem confinement. Five recent fixes closed
    real `os.Root` escape and symlink-alias holes
    (`f3adff3`, `78e1934`, `f8ec0fb`, `3bf7496`, `f2f6028`). An
    escaped mutant here means a sandbox breakout goes untested.
    Measured: 57 killed, 2 survived, rate 96.61%. Floor: **96**.
+   Survivors: `confine.go:1695 == '==' -> '!='`,
+   `confine.go:1741 && '&&' -> '||'`.
 2. `subagent` — wraps `workspace` behind five model-reachable file
    tools (`WorkspaceReadTool`, `WorkspaceWriteTool`,
    `WorkspaceListTool`, `WorkspaceStatTool`, `DiffTool`) plus the
    ledger, room, and provider tool wrappers. Largest package by file
    count (23) and the broadest model-reachable surface in the
    module. Measured: 55 killed, 3 survived, rate 94.83%. Floor:
-   **94**.
+   **94**. Survivors: `astool.go:3049 && '&&' -> '||'`,
+   `heartbeattool.go:1347 != '!=' -> '=='`,
+   `roomtool.go:2081 != '!=' -> '=='`.
 3. `agentloop` — the model tool-calling loop. Recently fixed a real
    bug in its own budget check (`d5a93a2`, `MaxTotalTokens` trusting
    a possibly-zero `TotalTokens`) and validates every model-chosen
@@ -116,7 +133,11 @@ value, not below it with an arbitrary buffer.
    make each mutant's `go test` run slow. The builder re-runs
    `python3 scripts/check_mutation.py --pkg ledger` with no fixed
    timeout, or in the background, and sets the new floor at the
-   measured rate rounded down, never below the current 91.
+   measured rate rounded down, never below the current 91. If the
+   re-measured rate is below 91, the builder does not lock a new
+   floor. The builder keeps 91 and opens a follow-up to investigate
+   the regressed kill rate, since a drop implies weaker test coverage
+   against the same production code, not a tooling artifact.
 5. `mcp` — the MCP tool-calling client: a subprocess or a remote
    HTTP server maps its own tool set into this SDK's registry.
    Remote-supplied schema and content cross a trust boundary here.
@@ -133,9 +154,13 @@ value, not below it with an arbitrary buffer.
    killed, 3 survived, rate 83.33%. Floor: **83**. This is the
    weakest measured rate in this batch; the three survivors sit in
    `corrective.go`, the message-shaping path a caller reads after a
-   validation failure. Locking a floor here catches regression today;
-   closing the three survivors is separate follow-up work, named in
-   Scope above, not required before this floor lands.
+   validation failure. Survivors:
+   `corrective.go:3060 <= '<=' -> '<'`,
+   `corrective.go:3194 && '&&' -> '||'`,
+   `corrective.go:3232 CONTINUE 'continue' -> ''`. Locking a floor
+   here catches regression today; closing the three survivors is
+   separate follow-up work, named in Scope above, not required
+   before this floor lands.
 
 Already covered, no action: `envelope` (95), `machine` (100),
 `contextstate` (100), `secretpath` (100, measured in the same commit
@@ -203,7 +228,14 @@ path, or a pre-sweep git-clean check plus a mandatory post-sweep
 small, reviewable change. Until it lands, `make mutation-gate`'s own
 definition must run `git diff --exit-code` after every sweep and
 fail loudly if any tracked file changed, so a killed run never
-merges a live mutant silently.
+merges a live mutant silently. The pre-existing `make mutation
+PKG=<pkg>` target carries the same risk and gets no such automatic
+check. Until the underlying SIGTERM and timeout bugs in
+`check_mutation.py` are fixed by a separate change, every caller of
+`make mutation PKG=<pkg>` must run `git status --short` after the
+sweep finishes and restore any changed tracked file before
+continuing. This is a standing caution for every future caller, not
+a one-time step for this plan's own build.
 
 A third real gap, also found while measuring `ledger`: `run_mutant`'s
 `go test` call passes `timeout=TEST_TIMEOUT_SECONDS` (60) to

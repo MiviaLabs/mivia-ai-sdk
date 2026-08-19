@@ -62,6 +62,23 @@ bench:
 mutation:
 	python3 scripts/check_mutation.py --pkg $(PKG)
 
+# mutation-gate runs a full sweep against every package that holds a
+# scripts/mutation_denylist/<pkg>.json floor, one package at a time,
+# and fails if any drops below its own stored floor. It never runs
+# inside verify or verify-fast: see docs/plans/agents/phase74_mutation_coverage_rollout.md,
+# "Verify wiring". check_mutation.py's finally block restores a
+# mutated file on a normal interrupt, but not on an external hard
+# kill, so this target ends with a git diff check: a leftover mutant
+# left on disk by a killed sweep fails the target loudly instead of
+# merging silently.
+mutation-gate:
+	@set -e; for f in scripts/mutation_denylist/*.json; do \
+		pkg="$$(basename $$f .json)"; \
+		echo "mutation-gate: $$pkg"; \
+		python3 scripts/check_mutation.py --pkg $$pkg || exit 1; \
+	done
+	git diff --exit-code
+
 # verify-ledger-sqlite is the tag-gated verification command for
 # SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md).
 # sqlite_store*.go never compiles into the default build, so verify

@@ -153,6 +153,9 @@ Table-driven; one `TestMetamorphic*` function per property.
 - The e2e system scenarios in `docs/plans/e2e.md` drive the package
   end to end.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
+- `subagent` holds a mutation-kill floor of 94, in
+  `scripts/mutation_denylist/subagent.json`. Run `make mutation-gate`
+  to check it.
 
 ## File tools addendum
 

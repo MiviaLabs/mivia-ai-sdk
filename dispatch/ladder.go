@@ -24,12 +24,18 @@ func replayKey(m envelope.Message) ledger.IdempotencyKey {
 // isReplay reports whether err is one of the ledger outcomes that
 // mean "this key already has, or is already getting, an admitted
 // outcome": a terminal record, or a live claim held by an in-flight
-// duplicate.
+// duplicate. ledger.ErrNotClaimed covers the race window between
+// taskrun.Run's own State check and its Claim call: a concurrent
+// duplicate can pass State while the record still reads Pending, then
+// find it already Completed by the time its own Claim runs, which
+// Claim reports through its default terminal-status branch as
+// ErrNotClaimed rather than one of the three taskrun sentinels.
 func isReplay(err error) bool {
 	return errors.Is(err, taskrun.ErrTaskDone) ||
 		errors.Is(err, taskrun.ErrTaskFailed) ||
 		errors.Is(err, taskrun.ErrTaskBlocked) ||
-		errors.Is(err, ledger.ErrLeaseActive)
+		errors.Is(err, ledger.ErrLeaseActive) ||
+		errors.Is(err, ledger.ErrNotClaimed)
 }
 
 // processLine runs the receive ladder over one NDJSON line and

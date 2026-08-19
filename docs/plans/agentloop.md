@@ -429,6 +429,10 @@ format of its own; it composes `provider.Message` and `tools.InOut`,
 both already covered by their own package's tests. No new gate is
 added or weakened.
 
+`agentloop` holds a mutation-kill floor of 98, in
+`scripts/mutation_denylist/agentloop.json`. Run `make mutation-gate`
+to check it.
+
 ## Addendum: argument validation, an audit hook, and an untrusted
 error marker
 

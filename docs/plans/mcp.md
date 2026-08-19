@@ -709,3 +709,7 @@ updates. The `policy/layers.json` row is already landed with this
 plan. `docs/architecture.md` does not change in this phase: `mcp`
 adds no message-semantics rule to this module's own envelope wire
 format; it wraps a separate, already-specified protocol.
+
+`mcp` holds a mutation-kill floor of 100, in
+`scripts/mutation_denylist/mcp.json`. Run `make mutation-gate` to
+check it.

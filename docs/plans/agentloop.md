@@ -78,6 +78,12 @@ Outside:
   precedent. `MaxTotalTokens` must not be negative; zero means
   unbounded, the same precedent.
 - `func New(opts Options) (*Loop, error)` — validates, then binds.
+  `New` calls `Definitions(opts.Tools, opts.Scope)` once and stores
+  the result on `Loop`; `Run` reuses that same
+  `[]provider.ToolDefinition` slice for `provider.Request.Tools` on
+  every iteration. `tools.Registry` and `tools.Scope` are not
+  documented as mutating mid-run, and recomputing the set every
+  iteration would waste work for no stated benefit.
 - `type Loop struct` — built only through `New`. Unexported fields.
 - `func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)`
   — calls `Registry.RunScoped`, never `Registry.Run`, so a
@@ -86,22 +92,60 @@ Outside:
   `History []provider.Message`, `Iterations int`,
   `Usage provider.Usage`, `Stop StopReason`.
 - `type StopReason string` with constants `StopNoToolCalls`,
-  `StopMaxIterations`, `StopToolError`, `StopHookVeto`.
+  `StopMaxIterations`, `StopHookVeto`. No `StopToolError` constant
+  exists: a tool error under `ErrorPolicyFail` is a hard failure, not
+  a graceful stop. See the `ErrorPolicy` bullet below.
 - `type ErrorPolicy string` with constants `ErrorPolicyReport` (zero
   value; sends the tool's error text back as the tool result) and
   `ErrorPolicyFail`. A `DecodeArguments` failure on malformed
   model-supplied JSON arguments is a tool-run error and goes through
-  the same `OnToolError` policy as a failed `Run`.
+  the same `OnToolError` policy as a failed `Run`. `ErrorPolicyFail`
+  turns a tool-run error into `Run`'s own hard-fail return, wrapped
+  with the failing `ToolCallID` and the iteration count, per the
+  `Result`-shape rule below; `Run` never returns `StopToolError`,
+  since a fail-policy stop is not graceful.
 - `func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)`
   — the second return holds the names skipped for a missing schema.
-  Definitions fails closed: when the offered set is empty and the
-  skip list is not, it returns `ErrNoSchemas`. An empty Registry
-  returns an empty set and no error. Before phase 70 every subagent
-  tool is schema-less; a silent skip there would end the run with
-  `StopNoToolCalls`, indistinguishable from success.
+  Definitions fails closed: it returns `ErrNoSchemas` whenever the
+  registry is non-empty and the offered set ends up empty, whatever
+  the cause — every tool lacking a schema, a `Scope` denying every
+  tool, or both together. An empty Registry returns an empty set and
+  no error. Before phase 70 every subagent tool is schema-less; a
+  silent skip there would end the run with `StopNoToolCalls`,
+  indistinguishable from success. The skip-list return value still
+  reports which names were skipped for a missing schema, independent
+  of whether `ErrNoSchemas` trips.
 - Sentinel errors: `ErrNoCompleter`, `ErrNoTools`, `ErrMaxIterations`,
   `ErrUnrenderableResult`, `ErrCallsPerTurnExceeded`, `ErrNoSchemas`,
   `ErrOverBudget`, `ErrTokenBudgetExceeded`.
+
+`Result`'s shape depends on how `Run` stops. On every graceful stop —
+`StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto` — `Run` returns
+a fully populated `Result` and a nil error: `History` carries every
+message appended so far, `Iterations` carries the completed iteration
+count, and `Usage` carries the tokens summed so far. `Final` carries
+the last message appended, or the zero value when the stop happened
+before a new response arrived, as with `StopHookVeto`. On every
+hard-fail error return — a canceled ctx, `ErrOverBudget`,
+`ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`, a `Trim` error, a
+post-`Trim` `provider.Message.Validate` error, a tool error under
+`ErrorPolicyFail`, or a non-veto `hooks.Fire` error — `Run` also
+returns the partial `Result` alongside the error, not the zero value.
+`History`, `Iterations`, and `Usage` carry the same partial state as
+the graceful-stop case; `Final` and `Stop` stay the zero value, since
+the run did not reach a stop condition — it failed one. This list is
+closed: every hard-fail cause in this plan belongs to it, with no
+exception. `Run` checks ctx at the start of each iteration, a step
+that runs before any of the per-iteration bookkeeping the other
+hard-fail causes share; a canceled ctx can also surface mid-`Completer`
+call, before that call's `Response` ever arrives, in which case
+`Final` and `Stop` stay the zero value along with `History`,
+`Iterations`, and `Usage` staying at whatever they held before that
+call, since no new state exists to add. When ctx cancellation is
+caught before any iteration completes, `History`, `Iterations`, and
+`Usage` are the zero value too, since no partial state has accumulated
+yet — the general rule degrades to the zero-value `Result` on its own,
+without a special case.
 
 `Options.Trim` runs before each `Completer` call on the full message
 history. Its signature is type-compatible with a closure over
@@ -113,8 +157,21 @@ binding closure must discard `msgs` and read history from the
 with the loop's growing history is the caller's responsibility, out
 of this plan's scope; context-window management belongs to phase 66
 (see Scope, Outside). A non-nil trim error fails the run for that
-iteration, wrapped with the iteration count. A nil `Trim` passes the
-history through unchanged.
+iteration, wrapped with the iteration count.
+
+After a non-nil `Trim` runs, `Run` calls `provider.Message.Validate()`
+on every message in `Trim`'s returned slice, before the next
+`Completer` call, and fails closed on the first violation, wrapped
+with the iteration count, per the `Result`-shape rule above.
+`Message.Validate` checks only one message's own `Role` against its
+own `ToolCallID` and `ToolCalls` fields; it does not check that an
+assistant message's `ToolCalls` entry has a matching `RoleTool` reply
+elsewhere in the slice. A `Trim` that drops a `RoleTool` reply while
+keeping the assistant message that requested it passes this check and
+reaches `Completer` unchanged: catching that cross-message break is
+the caller's problem, since no primitive in this SDK validates
+cross-message tool-call pairing today. A nil `Trim` passes the history
+through unchanged, and skips this validation step.
 
 `Options.Budget` caps the loop's context, following `agent.Run`'s
 `ErrOverBudget` precedent. Before each `Completer` call, `Run` sums
@@ -149,16 +206,23 @@ history and still recorded onto `Options.Usage`, so a caller with a
 undercount. A zero `MaxTotalTokens` means unbounded.
 
 Hitting `MaxIterations` is not an error: `Run` returns
-`Result{Stop: StopMaxIterations}, nil`, a normal, graceful stop, the
-same shape as `StopNoToolCalls`. `ErrMaxIterations` is reserved for
-`Options.Validate()` rejecting a non-positive `MaxIterations` value —
-a construction-time validation error, not a runtime stop.
+`Result{Stop: StopMaxIterations}, nil`, a normal, graceful stop,
+following the `Result`-shape rule above. `ErrMaxIterations` is
+reserved for `Options.Validate()` rejecting a non-positive
+`MaxIterations` value — a construction-time validation error, not a
+runtime stop.
 
 `trace.Tracer` opens one span per iteration and one per tool call.
 `hooks.Registry` fires `PointPreTool` and `PointPostTool` per tool
-call, and `PointStop` once at the end. `usage.Accumulator` records
-per iteration under `SessionID`. `events.Bus` carries the loop's own
-events. Each of the four is optional and unused when nil.
+call, and `PointStop` once at the end. When a `Fire` call returns a
+non-nil error, `Run` checks `errors.Is(err, hooks.ErrVetoed)`: a veto
+is the graceful `StopHookVeto` stop described above — nil error, no
+tool run. Any other `Fire` error, a handler-returned error that is not
+a veto, is a hard failure: `Run` returns the wrapped error and the
+partial `Result` per the rule above, and the tool does not run.
+`usage.Accumulator` records per iteration under `SessionID`.
+`events.Bus` carries the loop's own events. Each of the four is
+optional and unused when nil.
 
 `agentloop` names no new type `ToolCall`, since `provider.ToolCall`
 already names the model's request; `agentloop` never constructs or
@@ -235,21 +299,23 @@ same footprint the package already holds.
   including `MaxCallsPerTurn == 0` passing validation (unbounded), a
   negative `Budget` field failing validation, `MaxTotalTokens == 0`
   passing validation (unbounded), and a negative `MaxTotalTokens`
-  failing validation.
+  failing validation. Every failing case asserts `errors.Is` against
+  its specific sentinel (`ErrNoCompleter`, `ErrNoTools`, or
+  `ErrMaxIterations`), not a plain non-nil check.
 - `definitions_test.go` — a registry with schema-bearing and
   schema-free tools yields the right definitions and skip list. A
   `Scope` denial removes a tool from the offered set. A registry
-  whose every tool lacks a schema fails with `ErrNoSchemas`.
+  whose every tool lacks a schema fails with `ErrNoSchemas`. A
+  schema-bearing registry whose `Scope` denies every tool also fails
+  with `ErrNoSchemas`, proving the broadened fail-closed condition
+  trips even when the skip list stays empty.
 - `loop_test.go` — the red-green cases. A response with no tool call
   ends the loop at one iteration. A response with one tool call runs
   the tool and appends a `RoleTool` message whose `ToolCallID`
   matches the call. Two calls in one turn run in `Index` order. An
   unknown tool name reports `tools.ErrUnknownName` under
-  `ErrorPolicyReport` and fails under `ErrorPolicyFail`. A model that
-  always calls a tool stops at `MaxIterations` with
-  `StopMaxIterations`. A `PointPreTool` veto stops with
-  `StopHookVeto` and runs no tool. A canceled ctx returns the ctx
-  error. A tool whose `DecodeArguments` fails on malformed
+  `ErrorPolicyReport` and fails under `ErrorPolicyFail`. A
+  `PointPreTool` veto stops with `StopHookVeto` and runs no tool. A tool whose `DecodeArguments` fails on malformed
   model-supplied JSON reports the decode error under
   `ErrorPolicyReport` and fails the run under `ErrorPolicyFail`, the
   same as a failed `Run`. A `Budget` that the history outgrows fails
@@ -258,19 +324,49 @@ same footprint the package already holds.
   positive `MaxCallsPerTurn` fails the run before any call in that
   turn runs, asserting `ErrCallsPerTurnExceeded` under both
   `ErrorPolicyReport` and `ErrorPolicyFail`, since the trip is
-  policy-independent. A model that always calls a tool with
-  `MaxIterations` reached asserts
-  `Result{Stop: StopMaxIterations}` returned with `err == nil`. A
-  scripted `Completer` whose responses' summed `Usage.TotalTokens`
+  policy-independent. A model that always calls a tool stops at
+  `MaxIterations`, asserting `err == nil` and the returned `Result`
+  equal to `Result{Stop: StopMaxIterations}`. A scripted `Completer`
+  whose responses' summed `Usage.TotalTokens`
   crosses a positive `MaxTotalTokens` on the second iteration fails
   the run with `ErrTokenBudgetExceeded` wrapped with the iteration
   count, and a paired case with `Options.Usage` set asserts the
   tripping call's tokens still landed in the accumulator's total. A
   zero `MaxTotalTokens` with the same scripted responses runs to
-  `StopMaxIterations` unaffected.
+  `StopMaxIterations` unaffected. A tool registered after `New` but
+  before `Run` is never offered to the model, proving `Definitions`
+  runs once at `New` and `Run` reuses the cached result. A
+  `PointPreTool` handler that returns a non-veto error fails the run
+  with the wrapped handler error, asserts
+  `errors.Is(err, hooks.ErrVetoed)` is false to distinguish it from a
+  veto, and asserts the returned `Result` carries the accumulated
+  `History`, `Iterations`, and `Usage` at the point of failure, not
+  the zero value. A `Trim` hook returning a slice with one invalid
+  message — a
+  `RoleTool` message with a blank `ToolCallID` — fails the run with
+  the wrapped `provider.Message.Validate` error, before the next
+  `Completer` call. A `Trim` hook that drops a `RoleTool` reply while
+  keeping the assistant message's matching `ToolCalls` entry passes
+  `Run`'s per-message validation unchanged and reaches `Completer`,
+  documenting that cross-message pairing stays the caller's
+  responsibility. A ctx canceled before the first iteration completes
+  returns the ctx error alongside the zero-value `Result`, since no
+  partial state has accumulated yet. A ctx canceled at the start of a
+  later iteration, after at least one prior iteration already
+  appended a `RoleTool` message and completed, returns the ctx error
+  alongside a `Result` whose `History`, `Iterations`, and `Usage`
+  carry that prior iteration's accumulated state, and whose `Final`
+  and `Stop` stay the zero value. Every hard-fail case above — the
+  canceled ctx, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
+  `ErrCallsPerTurnExceeded`, the `Trim` error, the post-`Trim`
+  validation error, the `ErrorPolicyFail` tool error, and the
+  non-veto hook error — asserts the returned `Result` carries the
+  accumulated `History`, `Iterations`, and `Usage` at the point of
+  failure, not the zero value when any iteration already completed.
 - `render_test.go` — the render order (string, then UTF-8 bytes,
-  then JSON fallback), the unrenderable case, and the
-  `ResultBudgetOf` truncation.
+  then JSON fallback), the unrenderable case asserting
+  `errors.Is(err, ErrUnrenderableResult)`, and the `ResultBudgetOf`
+  truncation.
 - `loop_integration_test.go` — a scripted `Completer` and a real
   `tools.Registry` run a two-tool, three-iteration task end to end.
   One case binds `Options.Trim` to a closure over

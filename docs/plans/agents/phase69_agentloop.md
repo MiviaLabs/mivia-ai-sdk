@@ -1,9 +1,9 @@
 # Phase 69: agentloop
 
 Status: plan, ready for plan review. Ships as one new composition
-package, `agentloop`. It depends on phase 62, which is plan-only
-today. Phase 70 completes the composition; see "Both halves, or
-neither" below.
+package, `agentloop`. Phase 62 shipped `Message.ToolCalls` in commit
+53edce3; this phase is unblocked and ready to build now. Phase 70
+completes the composition; see "Both halves, or neither" below.
 
 ## Why this phase exists
 
@@ -22,13 +22,14 @@ The result is a workflow engine with a model available as one step
 type. That is a coherent product. It is not the product the term
 "agent SDK" names to most readers.
 
-Phases 62 through 68 do not close this gap. Phase 62 adds
-`Message.ToolCalls`, which the loop needs to replay history. Phase 64
-adds schema validation, which the loop needs to check arguments.
-Phases 63, 65, 66, 67, and 68 add skills, context state, planning,
-spooling, and file leaves. None of the seven contains a component that
-reads `Response.ToolCalls` and dispatches to a `tools.Registry`. The
-scaffolding is planned. The load-bearing piece is absent.
+Phases 62 through 68 do not close this gap on their own. Phase 62
+shipped `Message.ToolCalls`, which the loop needs to replay history.
+Phase 64 adds schema validation, which the loop needs to check
+arguments. Phases 63, 65, 66, 67, and 68 add skills, context state,
+planning, spooling, and file leaves. None of the seven contains a
+component that reads `Response.ToolCalls` and dispatches to a
+`tools.Registry`. The scaffolding is planned or shipped. The
+load-bearing piece is absent until this phase ships.
 
 ## Both halves, or neither
 
@@ -240,9 +241,9 @@ Every entry lands in `api/agentloop.txt` and `api/tools.txt` through
 
 ## Sequencing
 
-Phase 62 is a hard prerequisite. Without `Message.ToolCalls`, the loop
-cannot place an assistant turn's tool calls into the next request, so
-the model loses the calls it just made. Build phase 62 first.
+Phase 62 shipped `Message.ToolCalls` in commit 53edce3. The loop can
+now place an assistant turn's tool calls into the next request, so
+this phase is unblocked and ready to build.
 
 Phase 64 is a soft prerequisite. Without it, `agentloop` decodes
 arguments through the tool's own `DecodeArguments` and validates
@@ -250,8 +251,8 @@ nothing. That is a working first build. Wire `schema` into the decode
 path once phase 64 ships, and turn a validation failure into a
 corrective tool result.
 
-Build order: phase 62, then this phase, then phase 70, then the
-phase 64 wiring.
+Build order: this phase now, then phase 70, then the phase 64
+wiring.
 
 ## Phase 70, stated here because this phase is incomplete without it
 
@@ -283,37 +284,13 @@ claim, not a verified property.
 
 ## Tests
 
-`agentloop/agentloop_test/`:
-
-- `options_test.go` — one case per invariant `Validate` claims.
-- `definitions_test.go` — a registry with schema-bearing and
-  schema-free tools yields the right definitions and skip list. A
-  `Scope` denial removes a tool from the offered set.
-- `loop_test.go` — the red-green cases. A response with no tool call
-  ends the loop at one iteration. A response with one tool call runs
-  the tool and appends a `RoleTool` message whose `ToolCallID` matches
-  the call. Two calls in one turn run in `Index` order. An unknown
-  tool name reports `tools.ErrUnknownName` under `ErrorPolicyReport`
-  and fails under `ErrorPolicyFail`. A model that always calls a tool
-  stops at `MaxIterations` with `StopMaxIterations`. A `PointPreTool`
-  veto stops with `StopHookVeto` and runs no tool. A canceled ctx
-  returns the ctx error.
-- `render_test.go` — the render order, the JSON fallback, the
-  unrenderable case, and the `ResultBudgetOf` truncation.
-- `loop_integration_test.go` — a scripted `Completer` and a real
-  `tools.Registry` run a two-tool, three-iteration task end to end.
-  The nesting case — a built `Loop` wrapped as one `flow.Step` tool
-  through `agentrun`, proving the two composition models nest — is
-  deferred to phase 70, where `subagent.LoopTool` exists to do the
-  wrapping; this phase does not write that case.
-- `loop_bench_test.go` — one iteration's allocation cost, with the
-  baseline recorded in this plan before the phase closes.
-
-In `tools/tools_test/`: `schema_test.go` covers `SchemaOf` on a tool
-that implements `SchemaTool`, one that does not, and a typed nil.
-
-Every scripted `Completer` lives in the test package. No concrete
-model client ships in this SDK, and this phase adds none.
+`docs/plans/agentloop.md`'s Tests section is the sole source of truth
+for the exact test file list and case set, for the same reason its
+API section defers there: restating a partial list here would drift
+from the full list on the next edit. The rationale for the test
+shape is: red-green coverage per `loop_test.go` case, one case per
+`Validate` invariant, and a scripted `Completer` in every test, since
+no concrete model client ships in this SDK.
 
 ## Verification
 

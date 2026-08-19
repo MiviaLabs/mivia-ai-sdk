@@ -112,6 +112,9 @@
     "schema": [],
     "secretpath": [],
     "skills": [],
+    "spool": [
+      "tools"
+    ],
     "subagent": [
       "agent",
       "agentrun",

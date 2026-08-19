@@ -1,0 +1,156 @@
+// Package spool stores oversized content under a principal-scoped
+// grant and hands the caller a bounded view plus a reference. See
+// docs/plans/spool.md.
+package spool
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+)
+
+// maxViewBytes bounds the view Spool.Spool returns for a direct
+// caller. SpoolTool applies its own caller-chosen maxBytes instead;
+// this constant only governs Spool.Spool's own truncation.
+const maxViewBytes = 4096
+
+// Sentinel errors for Spool and SpoolTool; test with errors.Is.
+var (
+	// ErrUnknownRef is Load's error for a ref with no live grant, and
+	// for a live grant whose ContentStore.Get fails.
+	ErrUnknownRef = errors.New("spool: unknown ref")
+	// ErrWrongPrincipal is Load's error when principal does not match
+	// the grant's recorded principal.
+	ErrWrongPrincipal = errors.New("spool: wrong principal")
+	// ErrNoPrincipal is SpoolTool's error for a ctx with no principal
+	// attached, when the inner result needs a grant.
+	ErrNoPrincipal = errors.New("spool: no principal in context")
+	// ErrNoBudget is NewSpool's error for a non-positive maxGrantBytes.
+	ErrNoBudget = errors.New("spool: maxGrantBytes must be positive")
+)
+
+// ContentStore is the storage a Spool writes spooled bytes to and
+// reads them back from. memory.Store satisfies this interface with no
+// import needed on either side; a caller wires the two together.
+type ContentStore interface {
+	Put(content []byte) (ref string, err error)
+	Get(ref string) ([]byte, error)
+}
+
+// grant records which principal may read back one ref's content, and
+// the content's byte size for budget bookkeeping.
+type grant struct {
+	principal string
+	size      int
+}
+
+// Spool stores oversized content under a principal-scoped grant and
+// returns a bounded view plus a reference to the full content. The
+// zero value is not usable; create a Spool with NewSpool.
+// Mutex-guarded, safe for concurrent use.
+type Spool struct {
+	mu            sync.Mutex
+	store         ContentStore
+	maxGrantBytes int
+	total         int
+	grants        map[string]grant
+	order         []string
+}
+
+// NewSpool creates a Spool backed by store, tracking grants under a
+// maxGrantBytes budget. A non-positive maxGrantBytes wraps
+// ErrNoBudget.
+func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error) {
+	if maxGrantBytes <= 0 {
+		return nil, fmt.Errorf("%w: %d", ErrNoBudget, maxGrantBytes)
+	}
+	return &Spool{
+		store:         store,
+		maxGrantBytes: maxGrantBytes,
+		grants:        make(map[string]grant),
+	}, nil
+}
+
+// Spool writes data to the underlying store, grants principal the
+// right to read it back, and returns a bounded view of data plus the
+// content's reference. Spool evicts the oldest grants, by insertion
+// order, until the new grant fits the byte budget.
+func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error) {
+	ref, err = s.store.Put(data)
+	if err != nil {
+		return "", "", err
+	}
+
+	s.mu.Lock()
+	s.recordGrant(ref, principal, len(data))
+	s.mu.Unlock()
+
+	return buildView(data, maxViewBytes, ref), ref, nil
+}
+
+// recordGrant registers ref under principal and evicts the oldest
+// grants, in insertion order, until the budget fits the new grant.
+// Called with s.mu held.
+func (s *Spool) recordGrant(ref, principal string, size int) {
+	if existing, ok := s.grants[ref]; ok {
+		s.removeFromOrder(ref)
+		s.total -= existing.size
+		delete(s.grants, ref)
+	}
+	for s.total+size > s.maxGrantBytes && len(s.order) > 0 {
+		oldest := s.order[0]
+		s.order = s.order[1:]
+		s.total -= s.grants[oldest].size
+		delete(s.grants, oldest)
+	}
+	s.grants[ref] = grant{principal: principal, size: size}
+	s.order = append(s.order, ref)
+	s.total += size
+}
+
+// removeFromOrder drops ref from the insertion-order slice. Called
+// with s.mu held.
+func (s *Spool) removeFromOrder(ref string) {
+	for i, r := range s.order {
+		if r == ref {
+			s.order = append(s.order[:i], s.order[i+1:]...)
+			return
+		}
+	}
+}
+
+// Load returns the full bytes stored under ref. It wraps
+// ErrUnknownRef when no live grant matches ref, and ErrWrongPrincipal
+// when principal does not match the grant's recorded principal. When
+// the grant is live but the underlying ContentStore.Get fails (for
+// example, the store's own independent budget evicted the blob
+// first), Load wraps that error under ErrUnknownRef too: a live grant
+// whose bytes are gone is, from the caller's view, an unknown ref.
+func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error) {
+	s.mu.Lock()
+	g, ok := s.grants[ref]
+	s.mu.Unlock()
+
+	if !ok {
+		return nil, fmt.Errorf("%w: %s", ErrUnknownRef, ref)
+	}
+	if g.principal != principal {
+		return nil, fmt.Errorf("%w: %s", ErrWrongPrincipal, ref)
+	}
+
+	data, err := s.store.Get(ref)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s: %v", ErrUnknownRef, ref, err)
+	}
+	return data, nil
+}
+
+// buildView returns data truncated to maxBytes, naming ref, when data
+// is longer than maxBytes; else it returns data unchanged.
+func buildView(data []byte, maxBytes int, ref string) string {
+	if len(data) <= maxBytes {
+		return string(data)
+	}
+	return fmt.Sprintf("%s [truncated, ref=%s]", string(data[:maxBytes]), ref)
+}

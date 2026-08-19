@@ -13,7 +13,16 @@ exported surface below mirrors `api/contextplan.txt`.
   through its two dependencies' own concurrency guarantees.
 - `Window` — the token budget for one planned request. `MaxTokens` is
   the model's context window; `Reserve` is the headroom `Plan` never
-  spends.
+  spends. `Compaction` carries the compaction thresholds and retention
+  rules; its zero value means the defaults, never "disabled".
+- `Compaction` — the compaction thresholds and retention
+  configuration: `TriggerPercent`, `TargetPercent`, `TargetTokens`,
+  `RecentTail`, `PreserveNames`. `TriggerPercent` zero means
+  `DefaultTriggerPercent`; `TargetPercent` zero means
+  `DefaultTargetPercent`; `RecentTail` zero means `DefaultRecentTail`.
+- `CompactResult` — `Compact`'s output: `Kept`, `Dropped`,
+  `BeforeTokens`, `AfterTokens`, `TriggerTokens`, `TargetTokens`,
+  `Compacted`, and the idempotency `Key`.
 - `PlanResult` — `Plan`'s output: the built `provider.Request`, every
   `Elision` decision `Plan` made, and the estimator's total over
   `Request.Messages`.
@@ -57,8 +66,34 @@ exported surface below mirrors `api/contextplan.txt`.
   non-nil error only on a malformed `Window`, a nil `sess`, or a
   payload-resolution failure other than a revocation.
 - `Window.Validate()` — rejects a non-positive `MaxTokens`, a negative
-  `Reserve`, and a `Reserve` at or above `MaxTokens`.
+  `Reserve`, a `Reserve` at or above `MaxTokens`, an invalid
+  `Compaction`, and a positive `Compaction.TargetTokens` at or above
+  `Budget()`.
 - `Window.Budget()` — returns `MaxTokens - Reserve`.
+- `Window.CompactTrigger()` — returns the trigger in tokens: `Budget`
+  times `TriggerPercent`, floored.
+- `Window.CompactTarget()` — returns the target in tokens:
+  `TargetTokens` when positive, else `Budget` times `TargetPercent`,
+  floored.
+- `Compaction.Validate()` — rejects percents outside `(0, 100]`, a
+  negative `TargetTokens` or `RecentTail`, a `RecentTail` over
+  `MaxRecentTail`, an empty but present `PreserveNames` entry, and
+  duplicate `PreserveNames` entries. When `TargetTokens` is zero, a
+  `TargetPercent` at or above the resolved `TriggerPercent` is
+  rejected; a positive `TargetTokens` skips that comparison.
+- `Compact(msgs, w, e)` — the pure compaction function over one
+  message list. An invalid window fails `Window.Validate` before any
+  estimate. Empty input fails `ErrNoMessages`; an input with no
+  `RoleUser` message fails `ErrNoObjective`. A request below the
+  trigger passes through with `Compacted` false. At or above the
+  trigger, the mandatory retention set — the `RoleSystem` message at
+  index zero, every unit with a preserved name, the latest `RoleUser`
+  unit, and the latest complete assistant-plus-tool unit — survives;
+  the tail fill adds contiguous units newest first, bounded by
+  `RecentTail` messages and the target tokens, and stops at the first
+  unit that breaks either bound. `Kept` preserves original order. The
+  `Key` is `CompactionAlgorithm`, a colon, and `contextstate.Mint`
+  over the canonical JSON fingerprint of the kept list.
 - `Calibrate(est, alpha)` — wraps `est` with an EWMA correction
   factor. `alpha` is the smoothing weight in `(0, 1]`; a value outside
   that range, including zero or negative, falls back to
@@ -84,6 +119,12 @@ exported surface below mirrors `api/contextplan.txt`.
   `MaxCorrectionFactor` (2.0) — the EWMA bounds `Calibrate` and
   `Observe` apply.
 - `StubContentBytes` (256) — the byte cap `StubContent` truncates to.
+- `DefaultTriggerPercent` (100), `DefaultTargetPercent` (10) — the
+  compaction percents a zero `Compaction` field resolves to.
+- `DefaultRecentTail` (8), `MaxRecentTail` (64) — the tail-fill
+  message-count bound and its ceiling.
+- `CompactionAlgorithm` ("context-compact-v1") — the idempotency-key
+  fingerprint scheme name.
 
 ## Failure modes
 
@@ -98,6 +139,14 @@ Use `errors.Is` to test these.
   0`.
 - `ErrReserveTooLarge` — `Window.Validate` returns it when `Reserve >=
   MaxTokens`.
+- `ErrNoMessages` — `Compact` returns it for an empty message list.
+- `ErrEstimateFailed` — `Compact` returns it wrapping the estimator's
+  own failure.
+- `ErrRetentionOverflow` — `Compact` returns it when the mandatory
+  retention set alone estimates above `Window.Budget()`. No kept-list
+  truncation happens; the result stays empty.
+- `ErrNoObjective` — `Compact` returns it when no `RoleUser` message
+  exists anywhere in the input, whatever the budget headroom.
 
 ## Invariants
 
@@ -113,7 +162,20 @@ Use `errors.Is` to test these.
 - Only a `RetentionCompliance` payload past budget gets a stub; every
   other payload past budget drops.
 - `Calibrated`'s correction factor never leaves
-  `[MinCorrectionFactor, MaxCorrectionFactor]`.
+  `[MinCorrectionFactor, MaxCorrectionFactor]`. One mutex guards
+  `factor` and `lastEst`, so `EstimateTokens` and `Observe` are safe
+  for concurrent use on one shared value.
+- A unit — an assistant message with `ToolCalls` plus its contiguous
+  matching replies, or one single message — is selected atomically. A
+  `PreserveNames` match on any message of a unit selects the whole
+  unit.
+- The optional tail stays a contiguous suffix: the fill stops at the
+  first unselected unit that breaks the message-count bound or the
+  target, and never resumes past it.
+- Repeated `Compact` calls on equal inputs return equal `Key` values;
+  inputs differing in one tool call's arguments return different keys.
+- No kept `RoleTool` message replies to a dropped assistant call:
+  selection is per unit, never per message inside one.
 
 ## Cross-references
 
@@ -122,6 +184,8 @@ Use `errors.Is` to test these.
 - [provider.md](provider.md) — `Plan` builds a `provider.Request`;
   `IsReasoningEvent` compares against `provider.ReasoningEventKind`.
 - [memory.md](memory.md) — `Planner`'s decode cache.
+- [contextsummary.md](contextsummary.md) — the LLM summarizer whose
+  input `Compact`'s `Dropped` list supplies.
 
 ## Usage
 

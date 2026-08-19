@@ -612,7 +612,7 @@ sibling under the 500-line limit:
 
 ## Change: compaction policy
 
-Status: plan, ready for plan review. Ports the structural retention
+Status: shipped. Ports the structural retention
 half of `mivia-agent/internal/contextmgr/planner.go` into
 `contextplan`, under this task's changed defaults and hard rules.
 

@@ -1,6 +1,10 @@
 package contextplan
 
-import "github.com/MiviaLabs/mivia-ai-sdk/provider"
+import (
+	"sync"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+)
 
 // EWMA smoothing bounds for Calibrated.
 const (
@@ -18,7 +22,10 @@ const (
 // Calibrated wraps a provider.TokenEstimator with an exponentially
 // weighted moving average, corrected after each completed turn
 // through Observe. A *Calibrated implements provider.TokenEstimator.
+// Safe for concurrent use: one mutex guards factor and lastEst, the
+// only mutable fields.
 type Calibrated struct {
+	mu      sync.Mutex
 	est     provider.TokenEstimator
 	alpha   float64
 	factor  float64
@@ -46,9 +53,11 @@ func (c *Calibrated) EstimateTokens(req provider.Request) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	c.mu.Lock()
 	scaled := int(float64(raw) * c.factor)
 	c.lastEst = raw
 	c.hasLast = true
+	c.mu.Unlock()
 	return scaled, nil
 }
 
@@ -58,6 +67,8 @@ func (c *Calibrated) EstimateTokens(req provider.Request) (int, error) {
 // MaxCorrectionFactor]. A first call, before any estimate, and a
 // non-positive actual, are both no-ops.
 func (c *Calibrated) Observe(actual int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if !c.hasLast || actual <= 0 || c.lastEst <= 0 {
 		return
 	}

@@ -1,22 +1,48 @@
 package contextplan
+  const CompactionAlgorithm = "context-compact-v1"
+  const DefaultRecentTail = 8
   const DefaultSmoothingFactor = 0.3
+  const DefaultTargetPercent = 10
+  const DefaultTriggerPercent = 100
   const ElisionReasonReasoningRedacted = "reasoning_redacted"
   const ElisionReasonRetentionExpired = "retention_expired"
   const ElisionReasonRevoked = "revoked"
   const ElisionReasonWindowOverflow = "window_overflow"
   const MaxCorrectionFactor = 2.0
+  const MaxRecentTail = 64
   const MinCorrectionFactor = 0.5
   const StubContentBytes = 256
   func (c *Calibrated) EstimateTokens(req provider.Request) (int, error)
   func (c *Calibrated) Observe(actual int)
+  func (c Compaction) Validate() (error)
   func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)
   func (w Window) Budget() (int)
+  func (w Window) CompactTarget() (int)
+  func (w Window) CompactTrigger() (int)
   func (w Window) Validate() (error)
   func Calibrate(est provider.TokenEstimator, alpha float64) (*Calibrated)
+  func Compact(msgs []provider.Message, w Window, e provider.TokenEstimator) (CompactResult, error)
   func IsReasoningEvent(e contextstate.SourceEvent) (bool)
   func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, error)
   func StubContent(content []byte) ([]byte)
   type Calibrated struct {
+}
+  type CompactResult struct {
+  Kept []provider.Message
+  Dropped []provider.Message
+  BeforeTokens int
+  AfterTokens int
+  TriggerTokens int
+  TargetTokens int
+  Compacted bool
+  Key string
+}
+  type Compaction struct {
+  TriggerPercent int
+  TargetPercent int
+  TargetTokens int
+  RecentTail int
+  PreserveNames []string
 }
   type Elision struct {
   Ref contextstate.ContentRef
@@ -34,10 +60,15 @@ package contextplan
   type Window struct {
   MaxTokens int
   Reserve int
+  Compaction Compaction
 }
+  var ErrEstimateFailed
   var ErrMaxTokensNotPositive
   var ErrNilCache
   var ErrNilSession
   var ErrNilStore
+  var ErrNoMessages
+  var ErrNoObjective
   var ErrReserveNegative
   var ErrReserveTooLarge
+  var ErrRetentionOverflow

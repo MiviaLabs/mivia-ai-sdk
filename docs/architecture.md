@@ -477,8 +477,14 @@ flowchart LR
   drops the rest; a reasoning event, per `IsReasoningEvent`, never
   enters the built `provider.Request`. `Calibrated` wraps a
   `provider.TokenEstimator` with an EWMA correction factor `Observe`
-  updates after each turn. `contextplan` imports `contextstate`,
-  `provider`, and `memory`. See
+  updates after each turn, guarded by a mutex for concurrent use. The
+  compaction surface adds `Compaction` with `Validate`, `Compact`,
+  `CompactResult`, `CompactTrigger` and `CompactTarget`, the
+  retention and tail-fill constants, and the `Compact` sentinels:
+  `Compact` applies the trigger check and a fixed retention set over
+  one message list, pure, with no LLM call, and mints the
+  `context-compact-v1` idempotency key through `contextstate.Mint`.
+  `contextplan` imports `contextstate`, `provider`, and `memory`. See
   [packages/contextplan.md](packages/contextplan.md).
 - `contextsummary/` — the LLM summarizer for compaction. It provides
   `Summary` with `Validate` and `Render`, `SummaryMessage`,

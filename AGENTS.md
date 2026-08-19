@@ -55,13 +55,19 @@ Go SDK for building AI agents. Module:
   every ref in this SDK has one form. Volume Limits are caller-owned
   and enforced at the store; a zero field means uncapped.
 - `contextplan/` — fits one session into a bounded request: Planner,
-  NewPlanner, Plan; Window with Validate and Budget; PlanResult,
-  Elision, ElisionReason; Calibrate and Calibrated, an EWMA-corrected
-  provider.TokenEstimator; IsReasoningEvent; StubContent. Imports
-  contextstate, provider, and memory. NewPlanner takes a
-  contextstate.MemStore and a memory.Store; Plan drops or trims
-  events to fit Window.Budget, applying StubContent to reasoning
-  events first.
+  NewPlanner, Plan; Window with Validate, Budget, CompactTrigger, and
+  CompactTarget; Compaction and the pure Compact with CompactResult,
+  the structural retention half of compaction; PlanResult, Elision,
+  ElisionReason; Calibrate and Calibrated, an EWMA-corrected
+  provider.TokenEstimator safe for concurrent use; IsReasoningEvent;
+  StubContent. Imports contextstate, provider, and memory. NewPlanner
+  takes a contextstate.MemStore and a memory.Store; Plan drops or
+  trims events to fit Window.Budget, applying StubContent to
+  reasoning events first. Compact keeps the system message, the
+  latest user objective, preserved names, and the latest complete
+  assistant-plus-tool unit, then fills a contiguous tail; it fails
+  ErrRetentionOverflow when the retention set alone exceeds the
+  budget.
 - `contextsummary/` — the LLM summarizer for compaction: Summary with
   Validate and Render, SummaryMessage, TokenEstimate, Summarizer over
   a provider.Completer. One call, a 20 second timeout, strict

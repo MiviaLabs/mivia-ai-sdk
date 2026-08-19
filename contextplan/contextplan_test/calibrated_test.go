@@ -3,6 +3,7 @@ package contextplan_test
 import (
 	"errors"
 	"math"
+	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -191,5 +192,36 @@ func TestCalibratedEstimateTokensPropagatesError(t *testing.T) {
 	_, err := c.EstimateTokens(provider.Request{})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("err = %v, want %v", err, wantErr)
+	}
+}
+
+func TestCalibratedConcurrentUse(t *testing.T) {
+	c := contextplan.Calibrate(fixedEstimator{tokens: 100}, 0.5)
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(seed int) {
+			defer wg.Done()
+			for i := 0; i < 50; i++ {
+				got, err := c.EstimateTokens(provider.Request{})
+				if err != nil {
+					t.Errorf("EstimateTokens: %v", err)
+					return
+				}
+				if got < 50 || got > 200 {
+					t.Errorf("estimate %d outside the clamp bounds [50, 200]", got)
+					return
+				}
+				c.Observe(100 + seed)
+			}
+		}(g)
+	}
+	wg.Wait()
+	got, err := c.EstimateTokens(provider.Request{})
+	if err != nil {
+		t.Fatalf("EstimateTokens after join: %v", err)
+	}
+	if got < int(100*contextplan.MinCorrectionFactor) || got > int(100*contextplan.MaxCorrectionFactor) {
+		t.Fatalf("estimate %d outside the clamp bounds after every join", got)
 	}
 }

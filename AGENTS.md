@@ -67,6 +67,15 @@ Go SDK for building AI agents. Module:
 - `diff/` — bounded unified line diffs: Unified, ErrTooLarge. Unified
   computes a line-level diff and fails closed past a caller's line
   budget. A leaf package; no internal imports.
+- `spool/` — a principal-scoped grant store for oversized content:
+  Spool, NewSpool, Spool.Spool, Spool.Load, ContentStore,
+  WithPrincipal, PrincipalFrom, SpoolTool. Spool.Spool writes content
+  to a caller-supplied ContentStore, grants one principal the right
+  to read it back, and returns a bounded view plus a reference.
+  SpoolTool wraps a tools.Tool: an oversized string result spools
+  instead of returning in full, and the wrapper forwards
+  ExecutionProfile, MaxResultBytes, and Privileged from the wrapped
+  tool whenever it implements them. Imports tools only.
 
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Gate: go.mod and go.sum carry no dependency outside a named, closed
-allowlist. The SDK is standard library only, with three deliberate
+allowlist. The SDK is standard library only, with four deliberate
 exceptions: a2aclient wraps github.com/a2aproject/a2a-go (see
 docs/plans/a2aclient.md), mcp wraps
-github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md), and
+github.com/modelcontextprotocol/go-sdk (see docs/plans/mcp.md),
 ledger wraps modernc.org/sqlite behind the ledger_sqlite build tag
-(see docs/packages/ledger.md's "SQLiteStore" section).
-ALLOWED_MODULES is the union of all three modules' verified dependency
+(see docs/packages/ledger.md's "SQLiteStore" section), and schema
+wraps github.com/santhosh-tekuri/jsonschema/v6 (see
+docs/plans/schema.md).
+ALLOWED_MODULES is the union of all four modules' verified dependency
 closures, reconciled against real `go mod tidy` output; a require or
 go.sum line for any other module path fails the gate. `replace`,
 `exclude`, and `retract` directives stay fully rejected, no
@@ -53,6 +55,8 @@ ALLOWED_MODULES = {
     "google.golang.org/genproto/googleapis/rpc",
     "google.golang.org/grpc",
     "google.golang.org/protobuf",
+    "github.com/santhosh-tekuri/jsonschema/v6",
+    "github.com/dlclark/regexp2",
     "modernc.org/sqlite",
     "modernc.org/libc",
     "modernc.org/mathutil",

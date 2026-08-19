@@ -195,6 +195,19 @@ def main() -> int:
             'package ledger\n\nimport _ "modernc.org/sqlite"\n\nvar _ = 1\n'
         )
 
+        # schema-scoped rule pair: proves the stdlib-only exclude and
+        # the new scoped rule fire together, in a path-scoped
+        # directory the flat PROBES loop above cannot exercise.
+        schema_rid = "sdk.go.schema-scoped-third-party-import"
+        schema_dir = tmp / "schema"
+        schema_dir.mkdir()
+        (schema_dir / "viol_schema_other_import.go").write_text(
+            'package schema\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n'
+        )
+        (schema_dir / "clean_jsonschema_import.go").write_text(
+            'package schema\n\nimport jsonschema "github.com/santhosh-tekuri/jsonschema/v6"\n\nvar _ = jsonschema.NewCompiler()\n'
+        )
+
         data = scan(tmp)
         if data.get("errors"):
             print("semgrep probe scan errors:", data["errors"])
@@ -209,6 +222,8 @@ def main() -> int:
         expected["clean_go_sdk_import.go"] = mcp_rid
         expected["viol_ledger_other_import.go"] = ledger_rid
         expected["clean_modernc_sqlite_import.go"] = ledger_rid
+        expected["viol_schema_other_import.go"] = schema_rid
+        expected["clean_jsonschema_import.go"] = schema_rid
         hits = {}
         for r in data.get("results", []):
             name = Path(r["path"]).name
@@ -277,6 +292,21 @@ def main() -> int:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded ledger/ directory")
         if "sdk.go.stdlib-only-imports" in ledger_clean_hits:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded ledger/ directory")
+
+        # Explicit schema-scoped assertions, parallel to the a2aclient,
+        # mcp, and ledger blocks above: the scoped rule fires on the
+        # violation, stays silent on the clean jsonschema/v6 import,
+        # and the scoped exclude keeps stdlib-only-imports out of both.
+        schema_viol_hits = hits.get("viol_schema_other_import.go", set())
+        schema_clean_hits = hits.get("clean_jsonschema_import.go", set())
+        if schema_rid not in schema_viol_hits:
+            problems.append(f"{schema_rid}: violation file viol_schema_other_import.go did not fire")
+        if schema_rid in schema_clean_hits:
+            problems.append(f"{schema_rid}: clean file clean_jsonschema_import.go fired")
+        if "sdk.go.stdlib-only-imports" in schema_viol_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded schema/ directory")
+        if "sdk.go.stdlib-only-imports" in schema_clean_hits:
+            problems.append("sdk.go.stdlib-only-imports: fired inside the excluded schema/ directory")
 
         for name in hits:
             if name not in expected and not name.startswith("d5"):

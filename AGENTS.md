@@ -121,6 +121,12 @@ Go SDK for building AI agents. Module:
   and events internally. `SQLiteStore`, behind the `ledger_sqlite`
   build tag, additionally imports the pure-Go `modernc.org/sqlite`
   driver externally; the default build never compiles it.
+- `schema/` — the JSON Schema compile/validate/corrective-message
+  primitive: Compiled, Compile, Validate, Corrective, MaxSchemaBytes,
+  MaxSchemaDepth, MaxPayloadBytes, MaxCorrectiveBytes, ErrAdmission,
+  ErrCompile, ErrMalformedPayload, and ErrValidation. Imports
+  `github.com/santhosh-tekuri/jsonschema/v6` externally and no internal
+  package.
 - `e2e/` — the end-to-end scenario harness: deterministic tools,
   an event recorder, and a thread-capturing resolver. The scenarios
   in `e2e/e2e_test/` wire real high-level blocks together and assert
@@ -287,7 +293,8 @@ any stage means stop and escalate to the user.
   Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
   `google.golang.org/grpc`; `mcp` may import
   `github.com/modelcontextprotocol/go-sdk`; `ledger` may import
-  `modernc.org/sqlite`, behind the `ledger_sqlite` build tag only; no
+  `modernc.org/sqlite`, behind the `ledger_sqlite` build tag only;
+  `schema` may import `github.com/santhosh-tekuri/jsonschema/v6`; no
   other package may add a third-party import without its own plan
   review.
 - Comments are a machine-read API surface. Keep them short: one line of

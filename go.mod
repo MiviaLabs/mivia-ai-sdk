@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/a2aproject/a2a-go v0.3.15
 	github.com/modelcontextprotocol/go-sdk v1.7.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	google.golang.org/grpc v1.73.0
 	modernc.org/sqlite v1.54.0
 )

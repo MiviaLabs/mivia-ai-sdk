@@ -18,11 +18,11 @@ references.
 
 ## Package map
 
-The diagram shows the thirty-one packages and the import edges between
+The diagram shows the thirty-two packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `channel`, `contextbudget`, `discovery`, `durablefence`, `envelope`,
-`events`, `hooks`, `provider`, `tools`, `trace`, and `trigger` are leaves: they import no other
-package in this module.
+`events`, `hooks`, `provider`, `schema`, `tools`, `trace`, and
+`trigger` are leaves: they import no other package in this module.
 
 ```mermaid
 flowchart LR
@@ -103,6 +103,7 @@ flowchart LR
     e2e --> provider
     e2e --> tools
     contextbudget[contextbudget]
+    schema[schema]
     discovery[discovery]
     durablefence[durablefence]
     envelope[envelope]
@@ -348,6 +349,17 @@ flowchart LR
   internally. It is the second package, after `a2aclient`, allowed to
   carry a third-party import: `github.com/modelcontextprotocol/go-sdk`,
   the official MCP Go SDK. See [packages/mcp.md](packages/mcp.md).
+- `schema/` — the JSON Schema compile/validate/corrective-message
+  primitive. It provides `Compiled`, `Compile`, `Validate`,
+  `Corrective`, `MaxSchemaBytes`, `MaxSchemaDepth`, `MaxPayloadBytes`,
+  `MaxCorrectiveBytes`, and the sentinels `ErrAdmission`, `ErrCompile`,
+  `ErrMalformedPayload`, and `ErrValidation`. `Compile` admits and
+  compiles a JSON Schema document; `Validate` checks a JSON payload
+  against it; `Corrective` renders a bounded, model-facing message on
+  a validation failure. `schema` imports no other package in this
+  module; it is the fourth package, after `a2aclient`, `mcp`, and
+  `ledger`, allowed to carry a third-party import:
+  `github.com/santhosh-tekuri/jsonschema/v6`.
 - `contextbudget/` — a leaf primitive. It provides `Limits`,
   `Validate`, and `Fits`. `Limits` caps one model call's context by
   byte count and event count; a zero field means no cap for that

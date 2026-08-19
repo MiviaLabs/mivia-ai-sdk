@@ -325,6 +325,42 @@ func TestRunCtxCanceledAtLaterIteration(t *testing.T) {
 	}
 }
 
+// TestRunCtxCanceledMidTurnStopsRemainingCalls proves a ctx canceled
+// by the Completer's own call stops the turn before any of its tool
+// calls run: runToolCalls checks ctx.Err() ahead of every call, not
+// only once at the top of the outer loop. A run that keeps executing
+// tool calls after its ctx is canceled would pay for and cause side
+// effects it could still skip.
+func TestRunCtxCanceledMidTurnStopsRemainingCalls(t *testing.T) {
+	first := &schemaEchoTool{name: "first", schema: []byte(`{}`), result: "x"}
+	second := &schemaEchoTool{name: "second", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, first)
+	mustAdd(t, reg, second)
+	ctx, cancel := context.WithCancel(context.Background())
+	completer := &cancelingCompleter{
+		cancel: cancel,
+		resp: toolCallResponse(
+			provider.ToolCall{Index: 0, ID: "call-1", Name: "first"},
+			provider.ToolCall{Index: 1, ID: "call-2", Name: "second"},
+		),
+	}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	_, err = loop.Run(ctx, []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+	if first.callCount() != 0 {
+		t.Fatalf("first.callCount() = %d, want 0: cancellation happens inside Chat, before runToolCalls's first ctx check", first.callCount())
+	}
+	if second.callCount() != 0 {
+		t.Fatalf("second.callCount() = %d, want 0: a canceled ctx must stop the turn before its later calls run", second.callCount())
+	}
+}
+
 // cancelingCompleter returns resp on its first Chat call and cancels
 // ctx as a side effect of that first call returning, so Run's next
 // top-of-loop ctx check observes cancellation.

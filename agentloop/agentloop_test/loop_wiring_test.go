@@ -258,6 +258,9 @@ func TestRunScopeDeniedToolName(t *testing.T) {
 	if denied.callCount() != 0 {
 		t.Fatalf("denied.callCount() = %d, want 0: a scope-denied tool must never run", denied.callCount())
 	}
+	if denied.decodeCallCount() != 0 {
+		t.Fatalf("denied.decodeCallCount() = %d, want 0: a scope-denied tool's decoder must never see model-supplied bytes", denied.decodeCallCount())
+	}
 }
 
 // TestRunToolExecutionError proves a tool's own Run method returning

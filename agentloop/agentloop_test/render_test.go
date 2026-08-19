@@ -172,6 +172,27 @@ func TestRenderTruncatesAtExactMarkerLength(t *testing.T) {
 	}
 }
 
+// TestRenderNonPositiveBudgetSkipsTruncation covers the render guard
+// budget > 0: a zero or negative MaxResultBytes must not truncate,
+// since a negative n reaching content[:n] would panic.
+func TestRenderNonPositiveBudgetSkipsTruncation(t *testing.T) {
+	for _, budget := range []int{0, -1} {
+		t.Run("", func(t *testing.T) {
+			tool := &budgetedSchemaTool{
+				schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: "unbounded"},
+				maxBytes:       budget,
+			}
+			got, err := renderedContent(t, tool)
+			if err != nil {
+				t.Fatalf("renderedContent error = %v, want nil", err)
+			}
+			if got != "unbounded" {
+				t.Fatalf("content = %q, want unbounded (budget %d must not truncate)", got, budget)
+			}
+		})
+	}
+}
+
 func TestRenderTruncatesOverBudget(t *testing.T) {
 	tool := &budgetedSchemaTool{
 		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 100)},

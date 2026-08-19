@@ -64,13 +64,14 @@ var errBoom = errors.New("agentloop_test: boom")
 // decodes its raw argument bytes into a string InOut, records every
 // call, and returns a fixed result or error.
 type schemaEchoTool struct {
-	mu        sync.Mutex
-	name      string
-	schema    []byte
-	result    any
-	runErr    error
-	decodeErr error
-	calls     int
+	mu          sync.Mutex
+	name        string
+	schema      []byte
+	result      any
+	runErr      error
+	decodeErr   error
+	calls       int
+	decodeCalls int
 }
 
 func (t *schemaEchoTool) Name() string { return t.name }
@@ -78,10 +79,19 @@ func (t *schemaEchoTool) Name() string { return t.name }
 func (t *schemaEchoTool) ParameterSchema() []byte { return t.schema }
 
 func (t *schemaEchoTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	t.mu.Lock()
+	t.decodeCalls++
+	t.mu.Unlock()
 	if t.decodeErr != nil {
 		return tools.InOut{}, t.decodeErr
 	}
 	return tools.InOut{Value: string(raw)}, nil
+}
+
+func (t *schemaEchoTool) decodeCallCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.decodeCalls
 }
 
 func (t *schemaEchoTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {

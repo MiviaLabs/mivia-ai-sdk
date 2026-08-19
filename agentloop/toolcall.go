@@ -16,12 +16,17 @@ import (
 // appending one RoleTool message per call onto history. It stops
 // early and returns veto == true, with no error, on a PointPreTool
 // veto: the tool that call names does not run, and no later call in
-// this turn runs either.
+// this turn runs either. It also stops early, with ctx.Err() as the
+// returned error, when ctx is canceled ahead of a call: a canceled
+// run must not keep executing tool calls it can still skip.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int) ([]provider.Message, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 
 	for _, call := range ordered {
+		if err := ctx.Err(); err != nil {
+			return history, false, err
+		}
 		msg, veto, err := l.runOneToolCall(ctx, call, iteration)
 		if err != nil {
 			return history, false, err
@@ -94,14 +99,19 @@ func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.To
 	return false, err
 }
 
-// decodeAndRun resolves call.Name, decodes call.Arguments through the
-// resolved tool's DecodeArguments, and calls RunScoped. It returns an
-// error wrapping tools.ErrUnknownName for an unresolved name, before
-// ever calling DecodeArguments or RunScoped.
+// decodeAndRun resolves call.Name, checks l.scope, decodes
+// call.Arguments through the resolved tool's DecodeArguments, and
+// calls RunScoped. It returns an error wrapping tools.ErrUnknownName
+// for an unresolved name and tools.ErrScopeDenied for a name l.scope
+// excludes, both before ever calling DecodeArguments or RunScoped: a
+// scope-denied tool's decoder must never see model-supplied bytes.
 func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.Tool, tools.Out, error) {
 	t, ok := l.reg.Get(call.Name)
 	if !ok {
 		return nil, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrUnknownName)
+	}
+	if l.scope != nil && !l.scope.Allowed(call.Name, t) {
+		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrScopeDenied)
 	}
 	st, ok := t.(tools.SchemaTool)
 	if !ok {

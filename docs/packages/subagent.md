@@ -55,6 +55,42 @@ decode or dispatch fault onto `ErrBadCommand`.
 - `ChannelTool` — asks one human through a `Notifier`; an approved
   answer's payload returns, a decline fails naming the recipient.
 
+## File tools
+
+Five tools wire the leaf packages `workspace` and `diff` into a
+model-reachable tool set. Each binds one `*workspace.Workspace` a
+caller supplies at construction; a model never chooses the sandbox
+root, only a path inside it. Each implements `tools.SchemaTool`, so
+`agentloop.Definitions` offers it without a caller-written adapter.
+
+- `WorkspaceReadTool(name, ws, maxResultBytes)` — reads one file,
+  relative to `ws`'s root. A positive `maxResultBytes` publishes
+  `tools.ResultBudgetTool`; a non-positive value publishes no budget.
+  Not privileged.
+- `WorkspaceWriteTool(name, ws)` — writes one file, relative to
+  `ws`'s root, at a fixed `0o600` mode. Implements
+  `tools.PrivilegedTool`, so `tools.Scope.Allowed` denies it unless a
+  caller's `Allowlist` names it.
+- `WorkspaceListTool(name, ws)` — lists one directory, relative to
+  `ws`'s root, as `[]WorkspaceEntry`. A blank path lists the root.
+  Not privileged.
+- `WorkspaceStatTool(name, ws)` — stats one path, relative to `ws`'s
+  root, as one `WorkspaceFileInfo`. Not privileged.
+- `DiffTool(name, ws, maxLines)` — diffs the on-disk content at a
+  path, read through `ws.ReadFile`, against proposed content, through
+  `diff.Unified`. A not-yet-existing path diffs against empty
+  content. A diff over `maxLines` fails with `diff.ErrTooLarge`. Not
+  privileged.
+
+Every argument struct (`WorkspaceReadArgs`, `WorkspaceWriteArgs`,
+`WorkspaceListArgs`, `WorkspaceStatArgs`, `DiffArgs`) carries `json`
+tags and decodes through the tool's own `DecodeArguments`. `ws`'s own
+`resolve` step rejects a traversal or an absolute path with
+`workspace.ErrEscape`, whatever a caller's schema or decode step lets
+through. `envfile` gets no tool: a parsed dotenv map is a
+credential-exfiltration primitive with no matching model-facing
+benefit.
+
 ## Command wire
 
 Command tools decode one JSON payload struct per call: `RoomCommand`,
@@ -110,6 +146,11 @@ separate planes, with `dispatch` carrying room messages over HTTP.
   `TestNewMailboxRejectsBadCapacity` in
   `subagent/subagent_test/mailbox_test.go` with `errors.Is`, for both
   a zero and a negative capacity.
+- `ErrBadArguments` ("subagent: bad arguments") — the five file tools
+  wrap it when `DecodeArguments` cannot parse raw bytes, or when
+  `Run`'s `tools.InOut.Value` does not carry the tool's typed argument
+  struct. Pinned by
+  `subagent/subagent_test/filetools_test.go`.
 
 ## Usage
 

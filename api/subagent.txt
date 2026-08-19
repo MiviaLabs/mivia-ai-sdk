@@ -21,6 +21,11 @@ package subagent
   func (m *Mailbox) Take() ([]envelope.Message)
   func (t *channelTool) Name() (string)
   func (t *channelTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *diffTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *diffTool) ExecutionProfile() (tools.ExecutionProfile)
+  func (t *diffTool) Name() (string)
+  func (t *diffTool) ParameterSchema() ([]byte)
+  func (t *diffTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *discoveryTool) Name() (string)
   func (t *discoveryTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *heartbeatTool) Name() (string)
@@ -45,8 +50,31 @@ package subagent
   func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *triggerTool) Name() (string)
   func (t *triggerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *workspaceListTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *workspaceListTool) ExecutionProfile() (tools.ExecutionProfile)
+  func (t *workspaceListTool) Name() (string)
+  func (t *workspaceListTool) ParameterSchema() ([]byte)
+  func (t *workspaceListTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *workspaceReadTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *workspaceReadTool) ExecutionProfile() (tools.ExecutionProfile)
+  func (t *workspaceReadTool) Name() (string)
+  func (t *workspaceReadTool) ParameterSchema() ([]byte)
+  func (t *workspaceReadTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *workspaceReadToolBudgeted) MaxResultBytes() (int)
+  func (t *workspaceStatTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *workspaceStatTool) ExecutionProfile() (tools.ExecutionProfile)
+  func (t *workspaceStatTool) Name() (string)
+  func (t *workspaceStatTool) ParameterSchema() ([]byte)
+  func (t *workspaceStatTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *workspaceWriteTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *workspaceWriteTool) ExecutionProfile() (tools.ExecutionProfile)
+  func (t *workspaceWriteTool) Name() (string)
+  func (t *workspaceWriteTool) ParameterSchema() ([]byte)
+  func (t *workspaceWriteTool) Privileged() (bool)
+  func (t *workspaceWriteTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func AsTool(name string, r *agentrun.Runner, opts ToolOptions) (tools.Tool)
   func ChannelTool(name string, ask channel.Notifier, recipient string) (tools.Tool)
+  func DiffTool(name string, ws *workspace.Workspace, maxLines int) (tools.Tool)
   func DiscoveryTool(name string) (tools.Tool)
   func FlowTool(name string, plan *flow.Definition, m *machine.Definition, bus *events.Bus) (tools.Tool)
   func HeartbeatTool(name string, m *heartbeat.Monitor) (tools.Tool)
@@ -61,6 +89,14 @@ package subagent
   func SchedulerTool(name string, s *scheduler.Scheduler, job scheduler.Job) (tools.Tool)
   func SendTool(name string, box *Mailbox, id *identity.Identity) (tools.Tool)
   func TriggerTool(name string, reg *trigger.Registry) (tools.Tool)
+  func WorkspaceListTool(name string, ws *workspace.Workspace) (tools.Tool)
+  func WorkspaceReadTool(name string, ws *workspace.Workspace, maxResultBytes int) (tools.Tool)
+  func WorkspaceStatTool(name string, ws *workspace.Workspace) (tools.Tool)
+  func WorkspaceWriteTool(name string, ws *workspace.Workspace) (tools.Tool)
+  type DiffArgs struct {
+  Path string `json:"path"`
+  Content string `json:"content"`
+}
   type DiscoveryCommand struct {
   Op string `json:"op"`
   Card string `json:"card"`
@@ -112,6 +148,30 @@ package subagent
   Bus *events.Bus
   Tracer *trace.Tracer
 }
+  type WorkspaceEntry struct {
+  Name string `json:"name"`
+  IsDir bool `json:"is_dir"`
+}
+  type WorkspaceFileInfo struct {
+  Name string `json:"name"`
+  Size int64 `json:"size"`
+  IsDir bool `json:"is_dir"`
+  ModTime time.Time `json:"mod_time"`
+}
+  type WorkspaceListArgs struct {
+  Path string `json:"path"`
+}
+  type WorkspaceReadArgs struct {
+  Path string `json:"path"`
+}
+  type WorkspaceStatArgs struct {
+  Path string `json:"path"`
+}
+  type WorkspaceWriteArgs struct {
+  Path string `json:"path"`
+  Content string `json:"content"`
+}
+  var ErrBadArguments
   var ErrBadCommand
   var ErrInvalidCapacity
   var ErrMailboxFull

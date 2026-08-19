@@ -134,6 +134,7 @@
       "agent",
       "agentrun",
       "channel",
+      "diff",
       "discovery",
       "envelope",
       "events",
@@ -150,7 +151,8 @@
       "taskrun",
       "tools",
       "trace",
-      "trigger"
+      "trigger",
+      "workspace"
     ],
     "taskrun": [
       "ledger"

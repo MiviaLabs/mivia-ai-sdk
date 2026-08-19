@@ -1,0 +1,70 @@
+// WorkspaceListTool lists one directory in a caller-bound Workspace.
+
+package subagent
+
+import (
+	"context"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
+)
+
+// WorkspaceListArgs is the decoded argument struct for
+// WorkspaceListTool. Path is relative to the bound Workspace's root;
+// a blank Path lists the root itself.
+type WorkspaceListArgs struct {
+	Path string `json:"path"`
+}
+
+// WorkspaceListTool returns a tool that lists one directory inside
+// ws, relative to ws's bound root. Not privileged.
+func WorkspaceListTool(name string, ws *workspace.Workspace) tools.Tool {
+	return &workspaceListTool{name: name, ws: ws}
+}
+
+// workspaceListTool adapts one workspace list to tools.Tool,
+// tools.SchemaTool, and tools.ProfiledTool.
+type workspaceListTool struct {
+	name string
+	ws   *workspace.Workspace
+}
+
+// Name returns the registry name.
+func (t *workspaceListTool) Name() string { return t.name }
+
+// ParameterSchema returns the flat, string-only argument schema.
+func (t *workspaceListTool) ParameterSchema() []byte {
+	return flatStringSchema("path")
+}
+
+// DecodeArguments parses raw into WorkspaceListArgs.
+func (t *workspaceListTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	args, err := decodeArgs[WorkspaceListArgs](t.name, raw)
+	if err != nil {
+		return tools.InOut{}, err
+	}
+	return tools.InOut{Value: args}, nil
+}
+
+// ExecutionProfile publishes ExecutionClassRead.
+func (t *workspaceListTool) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Class: tools.ExecutionClassRead}
+}
+
+// Run lists the directory at args.Path, relative to t.ws's bound
+// root, sorted the way ws.List's underlying os.ReadDir already sorts.
+func (t *workspaceListTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	args, ok := in.Value.(WorkspaceListArgs)
+	if !ok {
+		return tools.Out{}, badArguments(t.name)
+	}
+	entries, err := t.ws.List(args.Path)
+	if err != nil {
+		return tools.Out{}, err
+	}
+	out := make([]WorkspaceEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, WorkspaceEntry{Name: e.Name(), IsDir: e.IsDir()})
+	}
+	return tools.Out{Value: out}, nil
+}

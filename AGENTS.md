@@ -194,7 +194,14 @@ Go SDK for building AI agents. Module:
   ledger, memory, room, scheduler, heartbeat, discovery, provider,
   trigger, and channel blocks, and a signed-message `Mailbox` with
   `SendTool` and `InboxTool` carries both directions between
-  orchestrators, subagents, and humans. See docs/plans/subagent.md.
+  orchestrators, subagents, and humans. Five file tools wire
+  `workspace` and `diff` in: `WorkspaceReadTool`, `WorkspaceWriteTool`,
+  `WorkspaceListTool`, `WorkspaceStatTool`, and `DiffTool`, each bound
+  to a caller-supplied `*workspace.Workspace` at construction, never a
+  model-chosen root. `WorkspaceWriteTool` alone implements
+  `tools.PrivilegedTool`. `ErrBadArguments` covers a bad decode or a
+  mistyped `Run` call across the five. `envfile` gets no tool. See
+  docs/plans/subagent.md.
 - `durablefence/` — a leaf, test-only conformance kit for claim,
   takeover, and fence invariants. Imported only from another
   package's `_test` subdirectory, for example

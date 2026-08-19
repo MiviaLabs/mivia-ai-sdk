@@ -1,0 +1,76 @@
+// WorkspaceWriteTool writes one file into a caller-bound Workspace.
+
+package subagent
+
+import (
+	"context"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
+)
+
+// WorkspaceWriteArgs is the decoded argument struct for
+// WorkspaceWriteTool. Path is relative to the bound Workspace's root;
+// Content replaces the file's whole content.
+type WorkspaceWriteArgs struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+// workspaceWriteFileMode is the fixed mode WorkspaceWriteTool creates
+// a file with. No os.FileMode argument ever reaches the model.
+const workspaceWriteFileMode = 0o600
+
+// WorkspaceWriteTool returns a tool that writes one file inside ws,
+// relative to ws's bound root, with a fixed 0o600 mode. Implements
+// tools.PrivilegedTool: tools.Scope.Allowed denies it unless a
+// caller's ScopeOptions.Allowlist names it explicitly.
+func WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool {
+	return &workspaceWriteTool{name: name, ws: ws}
+}
+
+// workspaceWriteTool adapts one workspace write to tools.Tool,
+// tools.SchemaTool, tools.ProfiledTool, and tools.PrivilegedTool.
+type workspaceWriteTool struct {
+	name string
+	ws   *workspace.Workspace
+}
+
+// Name returns the registry name.
+func (t *workspaceWriteTool) Name() string { return t.name }
+
+// ParameterSchema returns the flat, string-only argument schema.
+func (t *workspaceWriteTool) ParameterSchema() []byte {
+	return flatStringSchema("path", "content")
+}
+
+// DecodeArguments parses raw into WorkspaceWriteArgs.
+func (t *workspaceWriteTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	args, err := decodeArgs[WorkspaceWriteArgs](t.name, raw)
+	if err != nil {
+		return tools.InOut{}, err
+	}
+	return tools.InOut{Value: args}, nil
+}
+
+// ExecutionProfile publishes ExecutionClassWrite.
+func (t *workspaceWriteTool) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Class: tools.ExecutionClassWrite}
+}
+
+// Privileged reports true: WorkspaceWriteTool mutates the filesystem
+// inside ws's root, so tools.Scope.Allowed denies it by default.
+func (t *workspaceWriteTool) Privileged() bool { return true }
+
+// Run writes args.Content to args.Path, relative to t.ws's bound
+// root, creating the file with workspaceWriteFileMode.
+func (t *workspaceWriteTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	args, ok := in.Value.(WorkspaceWriteArgs)
+	if !ok {
+		return tools.Out{}, badArguments(t.name)
+	}
+	if err := t.ws.WriteFile(args.Path, []byte(args.Content), workspaceWriteFileMode); err != nil {
+		return tools.Out{}, err
+	}
+	return tools.Out{Value: "ok"}, nil
+}

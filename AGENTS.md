@@ -29,6 +29,8 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `api/` — exported-surface locks checked by `scripts/check_api.py`.
 - `docs/` — design reference, package docs, examples, and change plans.
 - `scripts/` — gate validation scripts.
+- `.agents/memories/` — team-shared operational memory; read every file
+  here at the start of a task.
 
 Root holds no Go code. New concerns get new subpackages, never root Go files.
 

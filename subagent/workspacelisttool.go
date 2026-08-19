@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 // WorkspaceListArgs is the decoded argument struct for
@@ -17,16 +16,16 @@ type WorkspaceListArgs struct {
 }
 
 // WorkspaceListTool returns a tool that lists one directory inside
-// ws, relative to ws's bound root. Not privileged.
-func WorkspaceListTool(name string, ws *workspace.Workspace) tools.Tool {
-	return &workspaceListTool{name: name, ws: ws}
+// ft's bound workspace, relative to its root. Not privileged.
+func WorkspaceListTool(name string, ft *FileTools) tools.Tool {
+	return &workspaceListTool{name: name, ft: ft}
 }
 
 // workspaceListTool adapts one workspace list to tools.Tool,
 // tools.SchemaTool, and tools.ProfiledTool.
 type workspaceListTool struct {
 	name string
-	ws   *workspace.Workspace
+	ft   *FileTools
 }
 
 // Name returns the registry name.
@@ -51,14 +50,14 @@ func (t *workspaceListTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Class: tools.ExecutionClassRead}
 }
 
-// Run lists the directory at args.Path, relative to t.ws's bound
+// Run lists the directory at args.Path, relative to t.ft's bound
 // root, sorted the way ws.List's underlying os.ReadDir already sorts.
 func (t *workspaceListTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceListArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)
 	}
-	entries, err := t.ws.List(args.Path)
+	entries, err := t.ft.ws.List(args.Path)
 	if err != nil {
 		return tools.Out{}, err
 	}

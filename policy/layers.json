@@ -148,6 +148,7 @@
       "providerregistry",
       "room",
       "scheduler",
+      "secretpath",
       "taskrun",
       "tools",
       "trace",

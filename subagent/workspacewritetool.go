@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 // WorkspaceWriteArgs is the decoded argument struct for
@@ -17,20 +16,20 @@ type WorkspaceWriteArgs struct {
 	Content string `json:"content"`
 }
 
-// WorkspaceWriteTool returns a tool that writes one file inside ws,
-// relative to ws's bound root, with the fixed mode workspace.WriteFile
-// applies. No os.FileMode argument reaches the model. Implements
-// tools.PrivilegedTool: tools.Scope.Allowed denies it unless a
-// caller's ScopeOptions.Allowlist names it explicitly.
-func WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool {
-	return &workspaceWriteTool{name: name, ws: ws}
+// WorkspaceWriteTool returns a tool that writes one file inside ft's
+// bound workspace, relative to its root, with the fixed mode
+// workspace.WriteFile applies. No os.FileMode argument reaches the
+// model. Implements tools.PrivilegedTool: tools.Scope.Allowed denies
+// it unless a caller's ScopeOptions.Allowlist names it explicitly.
+func WorkspaceWriteTool(name string, ft *FileTools) tools.Tool {
+	return &workspaceWriteTool{name: name, ft: ft}
 }
 
 // workspaceWriteTool adapts one workspace write to tools.Tool,
 // tools.SchemaTool, tools.ProfiledTool, and tools.PrivilegedTool.
 type workspaceWriteTool struct {
 	name string
-	ws   *workspace.Workspace
+	ft   *FileTools
 }
 
 // Name returns the registry name.
@@ -59,14 +58,14 @@ func (t *workspaceWriteTool) ExecutionProfile() tools.ExecutionProfile {
 // inside ws's root, so tools.Scope.Allowed denies it by default.
 func (t *workspaceWriteTool) Privileged() bool { return true }
 
-// Run writes args.Content to args.Path, relative to t.ws's bound
+// Run writes args.Content to args.Path, relative to t.ft's bound
 // root. workspace.WriteFile owns the create mode.
 func (t *workspaceWriteTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceWriteArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)
 	}
-	if err := t.ws.WriteFile(args.Path, []byte(args.Content)); err != nil {
+	if err := t.ft.ws.WriteFile(args.Path, []byte(args.Content)); err != nil {
 		return tools.Out{}, err
 	}
 	return tools.Out{Value: "ok"}, nil

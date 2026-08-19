@@ -12,68 +12,77 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/diff"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
+	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
-// openWorkspace opens a Workspace over a fresh temp directory.
-func openWorkspace(t *testing.T) *workspace.Workspace {
+// openFileTools opens a FileTools over a fresh temp directory, with
+// deny compiled into its Deny matcher. Returns the FileTools and its
+// bound root, for tests that seed fixture files directly on disk.
+// Registers Close on t.Cleanup.
+func openFileTools(t *testing.T, deny []string) (*subagent.FileTools, string) {
 	t.Helper()
-	ws, err := workspace.Open(t.TempDir())
+	root := t.TempDir()
+	matcher, err := secretpath.NewMatcher(deny)
 	if err != nil {
-		t.Fatalf("workspace.Open: %v", err)
+		t.Fatalf("secretpath.NewMatcher: %v", err)
 	}
-	t.Cleanup(func() { _ = ws.Close() })
-	return ws
+	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: root, Deny: matcher})
+	if err != nil {
+		t.Fatalf("subagent.OpenFileTools: %v", err)
+	}
+	t.Cleanup(func() { _ = ft.Close() })
+	return ft, root
 }
 
 // fileTool is one file tool's fixture row: a build func over a bound
-// Workspace, an args constructor taking the model-supplied path (and,
+// FileTools, an args constructor taking the model-supplied path (and,
 // where the tool needs it, fixed content), the raw JSON matching that
 // args value, and the tool's declared tools.ExecutionClass.
 type fileTool struct {
 	label     string
-	build     func(ws *workspace.Workspace) tools.Tool
+	build     func(ft *subagent.FileTools) tools.Tool
 	args      func(path string) any
 	argsJSON  string
 	wantClass tools.ExecutionClass
 }
 
-// fileTools lists all five file tools' fixture rows.
-func fileTools() []fileTool {
+// fileToolRows lists all five file tools' fixture rows.
+func fileToolRows() []fileTool {
 	return []fileTool{
 		{
 			label:     "read",
-			build:     func(ws *workspace.Workspace) tools.Tool { return subagent.WorkspaceReadTool("read", ws, 0) },
+			build:     func(ft *subagent.FileTools) tools.Tool { return subagent.WorkspaceReadTool("read", ft, 0) },
 			args:      func(p string) any { return subagent.WorkspaceReadArgs{Path: p} },
 			argsJSON:  `{"path":"a.txt"}`,
 			wantClass: tools.ExecutionClassRead,
 		},
 		{
 			label:     "write",
-			build:     func(ws *workspace.Workspace) tools.Tool { return subagent.WorkspaceWriteTool("write", ws) },
+			build:     func(ft *subagent.FileTools) tools.Tool { return subagent.WorkspaceWriteTool("write", ft) },
 			args:      func(p string) any { return subagent.WorkspaceWriteArgs{Path: p, Content: "x"} },
 			argsJSON:  `{"path":"a.txt","content":"x"}`,
 			wantClass: tools.ExecutionClassWrite,
 		},
 		{
 			label:     "list",
-			build:     func(ws *workspace.Workspace) tools.Tool { return subagent.WorkspaceListTool("list", ws) },
+			build:     func(ft *subagent.FileTools) tools.Tool { return subagent.WorkspaceListTool("list", ft) },
 			args:      func(p string) any { return subagent.WorkspaceListArgs{Path: p} },
 			argsJSON:  `{"path":"a.txt"}`,
 			wantClass: tools.ExecutionClassRead,
 		},
 		{
 			label:     "stat",
-			build:     func(ws *workspace.Workspace) tools.Tool { return subagent.WorkspaceStatTool("stat", ws) },
+			build:     func(ft *subagent.FileTools) tools.Tool { return subagent.WorkspaceStatTool("stat", ft) },
 			args:      func(p string) any { return subagent.WorkspaceStatArgs{Path: p} },
 			argsJSON:  `{"path":"a.txt"}`,
 			wantClass: tools.ExecutionClassRead,
 		},
 		{
 			label:     "diff",
-			build:     func(ws *workspace.Workspace) tools.Tool { return subagent.DiffTool("diff", ws, 0) },
+			build:     func(ft *subagent.FileTools) tools.Tool { return subagent.DiffTool("diff", ft, 0) },
 			args:      func(p string) any { return subagent.DiffArgs{Path: p, Content: "x"} },
 			argsJSON:  `{"path":"a.txt","content":"x"}`,
 			wantClass: tools.ExecutionClassRead,
@@ -93,12 +102,12 @@ func TestFileToolsEscape(t *testing.T) {
 		{"traversal", "../outside.txt"},
 		{"absolute", "/etc/passwd"},
 	}
-	for _, ft := range fileTools() {
+	for _, row := range fileToolRows() {
 		for _, p := range paths {
-			t.Run(ft.label+"/"+p.label, func(t *testing.T) {
-				ws := openWorkspace(t)
-				tool := ft.build(ws)
-				_, err := tool.Run(context.Background(), tools.InOut{Value: ft.args(p.path)})
+			t.Run(row.label+"/"+p.label, func(t *testing.T) {
+				ft, _ := openFileTools(t, nil)
+				tool := row.build(ft)
+				_, err := tool.Run(context.Background(), tools.InOut{Value: row.args(p.path)})
 				if !errors.Is(err, workspace.ErrEscape) {
 					t.Fatalf("Run() error = %v, want workspace.ErrEscape", err)
 				}
@@ -111,13 +120,13 @@ func TestFileToolsEscape(t *testing.T) {
 // DecodeArguments input, and a mistyped Run input, onto
 // subagent.ErrBadArguments.
 func TestFileToolsBadArguments(t *testing.T) {
-	for _, ft := range fileTools() {
-		t.Run(ft.label, func(t *testing.T) {
-			ws := openWorkspace(t)
-			tool := ft.build(ws)
+	for _, row := range fileToolRows() {
+		t.Run(row.label, func(t *testing.T) {
+			ft, _ := openFileTools(t, nil)
+			tool := row.build(ft)
 			st, ok := tool.(tools.SchemaTool)
 			if !ok {
-				t.Fatalf("%s does not implement tools.SchemaTool", ft.label)
+				t.Fatalf("%s does not implement tools.SchemaTool", row.label)
 			}
 			if _, err := st.DecodeArguments([]byte("not json")); !errors.Is(err, subagent.ErrBadArguments) {
 				t.Fatalf("DecodeArguments() error = %v, want ErrBadArguments", err)
@@ -133,12 +142,12 @@ func TestFileToolsBadArguments(t *testing.T) {
 // compiles under schema.Compile, the direct pin for the
 // agentloop.New ErrInvalidSchema concern.
 func TestFileToolsSchemaCompile(t *testing.T) {
-	for _, ft := range fileTools() {
-		t.Run(ft.label, func(t *testing.T) {
-			ws := openWorkspace(t)
-			st, ok := ft.build(ws).(tools.SchemaTool)
+	for _, row := range fileToolRows() {
+		t.Run(row.label, func(t *testing.T) {
+			ft, _ := openFileTools(t, nil)
+			st, ok := row.build(ft).(tools.SchemaTool)
 			if !ok {
-				t.Fatalf("%s does not implement tools.SchemaTool", ft.label)
+				t.Fatalf("%s does not implement tools.SchemaTool", row.label)
 			}
 			if _, err := schema.Compile(st.ParameterSchema()); err != nil {
 				t.Fatalf("schema.Compile() error = %v, want nil", err)
@@ -152,24 +161,24 @@ func TestFileToolsSchemaCompile(t *testing.T) {
 // well-formed payload reaches the tool's typed argument struct
 // unchanged.
 func TestFileToolsProfileAndDecode(t *testing.T) {
-	for _, ft := range fileTools() {
-		t.Run(ft.label, func(t *testing.T) {
-			ws := openWorkspace(t)
-			tool := ft.build(ws)
+	for _, row := range fileToolRows() {
+		t.Run(row.label, func(t *testing.T) {
+			ft, _ := openFileTools(t, nil)
+			tool := row.build(ft)
 			profile := tools.ExecutionProfileOf(tool)
-			if profile.Class != ft.wantClass {
-				t.Fatalf("ExecutionProfile().Class = %q, want %q", profile.Class, ft.wantClass)
+			if profile.Class != row.wantClass {
+				t.Fatalf("ExecutionProfile().Class = %q, want %q", profile.Class, row.wantClass)
 			}
 			st, ok := tool.(tools.SchemaTool)
 			if !ok {
-				t.Fatalf("%s does not implement tools.SchemaTool", ft.label)
+				t.Fatalf("%s does not implement tools.SchemaTool", row.label)
 			}
-			in, err := st.DecodeArguments([]byte(ft.argsJSON))
+			in, err := st.DecodeArguments([]byte(row.argsJSON))
 			if err != nil {
 				t.Fatalf("DecodeArguments() error = %v, want nil", err)
 			}
-			if in.Value != ft.args("a.txt") {
-				t.Fatalf("DecodeArguments() value = %+v, want %+v", in.Value, ft.args("a.txt"))
+			if in.Value != row.args("a.txt") {
+				t.Fatalf("DecodeArguments() value = %+v, want %+v", in.Value, row.args("a.txt"))
 			}
 		})
 	}
@@ -179,12 +188,12 @@ func TestFileToolsProfileAndDecode(t *testing.T) {
 // content, a missing file fails, and MaxResultBytes publishes exactly
 // when maxResultBytes is positive.
 func TestWorkspaceReadTool(t *testing.T) {
-	ws := openWorkspace(t)
-	if err := os.WriteFile(filepath.Join(ws.Root(), "hello.txt"), []byte("hello world"), 0o600); err != nil {
+	ft, root := openFileTools(t, nil)
+	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("hello world"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	tool := subagent.WorkspaceReadTool("read", ws, 4)
+	tool := subagent.WorkspaceReadTool("read", ft, 4)
 	out, err := tool.Run(context.Background(), tools.InOut{Value: subagent.WorkspaceReadArgs{Path: "hello.txt"}})
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -197,7 +206,7 @@ func TestWorkspaceReadTool(t *testing.T) {
 		t.Fatalf("ResultBudgetOf() = %d,%v, want 4,true", n, ok)
 	}
 
-	unbudgeted := subagent.WorkspaceReadTool("read2", ws, 0)
+	unbudgeted := subagent.WorkspaceReadTool("read2", ft, 0)
 	if _, ok := tools.ResultBudgetOf(unbudgeted); ok {
 		t.Fatal("ResultBudgetOf() ok = true, want false for maxResultBytes: 0")
 	}
@@ -211,8 +220,8 @@ func TestWorkspaceReadTool(t *testing.T) {
 // mode 0o600, for both a new and an already-existing file, and that
 // the returned tool reports privileged.
 func TestWorkspaceWriteTool(t *testing.T) {
-	ws := openWorkspace(t)
-	tool := subagent.WorkspaceWriteTool("write", ws)
+	ft, root := openFileTools(t, nil)
+	tool := subagent.WorkspaceWriteTool("write", ft)
 	if !tools.IsPrivileged(tool) {
 		t.Fatal("IsPrivileged() = false, want true")
 	}
@@ -228,7 +237,7 @@ func TestWorkspaceWriteTool(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
-			full := filepath.Join(ws.Root(), c.path)
+			full := filepath.Join(root, c.path)
 			if c.seed != "" {
 				if err := os.WriteFile(full, []byte(c.seed), 0o600); err != nil {
 					t.Fatalf("seed file: %v", err)
@@ -258,9 +267,9 @@ func TestWorkspaceWriteTool(t *testing.T) {
 // TestWorkspaceWriteToolScopeDenied proves an unallowlisted call to
 // the privileged write tool is denied by tools.Scope.
 func TestWorkspaceWriteToolScopeDenied(t *testing.T) {
-	ws := openWorkspace(t)
+	ft, _ := openFileTools(t, nil)
 	reg := tools.New()
-	if err := reg.Add(subagent.WorkspaceWriteTool("write", ws)); err != nil {
+	if err := reg.Add(subagent.WorkspaceWriteTool("write", ft)); err != nil {
 		t.Fatalf("reg.Add: %v", err)
 	}
 	scope := tools.NewScope(tools.ScopeOptions{})
@@ -274,15 +283,15 @@ func TestWorkspaceWriteToolScopeDenied(t *testing.T) {
 // TestWorkspaceListTool proves a directory listing decodes into
 // WorkspaceEntry rows matching the fixture tree.
 func TestWorkspaceListTool(t *testing.T) {
-	ws := openWorkspace(t)
-	if err := os.WriteFile(filepath.Join(ws.Root(), "a.txt"), []byte("a"), 0o600); err != nil {
+	ft, root := openFileTools(t, nil)
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
-	if err := os.Mkdir(filepath.Join(ws.Root(), "sub"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "sub"), 0o700); err != nil {
 		t.Fatalf("seed dir: %v", err)
 	}
 
-	tool := subagent.WorkspaceListTool("list", ws)
+	tool := subagent.WorkspaceListTool("list", ft)
 	out, err := tool.Run(context.Background(), tools.InOut{Value: subagent.WorkspaceListArgs{Path: ""}})
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -301,15 +310,15 @@ func TestWorkspaceListTool(t *testing.T) {
 // TestWorkspaceStatTool proves a stat decodes into a WorkspaceFileInfo
 // matching the fixture file and directory.
 func TestWorkspaceStatTool(t *testing.T) {
-	ws := openWorkspace(t)
-	if err := os.WriteFile(filepath.Join(ws.Root(), "a.txt"), []byte("hello"), 0o600); err != nil {
+	ft, root := openFileTools(t, nil)
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("hello"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
-	if err := os.Mkdir(filepath.Join(ws.Root(), "sub"), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(root, "sub"), 0o700); err != nil {
 		t.Fatalf("seed dir: %v", err)
 	}
 
-	tool := subagent.WorkspaceStatTool("stat", ws)
+	tool := subagent.WorkspaceStatTool("stat", ft)
 	cases := []struct {
 		path      string
 		wantDir   bool
@@ -341,12 +350,12 @@ func TestWorkspaceStatTool(t *testing.T) {
 // an existing file, diffs a missing path against empty content, and
 // reports diff.ErrTooLarge over the configured maxLines bound.
 func TestDiffTool(t *testing.T) {
-	ws := openWorkspace(t)
-	if err := os.WriteFile(filepath.Join(ws.Root(), "a.txt"), []byte("line one\nline two\n"), 0o600); err != nil {
+	ft, root := openFileTools(t, nil)
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("line one\nline two\n"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)
 	}
 
-	tool := subagent.DiffTool("diff", ws, 0)
+	tool := subagent.DiffTool("diff", ft, 0)
 	out, err := tool.Run(context.Background(), tools.InOut{Value: subagent.DiffArgs{Path: "a.txt", Content: "line one\nline three\n"}})
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -373,7 +382,7 @@ func TestDiffTool(t *testing.T) {
 	}
 
 	// A diff over maxLines fails with diff.ErrTooLarge.
-	bounded := subagent.DiffTool("diff-bounded", ws, 1)
+	bounded := subagent.DiffTool("diff-bounded", ft, 1)
 	if _, err := bounded.Run(context.Background(), tools.InOut{Value: subagent.DiffArgs{Path: "a.txt", Content: "line one\nline three\n"}}); !errors.Is(err, diff.ErrTooLarge) {
 		t.Fatalf("Run() error = %v, want diff.ErrTooLarge", err)
 	}
@@ -406,10 +415,10 @@ func (c *filetoolsScriptedCompleter) ChatStream(ctx context.Context, req provide
 // tool and DiffTool lets a model drive a write, then a diff over the
 // written file, through agentloop.Run.
 func TestFileToolsThroughAgentloop(t *testing.T) {
-	ws := openWorkspace(t)
+	ft, _ := openFileTools(t, nil)
 	reg := tools.New()
-	writeTool := subagent.WorkspaceWriteTool("write", ws)
-	diffTool := subagent.DiffTool("diff", ws, 0)
+	writeTool := subagent.WorkspaceWriteTool("write", ft)
+	diffTool := subagent.DiffTool("diff", ft, 0)
 	if err := reg.Add(writeTool); err != nil {
 		t.Fatalf("reg.Add(write): %v", err)
 	}
@@ -440,12 +449,12 @@ func TestFileToolsThroughAgentloop(t *testing.T) {
 // without the write tool's name in Allowlist fails the requested
 // write call with tools.ErrScopeDenied.
 func TestFileToolsThroughAgentloopScopeDeniesWrite(t *testing.T) {
-	ws := openWorkspace(t)
+	ft, _ := openFileTools(t, nil)
 	reg := tools.New()
-	if err := reg.Add(subagent.WorkspaceWriteTool("write", ws)); err != nil {
+	if err := reg.Add(subagent.WorkspaceWriteTool("write", ft)); err != nil {
 		t.Fatalf("reg.Add(write): %v", err)
 	}
-	if err := reg.Add(subagent.DiffTool("diff", ws, 0)); err != nil {
+	if err := reg.Add(subagent.DiffTool("diff", ft, 0)); err != nil {
 		t.Fatalf("reg.Add(diff): %v", err)
 	}
 	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"diff"}})

@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 // WorkspaceReadArgs is the decoded argument struct for
@@ -15,13 +14,13 @@ type WorkspaceReadArgs struct {
 	Path string `json:"path"`
 }
 
-// WorkspaceReadTool returns a tool that reads one file inside ws,
-// relative to ws's bound root. maxResultBytes, when positive,
-// publishes tools.ResultBudgetTool so agentloop's render truncates an
-// oversized read instead of flooding the model's context; a
-// non-positive value publishes no budget. Not privileged.
-func WorkspaceReadTool(name string, ws *workspace.Workspace, maxResultBytes int) tools.Tool {
-	base := &workspaceReadTool{name: name, ws: ws}
+// WorkspaceReadTool returns a tool that reads one file inside ft's
+// bound workspace, relative to its root. maxResultBytes, when
+// positive, publishes tools.ResultBudgetTool so agentloop's render
+// truncates an oversized read instead of flooding the model's
+// context; a non-positive value publishes no budget. Not privileged.
+func WorkspaceReadTool(name string, ft *FileTools, maxResultBytes int) tools.Tool {
+	base := &workspaceReadTool{name: name, ft: ft}
 	if maxResultBytes > 0 {
 		return &workspaceReadToolBudgeted{workspaceReadTool: base, maxResultBytes: maxResultBytes}
 	}
@@ -32,7 +31,7 @@ func WorkspaceReadTool(name string, ws *workspace.Workspace, maxResultBytes int)
 // tools.SchemaTool, and tools.ProfiledTool.
 type workspaceReadTool struct {
 	name string
-	ws   *workspace.Workspace
+	ft   *FileTools
 }
 
 // Name returns the registry name.
@@ -57,13 +56,13 @@ func (t *workspaceReadTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Class: tools.ExecutionClassRead}
 }
 
-// Run reads the file at args.Path, relative to t.ws's bound root.
+// Run reads the file at args.Path, relative to t.ft's bound root.
 func (t *workspaceReadTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceReadArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)
 	}
-	data, err := t.ws.ReadFile(args.Path)
+	data, err := t.ft.ws.ReadFile(args.Path)
 	if err != nil {
 		return tools.Out{}, err
 	}

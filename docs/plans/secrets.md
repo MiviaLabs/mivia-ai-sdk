@@ -452,53 +452,38 @@ during, or after phase 69.
 non-test consumer after this change, and this change does not claim
 to fix that. It makes the four safe to expose. Phase 71 exposes them.
 
-Phase 71 has no plan file yet. The terms below are its contract. Each
-term is checkable in the phase-71 plan review. No term is checkable
-in `make verify`. `scripts/check_plan.py` gates `docs/plans/<pkg>.md`
-for a directory holding `*.go`. `docs/plans/agents/` is outside that
-set.
+Phase 71's plan file, `docs/plans/agents/phase71_filetools.md`, is
+now the source of truth for its contract; the corrected terms live
+there and in `docs/plans/subagent.md`'s "File tools addendum," not
+here. The paragraph below records why the original terms changed,
+now that real shipped code exists to check them against.
 
-- Its plan file is `docs/plans/agents/phase71_filetools.md`, and it
-  carries all five `TEMPLATE.md` sections.
-- It wraps `workspace` and `diff` as `tools.Tool` values in
-  `subagent`, the module's one "blocks as tools" package. It adds no
-  new top-level package for the wrapping.
-- Its `api/subagent.txt` diff adds one constructor that returns a
-  `tools.Tool`, whose options carry a `*secretpath.Matcher`. Its tool
-  maps `workspace.ErrSecretPath` onto a tool error. Phase 71 also
-  calls `envfile.LoadBytes` on bytes that `workspace.ReadFile`
-  returned. Naming the symbols is what checks that each new symbol
-  got a caller. A constructor taking `*workspace.Workspace` alone
-  checks nothing, because `api/workspace.txt` already lists that type.
-- Every file tool it adds implements `tools.SchemaTool` from phase
-  69, so `agentloop.Definitions` offers the tool to the model. This
-  one term depends on phase 69. It is unenforceable if phase 69 never
-  lands; the other terms stand on their own.
-- It owns the enforcing constructor for the secret policy. Its file
-  tool options carry a `Deny *secretpath.Matcher`, and their
-  `Validate` returns an error on a nil `Deny`. A phase-71 test
-  asserts that rejection.
-- This plan does not enforce that rule, and does not state it as one.
-  `Options.Validate` here accepts a nil `Deny` on purpose, because
-  `Open` must keep its current behavior. The "no secret policy"
-  restriction is a phase-71 caller-side invariant, enforced by the
-  phase-71 `Validate` named above.
-- That mandatory `Deny` has a consequence phase 71 must meet
-  deliberately, not discover. A non-nil `Deny` turns on the symlink
-  walk, so no model-driven file tool can read through any symlink at
-  all. Vendored dependency trees, `node_modules` layouts, and dotfile
-  trees all use symlinks, and every one of those paths refuses. Phase
-  71 either accepts that refusal, narrows the walk with its own
-  option, or documents the workaround for its users.
-- It builds its workspace through `workspace.OpenWith`.
-- It calls `Registry.RunScoped`, never `Registry.Run`, matching the
-  rule phase 69 already states for a model-chosen call.
-- It closes the workspace it opens. `Workspace.Close` releases a file
-  descriptor.
-- It adds no fifth optional interface to `tools`. `spool`'s
-  forwarding switch already reaches sixteen cases with
-  `tools.SchemaTool`, and fixing that explosion is phase 70's work,
-  not phase 71's.
+The original terms, written before phase 71's code shipped, listed
+nine checkable items. Two needed correction against the code an
+independent audit read line by line, both recorded in
+`docs/plans/agents/phase71_filetools.md`:
+
+- The phrase "one constructor" undercounted the shape phase 71
+  actually needs. `subagent` ships five separate per-tool
+  constructors, one per file, following its own established
+  per-tool-file convention (`RoomTool`, `HeartbeatTool`, and the
+  rest each get their own file). The enforcing constructor phase 71
+  adds is a sixth symbol, `OpenFileTools`, that the five now depend
+  on for their second argument; it is not a replacement for the
+  five, and was never meant to be.
+- The `envfile.LoadBytes` term is dropped, not met. `envfile` still
+  gets no tool and no new caller. A parsed dotenv map is a
+  credential-exfiltration primitive with no legitimate model-facing
+  use this SDK's callers have named yet; adding a caller only to
+  satisfy this contract line would repeat the exact "uncalled
+  surface" problem this whole plan exists to fix. `envfile` stays a
+  caller-side helper, wired before a subagent runs.
+
+Every other original term stands, restated precisely in
+`docs/plans/subagent.md`'s "File tools addendum": the mandatory
+`Deny`, its `Validate` rejection of a nil `Deny`, the symlink-walk
+consequence, `OpenWith` as the open path, `Close` ownership, and no
+sixth optional interface added to `tools`.
 
 If phase 71 does not land, the three symbols this change adds stay
 uncalled, and the four packages keep test-only callers.

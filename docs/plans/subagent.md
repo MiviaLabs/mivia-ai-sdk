@@ -156,25 +156,30 @@ Table-driven; one `TestMetamorphic*` function per property.
 
 ## File tools addendum
 
-Status: shipped. This addendum wires the already-shipped
-leaf packages `workspace` and `diff` into `subagent` as tools, so a
-model driving a subagent through `agentloop` can read, list, stat,
-and write files inside a caller-bound sandbox, and preview a bounded
-diff before a write. `envfile` gets no tool; see its section below.
+Status: superseded by the corrected shape below.
+`docs/plans/agents/phase71_filetools.md` records why: the shipped
+five constructors took a bare `*workspace.Workspace`, so nothing
+stopped a caller from wiring an unrestricted workspace straight into
+a model-facing tool. This addendum now states the corrected,
+enforcing contract. `envfile` still gets no tool; see its section
+below.
 
 ### Goal
 
 Give a subagent's tool registry four file-confined operations
 (read, write, list, stat) plus one preview operation (diff), each
-bound to a `*workspace.Workspace` the deployment supplies once, at
-wiring time. A model never chooses the sandbox root; it chooses only
-a path inside the root the caller already picked.
+bound to one `*FileTools` set the deployment opens once, at wiring
+time, from a root path and a mandatory secret-path deny list. A
+model never chooses the sandbox root and never reaches a
+secret-designated path; it chooses only a path inside the root the
+caller already picked, and only among the paths the caller's deny
+list did not refuse.
 
 ### Scope
 
 Inside:
 
-- Five new tools, one file each, following the existing `*tool.go`
+- Five tools, one file each, following the existing `*tool.go`
   pattern (`Name`, `Run`) plus `tools.SchemaTool`
   (`ParameterSchema`, `DecodeArguments`), so each tool is offerable
   through `agentloop.Definitions` without a caller-written adapter.
@@ -183,17 +188,38 @@ Inside:
   would be silently unreachable from a loop; these five tools close
   that gap for file access the way `spool.SpoolTool`'s `schemaCap`
   closes it for a spooled result.
-- `WorkspaceReadTool(name string, ws *workspace.Workspace, maxResultBytes int) tools.Tool`.
-  Reads one file at a caller-model-supplied path, relative to `ws`'s
+- `FileToolOptions{Root string; Deny *secretpath.Matcher; MaxReadBytes int64}`
+  and `(FileToolOptions) Validate() error`, in a new file
+  `subagent/filetoolset.go`. `Validate` rejects a blank `Root` and a
+  nil `Deny`. `Deny` is mandatory here even though
+  `workspace.Options.Deny` is optional: `workspace` stays a general
+  filesystem primitive with no policy opinion, and `subagent`'s file
+  tools are the one place in this module that hands filesystem
+  access to a model, so they hold their own, stricter requirement. A
+  caller that truly wants no secret-path denial passes
+  `secretpath.NewMatcher(nil)`, a non-nil matcher that matches
+  nothing; see "Who supplies the FileTools" for the symlink
+  consequence that choice still carries.
+- `FileTools`, an opaque handle holding one opened
+  `*workspace.Workspace`, and `OpenFileTools(opts FileToolOptions) (*FileTools, error)`,
+  which validates `opts`, then opens the workspace through
+  `workspace.OpenWith(workspace.Options{Root: opts.Root, MaxReadBytes: opts.MaxReadBytes, Deny: opts.Deny})`.
+  `(*FileTools) Close() error` closes that workspace; see "Who
+  supplies the FileTools" for the ownership rule.
+- `ErrDenyRequired`, the sentinel `FileToolOptions.Validate` wraps
+  and returns when `Deny` is nil.
+- `WorkspaceReadTool(name string, ft *FileTools, maxResultBytes int) tools.Tool`.
+  Reads one file at a caller-model-supplied path, relative to `ft`'s
   bound root. `maxResultBytes`, when positive, publishes
   `tools.ResultBudgetTool`, so `agentloop`'s `render` truncates an
   oversized read instead of flooding the model's context; a
-  non-positive value publishes no budget. `ws.ReadFile` carries
-  `workspace.DefaultMaxReadBytes` of its own, so this tool-level cap
-  is the second bound, and it applies after the read allocates. Not
-  privileged.
-  `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
-- `WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool`.
+  non-positive value publishes no budget. The bound workspace's own
+  read limit is the second bound, and it applies after the read
+  allocates. A path `ft`'s `Deny` refuses returns
+  `workspace.ErrSecretPath` unchanged; see "Error mapping" below.
+  Not privileged. `ExecutionProfile.Class` is
+  `tools.ExecutionClassRead`.
+- `WorkspaceWriteTool(name string, ft *FileTools) tools.Tool`.
   Writes one file at a caller-model-supplied path plus
   caller-model-supplied content. `workspace.WriteFile` creates the
   file with a fixed `0o600` mode; no `os.FileMode` argument reaches
@@ -201,35 +227,36 @@ Inside:
   for dropping `WriteFile`'s `perm` parameter on a model-reachable
   path.
   The one truly dangerous operation this addendum adds: it mutates
-  the filesystem inside `ws`'s root. Implements `tools.PrivilegedTool`
+  the filesystem inside `ft`'s root. Implements `tools.PrivilegedTool`
   returning `true`, so `tools.Scope.Allowed` denies it unless a
   caller's `ScopeOptions.Allowlist` names it explicitly; see
   "Privilege model" below. `ExecutionProfile.Class` is
   `tools.ExecutionClassWrite`.
-- `WorkspaceListTool(name string, ws *workspace.Workspace) tools.Tool`.
-  Lists one directory, relative to `ws`'s bound root; a blank path
+- `WorkspaceListTool(name string, ft *FileTools) tools.Tool`.
+  Lists one directory, relative to `ft`'s bound root; a blank path
   lists the root itself. Result is a JSON-renderable
   `[]WorkspaceEntry`, one `{name, is_dir}` pair per entry, sorted the
   way `ws.List`'s underlying `os.ReadDir` already sorts. Not
   privileged. `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
-- `WorkspaceStatTool(name string, ws *workspace.Workspace) tools.Tool`.
-  Stats one path, relative to `ws`'s bound root. Result is one
+- `WorkspaceStatTool(name string, ft *FileTools) tools.Tool`.
+  Stats one path, relative to `ft`'s bound root. Result is one
   `WorkspaceFileInfo` (`name`, `size`, `is_dir`, `mod_time`). Not
   privileged. `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
-- `DiffTool(name string, ws *workspace.Workspace, maxLines int) tools.Tool`.
+- `DiffTool(name string, ft *FileTools, maxLines int) tools.Tool`.
   Previews a write: diffs the on-disk content at a
-  caller-model-supplied path, read through `ws.ReadFile`, against
-  caller-model-supplied proposed content, through `diff.Unified`. A
-  path that does not yet exist (`ws.ReadFile` returns a wrapped
-  `fs.ErrNotExist`) diffs against empty content, so a new-file
-  proposal renders the same way `diff -u /dev/null` would. Any other
-  `ws.ReadFile` error, including `workspace.ErrEscape`, propagates
-  unchanged. `maxLines` passes straight to `diff.Unified`; a diff
-  over the bound returns `diff.ErrTooLarge` as the tool's own error,
-  which `agentloop`'s `ErrorPolicyReport` path renders back to the
-  model as a `ToolErrorPrefix`-marked message instead of silently
-  truncating a diff, since a truncated diff can misstate a change.
-  Not privileged: it reads two pieces of content and writes nothing.
+  caller-model-supplied path, read through `ft`'s bound workspace,
+  against caller-model-supplied proposed content, through
+  `diff.Unified`. A path that does not yet exist (the read returns a
+  wrapped `fs.ErrNotExist`) diffs against empty content, so a
+  new-file proposal renders the same way `diff -u /dev/null` would.
+  Any other read error, including `workspace.ErrEscape` and
+  `workspace.ErrSecretPath`, propagates unchanged. `maxLines` passes
+  straight to `diff.Unified`; a diff over the bound returns
+  `diff.ErrTooLarge` as the tool's own error, which `agentloop`'s
+  `ErrorPolicyReport` path renders back to the model as a
+  `ToolErrorPrefix`-marked message instead of silently truncating a
+  diff, since a truncated diff can misstate a change. Not privileged:
+  it reads two pieces of content and writes nothing.
   `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
 - One shared sentinel, `ErrBadArguments`, for a `DecodeArguments`
   call that cannot parse its raw bytes into the tool's typed
@@ -247,6 +274,34 @@ Inside:
   `DiffArgs{Path, Content string}`, `WorkspaceEntry{Name string;
   IsDir bool}`, `WorkspaceFileInfo{Name string; Size int64; IsDir
   bool; ModTime time.Time}`.
+
+### Error mapping
+
+`workspace.ErrSecretPath` and `workspace.ErrEscape` propagate to the
+model unchanged, wrapped only by the tool's own argument-path
+context, not re-mapped to a third, generic refusal. The two
+sentinels already carry distinct text ("path is a secret path" and
+"symlink component" against "path escapes root"), so a model reading
+`agentloop`'s `ToolErrorPrefix`-marked message already learns which
+rule it hit, without a new mapping layer. Neither error leaks
+anything the model did not already supply: both echo back only the
+path argument the model itself sent in the failed call, never file
+content and never another path. `DiffTool`'s doc comment already
+states this "propagates unchanged" rule for `ErrEscape`; this
+addendum extends the same rule to `ErrSecretPath` and applies it to
+all five tools, not `DiffTool` alone.
+
+Distinguishable sentinels open a separate, smaller leak: a model that
+probes many candidate paths learns, from which sentinel comes back,
+which of its guesses are secret-designated on this deployment.
+`ErrSecretPath` marks a denied name, `fs.ErrNotExist` marks an absent
+one, success marks a permitted one. This is an existence-plus-
+classification oracle, not a content leak; the model learns at most
+one bit per guess, and never a byte of file content. This addendum
+accepts that trade-off, for the same ergonomic reason the
+"propagates unchanged" rule above accepts the traversal-side channel:
+a model that cannot tell "denied" from "absent" cannot tell a hard
+sandbox boundary from a typo, and keeps probing instead of moving on.
 
 Outside:
 
@@ -278,34 +333,96 @@ Outside:
   gate. A direct `tools.Registry.Run` caller, outside `agentloop`,
   gets no such cap; that caller supplies its own bound the way it
   already must for every other tool argument.
-- The `docs/plans/workspace.md` migration to `os.Root`, `Close`,
-  `Options`, `ReadFileLimit`, and `ErrTooLarge` has landed, and this
-  addendum's code follows it. `WorkspaceWriteTool`'s hardcoded `0o600`
-  argument to `WriteFile` is gone, dropped with the parameter;
-  `workspace.WriteFile` owns the create mode. `WorkspaceReadTool`'s own
-  `maxResultBytes` cap stays as a second, tool-level bound layered
-  under the workspace-level one. `workspace.Open` now yields
-  `workspace.DefaultMaxReadBytes`, so `WorkspaceReadTool` returns
-  `workspace.ErrTooLarge` on a file over that size. It succeeded on
-  such a file before, because `maxResultBytes` caps the result only
-  after the allocation.
+- A narrower symlink policy than `workspace`'s own all-or-nothing
+  walk. A non-nil `Deny`, mandatory here, refuses every symlink
+  component unconditionally; see "Who supplies the FileTools." Adding
+  an option to narrow that walk is `workspace`'s change to make, not
+  this addendum's; it stays outside until a caller names the need.
+- A backward-compatible shim for the five removed
+  `*workspace.Workspace`-taking constructors. AGENTS.md forbids a
+  compatibility shim for removed code; a caller updates its call
+  sites to build a `*FileTools` through `OpenFileTools` instead. See
+  "Breaking change and migration" below.
 
-### Who supplies the Workspace
+### Who supplies the FileTools
 
-`ws *workspace.Workspace` is a constructor argument, never a
-per-call, model-supplied value. The caller assembling a subagent's
-`tools.Registry` calls `workspace.Open(root)` once, with a root path
-it chose (a task's scratch directory, a repository checkout, a
-sandbox mount), and passes the resulting `*Workspace` into each of
-these five constructors. A model never sees `root`, never sees an
-absolute path outside it, and never picks which root to bind: it
+`ft *FileTools` is a constructor argument, never a per-call,
+model-supplied value, matching the shipped design's "who supplies the
+Workspace" rule for the same reason: a model must never choose the
+sandbox root. What changes is who opens the workspace underneath.
+
+The caller assembling a subagent's `tools.Registry` calls
+`subagent.OpenFileTools(subagent.FileToolOptions{Root: root, Deny:
+deny})` once, naming a root path it chose (a task's scratch
+directory, a repository checkout, a sandbox mount) and a
+`*secretpath.Matcher` naming the paths that root must never expose
+to a model. `OpenFileTools` is the one place these five tools accept
+a workspace from; none of the five constructors takes a bare
+`*workspace.Workspace` anymore, so a caller cannot route around the
+`Deny` requirement by opening its own, unchecked `workspace.Workspace`
+and handing it in. `OpenFileTools` returns `subagent.ErrDenyRequired`
+on a nil `Deny`, checked in `FileToolOptions.Validate` before any
+filesystem call.
+
+A model never sees `root`, never sees an absolute path outside it,
+and never picks which root to bind or which paths `Deny` refuses: it
 supplies only the relative-path argument each `Run` call reads out
-of its decoded argument struct. `ws.resolve` (unexported, called by
-every `Workspace` method) still rejects a model-supplied absolute
-path or a `..`-traversal that would resolve outside `root`, so
-confinement holds even if a caller's schema or decode step lets an
-unexpected path string through; the tool-level typing is a second
-layer, not the only one.
+of its decoded argument struct. The bound workspace's own path
+resolution still rejects a model-supplied absolute path or a
+`..`-traversal that would resolve outside `root`, so confinement
+holds even if a caller's schema or decode step lets an unexpected
+path string through; the tool-level typing is a second layer, not
+the only one.
+
+A mandatory `Deny` has one consequence every caller must accept
+deliberately: it turns on `workspace`'s symlink walk unconditionally,
+even for a `Deny` built from an empty pattern list. No model-driven
+file tool built through `OpenFileTools` can read through any symlink
+component, ever. Vendored dependency trees, `node_modules` layouts,
+and dotfile trees that use symlinks all refuse under any of the five
+tools. A caller with a symlink-free root, or one that accepts the
+refusal, uses `OpenFileTools` directly; a caller that cannot accept
+the refusal does not offer these five tools to a model.
+
+`(*FileTools) Close()` closes the workspace `OpenFileTools` opened.
+The caller that calls `OpenFileTools` owns the matching `Close`, the
+same way a `workspace.Open` caller already owns `Close` today; a
+`defer ft.Close()` right after a successful `OpenFileTools` call is
+the expected shape. `Close` releases the `os.Root` file descriptor
+`OpenFileTools` opened; skipping it leaks that descriptor for the
+life of the process, exactly as skipping `workspace.Workspace.Close`
+does today. No component inside `subagent` calls `Close` on the
+caller's behalf, because no component inside `subagent` outlives the
+caller's own `*FileTools` value; ownership stays with whoever opened
+it, matching this package's `Mailbox` precedent, where `NewMailbox`'s
+caller also owns the value everything else in the package only
+borrows.
+
+`FileTools` needs no mutex for concurrent `Run` calls against one
+shared value. `os.Root`'s documented contract states its methods are
+safe for concurrent use from multiple goroutines, and `FileTools`
+adds no further mutable state over the `*workspace.Workspace` it
+wraps. This matters in practice: a `flow` panel runs its member steps
+concurrently in goroutines, so two file-tool steps in one panel that
+share one `FileTools` rely on this guarantee holding.
+
+### Breaking change and migration
+
+`WorkspaceReadTool`, `WorkspaceWriteTool`, `WorkspaceListTool`,
+`WorkspaceStatTool`, and `DiffTool` each change their second
+parameter from `ws *workspace.Workspace` to `ft *FileTools`. Any
+existing caller of the shipped signatures fails to compile until it
+replaces its own `workspace.Open` or `workspace.OpenWith` call with
+`subagent.OpenFileTools`, and supplies a `Deny`. This includes
+`subagent/subagent_test/filetools_test.go`'s `openWorkspace` helper,
+rewritten to `openFileTools`, opening through `OpenFileTools` with a
+matcher built from an explicit, test-local deny list rather than
+`secretpath.NewMatcher(nil)`, so the new secret-path tests below
+exercise a real refusal.
+
+No compatibility shim ships for the old signatures. AGENTS.md forbids
+one for removed code, and a shim here would keep the exact hole this
+addendum closes open for any caller that keeps using it.
 
 ### Privilege model
 
@@ -340,36 +457,46 @@ model this addendum needs; nothing new is invented.
   marks the approval-threshold rank. `WorkspaceWriteTool` carries
   both, matching `tools.execution_profile.go`'s own documented
   distinction between the two mechanisms.
-- Residual risk: unprivileged whole-root read access is real, and
-  this addendum does not close it. `WorkspaceReadTool`,
-  `WorkspaceListTool`, `WorkspaceStatTool`, and `DiffTool` each read
-  any path under the bound root with no allowlist gate, the same way
-  `envfile.Load` reads a dotenv file the Scope section above refuses
-  to expose as a tool. `workspace` carries no secret-path denial of
-  its own today; that is `docs/plans/workspace.md`'s still-unbuilt
-  change two, `Options.Deny *secretpath.Matcher`. A root bound to "a
-  repository checkout," the same example this addendum's "Who
-  supplies the Workspace" section names, routinely holds `.env`,
-  `credentials.json`, or a private key. An unprivileged
-  `WorkspaceReadTool` over that root is the same exfiltration
-  primitive the envfile section refuses to build, reached through a
-  different door. Mitigation, until `workspace` change two ships:
-  the caller binds these four tools only to a disposable or
-  already-reviewed root that holds no credential-bearing path, the
-  same discipline it would need for any other unprivileged
-  file-reading tool. A caller that cannot make that guarantee waits
-  for `workspace`'s secret-path denial, or privileges these four
-  tools itself by wrapping them behind its own `Privileged() bool`
-  the way `WorkspaceWriteTool` does, before offering them to a model.
+- Residual risk, narrowed but not closed: unprivileged read access to
+  every non-denied path under the bound root is still real.
+  `WorkspaceReadTool`, `WorkspaceListTool`, `WorkspaceStatTool`, and
+  `DiffTool` each read any path under the bound root that `Deny` does
+  not name, with no allowlist gate. `Deny` is now mandatory, so a
+  root bound to "a repository checkout" no longer exposes `.env` or
+  `credentials.json` by default the way the shipped design did,
+  provided the caller's `Deny` patterns actually name those paths.
+  The residual risk is caller error: a `Deny` that omits a
+  credential-bearing path, or a `Deny` built from
+  `secretpath.NewMatcher(nil)` to opt out of the walk while accepting
+  the symlink refusal, still exposes that path to the model. This
+  addendum does not validate a caller's pattern list for
+  completeness; `secretpath.Matcher` cannot know what a deployment
+  considers secret. Mitigation: the caller reviews its root for
+  credential-bearing paths before naming its `Deny` patterns, the
+  same discipline `docs/plans/secretpath.md` already asks of a
+  `Matcher` builder for any other consumer.
 
 ### API
 
 ```go
-func WorkspaceReadTool(name string, ws *workspace.Workspace, maxResultBytes int) tools.Tool
-func WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool
-func WorkspaceListTool(name string, ws *workspace.Workspace) tools.Tool
-func WorkspaceStatTool(name string, ws *workspace.Workspace) tools.Tool
-func DiffTool(name string, ws *workspace.Workspace, maxLines int) tools.Tool
+type FileToolOptions struct {
+	Root         string
+	Deny         *secretpath.Matcher
+	MaxReadBytes int64
+}
+func (o FileToolOptions) Validate() error
+
+type FileTools struct{ /* unexported */ }
+func OpenFileTools(opts FileToolOptions) (*FileTools, error)
+func (f *FileTools) Close() error
+
+var ErrDenyRequired error
+
+func WorkspaceReadTool(name string, ft *FileTools, maxResultBytes int) tools.Tool
+func WorkspaceWriteTool(name string, ft *FileTools) tools.Tool
+func WorkspaceListTool(name string, ft *FileTools) tools.Tool
+func WorkspaceStatTool(name string, ft *FileTools) tools.Tool
+func DiffTool(name string, ft *FileTools, maxLines int) tools.Tool
 
 var ErrBadArguments error
 
@@ -402,29 +529,91 @@ type WorkspaceFileInfo struct {
 }
 ```
 
-Every unexported struct behind these constructors (for example
-`workspaceReadTool`, `workspaceWriteTool`, matching this package's
-existing per-tool naming: `roomTool`, `heartbeatTool`) implements
-`tools.Tool` (`Name`, `Run`), `tools.SchemaTool` (`ParameterSchema`,
-`DecodeArguments`), and `tools.ProfiledTool` (`ExecutionProfile`);
-`WorkspaceWriteTool`'s struct additionally implements
-`tools.PrivilegedTool` (`Privileged`). Every `ParameterSchema` is a
-flat JSON Schema object, `additionalProperties: false`, with only
-`string`-typed properties, well under `schema.MaxSchemaBytes` and
-`schema.MaxSchemaDepth`, so `agentloop.New`'s `schema.Compile` call
-never fails `ErrInvalidSchema` for any of the five.
+`FileToolOptions.Deny` names `*secretpath.Matcher`, so `subagent`
+needs a direct import of `secretpath`, not only the transitive
+`workspace` -> `secretpath` edge. Every unexported struct behind the
+five tool constructors (for example `workspaceReadTool`,
+`workspaceWriteTool`, matching this package's existing per-tool
+naming: `roomTool`, `heartbeatTool`) implements `tools.Tool` (`Name`,
+`Run`), `tools.SchemaTool` (`ParameterSchema`, `DecodeArguments`),
+and `tools.ProfiledTool` (`ExecutionProfile`); `WorkspaceWriteTool`'s
+struct additionally implements `tools.PrivilegedTool` (`Privileged`).
+Every `ParameterSchema` is a flat JSON Schema object,
+`additionalProperties: false`, with only `string`-typed properties,
+well under `schema.MaxSchemaBytes` and `schema.MaxSchemaDepth`, so
+`agentloop.New`'s `schema.Compile` call never fails
+`ErrInvalidSchema` for any of the five.
 
-`policy/layers.json` grants `subagent` the additional edges `diff`
-and `workspace`, added to the existing row alphabetically. No other
-edge changes; `envfile` gets no row addition to `subagent` since it
-gets no tool.
+`policy/layers.json` grants `subagent` the additional edges `diff`,
+`secretpath`, and `workspace`, added to the existing row
+alphabetically. No other edge changes; `envfile` gets no row addition
+to `subagent` since it gets no tool.
 
 ### Tests
 
-New file `subagent/subagent_test/filetools_test.go`, package
-`subagent_test`:
+Two files, package `subagent_test`, split to hold the 500-line file
+cap. The shipped `filetools_test.go` already sits at 481 lines before
+this addendum's changes, and the new `FileTools`-level cases below do
+not fit inside it alongside the existing tool-behavior tests. The
+`FileTools`-level cases move to a new file,
+`subagent/subagent_test/filetoolset_test.go`; the tool-behavior cases
+stay in the rewritten `subagent/subagent_test/filetools_test.go`.
 
-- `TestWorkspaceReadTool`: a real `workspace.Workspace` over
+Both files share the `openFileTools(t, deny []string) *FileTools`
+helper, which replaces the old `openWorkspace` helper. It opens
+through `subagent.OpenFileTools` with a `secretpath.NewMatcher(deny)`
+matcher and registers `t.Cleanup` on `Close`; every existing `build`
+func's parameter changes from `ws *workspace.Workspace` to
+`ft *subagent.FileTools` to match the new constructor signatures. The
+helper is declared once, in `filetools_test.go`, since both test
+files share one `subagent_test` package.
+
+In `subagent/subagent_test/filetoolset_test.go`:
+
+- `TestOpenFileToolsValidatesOptions`: table-driven,
+  red-green. A blank `Root` returns an error. A nil `Deny` returns an
+  error matching `errors.Is(err, subagent.ErrDenyRequired)`. A blank
+  `Root` and a non-nil `Deny` together still return the blank-root
+  error, pinning `Validate`'s check order. A valid `Options` returns a
+  non-nil `*FileTools` and a nil error; `t.Cleanup`s its `Close`. This
+  is the direct pin for the gap this addendum closes: the shipped
+  718d79b constructors let a caller build the five tools from a raw
+  `*workspace.Workspace` opened with no `Deny` at all; the nil-`Deny`
+  row is red against that shape and green once `OpenFileTools` and
+  its mandatory `Deny` land.
+- `TestFileToolsCloseIsIdempotent`: opens a `*FileTools`, calls
+  `Close` twice, asserts both calls return `nil`, matching
+  `workspace.Workspace.Close`'s own idempotent contract.
+- `TestFileToolsDeniesSecretPath`: table-driven over all five tools,
+  using `openFileTools(t, []string{"secret.env"})`. Each row calls
+  the tool against `secret.env` and asserts the returned error
+  matches `errors.Is(err, workspace.ErrSecretPath)`. A second
+  sub-table repeats the same five rows against a permitted path in
+  the same directory and asserts no `ErrSecretPath`, pinning that the
+  matcher denies by name, not by directory membership alone. This
+  test is not the pin for this addendum's gap: denial-when-a-pattern-
+  matches is a `workspace`-level property, shipped and tested in
+  commit f2f6028, before this addendum existed. It confirms the tool
+  layer forwards that already-shipped denial without swallowing it, a
+  real property this addendum must preserve, distinct from the gap
+  `TestOpenFileToolsValidatesOptions` pins above.
+- `TestOpenFileToolsSymlinkRefused`: builds a `*FileTools` over a
+  root holding a symlink to a permitted file outside the deny list,
+  through `openFileTools(t, nil)`. `WorkspaceReadTool` over the
+  symlink's path returns an error matching
+  `errors.Is(err, workspace.ErrSecretPath)`, pinning the "mandatory
+  `Deny` refuses every symlink component unconditionally" rule "Who
+  supplies the FileTools" states, even for an empty pattern list.
+- `TestFileToolsConcurrentReadsSafeUnderClose`: race-covered. Several
+  goroutines call `WorkspaceReadTool.Run` concurrently against one
+  shared `*FileTools` while it stays open, joined before `Close` runs
+  once. Every call returns its expected result or error, and
+  `go test -race` reports no race, pinning the "no mutex needed" claim
+  in "Close ownership."
+
+In `subagent/subagent_test/filetools_test.go`:
+
+- `TestWorkspaceReadTool`: `openFileTools(t, nil)` over
   `t.TempDir()`. Reads an existing file back exactly. A missing file
   returns an error. A `maxResultBytes` smaller than the file's size
   still returns the full content from `Run` (the cap is a published
@@ -447,17 +636,17 @@ New file `subagent/subagent_test/filetools_test.go`, package
   A diff over `maxLines` returns an error matching
   `errors.Is(err, diff.ErrTooLarge)`.
 - `TestFileToolsEscape`: table-driven over all five tools, covering
-  both rejected-input shapes "Who supplies the Workspace" names. One
+  both rejected-input shapes "Who supplies the FileTools" names. One
   `..`-traversal case per tool (five rows), plus one absolute-path
   case shared across the five (a sixth row, or one absolute-path
   sub-case per tool if that reads clearer as a table). Every row
   asserts the tool's returned error matches
   `errors.Is(err, workspace.ErrEscape)`. `WorkspaceReadTool` alone is
-  not the pin: each tool wraps `ws.resolve`'s error through its own
+  not the pin: each tool wraps the resolve error through its own
   argument-struct path, and this table proves none of the four other
   wrappers swallows or reshapes `ErrEscape` on the way out, closing
   the gap the "second layer, not the only one" framing in "Who
-  supplies the Workspace" claims but does not, by itself, test.
+  supplies the FileTools" claims but does not, by itself, test.
 - `TestFileToolsBadArguments`: table-driven, two cases per tool.
   Case one: `DecodeArguments` on malformed JSON returns an error
   matching `errors.Is(err, subagent.ErrBadArguments)`. Case two:
@@ -488,17 +677,26 @@ New file `subagent/subagent_test/filetools_test.go`, package
 - `make verify` passes; `subagent` and the module total hold the 85
   floor.
 - `go test -race ./subagent/... ./agentloop/...` passes.
-- `make api-update` lands the `api/subagent.txt` diff for the five
-  new tools, the new sentinel, and the new argument/result types, in
-  the same change as the code.
-- `python3 scripts/check_deps.py` passes against the new `diff` and
-  `workspace` edges on the `subagent` row.
+- `make api-update` lands the `api/subagent.txt` diff: the five tool
+  constructors' changed signatures, `FileToolOptions`, `FileTools`,
+  `OpenFileTools`, `(*FileTools) Close`, and `ErrDenyRequired`, in the
+  same change as the code. The removal of the five old
+  `ws *workspace.Workspace` signatures shows in the diff as a
+  deletion, not a hidden overload.
+- `python3 scripts/check_deps.py` passes against the new `diff`,
+  `secretpath`, and `workspace` edges on the `subagent` row.
 - `python3 scripts/check_plan.py`, `check_prose.py`, and
   `check_labels.py` pass against this addendum.
 - `docs/packages/subagent.md` and `AGENTS.md`'s `subagent/` entry
-  gain the five new tools and `ErrBadArguments` in the same change
-  as the code, following `docs/plans/TEMPLATE.md`'s API-surface
-  discipline.
+  gain `FileToolOptions`, `FileTools`, `OpenFileTools`,
+  `ErrDenyRequired`, and the five tools' new signatures in the same
+  change as the code, following `docs/plans/TEMPLATE.md`'s
+  API-surface discipline.
+- `docs/plans/secrets.md`'s "Phase 71 owns the tool surface" section
+  is corrected in the same change to match this addendum: the
+  `envfile.LoadBytes` term is marked dropped, not met, with the
+  reasoning "Envfile" in `docs/plans/agents/phase71_filetools.md`
+  states.
 
 ### Gap fix: export the mailbox-capacity sentinel
 

@@ -210,11 +210,18 @@ Go SDK for building AI agents. Module:
   orchestrators, subagents, and humans. Five file tools wire
   `workspace` and `diff` in: `WorkspaceReadTool`, `WorkspaceWriteTool`,
   `WorkspaceListTool`, `WorkspaceStatTool`, and `DiffTool`, each bound
-  to a caller-supplied `*workspace.Workspace` at construction, never a
-  model-chosen root. `WorkspaceWriteTool` alone implements
+  to a caller-supplied `*FileTools` at construction, never a
+  model-chosen root. `FileToolOptions{Root, Deny, MaxReadBytes}` and
+  `OpenFileTools` are the one place these five tools accept a
+  workspace from; `Validate` rejects a nil `Deny`, returning
+  `ErrDenyRequired`, before any filesystem call, so a caller cannot
+  build a usable `*FileTools` with no secret policy. `(*FileTools)
+  Close` closes the workspace `OpenFileTools` opened; the caller that
+  opens it owns `Close`. `WorkspaceWriteTool` alone implements
   `tools.PrivilegedTool`. `ErrBadArguments` covers a bad decode or a
-  mistyped `Run` call across the five. `envfile` gets no tool. See
-  docs/plans/subagent.md.
+  mistyped `Run` call across the five. `workspace.ErrSecretPath` and
+  `workspace.ErrEscape` propagate to the model unchanged. `envfile`
+  gets no tool. See docs/plans/subagent.md.
 - `durablefence/` — a leaf, test-only conformance kit for claim,
   takeover, and fence invariants. Imported only from another
   package's `_test` subdirectory, for example
@@ -259,6 +266,12 @@ Go SDK for building AI agents. Module:
   hooks-and-tracer wiring.
 - `taskrun/` — the ledger admit-claim-complete ceremony around one
   work func.
+- `runconfig/` — a JSON document loader for `agentrun`: Load,
+  Definition, Definition.Runner, Binding, Kind, Blocks, NewBlocks.
+  Load resolves one JSON document into a validated Definition,
+  feeding flow.New, machine.New, and agentrun.New. Runner builds the
+  tool registry and returns an `*agentrun.Runner`. Imports agentrun,
+  flow, machine, subagent, and tools.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.

@@ -58,29 +58,44 @@ decode or dispatch fault onto `ErrBadCommand`.
 ## File tools
 
 Five tools wire the leaf packages `workspace` and `diff` into a
-model-reachable tool set. Each binds one `*workspace.Workspace` a
-caller supplies at construction; a model never chooses the sandbox
-root, only a path inside it. Each implements `tools.SchemaTool`, so
-`agentloop.Definitions` offers it without a caller-written adapter.
+model-reachable tool set. Each binds one `*FileTools` a caller opens
+once, at wiring time; a model never chooses the sandbox root or the
+secret-path deny list, only a path inside the root. Each implements
+`tools.SchemaTool`, so `agentloop.Definitions` offers it without a
+caller-written adapter.
 
-- `WorkspaceReadTool(name, ws, maxResultBytes)` — reads one file,
-  relative to `ws`'s root. A positive `maxResultBytes` publishes
+`FileToolOptions{Root, Deny, MaxReadBytes}` and
+`OpenFileTools(opts) (*FileTools, error)` are the one place these
+five tools accept a workspace from. `Validate` rejects a nil `Deny`
+before any filesystem call, wrapped in `ErrDenyRequired`: a caller
+cannot build a usable `*FileTools` without naming a secret policy,
+even an empty one (`secretpath.NewMatcher(nil)`). `(*FileTools)
+Close()` closes the workspace `OpenFileTools` opened; the caller that
+opens a `FileTools` owns the matching `Close`.
+
+- `WorkspaceReadTool(name, ft, maxResultBytes)` — reads one file,
+  relative to `ft`'s bound root. A positive `maxResultBytes` publishes
   `tools.ResultBudgetTool`; a non-positive value publishes no budget.
   Not privileged.
-- `WorkspaceWriteTool(name, ws)` — writes one file, relative to
-  `ws`'s root, at a fixed `0o600` mode. Implements
+- `WorkspaceWriteTool(name, ft)` — writes one file, relative to
+  `ft`'s bound root, at a fixed `0o600` mode. Implements
   `tools.PrivilegedTool`, so `tools.Scope.Allowed` denies it unless a
   caller's `Allowlist` names it.
-- `WorkspaceListTool(name, ws)` — lists one directory, relative to
-  `ws`'s root, as `[]WorkspaceEntry`. A blank path lists the root.
-  Not privileged.
-- `WorkspaceStatTool(name, ws)` — stats one path, relative to `ws`'s
-  root, as one `WorkspaceFileInfo`. Not privileged.
-- `DiffTool(name, ws, maxLines)` — diffs the on-disk content at a
-  path, read through `ws.ReadFile`, against proposed content, through
-  `diff.Unified`. A not-yet-existing path diffs against empty
+- `WorkspaceListTool(name, ft)` — lists one directory, relative to
+  `ft`'s bound root, as `[]WorkspaceEntry`. A blank path lists the
+  root. Not privileged.
+- `WorkspaceStatTool(name, ft)` — stats one path, relative to `ft`'s
+  bound root, as one `WorkspaceFileInfo`. Not privileged.
+- `DiffTool(name, ft, maxLines)` — diffs the on-disk content at a
+  path, read through `ft`'s bound workspace, against proposed content,
+  through `diff.Unified`. A not-yet-existing path diffs against empty
   content. A diff over `maxLines` fails with `diff.ErrTooLarge`. Not
   privileged.
+
+`workspace.ErrSecretPath` and `workspace.ErrEscape` propagate to the
+model unchanged from any of the five tools; see
+`docs/plans/agents/phase71_filetools.md` for why no translation layer
+sits between them.
 
 Every argument struct (`WorkspaceReadArgs`, `WorkspaceWriteArgs`,
 `WorkspaceListArgs`, `WorkspaceStatArgs`, `DiffArgs`) carries `json`

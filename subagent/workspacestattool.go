@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 // WorkspaceStatArgs is the decoded argument struct for
@@ -25,17 +24,17 @@ type WorkspaceFileInfo struct {
 	ModTime time.Time `json:"mod_time"`
 }
 
-// WorkspaceStatTool returns a tool that stats one path inside ws,
-// relative to ws's bound root. Not privileged.
-func WorkspaceStatTool(name string, ws *workspace.Workspace) tools.Tool {
-	return &workspaceStatTool{name: name, ws: ws}
+// WorkspaceStatTool returns a tool that stats one path inside ft's
+// bound workspace, relative to its root. Not privileged.
+func WorkspaceStatTool(name string, ft *FileTools) tools.Tool {
+	return &workspaceStatTool{name: name, ft: ft}
 }
 
 // workspaceStatTool adapts one workspace stat to tools.Tool,
 // tools.SchemaTool, and tools.ProfiledTool.
 type workspaceStatTool struct {
 	name string
-	ws   *workspace.Workspace
+	ft   *FileTools
 }
 
 // Name returns the registry name.
@@ -60,13 +59,13 @@ func (t *workspaceStatTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Class: tools.ExecutionClassRead}
 }
 
-// Run stats args.Path, relative to t.ws's bound root.
+// Run stats args.Path, relative to t.ft's bound root.
 func (t *workspaceStatTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceStatArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)
 	}
-	info, err := t.ws.Stat(args.Path)
+	info, err := t.ft.ws.Stat(args.Path)
 	if err != nil {
 		return tools.Out{}, err
 	}

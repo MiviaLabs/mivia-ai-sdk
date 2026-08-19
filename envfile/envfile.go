@@ -13,20 +13,28 @@ import (
 var keyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Load reads the dotenv file at path and returns its KEY=VALUE pairs
-// as a map. A blank line and a line starting with '#' (after leading
-// whitespace) skip. A value may be unquoted, single-quoted, or
-// double-quoted; a double-quoted value decodes \n, \t, \\, and \".
-// Only the first '=' on a line splits key from value, so a literal
-// '=' in an unquoted or quoted value passes through. A duplicate key
-// keeps its last value. Load returns a wrapped os.ErrNotExist when
-// path does not exist. No returned error ever contains a parsed
-// value.
+// as a map. Load reads the file and delegates the parse to LoadBytes,
+// so the two share one parser and one error set. Load returns a
+// wrapped os.ErrNotExist when path does not exist. No returned error
+// ever contains a parsed value.
 func Load(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("envfile: %w", err)
 	}
+	return LoadBytes(data)
+}
 
+// LoadBytes parses an already-read dotenv body and returns its
+// KEY=VALUE pairs as a map. A blank line and a line starting with '#'
+// (after leading whitespace) skip. A value may be unquoted,
+// single-quoted, or double-quoted; a double-quoted value decodes \n,
+// \t, \\, and \". Only the first '=' on a line splits key from value,
+// so a literal '=' in an unquoted or quoted value passes through. A
+// duplicate key keeps its last value. LoadBytes(nil) returns an empty
+// map and a nil error. No returned error ever contains a parsed
+// value.
+func LoadBytes(data []byte) (map[string]string, error) {
 	result := make(map[string]string)
 	lines := strings.Split(string(data), "\n")
 	for i, raw := range lines {

@@ -20,8 +20,8 @@ This plan covers two changes, built in order:
   the `Workspace` through `Options.Deny`, and a denied path returns
   `ErrSecretPath`. `docs/plans/secrets.md` owns the reasoning for
   change two; this plan owns the resulting `workspace` surface. The
-  `envfile.LoadBytes` half of `docs/plans/secrets.md` is deferred; see
-  that plan's status line.
+  `envfile.LoadBytes` half of `docs/plans/secrets.md` also shipped, so
+  no part of that plan is deferred.
 
 ## Scope
 

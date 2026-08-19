@@ -11,6 +11,8 @@ Inside:
 
 - `Load(path string) (map[string]string, error)`: reads a file at
   `path`, parses `KEY=VALUE` lines, and returns the result as a map.
+- `LoadBytes(data []byte) (map[string]string, error)`: parses an
+  already-read dotenv body and returns the result as a map.
 - Parsing rules: blank lines skip. A line starting with `#`, after
   leading whitespace, skips as a comment. A value wrapped in matching
   single or double quotes unwraps; a double-quoted value decodes
@@ -31,10 +33,14 @@ Outside:
 ## API
 
 - `Load(path string) (map[string]string, error)`
+- `LoadBytes(data []byte) (map[string]string, error)`
 
-`Load` is the only exported symbol. A leaf package needs no
-constructor or type: the map is the whole result, and one function
-covers the one operation.
+`Load` and `LoadBytes` are the only exported symbols. `LoadBytes`
+landed with `docs/plans/secrets.md`, which owns its reasoning: bytes
+are what `workspace.ReadFile` returns. `Load` reads the file and
+delegates to `LoadBytes`, so the two share one parser and one error
+set. A leaf package needs no constructor or type: the map is the whole
+result.
 
 ## Tests
 

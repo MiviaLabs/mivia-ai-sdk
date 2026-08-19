@@ -14,17 +14,17 @@ function. It builds no tool wrapper.
 
 ## Status
 
-The `workspace` half is shipped: `Options.Deny`, `ErrSecretPath`, the
-two-stage deny check, and the `secretpath` nil guard. See
+Both halves are shipped, so nothing in this plan is deferred.
+
+The `workspace` half shipped first: `Options.Deny`, `ErrSecretPath`,
+the two-stage deny check, and the `secretpath` nil guard. See
 `docs/plans/workspace.md` change two.
 
-The `envfile` half is deferred to a follow-up change: `LoadBytes`, its
-`api/envfile.txt` line, its `docs/packages/envfile.md` and
-`docs/plans/envfile.md` entries, its `AGENTS.md` entry, the
-`envfile/envfile_test/` rows, and `secret_integration_test.go`, which
-calls `LoadBytes` and cannot build before it. Every Scope, API, Tests,
-and Verification item below that names `envfile` belongs to that
-follow-up. Nothing in the shipped half depends on it.
+The `envfile` half shipped next: `LoadBytes`, its `api/envfile.txt`
+line, its `docs/packages/envfile.md` and `docs/plans/envfile.md`
+entries, its `AGENTS.md` entry, the `envfile/envfile_test/` rows, and
+`workspace/workspace_test/secret_integration_test.go`, which calls
+`LoadBytes`.
 
 ## Scope
 

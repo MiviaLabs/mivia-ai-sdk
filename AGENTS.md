@@ -62,9 +62,10 @@ Go SDK for building AI agents. Module:
   contextstate.MemStore and a memory.Store; Plan drops or trims
   events to fit Window.Budget, applying StubContent to reasoning
   events first.
-- `envfile/` — dotenv loading: Load parses `KEY=VALUE` lines into a
-  map without leaking parsed values into an error. A leaf package; no
-  internal imports.
+- `envfile/` — dotenv loading: Load and LoadBytes parse `KEY=VALUE`
+  lines into a map without leaking parsed values into an error. Load
+  reads the file and delegates to LoadBytes, so the two share one
+  parser and one error set. A leaf package; no internal imports.
 - `secretpath/` — glob-style secret path matching: Matcher, NewMatcher,
   Matches. Reports whether a path matches a configured pattern list.
   Matches on a nil Matcher returns false. A leaf package; no internal

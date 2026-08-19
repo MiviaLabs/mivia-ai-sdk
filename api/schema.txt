@@ -1,0 +1,16 @@
+package schema
+  const MaxCorrectiveBytes = 1024
+  const MaxPayloadBytes = 64 << 10
+  const MaxSchemaBytes = 16 << 10
+  const MaxSchemaDepth = 32
+  func (c *Compiled) Validate(payload []byte) (error)
+  func (e *validationError) Error() (string)
+  func (e *validationError) Unwrap() (error)
+  func Compile(schemaBytes []byte) (*Compiled, error)
+  func Corrective(err error) (string)
+  type Compiled struct {
+}
+  var ErrAdmission
+  var ErrCompile
+  var ErrMalformedPayload
+  var ErrValidation

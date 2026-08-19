@@ -389,7 +389,7 @@ In `spool/spool_test/spool_test.go`:
 
 ## Change: read-back tool and grant expiry
 
-Status: plan, ready for plan review. Two additions: a model-facing
+Status: shipped. Two additions: a model-facing
 read-back tool, and time-based grant expiry.
 
 ### Change goal

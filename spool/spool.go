@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 // maxViewBytes bounds the view Spool.Spool returns for a direct
@@ -39,6 +40,20 @@ var (
 	// same content would silently take over the first principal's
 	// grant.
 	ErrPrincipalConflict = errors.New("spool: ref already granted to a different principal")
+	// ErrExpired is Load's error for a grant whose expiry passed. The
+	// grant drops on that Load, freeing its budget.
+	ErrExpired = errors.New("spool: grant expired")
+	// ErrInvalidExpiry is SpoolExpiring's error for a non-positive ttl.
+	ErrInvalidExpiry = errors.New("spool: ttl must be positive")
+	// ErrNilSpool is ReadOutputTool's error for a nil Spool.
+	ErrNilSpool = errors.New("spool: spool is required")
+	// ErrInvalidLimit is ReadOutputTool's error for a non-positive
+	// maxPageBytes.
+	ErrInvalidLimit = errors.New("spool: maxPageBytes must be positive")
+	// ErrBadArguments is ReadOutputTool's error for a malformed
+	// argument decode, a mistyped Run call, a negative offset, or a
+	// negative limit.
+	ErrBadArguments = errors.New("spool: bad arguments")
 )
 
 // ContentStore is the storage a Spool writes spooled bytes to and
@@ -49,11 +64,19 @@ type ContentStore interface {
 	Get(ref string) ([]byte, error)
 }
 
-// grant records which principal may read back one ref's content, and
-// the content's byte size for budget bookkeeping.
+// grant records which principal may read back one ref's content, the
+// content's byte size for budget bookkeeping, and an optional expiry.
+// A zero expires means no expiry.
 type grant struct {
 	principal string
 	size      int
+	expires   time.Time
+}
+
+// expired reports whether g's expiry passed. A zero expiry never
+// expires.
+func (g grant) expired(now time.Time) bool {
+	return !g.expires.IsZero() && !g.expires.After(now)
 }
 
 // Spool stores oversized content under a principal-scoped grant and
@@ -101,7 +124,7 @@ func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view 
 	}
 
 	s.mu.Lock()
-	err = s.recordGrant(ref, principal, len(data))
+	err = s.recordGrant(ref, principal, len(data), time.Time{})
 	s.mu.Unlock()
 	if err != nil {
 		return "", "", err
@@ -110,12 +133,66 @@ func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view 
 	return buildView(data, maxViewBytes, ref), ref, nil
 }
 
+// SpoolExpiring writes data, grants principal read-back, and sets a
+// time-to-live on the grant. A non-positive ttl wraps ErrInvalidExpiry
+// before any store write. Re-spooling an existing ref under the same
+// principal refreshes the expiry, the same way Spool refreshes
+// insertion order.
+func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte, ttl time.Duration) (view string, ref string, err error) {
+	if ttl <= 0 {
+		return "", "", fmt.Errorf("%w: %s", ErrInvalidExpiry, ttl)
+	}
+	if len(data) > s.maxGrantBytes {
+		return "", "", fmt.Errorf("%w: %d bytes exceeds budget %d", ErrGrantTooLarge, len(data), s.maxGrantBytes)
+	}
+
+	ref, err = s.store.Put(data)
+	if err != nil {
+		return "", "", err
+	}
+
+	s.mu.Lock()
+	err = s.recordGrant(ref, principal, len(data), time.Now().Add(ttl))
+	s.mu.Unlock()
+	if err != nil {
+		return "", "", err
+	}
+
+	return buildView(data, maxViewBytes, ref), ref, nil
+}
+
+// Expire marks one live grant expired immediately. Unknown ref wraps
+// ErrUnknownRef.
+func (s *Spool) Expire(ref string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, ok := s.grants[ref]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrUnknownRef, ref)
+	}
+	g.expires = time.Now()
+	s.grants[ref] = g
+	return nil
+}
+
+// GrantExpiry reports a grant's expiry. The second return is false
+// for no live grant. A zero time means no expiry.
+func (s *Spool) GrantExpiry(ref string) (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	g, ok := s.grants[ref]
+	if !ok {
+		return time.Time{}, false
+	}
+	return g.expires, true
+}
+
 // recordGrant registers ref under principal and evicts the oldest
 // grants, in insertion order, until the budget fits the new grant. It
 // wraps ErrPrincipalConflict, leaving state unchanged, when ref
 // already has a live grant for a different principal. Called with
 // s.mu held.
-func (s *Spool) recordGrant(ref, principal string, size int) error {
+func (s *Spool) recordGrant(ref, principal string, size int, expires time.Time) error {
 	if existing, ok := s.grants[ref]; ok {
 		if existing.principal != principal {
 			return fmt.Errorf("%w: %s", ErrPrincipalConflict, ref)
@@ -130,10 +207,22 @@ func (s *Spool) recordGrant(ref, principal string, size int) error {
 		s.total -= s.grants[oldest].size
 		delete(s.grants, oldest)
 	}
-	s.grants[ref] = grant{principal: principal, size: size}
+	s.grants[ref] = grant{principal: principal, size: size, expires: expires}
 	s.order = append(s.order, ref)
 	s.total += size
 	return nil
+}
+
+// dropGrantLocked removes one grant, freeing its budget. Called with
+// s.mu held.
+func (s *Spool) dropGrantLocked(ref string) {
+	g, ok := s.grants[ref]
+	if !ok {
+		return
+	}
+	s.removeFromOrder(ref)
+	s.total -= g.size
+	delete(s.grants, ref)
 }
 
 // removeFromOrder drops ref from the insertion-order slice. Called
@@ -148,22 +237,32 @@ func (s *Spool) removeFromOrder(ref string) {
 }
 
 // Load returns the full bytes stored under ref. It wraps
-// ErrUnknownRef when no live grant matches ref, and ErrWrongPrincipal
-// when principal does not match the grant's recorded principal. When
-// the grant is live but the underlying ContentStore.Get fails (for
-// example, the store's own independent budget evicted the blob
+// ErrUnknownRef when no live grant matches ref, ErrWrongPrincipal
+// when principal does not match the grant's recorded principal, even
+// on an expired grant, and ErrExpired when the right principal's
+// grant expired: that grant drops on this Load, freeing its budget.
+// When the grant is live but the underlying ContentStore.Get fails
+// (for example, the store's own independent budget evicted the blob
 // first), Load wraps that error under ErrUnknownRef too: a live grant
 // whose bytes are gone is, from the caller's view, an unknown ref.
 func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error) {
 	s.mu.Lock()
 	g, ok := s.grants[ref]
+	if ok {
+		if g.principal != principal {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("%w: %s", ErrWrongPrincipal, ref)
+		}
+		if g.expired(time.Now()) {
+			s.dropGrantLocked(ref)
+			s.mu.Unlock()
+			return nil, fmt.Errorf("%w: %s", ErrExpired, ref)
+		}
+	}
 	s.mu.Unlock()
 
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownRef, ref)
-	}
-	if g.principal != principal {
-		return nil, fmt.Errorf("%w: %s", ErrWrongPrincipal, ref)
 	}
 
 	data, err := s.store.Get(ref)

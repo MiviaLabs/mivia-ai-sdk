@@ -1,15 +1,24 @@
 package spool
+  const MoreMarker = "[more: offset=%d]"
   func (c budgetCap) MaxResultBytes() (int)
   func (c privilegedCap) Privileged() (bool)
   func (c profiledCap) ExecutionProfile() (tools.ExecutionProfile)
   func (c schemaCap) DecodeArguments(raw []byte) (tools.InOut, error)
   func (c schemaCap) ParameterSchema() ([]byte)
+  func (s *Spool) Expire(ref string) (error)
+  func (s *Spool) GrantExpiry(ref string) (time.Time, bool)
   func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error)
   func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error)
+  func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte, ttl time.Duration) (view string, ref string, err error)
+  func (t *readOutputTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *readOutputTool) Name() (string)
+  func (t *readOutputTool) ParameterSchema() ([]byte)
+  func (t *readOutputTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *spoolTool) Name() (string)
   func (t *spoolTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error)
   func PrincipalFrom(ctx context.Context) (string, bool)
+  func ReadOutputTool(sp *Spool, maxPageBytes int) (tools.Tool, error)
   func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) (tools.Tool)
   func WithPrincipal(ctx context.Context, principal string) (context.Context)
   type ContentStore interface {
@@ -18,7 +27,12 @@ package spool
 }
   type Spool struct {
 }
+  var ErrBadArguments
+  var ErrExpired
   var ErrGrantTooLarge
+  var ErrInvalidExpiry
+  var ErrInvalidLimit
+  var ErrNilSpool
   var ErrNoBudget
   var ErrNoPrincipal
   var ErrPrincipalConflict

@@ -32,6 +32,38 @@ mirrors `api/spool.txt`.
   string result over `maxBytes` spools to `store` under the `ctx`
   principal instead of returning in full.
 
+## Read-back tool and grant expiry
+
+- `SpoolExpiring(ctx, principal, data, ttl)` — writes data, grants
+  principal read-back, and sets a time-to-live on the grant. A
+  non-positive ttl wraps `ErrInvalidExpiry` before any store write.
+  Re-spooling an existing ref under the same principal refreshes the
+  expiry.
+- `Expire(ref)` — marks one live grant expired immediately. An unknown
+  ref wraps `ErrUnknownRef`.
+- `GrantExpiry(ref)` — reports a grant's expiry: false for no live
+  grant, the zero time for a grant from plain `Spool`.
+- `Load` checks in this order: an unknown ref wraps `ErrUnknownRef`; a
+  principal mismatch wraps `ErrWrongPrincipal`, even on an expired
+  grant, so a probing principal learns nothing about the expiry; an
+  expired grant under the right principal wraps `ErrExpired`, and the
+  grant drops on that Load, freeing its budget. Expiry is lazy: no
+  wall-clock sweep runs.
+- `ReadOutputTool(sp, maxPageBytes)` — the model-facing read-back
+  tool, bound to one `*Spool` at construction. A nil sp wraps
+  `ErrNilSpool`; a non-positive page budget wraps `ErrInvalidLimit`.
+  The tool implements `tools.SchemaTool`: it publishes one parameter
+  schema for ref, offset, and limit, and decodes its own arguments.
+  `Run` reads the ctx principal through `PrincipalFrom` and fails
+  `ErrNoPrincipal` when absent. A limit of zero means one full page of
+  `maxPageBytes` bytes; a limit over the bound clamps to it. The page
+  carries `MoreMarker` with the next offset when bytes remain, and
+  nothing extra on the final page. An offset past the end returns an
+  empty page. `ErrBadArguments` covers a malformed decode, a mistyped
+  `Run` call, a negative offset, and a negative limit.
+- `MoreMarker` — `"[more: offset=%d]"`, the suffix naming the next
+  page's offset.
+
 ## Failure modes
 
 Use `errors.Is` to test these.

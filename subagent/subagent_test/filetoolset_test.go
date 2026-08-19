@@ -126,12 +126,13 @@ func TestOpenFileToolsSymlinkRefused(t *testing.T) {
 	}
 }
 
-// TestFileToolsConcurrentReadsSafeUnderClose proves several
-// goroutines can call WorkspaceReadTool.Run against one shared,
-// still-open FileTools with no race, pinning the "no mutex needed"
-// claim: os.Root's methods are safe for concurrent use, and FileTools
-// adds no further mutable state.
-func TestFileToolsConcurrentReadsSafeUnderClose(t *testing.T) {
+// TestFileToolsConcurrentReadsRaceFree proves several goroutines can
+// call WorkspaceReadTool.Run against one shared FileTools with no
+// race, pinning the "no mutex needed" claim: os.Root's methods are
+// safe for concurrent use, and FileTools adds no further mutable
+// state. Close runs only after every worker finishes; this test does
+// not exercise Run racing Close.
+func TestFileToolsConcurrentReadsRaceFree(t *testing.T) {
 	ft, root := openFileTools(t, nil)
 	if err := os.WriteFile(filepath.Join(root, "shared.txt"), []byte("shared content"), 0o600); err != nil {
 		t.Fatalf("seed file: %v", err)

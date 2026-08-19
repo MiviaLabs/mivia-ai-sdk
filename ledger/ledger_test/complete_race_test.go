@@ -101,11 +101,12 @@ func (r *rangeTriggerStore) Range(ctx context.Context, fn func(ledger.TaskState)
 	return err
 }
 
-// TestCompleteFailedBlocksDependentAfterConcurrentClaim proves
-// blockDependents retries a losing CompareAndSwap against a dependent
-// whose record changed after the Range snapshot but before pass two
-// reaches it. A concurrent Claim on the dependent, fired right after
-// the Range snapshot, must not leave the dependent silently unblocked.
+// TestCompleteFailedBlocksDependentAfterConcurrentClaim proves a
+// dependent never escapes unblocked when a Claim on it lands between
+// blockDependents' Range snapshot and pass two's own write. Two rules
+// combine here: Claim refuses the dependent, because the failed key is
+// already in its Needs closure, and pass two then skips the record
+// Claim's refusal already blocked.
 func TestCompleteFailedBlocksDependentAfterConcurrentClaim(t *testing.T) {
 	ctx := context.Background()
 	store := &rangeTriggerStore{Store: ledger.NewMemStore()}
@@ -118,8 +119,11 @@ func TestCompleteFailedBlocksDependentAfterConcurrentClaim(t *testing.T) {
 	fence := mustClaim(t, l, ctx, "A", "owner-a")
 
 	store.trigger = func() {
-		if _, err := l.Claim(ctx, testActor, "B", "owner-b", fixedLease, fixedNow); err != nil {
-			t.Errorf("concurrent Claim(B): %v", err)
+		// A already holds StatusFailed when the walk's snapshot
+		// returns, so Claim's blockingAncestor check refuses B and
+		// blocks it itself. Pass two then finds B already terminal.
+		if _, err := l.Claim(ctx, testActor, "B", "owner-b", fixedLease, fixedNow); !errors.Is(err, ledger.ErrNotClaimed) {
+			t.Errorf("concurrent Claim(B) = %v, want ErrNotClaimed", err)
 		}
 	}
 

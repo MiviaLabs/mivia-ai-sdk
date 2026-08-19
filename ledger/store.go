@@ -67,6 +67,13 @@ type MemStoreOptions struct {
 	// re-admission through Admit: idempotency holds across eviction.
 	// A caller who needs every evicted record's original Task payload
 	// preserved must not enable MaxEntries.
+	//
+	// A tombstone clears Needs, so Claim's transitive ancestor walk
+	// cannot read through a tombstoned record to that record's own
+	// ancestors. A tombstone only ever replaces a terminal record, so
+	// a StatusCompleted tombstone can hide a failed grandparent from
+	// the walk. A caller who needs that check to hold across eviction
+	// must not enable MaxEntries.
 	MaxEntries int
 }
 

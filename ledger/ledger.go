@@ -143,14 +143,54 @@ func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (Idem
 	return "", false, nil
 }
 
+// blockingAncestor walks the transitive Needs closure breadth-first
+// from needs and returns the first key holding StatusFailed or
+// StatusBlocked. A never-admitted need is skipped, matching
+// blockingNeed. A Store fault or a canceled ctx returns that error, so
+// Claim and Takeover fail closed and grant nothing. The seen set
+// admits each key once, so a cyclic graph terminates; Admit accepts a
+// self-need, so a record can name itself. The walk makes only Load
+// calls and runs outside any Range callback, so it never reenters
+// Store from inside Range. See "Transitive blocking" in
+// docs/plans/ledger.md.
+func (l *Ledger) blockingAncestor(ctx context.Context, needs []IdempotencyKey) (IdempotencyKey, bool, error) {
+	seen := make(map[IdempotencyKey]bool, len(needs))
+	queue := make([]IdempotencyKey, 0, len(needs))
+	enqueue := func(keys []IdempotencyKey) {
+		for _, k := range keys {
+			if !seen[k] {
+				seen[k] = true
+				queue = append(queue, k)
+			}
+		}
+	}
+	enqueue(needs)
+	for len(queue) > 0 {
+		k := queue[0]
+		queue = queue[1:]
+		st, found, err := l.store.Load(ctx, k)
+		if err != nil {
+			return "", false, err
+		}
+		if !found {
+			continue
+		}
+		if st.Status == StatusFailed || st.Status == StatusBlocked {
+			return k, true, nil
+		}
+		enqueue(st.Needs)
+	}
+	return "", false, nil
+}
+
 // recheckNeeds closes the race between a record's own insert and a
 // need's failure walk. blockingNeed read every need before the insert
 // landed, so a need that failed in that window was missed. A fresh
 // read that finds a failed or blocked need blocks the inserted record
 // through blockOne, which emits BlockedEvent. A fresh read that finds
-// every need live proves the insert preceded any later failure, whose
-// walk then observes this record on its own. It returns whether it
-// blocked the record.
+// every need live does not prove this record's own dependents are
+// safe, because blockOne walks nothing; Claim's blockingAncestor check
+// is the backstop for them. It returns whether it blocked the record.
 func (l *Ledger) recheckNeeds(ctx context.Context, actor Actor, now time.Time, key IdempotencyKey, needs []IdempotencyKey) (bool, error) {
 	blocker, blocked, err := l.blockingNeed(ctx, needs)
 	if err != nil {

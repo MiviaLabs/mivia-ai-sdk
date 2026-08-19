@@ -18,7 +18,13 @@ import (
 // Claim. It returns ErrLeaseActive when another owner's LeaseUntil is
 // still after now. A record in a terminal or blocked status is also
 // ineligible; Claim reports that with ErrNotClaimed, matching
-// Takeover's vocabulary for a non-claimable status.
+// Takeover's vocabulary for a non-claimable status. It returns
+// ErrNotClaimed last when a key in the record's transitive Needs
+// closure holds StatusFailed or StatusBlocked, checked after the
+// ErrLeaseActive check and before any CompareAndSwap call. That
+// refusal writes: it moves the record to StatusBlocked through
+// blockOne, naming the nearest blocking ancestor in BlockedBy. See
+// blockingAncestor.
 func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	if owner == "" {
 		return 0, ErrEmptyOwner
@@ -38,6 +44,16 @@ func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, own
 				return 0, ErrLeaseActive
 			}
 		default:
+			return 0, ErrNotClaimed
+		}
+		blocker, blocked, err := l.blockingAncestor(ctx, cur.Needs)
+		if err != nil {
+			return 0, err
+		}
+		if blocked {
+			if err := l.blockOne(ctx, actor, now, key, cur, blocker); err != nil {
+				return 0, err
+			}
 			return 0, ErrNotClaimed
 		}
 		fence := cur.Fence + 1
@@ -158,7 +174,13 @@ func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, o
 // checks and before any CompareAndSwap call. It returns ErrNotStale
 // when LeaseUntil is still after now. It returns ErrNotClaimed for a
 // StatusPending or terminal record: Takeover never admits or claims a
-// never-claimed record; a caller uses Claim for that.
+// never-claimed record; a caller uses Claim for that. It returns
+// ErrNotClaimed last when a key in the record's transitive Needs
+// closure holds StatusFailed or StatusBlocked, checked after the
+// ErrNotStale check and before any CompareAndSwap call. That refusal
+// writes: it moves the record to StatusBlocked through blockOne,
+// naming the nearest blocking ancestor in BlockedBy. See
+// blockingAncestor.
 func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	if owner == "" {
 		return 0, ErrEmptyOwner
@@ -175,6 +197,16 @@ func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, 
 			return 0, ErrNotStale
 		}
 		if cur.Status != StatusClaimed {
+			return 0, ErrNotClaimed
+		}
+		blocker, blocked, err := l.blockingAncestor(ctx, cur.Needs)
+		if err != nil {
+			return 0, err
+		}
+		if blocked {
+			if err := l.blockOne(ctx, actor, now, key, cur, blocker); err != nil {
+				return 0, err
+			}
 			return 0, ErrNotClaimed
 		}
 		fence := cur.Fence + 1

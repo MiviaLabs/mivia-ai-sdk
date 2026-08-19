@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
@@ -317,6 +318,68 @@ func TestMutatingMethodsPropagateCompareAndSwapError(t *testing.T) {
 	restoreSnap := ledger.Snapshot{Tasks: []ledger.TaskState{{Key: "new", Status: ledger.StatusPending}}}
 	if err := lf.Restore(ctx, restoreSnap); !errors.Is(err, errStoreBoom) {
 		t.Fatalf("Restore: got %v, want errStoreBoom", err)
+	}
+}
+
+// secondLoadFaultStore wraps a *ledger.MemStore and fails the second
+// and every later Load of one key, letting a caller's first read of
+// that key succeed. Every call forwards under context.Background(), so
+// the injected fault is the only failure a caller can observe.
+type secondLoadFaultStore struct {
+	base     *ledger.MemStore
+	faultKey ledger.IdempotencyKey
+	loads    atomic.Int64
+}
+
+func (s *secondLoadFaultStore) Load(_ context.Context, key ledger.IdempotencyKey) (ledger.TaskState, bool, error) {
+	if key == s.faultKey && s.loads.Add(1) > 1 {
+		return ledger.TaskState{}, false, errStoreBoom
+	}
+	return s.base.Load(context.Background(), key)
+}
+
+func (s *secondLoadFaultStore) CompareAndSwap(_ context.Context, key ledger.IdempotencyKey, old, new ledger.TaskState) (bool, error) {
+	return s.base.CompareAndSwap(context.Background(), key, old, new)
+}
+
+func (s *secondLoadFaultStore) Range(_ context.Context, fn func(ledger.TaskState) bool) error {
+	return s.base.Range(context.Background(), fn)
+}
+
+// TestAdmitReportsFalseWhenRecheckNeedsFails pins Admit's result shape
+// when recheckNeeds fails after the insert already landed: Admit
+// returns (false, err) even though the record is admitted and reads
+// StatusPending. This behavior predates the transitive-blocking
+// change; the test pins it so it cannot drift unnoticed.
+func TestAdmitReportsFalseWhenRecheckNeedsFails(t *testing.T) {
+	ctx := context.Background()
+	base := ledger.NewMemStore()
+	l, err := ledger.New(base, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	mustAdmit(t, l, ctx, "need", 1)
+
+	lf, err := ledger.New(&secondLoadFaultStore{base: base, faultKey: "need"}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ok, err := lf.Admit(ctx, testActor, "dep", 1, nil, fixedNow, "need")
+	if !errors.Is(err, errStoreBoom) {
+		t.Fatalf("Admit: got %v, want errStoreBoom", err)
+	}
+	if ok {
+		t.Fatalf("Admit = true, want false on a failed recheck")
+	}
+	st, found, err := l.State(ctx, "dep")
+	if err != nil {
+		t.Fatalf("State(dep): %v", err)
+	}
+	if !found {
+		t.Fatalf("dep: want found: the insert landed before the recheck")
+	}
+	if st.Status != ledger.StatusPending {
+		t.Fatalf("dep.Status = %q, want %q", st.Status, ledger.StatusPending)
 	}
 }
 

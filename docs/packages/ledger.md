@@ -27,7 +27,10 @@ surface below mirrors `api/ledger.txt`.
 - `MemStore` — the shipped mutex-guarded `Store`.
 - `MemStoreOptions` — optional cap for `MemStore`. Field `MaxEntries`
   int; zero means unbounded, positive bounds live entries, negative is
-  rejected.
+  rejected. A tombstone clears `Needs`, so `Claim`'s ancestor walk
+  cannot read through a tombstoned record to its own ancestors. A
+  caller who needs the transitive check to hold across eviction leaves
+  `MaxEntries` at zero.
 - `SQLiteStore` — a `Store` backed by a local `modernc.org/sqlite`
   database file (or `":memory:"`). Behind the `ledger_sqlite` build
   tag; see "SQLiteStore" below.
@@ -61,14 +64,20 @@ surface below mirrors `api/ledger.txt`.
   `UpdatedAt`.
 - `Ledger.Claim(ctx, actor, key, owner, lease, now)` — claims a pending
   record, or a claimed record whose lease has expired. Returns
-  `ErrEmptyOwner` for a blank `owner`.
+  `ErrEmptyOwner` for a blank `owner`. Returns `ErrNotClaimed` when a
+  key in the record's transitive `Needs` closure holds `StatusFailed`
+  or `StatusBlocked`. That refusal writes: it moves the record to
+  `StatusBlocked`, naming the nearest blocking ancestor in
+  `BlockedBy`.
 - `Ledger.Renew(ctx, actor, key, owner, fence, lease, now)` — extends
   the lease under the current fence.
 - `Ledger.Release(ctx, actor, key, owner, fence, now)` — returns a
   claimed record to pending.
 - `Ledger.Takeover(ctx, actor, key, owner, lease, now)` — claims a
   stale claimed record and fences the dispossessed owner's token.
-  Returns `ErrEmptyOwner` for a blank `owner`.
+  Returns `ErrEmptyOwner` for a blank `owner`. Returns `ErrNotClaimed`
+  under the same transitive-`Needs` rule `Claim` applies, with the same
+  write side effect.
 - `Ledger.Complete(ctx, actor, key, owner, fence, status, now)` — marks
   a claimed record `StatusCompleted` or `StatusFailed`. A failed
   completion blocks every dependent, transitively.
@@ -102,9 +111,13 @@ surface below mirrors `api/ledger.txt`.
   `ledger_test/takeover_test.go`.
 - `ErrNotClaimed` ("ledger: record is not claimed") — `Claim`,
   `Renew`, `Release`, `Complete`, and `Takeover` return it when the
-  record's status is outside their eligible set. Pinned by
-  `ledger_test/claim_test.go`, `ledger_test/complete_test.go`, and
-  `ledger_test/takeover_test.go`.
+  record's status is outside their eligible set. `Claim` and
+  `Takeover` also return it for an otherwise eligible record, a
+  `StatusPending` one included, when a key in its transitive `Needs`
+  closure holds `StatusFailed` or `StatusBlocked`. Pinned by
+  `ledger_test/claim_test.go`, `ledger_test/complete_test.go`,
+  `ledger_test/takeover_test.go`, and
+  `ledger_test/transitive_block_test.go`.
 - `ErrNoKey` ("ledger: key has no record") — `Claim`, `Renew`,
   `Release`, `Complete`, and `Takeover` return it when `Store.Load`
   finds no record for the key. Pinned by `ledger_test/claim_test.go`,
@@ -137,9 +150,20 @@ surface below mirrors `api/ledger.txt`.
   still holds a valid fence. Pinned by
   `ledger_test/lease_semantics_test.go`.
 - `Admit` re-reads its needs after its own insert and blocks the
-  record through `blockOne` when a need failed in between, so a
-  concurrent failure walk cannot leave a dependent pending. Pinned by
+  record through `blockOne` when a need failed in between. Pinned by
   `ledger_test/admit_complete_race_test.go`.
+- No record claims while a key in its transitive `Needs` closure holds
+  `StatusFailed` or `StatusBlocked`. `Claim` and `Takeover` both check
+  the closure, so every granted claim passed the check. The rule is
+  check-time, not absolute: a need blocked after the walk read it, and
+  before the claim's own `CompareAndSwap`, does not stop that claim,
+  and `ledger` never revokes a granted claim. Pinned by
+  `ledger_test/transitive_block_test.go` and
+  `ledger_test/transitive_block_window_test.go`.
+- A record whose ancestor failed outside `Complete`'s walk stays
+  `StatusPending` until someone tries to claim it. `State` reports
+  `StatusPending` for it, and `Blocked` reports false, until that first
+  claim attempt.
 - Every mutating method follows the same retry-and-reclassify contract
   on a losing `CompareAndSwap`: it reloads the record and re-evaluates
   its own eligibility rule, retrying while the caller still
@@ -161,6 +185,12 @@ surface below mirrors `api/ledger.txt`.
   on `(Sequence, Status, Fence, Rev)`, and bumps `Rev` by one on every
   successful write, closing the blind spot two concurrent same-fence
   `Renew` calls would otherwise leave.
+- `BlockedBy` names the key that caused the block. That is the failed
+  root for a record blocked by `Complete`'s walk, and the nearest
+  blocking ancestor for a record blocked by `Claim` or `Takeover`. The
+  same graph can yield a different `BlockedBy` under a different
+  interleaving. A caller who needs the originally failed key walks
+  `Needs` itself.
 - Every mutating method takes a leading `actor Actor` argument and
   stamps `UpdatedBy`/`UpdatedAt` on every successful write; `Admit`
   additionally stamps `CreatedBy`/`CreatedAt` on first insert only.

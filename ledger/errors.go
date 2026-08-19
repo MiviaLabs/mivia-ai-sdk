@@ -14,8 +14,14 @@ var ErrFenced = errors.New("ledger: fence token is stale")
 // yet reached its LeaseUntil deadline.
 var ErrNotStale = errors.New("ledger: lease is not stale")
 
-// ErrNotClaimed is returned by Renew, Release, Complete, or Takeover
-// when the stored record's Status is not StatusClaimed.
+// ErrNotClaimed is returned by Claim, Renew, Release, Complete, or
+// Takeover for a record the caller may not hold. Renew, Release, and
+// Complete return it when the stored record's Status is not
+// StatusClaimed. Claim returns it for a terminal or blocked record,
+// and Takeover for a StatusPending or terminal record. Claim and
+// Takeover also return it for an otherwise eligible record, including
+// a StatusPending one, when a key in its transitive Needs closure
+// holds StatusFailed or StatusBlocked.
 var ErrNotClaimed = errors.New("ledger: record is not claimed")
 
 // ErrNoKey is returned by Claim, Renew, Release, Takeover, or

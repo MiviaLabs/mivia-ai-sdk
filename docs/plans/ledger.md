@@ -41,14 +41,15 @@ Give a caller a durable-task-admission primitive. A task submitted
 under an idempotency key is admitted exactly once, even under retry
 or duplicate submission. Ownership moves between processes through a
 time-boxed lease with renewal and a fenced takeover. A failed task
-marks its dependents blocked.
+marks its dependents blocked, and `Claim` and `Takeover` refuse a
+record whose transitive needs hold a failed or blocked key.
 
 ## Scope
 
 Inside: idempotency-keyed admission (`Admit`) with a sequence
 watermark; lease-based ownership (`Claim`, `Renew`, `Release`) with a
 monotonic fence token; a stale-lease takeover (`Takeover`);
-transitive dependency blocking on failure (`Complete`); a pluggable
+dependency blocking on failure, pushed by `Complete` and checked at `Claim` and `Takeover`; a pluggable
 `Store` with a shipped in-memory default (`MemStore`); and
 `Snapshot`/`Encode`/`Decode`/`Restore` for point-in-time persistence.
 
@@ -249,11 +250,11 @@ two: the dependent reads its need as live, the need's failure walk
 finishes, then the dependent's insert lands. `recheckNeeds` closes
 it. After the record inserts, `Admit` re-reads its needs and blocks
 the record when a need failed in that window. It uses `blockOne`, the
-same retry contract the failure walk uses. A re-read that finds every
-need live proves the insert preceded any later failure, whose walk
-then observes the record on its own.
+same retry contract the failure walk uses.
 `admit_complete_race_test.go`, described in Tests below, pins the
-interleaving deterministically.
+interleaving deterministically. Blocking the record alone is not
+enough: see "Transitive blocking" below for the record's own
+dependents.
 
 A cyclic dependency graph deserves a specific note: `Complete`'s
 blocking walk seeds a matching-target set with the failed key and
@@ -269,6 +270,321 @@ terminal status instead of being overwritten to `StatusBlocked`. A
 two-hop and a three-hop cycle case both pin this: the originally
 failed key keeps its terminal status, while every other node in the
 cycle ends `StatusBlocked` exactly once.
+
+## Transitive blocking
+
+This section is the change contract for the transitive-blocking fix.
+It corrects a confirmed admission-invariant break.
+
+### The invariant
+
+`Claim` and `Takeover` refuse a record whose transitive `Needs`
+closure held `StatusFailed` or `StatusBlocked` at the time of the
+check. The rule is check-time, not absolute. "What the fix does not
+do" states the window this leaves.
+
+### The defect
+
+A record enters `StatusBlocked` at three places today. Only
+`Complete`'s failure walk propagates to further dependents. `blockOne`
+writes a single key and walks nothing. So a dependent of a freshly
+blocked record can stay `StatusPending` and claim.
+
+Three reproductions confirm this. Each one lets `Claim(C)` succeed
+while ancestor `A` is `StatusFailed`.
+
+1. `recheckNeeds` window. `B` needs `A`, `C` needs `B`. `A` fails
+   while `B` admits. `B` blocks through its own `recheckNeeds` call,
+   not through the failure walk. `C` admits inside that window. Both
+   of `C`'s reads of `B` see `B` pending.
+2. Snapshot-to-write window. `A` fails. The `Range` snapshot holds
+   `B` but not `C`. `C` admits after the snapshot and before pass
+   two's `CompareAndSwap` on `B`. Both of `C`'s reads of `B` see `B`
+   pending. No recheck is involved.
+3. Blocked-at-admission window. This case needs no concurrency at
+   all. `C` admits naming a need `B` that does not exist yet. `A`
+   fails; the walk finds nothing, because `B` is still absent. `B`
+   then admits naming failed `A`, so `Admit` inserts `B` already
+   `StatusBlocked`. Nothing ever walks `B`'s dependents.
+
+Window three proves the defect is not only a race.
+
+### Two designs, measured
+
+Two designs close all three windows. The choice is a cost decision,
+so it was measured, not argued.
+
+Push: make every block transition walk its dependents, and repeat
+`blockDependents` to a fixpoint. Pull: check the transitive `Needs`
+closure at `Claim` and `Takeover`, the points of use.
+
+Push finds dependents through `Range`, because `Store` publishes no
+reverse index. `Range` copies the whole store under `MemStore`'s
+mutex. So push pays the whole store per blocked admission. The
+benchmark admits N dependents of an already-failed root, on
+`MemStore`, with `-benchtime 3x`.
+
+Every figure below comes from one 24-thread Linux machine, so read
+the ratios and the curve shapes, not the absolute nanoseconds. An
+independent run reproduced both, and two absolute figures differed by
+about a factor of three.
+
+| N dependents | today | push | pull |
+| --- | --- | --- | --- |
+| 200 | 83,520 ns | 3,400,746 ns | 65,967 ns |
+| 1000 | 397,203 ns | 84,692,106 ns | 345,917 ns |
+| 3000 | 1,193,820 ns | 948,746,860 ns | 1,147,586 ns |
+
+Push is 795 times slower at N equal to 3000, and the curve is
+quadratic. A fan-out of blocked dependents after one failure is the
+normal shape, not an exotic one.
+
+Push also degrades on records nobody named. This benchmark admits 200
+dependents of a failed root, with M unrelated records in the store.
+
+| M unrelated | today | push | pull |
+| --- | --- | --- | --- |
+| 0 | 82,560 ns | 2,989,280 ns | 72,797 ns |
+| 2000 | 79,437 ns | 92,671,453 ns | 68,533 ns |
+| 8000 | 90,063 ns | 456,254,078 ns | 135,780 ns |
+
+Push costs 456 ms for the same 200 admissions once 8000 unrelated
+records exist. Pull stays flat. This is the deciding measurement:
+push's cost tracks the store, while pull's cost tracks the graph the
+caller declared.
+
+Pull has its own worst case, stated here rather than hidden. It walks
+ancestors per claim, so a deep chain pays depth per claim. This
+benchmark claims every record of a healthy chain of depth D.
+
+| D chain | today | push | pull |
+| --- | --- | --- | --- |
+| 200 | 40,583 ns | 48,207 ns | 1,720,016 ns |
+| 1000 | 200,070 ns | 196,406 ns | 45,991,992 ns |
+
+A 1000-deep `Needs` chain is a far rarer shape than 1000 dependents
+of one root. The cost is also proportional to the caller's own
+declared graph, and it does not grow as unrelated records fill the
+store.
+
+Speed is not the only difference. Push blocks retroactively, because
+`blockDependents` treats `StatusClaimed` as non-terminal and rewrites
+an already-claimed dependent to `StatusBlocked`. Pull cannot do that,
+so it leaves one window open. Hold `Claim(C)`'s ancestor read of `B`,
+then block `B` through `Admit`'s blocked insert while the read is
+held. The walk reads the pre-block value, and the claim is granted.
+Measured on the prototype: `B` reads `blocked`, `Claim(C)` returns
+nil, and `C` reads `claimed`. Nothing corrects `C` afterwards,
+because the blocked insert walks nothing. This window is far narrower
+than the defect it replaces, and it needs a store-level hold to hit.
+Push would close it at the cost the tables above price.
+
+A reverse-dependency index inside `MemStore` would cut push's cost.
+It is rejected here. `Store` is an interface with a second
+implementation, so the index would have to reach `SQLiteStore` and
+probably the interface itself. That is a much larger change than the
+defect warrants.
+
+Recommendation: pull. It is the smaller change, it keeps today's cost
+profile on the admission path, and it checks at the point of use
+instead of racing to propagate.
+
+### The fix
+
+Two unexported changes. No exported symbol changes.
+
+1. New unexported `blockingAncestor` in `ledger/ledger.go`. It walks
+   the transitive `Needs` closure breadth-first from a record's own
+   `Needs`, loading each key once. It returns the first key found in
+   `StatusFailed` or `StatusBlocked`. A `Store` fault returns the
+   error. A never-admitted need is skipped, matching `blockingNeed`.
+   A `seen` set makes a cyclic graph terminate.
+2. `Claim` and `Takeover` in `ledger/claim.go` call it after their
+   own status precondition and before their `CompareAndSwap`. On a
+   blocking ancestor, each one blocks the record through the existing
+   `blockOne` and returns `ErrNotClaimed`.
+
+`Complete`, `blockDependents`, `blockOne`, `recheckNeeds`, and
+`Admit` are unchanged. `ledger/complete.go` is not touched.
+
+The check must be transitive, not one level. An intermediate need is
+transiently `StatusPending` between its own insert and its own block,
+and a one-level check grants the claim in that window. The test at
+depth two pins this.
+
+`Claim` and `Takeover` both need the check for the rule to hold by
+induction. `Claim` and `Takeover` are the only ways a record reaches
+`StatusClaimed`. Gating both means no claimed record had a blocking
+ancestor when it was granted.
+
+Blocking the record on refusal is deliberate. It keeps `Blocked`
+observability, and it makes the next `Claim` fail on status without
+walking again. The refusal path therefore writes; document that in
+`docs/packages/ledger.md`.
+
+### What the fix does not do
+
+A record whose ancestor failed stays `StatusPending` until someone
+tries to claim it. `Complete`'s eager walk still blocks every
+dependent it can see, so the common case is unchanged. The escapees
+from the three windows resolve at their first claim attempt.
+
+This is a deliberate trade. Eager blocking of an escapee costs a
+`Range` per block, and the tables above price that. `State` reports
+`StatusPending` for an escapee, and `Blocked` reports false for it,
+until its first claim attempt.
+
+The check is also not atomic against a concurrent block. A need that
+becomes blocked after the walk read it, and before the claim's own
+`CompareAndSwap`, does not stop that claim. `ledger` never revokes a
+granted claim, so nothing corrects it. A caller who needs that
+guarantee re-checks `Blocked` on its needs before it commits work.
+
+### Termination
+
+`blockingAncestor` terminates because `seen` admits each key once and
+the queue only grows from a key's `Needs`. The bound is the distinct
+keys reachable through `Needs` as each key is loaded, which is at
+most the record count. A concurrent rebase can add a `Needs` entry to
+a key the walk has not reached yet, so a walk can grow; the record
+count still bounds it. A cycle terminates on the second visit.
+
+The `seen` set is load-bearing, not a precaution. `Admit` never calls
+`TaskState.Validate`, so it accepts a self-need: `Admit(S, needs=S)`
+returns true, and the stored record fails `Validate` if a caller ever
+runs it. That gap predates this change and stays out of scope here.
+Without `seen`, the walk on that record would not terminate.
+
+### Concurrency
+
+The fix adds no lock, no new `Store` method, and no goroutine. It
+relies on the existing `CompareAndSwap` discipline: every write
+compares `(Sequence, Status, Fence, Rev)` and retries against a fresh
+`Load`.
+
+`blockingAncestor` makes only `Load` calls and holds no lock between
+them. It runs outside any `Range` callback, so the reentrancy rule in
+`ledger/store.go` holds. It cannot deadlock, because it waits on
+nothing.
+
+`Claim` fails closed. A `Store` fault or a canceled `ctx` during the
+walk returns that error and grants no claim.
+
+### Fence and lease invariants
+
+Unchanged. The refusal path writes only `Status`, `BlockedBy`,
+`UpdatedBy`, and `UpdatedAt`, exactly the fields `blockOne` already
+wrote. It never sets `Fence`, `Owner`, or `LeaseUntil`. The granting
+path is untouched, so `durablefence`'s claim, takeover, and fence
+conformance kit needs no change.
+
+### SQLiteStore
+
+No separate fix. The check lives in `Ledger` over the `Store`
+interface. `ledger/sqlite_store.go` implements `Load`,
+`CompareAndSwap`, and `Range` only, and duplicates no blocking logic.
+`make verify-ledger-sqlite` must still pass.
+
+### Restore and eviction
+
+`Restore` (`ledger/snapshot.go:42`) is a fourth entry into
+`StatusBlocked`. It replays a caller-supplied snapshot as given, and
+`Snapshot.Validate` is per-record, so it cannot reject a snapshot
+holding blocked `B` beside pending `C` naming `B`. The pull check
+needs no exemption for it: it reads status at claim time and does not
+care how a record reached `StatusBlocked`.
+
+`MemStoreOptions.MaxEntries` is a known limit for both designs. A
+tombstone clears `Needs`, so no walk can see through a tombstoned
+record to its own ancestors. A tombstone only ever replaces a
+terminal record. So a `StatusCompleted` tombstone can hide a failed
+grandparent. The limit binds harder under pull than under push: push
+reads the graph at failure time, and pull reads it at claim time,
+which is later. Every eviction landing between the two is an exposure
+only pull has. Record this limit in `MemStoreOptions`' documentation;
+do not change eviction in this change.
+
+### Exported behavior change
+
+`Claim` and `Takeover` gain a documented refusal reason:
+`ErrNotClaimed` when a transitive need holds `StatusFailed` or
+`StatusBlocked`. No new sentinel, and no new exported symbol.
+
+`taskrun.Run` returns a different error for the same escapee on two
+consecutive calls. Measured: the first call returns
+`ledger.ErrNotClaimed`, and the second returns `ErrTaskBlocked`.
+`taskrun/taskrun.go:79` reads `State` before it claims, so the first
+pass sees `StatusPending` and returns `Claim`'s error unchanged. The
+refusal write then makes the second pass see `StatusBlocked`. Work
+never runs on either call, so this is a contract break, not a safety
+break.
+
+`taskrun` is not changed here. Re-reading `State` inside
+`taskrun.Run` would edit a second package for a defect that is not
+its own. Instead, add one row to
+`taskrun/taskrun_test/blocked_test.go` pinning the escapee's
+first-call error, so the two-call shape is recorded, not discovered.
+
+One existing test changes its expectation.
+`TestCompleteFailedBlocksDependentAfterConcurrentClaim`
+(`ledger/ledger_test/complete_race_test.go:120`) fires a concurrent
+`Claim` on a dependent of an already-failed key and asserts it
+succeeds. That claim is now refused. Change the trigger to assert
+`errors.Is(err, ledger.ErrNotClaimed)`. The rest of the test, which
+proves pass two's reload-and-retry, is unchanged and still passes.
+This is the only existing test whose expectation moves.
+
+### Corrections to false claims
+
+Three statements are disproved. The builder corrects all three in the
+same change as the code.
+
+1. `ledger/ledger.go`, the `recheckNeeds` doc comment. Delete the
+   sentence claiming that a fresh read finding every need live proves
+   a later failure walk observes the record. A need blocked later by
+   `blockOne` runs no walk at all. Replace it with: a fresh read that
+   finds every need live does not prove this record's own dependents
+   are safe, and `Claim`'s ancestor check is the backstop.
+2. `docs/packages/ledger.md`, the invariant bullet ending "so a
+   concurrent failure walk cannot leave a dependent pending". Replace
+   it with the rule this change enforces: no record claims while a
+   transitive need holds `StatusFailed` or `StatusBlocked`, checked by
+   `Claim` and `Takeover`. Name the new test file as the pin.
+
+3. `ledger/errors.go:17`, the `ErrNotClaimed` doc comment. It reads
+   "returned by Renew, Release, Complete, or Takeover when the stored
+   record's Status is not StatusClaimed". Both halves become false:
+   `Claim` returns it too, and it now returns it for a record whose
+   status is `StatusPending`. Rewrite it to name `Claim` and to state
+   the blocking-ancestor reason.
+
+`blockDependents`' own doc comment (`ledger/complete.go:70`) stays
+true, because the two-pass shape is unchanged. The `Complete` bullet
+in the API section above also stays true for the same reason.
+
+Two Go doc comments need the new refusal reason and its write side
+effect: `Claim` at `ledger/claim.go:16` and `Takeover` at
+`ledger/claim.go:151`. Each one enumerates its refusal reasons in
+check order, so each gains the ancestor check in its place. AGENTS.md
+treats a comment as a machine-read API surface, and `check_docs.py`
+cannot catch stale content.
+
+Two `docs/packages/ledger.md` entries need new text: `Claim` and
+`Takeover` gain the refusal reason and its write side effect, and
+`ErrNotClaimed` gains that reason in its list.
+
+### BlockedBy
+
+`BlockedBy` names the key that caused the block. That is the failed
+root for a record blocked by `Complete`'s walk, and the nearest
+blocking ancestor for a record blocked by `Claim`. The same topology
+can therefore yield a different `BlockedBy` under a different
+interleaving, and `Blocked` is exported, so a caller sees it.
+
+This is not a new class of behavior. `admit_blocked_test.go:74`
+already asserts a leaf blocked on a mid-chain key, not on the failed
+root. A caller who needs the originally failed key walks `Needs`
+itself. State this in `docs/packages/ledger.md`.
 
 ## Tests
 
@@ -380,6 +696,103 @@ the five `*_race_test.go` files run under `go test -race`
   must still end `StatusBlocked`, naming `A`, and never claim. The
   post-insert `recheckNeeds` pass is what the test turns red without.
 
+### Transitive blocking tests
+
+New file `ledger/ledger_test/transitive_block_test.go`, package
+`ledger_test`. It holds one table-driven test plus four
+interleaving tests and four supporting tests. The existing fault and
+concurrency files do not cover this path: `admit_complete_race_test.go`
+stops at the directly blocked record, and `complete_race_test.go`
+races a `Claim` against the walk, not a late `Admit`.
+
+The file reuses `testActor`, `fixedNow`, and `fixedLease` from
+`helpers_test.go`. It defines its own two-stage hold store, because
+`loadHoldStore` holds one call and window one needs two phases. It
+does not change `rangeTriggerStore`, which stays in
+`complete_race_test.go`.
+
+The two window tests that need a store wrapper, and that wrapper
+itself, live in a second file, `transitive_block_window_test.go`. One
+file for all of them lands near 553 lines, over the 500-line structure
+gate.
+
+- `TestClaimRejectsBlockingAncestor` — the table-driven case set, and
+  the one that grows. Each row is a `Needs` graph, the key to fail,
+  and the key to claim. Rows: a two-hop chain, a three-hop chain, a
+  diamond with two paths to one leaf, a two-node cycle, a self-need
+  where `S` names `S`, a branch whose sibling completed before the
+  failure, and a need that was never admitted. The self-need row is
+  reachable because `Admit` never calls `TaskState.Validate`; it is
+  the shortest cycle, and it hangs a walk with a broken `seen` set. Each row asserts the `Claim` result, the record's status
+  after the attempt, and its `BlockedBy`. The never-admitted-need row
+  asserts the claim succeeds, pinning the documented rule that an
+  absent need blocks nothing. The completed-sibling row asserts the
+  sibling keeps `StatusCompleted`. This row set kills a mutation that
+  checks only direct needs, and a mutation that treats
+  `StatusCompleted` as blocking.
+- `TestClaimRejectsAfterRecheckWindow` — window one. A two-phase hold
+  store holds `B`'s pre-insert read of `A`, then holds `B`'s
+  post-insert recheck read of `A`. `A` fails between the two holds.
+  `C` admits naming `B` while the second hold is open. Assert
+  `Claim(C)` returns `ErrNotClaimed` and `C` then reads
+  `StatusBlocked`. Without the fix `Claim(C)` succeeds.
+- `TestClaimRejectsAfterSnapshotWindow` — window two. A range-trigger
+  store admits `C` naming `B` once the failure walk's first `Range`
+  snapshot returns. Assert `Claim(C)` returns `ErrNotClaimed`.
+  Without the fix `Claim(C)` succeeds.
+- `TestClaimRejectsAfterBlockedAdmission` — window three, at depth
+  two, and it needs no store wrapper and no goroutine. Admit `C`
+  naming an absent `B`, and `D` naming `C`. Admit and fail `A`. Then
+  admit `B` naming `A`, so `B` inserts already `StatusBlocked`.
+  Assert `Claim(D)` returns `ErrNotClaimed`. `C` is still
+  `StatusPending` at that moment, so a one-level check would grant
+  `D`. This is the row that kills the one-level mutation.
+- `TestTakeoverRejectsBlockingAncestor` — the same rule at the second
+  point of use, built without a store wrapper. Admit `C` naming an
+  absent `B`, then claim `C`; nothing blocks it. Admit, claim, and
+  fail `A`. Then admit `B` naming `A`, so `B` inserts already
+  `StatusBlocked` and walks nothing. `C` is still `StatusClaimed`
+  with a blocked need. Assert `Takeover(C)` past the lease deadline
+  returns `ErrNotClaimed`, and `C` then reads `StatusBlocked` naming
+  `B`. This kills a mutation that gates `Claim` only.
+- `TestClaimAncestorWalkStoreFault` — a fault-injecting `Store` fails
+  the `Load` of an ancestor. Assert `Claim` returns that error, and
+  that the record stays `StatusPending` and unclaimed. `Claim` fails
+  closed.
+- `TestClaimAncestorWalkContextCanceled` — the same shape with a
+  canceled `ctx`. Assert `Claim` returns the `ctx` error and grants
+  nothing. This covers the cancellation branch of the walk, which no
+  other test drives.
+- `TestClaimBlocksOnceEmitsOnce` — an `events.Bus` counts
+  `BlockedEvent`. Two `Claim` attempts on the same escapee must emit
+  exactly one `BlockedEvent`. The second attempt fails on status
+  before the walk. This kills a double-emit regression.
+- `TestClaimWalkLoadCount` — a wrapped `Store` counts `Load` calls
+  across one `Claim` on a five-hop healthy chain. Assert the count is
+  six: the record plus five ancestors, each loaded once. This pins the
+  `seen` set and the walk's cost bound.
+
+Add one row to `taskrun/taskrun_test/blocked_test.go`: an escapee's
+first `taskrun.Run` call returns `ledger.ErrNotClaimed`, not
+`ErrTaskBlocked`, and runs no work. A second call returns
+`ErrTaskBlocked`. This is the only file outside `ledger` this change
+touches, and it adds a test only.
+
+Add one row to `ledger/ledger_test/context_test.go`: `Admit` returns
+`(false, err)` when `recheckNeeds` fails against a fault-injecting
+`Store` after the insert already landed. The record is admitted, and
+the bool still reads false. This behavior predates this change and
+stays unchanged; the row pins it so it cannot drift unnoticed.
+
+Add one row to `ledger/ledger_test/admit_bench_test.go`:
+`BenchmarkClaimChainDepth`, claiming every record of a healthy chain
+at depths 10, 100, and 1000. It must claim every record, not only the
+leaf, so it measures the same workload the third table used to
+justify this design. It pins the ancestor walk's cost, so the one
+worst case is measured, not discovered later.
+
+Every test in this file runs under `go test -race`.
+
 ## Metamorphic test suite
 
 New file `ledger/ledger_test/metamorphic_test.go`, package
@@ -454,6 +867,47 @@ window. No exported symbol changes, so `make api-update` produces no
 diff for `api/ledger.txt`. The test adds a package-private
 `loadHoldStore` type inside `ledger_test`, not an exported symbol.
 `go test -race ./ledger/...` covers the new file and the fix.
+
+The transitive-blocking fix changes production `ledger/` code in
+`ledger/ledger.go` and `ledger/claim.go` only. `ledger/complete.go`
+is untouched. It adds one unexported function, `blockingAncestor`,
+and one call to it in each of `Claim` and `Takeover`. No exported
+symbol changes, so `make api-update` must produce no diff for
+`api/ledger.txt`. The `policy/layers.json` row
+`"ledger": ["machine", "events"]` is unchanged; the fix adds no
+import. `python3 scripts/check_deps.py` and
+`python3 scripts/check_plan.py` pass.
+
+Gates for this change:
+
+- `make verify` passes, including the coverage floor. The measured
+  `ledger` coverage under the default build is 95.6% with the fix and
+  the new test file.
+- `make verify-ledger-sqlite` passes, proving the shared check holds
+  over `SQLiteStore`.
+- `go test -race ./ledger/...` passes, covering the new file, the
+  stress and linearizability suite, and every existing race file.
+- `go test ./...` passes for the whole module. `e2e` claims through
+  `taskrun`, so its ceremony scenarios exercise the new check.
+- `python3 scripts/check_structure.py` passes. `claim.go` lands near
+  215 lines and `ledger.go` near 222 lines, both well under 500, and
+  every function stays under 80 lines.
+
+No conformance vector changes: `ledger` carries no signed or threaded
+wire form.
+
+One test file outside `ledger` changes: a new row in
+`taskrun/taskrun_test/blocked_test.go`. No `taskrun` production code
+changes.
+
+Doc work landing in the same change: the `recheckNeeds` comment in
+`ledger/ledger.go`; the `Claim` and `Takeover` comments in
+`ledger/claim.go`; the `ErrNotClaimed` comment in
+`ledger/errors.go`; and, in `docs/packages/ledger.md`, the blocking
+invariant bullet, the `Claim`, `Takeover`, and `ErrNotClaimed`
+entries, the `BlockedBy` note, and the `MemStoreOptions` eviction
+limit. See "Corrections to false claims" and "Restore and eviction"
+above.
 
 Phase 42c adds the `Actor` type and four `TaskState` audit fields
 (`CreatedBy`, `CreatedAt`, `UpdatedBy`, `UpdatedAt`), threaded through

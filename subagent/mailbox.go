@@ -85,7 +85,7 @@ type sendTool struct {
 func (t *sendTool) Name() string { return t.name }
 
 // Run builds, signs, and delivers one message.
-func (t *sendTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (t *sendTool) Run(_ context.Context, in tools.InOut) (tools.Out, error) {
 	msg := envelope.Message{
 		Version:   envelope.Version,
 		ID:        fmt.Sprintf("%s-%d", t.name, atomic.AddUint64(&sendSeq, 1)),
@@ -124,7 +124,7 @@ type inboxTool struct {
 func (t *inboxTool) Name() string { return t.name }
 
 // Run drains the mailbox and reports its payloads.
-func (t *inboxTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (t *inboxTool) Run(_ context.Context, in tools.InOut) (tools.Out, error) {
 	msgs := t.box.Take()
 	if len(msgs) == 0 {
 		return tools.Out{Value: inboxEmpty}, nil

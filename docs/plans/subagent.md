@@ -27,7 +27,7 @@ Inside:
   `LedgerTool.OpRun` wraps the full taskrun ceremony; a blocked or
   replayed key fails with the ceremony's own sentinel.
 - Internal tools over direct string payloads: `FlowTool` runs a flow
-  plan and reports the final status; `ProviderTool` runs one turn; `ProviderRegistryTool` routes one turn over `providerregistry`'s named fallback order
+  plan and reports the final status; `ProviderTool` runs one turn; `ProviderRegistryTool` routes one turn over `providerregistry`'s named fallback order. ToolOptions.Tracer opens one span per spawn
   through a caller-supplied Completer; `TriggerTool` fires a named
   trigger; `ChannelTool` asks a human through a Notifier.
 - The message plane: `Mailbox` holds signed messages for one

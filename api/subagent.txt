@@ -110,6 +110,7 @@ package subagent
   Artifacts *agentrun.Artifacts
   Depth int
   Bus *events.Bus
+  Tracer *trace.Tracer
 }
   var ErrBadCommand
   var ErrInvalidCapacity

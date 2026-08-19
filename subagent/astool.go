@@ -14,6 +14,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // ErrMaxDepth reports a spawn past the tool's depth bound.
@@ -32,6 +33,11 @@ type ToolOptions struct {
 	Artifacts *agentrun.Artifacts
 	Depth     int
 	Bus       *events.Bus
+	// Tracer opens one span per spawn, named subagent.spawn, carrying
+	// the spawn's thread as an attribute. A runner wired with its own
+	// Tracer nests that run's spans under the spawn span when both
+	// read the same ctx.
+	Tracer *trace.Tracer
 }
 
 // threadSeq numbers spawned threads uniquely per process.
@@ -70,6 +76,12 @@ func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	t.once.Do(t.attachForwarder)
 	payload, _ := in.Value.(string)
 	thread := fmt.Sprintf("%s-%d", t.name, atomic.AddUint64(&threadSeq, 1))
+	if t.opts.Tracer != nil {
+		var span *trace.Span
+		ctx, span = t.opts.Tracer.Start(ctx, "subagent.spawn")
+		span.SetAttribute("thread", thread)
+		defer span.End()
+	}
 	status, _, err := t.runner.Run(withDepth(ctx, depth+1), thread, machine.InOut{Input: payload})
 	if err != nil {
 		return tools.Out{}, err

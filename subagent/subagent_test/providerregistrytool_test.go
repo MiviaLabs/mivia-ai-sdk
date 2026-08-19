@@ -3,12 +3,16 @@ package subagent_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
+	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
@@ -119,4 +123,54 @@ func TestProviderRegistryToolRecordsUsage(t *testing.T) {
 	if _, ok := acc.Total("session-1"); ok {
 		t.Fatal("Total(session-1): want no counts from a failed turn")
 	}
+}
+
+// TestAsToolTracesSpawn proves a ToolOptions Tracer opens one span
+// per spawn and the spawn span nests under the ctx's existing span.
+func TestAsToolTracesSpawn(t *testing.T) {
+	plan, err := flow.New([]flow.Step{{ID: "work", To: "done", Payload: "go"}}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m, err := machine.New("queued",
+		machine.Transition{From: "queued", To: "done", Trigger: "run"})
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	calls := 0
+	reg := tools.New()
+	if err := reg.Add(spawnCounterTool{calls: &calls}); err != nil {
+		t.Fatalf("registry.Add: %v", err)
+	}
+	runner := runnerOver(t, plan, m, reg)
+	tr := trace.New()
+	tool := subagent.AsTool("helper", runner, subagent.ToolOptions{Tracer: tr})
+	out, err := tool.Run(context.Background(), tools.InOut{Value: "go"})
+	if err != nil || out.Value != "done" {
+		t.Fatalf("Run = %v, %v; want done", out.Value, err)
+	}
+	spans := tr.Spans()
+	if len(spans) != 1 || spans[0].Name != "subagent.spawn" {
+		t.Fatalf("spans = %+v, want one spawn span", spans)
+	}
+	if attr, ok := spans[0].Attributes()["thread"]; !ok || !strings.HasPrefix(attr, "helper-") {
+		t.Fatalf("spawn thread attribute = %q,%v", attr, ok)
+	}
+	if spans[0].EndTime().IsZero() {
+		t.Fatal("spawn span must end")
+	}
+}
+
+// spawnCounterTool counts the spawned run's tool calls.
+type spawnCounterTool struct {
+	calls *int
+}
+
+// Name returns the registry name.
+func (spawnCounterTool) Name() string { return "work" }
+
+// Run counts the call.
+func (s spawnCounterTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	*s.calls++
+	return tools.Out{Value: "ok"}, nil
 }

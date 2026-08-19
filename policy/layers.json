@@ -116,6 +116,7 @@
       "scheduler",
       "taskrun",
       "tools",
+      "trace",
       "trigger"
     ],
     "taskrun": [

@@ -146,3 +146,87 @@ func TestLoadMissingFile(t *testing.T) {
 		t.Errorf("Load(missing) error = %v, want wrapped os.ErrNotExist", err)
 	}
 }
+
+func TestLoadMissingEquals(t *testing.T) {
+	path := writeTemp(t, "FOOBAR\n")
+	_, err := envfile.Load(path)
+	if err == nil {
+		t.Fatal("Load() = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "missing '='") {
+		t.Errorf("Load() error = %v, want mention of missing '='", err)
+	}
+}
+
+func TestLoadQuotedTrailingContent(t *testing.T) {
+	path := writeTemp(t, `FOO="bar"baz`+"\n")
+	_, err := envfile.Load(path)
+	if err == nil {
+		t.Fatal("Load() = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "trailing content after quoted value") {
+		t.Errorf("Load() error = %v, want mention of trailing content", err)
+	}
+}
+
+func TestLoadInvalidEscapeSequence(t *testing.T) {
+	path := writeTemp(t, `FOO="a\xb"`+"\n")
+	_, err := envfile.Load(path)
+	if err == nil {
+		t.Fatal("Load() = nil error, want error")
+	}
+	if !strings.Contains(err.Error(), "invalid escape sequence") {
+		t.Errorf("Load() error = %v, want mention of invalid escape sequence", err)
+	}
+}
+
+// FuzzLoad feeds arbitrary dotenv text to Load. It must never panic,
+// and a successful parse must reproduce the same result on a second
+// parse of the same file, since Load has no side effect on its input.
+// Run: go test -fuzz=FuzzLoad ./envfile/envfile_test/
+func FuzzLoad(f *testing.F) {
+	seeds := []string{
+		"FOO=bar\n",
+		"FOO='bar baz'\n",
+		"FOO=\"a\\nb\\tc\\\\d\\\"e\"\n",
+		"# a comment\nFOO=bar\n",
+		"\nFOO=bar\n\n",
+		"FOO=bar # comment\nBAR='baz # not comment'\n",
+		"FOO=\n",
+		"FOO = bar\n",
+		"1FOO=bar\n",
+		"FOO=\"bar\n",
+		"FOO=first\nFOO=second\n",
+		"KEY=a=b\n",
+		"FOO=bar\r\nBAZ=qux\r\n",
+		"FOOBAR\n",
+		"FOO=\"bar\"baz\n",
+		"FOO=\"a\\xb\"\n",
+		"",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, content string) {
+		path := writeTemp(t, content)
+		got, err := envfile.Load(path)
+		if err != nil {
+			return
+		}
+		if got == nil {
+			t.Fatal("Load() = nil map with nil error")
+		}
+		again, err := envfile.Load(path)
+		if err != nil {
+			t.Fatalf("Load() succeeded once, failed on repeat: %v", err)
+		}
+		if len(again) != len(got) {
+			t.Fatalf("Load() not idempotent: first %v, second %v", got, again)
+		}
+		for k, v := range got {
+			if again[k] != v {
+				t.Fatalf("Load() not idempotent at key %s: first %q, second %q", k, v, again[k])
+			}
+		}
+	})
+}

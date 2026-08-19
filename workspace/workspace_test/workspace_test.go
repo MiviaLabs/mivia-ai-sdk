@@ -172,6 +172,33 @@ func TestHappyPathRoundTrip(t *testing.T) {
 	}
 }
 
+func TestListRootItself(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	entries, err := w.List(".")
+	if err != nil {
+		t.Fatalf("List(root): %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "f.txt" {
+		t.Errorf("List(root) = %v, want one entry named f.txt", entries)
+	}
+
+	info, err := w.Stat(".")
+	if err != nil {
+		t.Fatalf("Stat(root): %v", err)
+	}
+	if !info.IsDir() {
+		t.Error("Stat(root).IsDir() = false, want true")
+	}
+}
+
 func TestWriteFileRejectsEscapingParent(t *testing.T) {
 	dir := t.TempDir()
 	w, err := workspace.Open(dir)

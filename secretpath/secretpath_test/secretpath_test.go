@@ -124,3 +124,81 @@ func TestNewMatcherInvalidPattern(t *testing.T) {
 		t.Errorf("NewMatcher() error = %v, want to name pattern index 1", err)
 	}
 }
+
+func TestNewMatcherEmptyPatternList(t *testing.T) {
+	m, err := secretpath.NewMatcher(nil)
+	if err != nil {
+		t.Fatalf("NewMatcher(nil): %v", err)
+	}
+	if m.Matches("secrets/key.pem") {
+		t.Error("Matches() with no patterns = true, want false")
+	}
+}
+
+func TestMatchesEmptyPathInput(t *testing.T) {
+	m, err := secretpath.NewMatcher([]string{"secrets/*"})
+	if err != nil {
+		t.Fatalf("NewMatcher: %v", err)
+	}
+	if m.Matches("") {
+		t.Error("Matches(\"\") = true, want false")
+	}
+}
+
+func TestMatchesTraversal(t *testing.T) {
+	m, err := secretpath.NewMatcher([]string{"secrets/"})
+	if err != nil {
+		t.Fatalf("NewMatcher: %v", err)
+	}
+	if m.Matches("../secrets/key.pem") {
+		t.Error("Matches(../secrets/key.pem) = true, want false: parent traversal leaves the pattern's tree")
+	}
+	if !m.Matches("a/../secrets/key.pem") {
+		t.Error("Matches(a/../secrets/key.pem) = false, want true: path.Clean resolves the internal traversal to secrets/key.pem")
+	}
+}
+
+func TestMatchesCaseSensitive(t *testing.T) {
+	m, err := secretpath.NewMatcher([]string{"secrets/key.pem"})
+	if err != nil {
+		t.Fatalf("NewMatcher: %v", err)
+	}
+	if m.Matches("Secrets/Key.pem") {
+		t.Error("Matches(Secrets/Key.pem) = true, want false: matching is case sensitive")
+	}
+}
+
+// FuzzMatches feeds arbitrary pattern lists and path strings to
+// NewMatcher and Matches. It must never panic, and Matches must
+// return the same result on the same compiled Matcher and input
+// twice, since Matches has no side effect on its input.
+// Run: go test -fuzz=FuzzMatches ./secretpath/secretpath_test/
+func FuzzMatches(f *testing.F) {
+	seeds := []struct {
+		pattern string
+		path    string
+	}{
+		{"secrets/key.pem", "secrets/key.pem"},
+		{"secrets/*.pem", "secrets/key.pem"},
+		{"secrets/", "secrets/a/b/file.txt"},
+		{"!secrets/public.txt", "secrets/public.txt"},
+		{"", ""},
+		{"secrets/key[AB].pem", "secrets/keyA.pem"},
+		{`secrets\key.pem`, `secrets\key.pem`},
+		{"../secrets/key.pem", "../secrets/key.pem"},
+	}
+	for _, s := range seeds {
+		f.Add(s.pattern, s.path)
+	}
+	f.Fuzz(func(t *testing.T, pattern, path string) {
+		m, err := secretpath.NewMatcher([]string{pattern})
+		if err != nil {
+			return
+		}
+		first := m.Matches(path)
+		second := m.Matches(path)
+		if first != second {
+			t.Fatalf("Matches(%q) not stable: first %v, second %v", path, first, second)
+		}
+	})
+}

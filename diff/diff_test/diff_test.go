@@ -1,6 +1,7 @@
 package diff_test
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -80,6 +81,12 @@ func TestUnifiedNoTrailingNewline(t *testing.T) {
 			a:    "one\ntwo",
 			b:    "one\nTWO",
 			want: "--- f.txt\n+++ f.txt\n@@ -1,2 +1,2 @@\n one\n-two\n\\ No newline at end of file\n+TWO\n\\ No newline at end of file\n",
+		},
+		{
+			name: "trailing newline differs and last line content also differs",
+			a:    "one\ntwo",
+			b:    "one\nTWO\n",
+			want: "--- f.txt\n+++ f.txt\n@@ -1,2 +1,2 @@\n one\n-two\n\\ No newline at end of file\n+TWO\n",
 		},
 	}
 	for _, tt := range tests {
@@ -180,6 +187,43 @@ func TestUnifiedHunkMerging(t *testing.T) {
 	if count != 1 {
 		t.Errorf("hunk count = %d, want 1 (changes should merge)", count)
 	}
+}
+
+// FuzzUnified feeds arbitrary byte pairs to Unified. It must never
+// panic, and identical input must always yield an empty diff, since
+// that is the one invariant Unified documents unconditionally.
+// Run: go test -fuzz=FuzzUnified ./diff/diff_test/
+func FuzzUnified(f *testing.F) {
+	seeds := []struct {
+		a, b string
+	}{
+		{"one\ntwo\nthree\n", "one\ntwo\nthree\nfour\n"},
+		{"one\ntwo\nthree\n", "one\nthree\n"},
+		{"one\ntwo\nthree\n", "one\nTWO\nthree\n"},
+		{"one\ntwo", "one\ntwo\n"},
+		{"", ""},
+		{"", "x\ny\n"},
+		{"x\n", ""},
+		{"same\n", "same\n"},
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s.a), []byte(s.b))
+	}
+	f.Fuzz(func(t *testing.T, a, b []byte) {
+		got, err := diff.Unified("f.txt", a, b, 0)
+		if bytes.Equal(a, b) {
+			if err != nil {
+				t.Fatalf("Unified(identical) error = %v, want nil", err)
+			}
+			if got != "" {
+				t.Fatalf("Unified(identical) = %q, want empty string", got)
+			}
+			return
+		}
+		if err != nil && !errors.Is(err, diff.ErrTooLarge) {
+			t.Fatalf("Unified() error = %v, want nil or ErrTooLarge", err)
+		}
+	})
 }
 
 func TestUnifiedHunksDoNotMergeWhenFar(t *testing.T) {

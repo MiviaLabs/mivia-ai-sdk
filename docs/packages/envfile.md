@@ -36,9 +36,19 @@ plain errors whose text carries no parsed value.
 - Invalid key — a key outside `[A-Za-z_][A-Za-z0-9_]*` fails with a
   message naming the line only. Pinned by
   `envfile/envfile_test/envfile_test.go`.
+- Missing `=` — a non-blank, non-comment line with no `=` fails with
+  a message naming the line only. Pinned by
+  `envfile/envfile_test/envfile_test.go`.
 - Unterminated quote — a quoted value with no matching close quote
   fails with a message naming the line only. Pinned by
   `envfile/envfile_test/envfile_test.go`.
+- Trailing content after a quoted value — non-whitespace text after
+  the closing quote, other than a comment, fails with a message
+  naming the line only. Pinned by
+  `envfile/envfile_test/envfile_test.go`.
+- Invalid escape sequence — a double-quoted value with a dangling or
+  unrecognized backslash escape fails with a message naming the line
+  only. Pinned by `envfile/envfile_test/envfile_test.go`.
 
 ## Cross-references
 

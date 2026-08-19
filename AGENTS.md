@@ -46,6 +46,19 @@ Go SDK for building AI agents. Module:
   field means no cap. Fits reports whether a candidate total stays
   under both caps. Imports no internal package; agent imports it for
   Run's optional budget check.
+- `envfile/` — dotenv loading: Load parses `KEY=VALUE` lines into a
+  map without leaking parsed values into an error. A leaf package; no
+  internal imports.
+- `secretpath/` — glob-style secret path matching: Matcher, NewMatcher,
+  Matches. Reports whether a path matches a configured pattern list. A
+  leaf package; no internal imports.
+- `workspace/` — filesystem confinement: Workspace, Open, Root,
+  ReadFile, WriteFile, List, Stat, ErrEscape. Open binds a handle to a
+  root directory; every method rejects a path that escapes it through
+  traversal or a symlink. A leaf package; no internal imports.
+- `diff/` — bounded unified line diffs: Unified, ErrTooLarge. Unified
+  computes a line-level diff and fails closed past a caller's line
+  budget. A leaf package; no internal imports.
 
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.

@@ -2,8 +2,9 @@
 
 Status: shipped. One new leaf package plus one unification inside
 `envelope`, ported from `mivia-agent`'s `internal/contextstate` and
-`internal/contentref` under the phase 65 contract. Phase 66 plans
-a `Session` on these types; phase 67 spools elided content.
+`internal/contentref` under the phase 65 contract. `contextplan`
+plans a session's context fit on these types; `spool` spools
+oversized tool output.
 
 ## Goal
 

@@ -57,16 +57,17 @@ Outside:
 - Durable state and ref minting. `contextstate` (phase 65) owns them;
   `contextplan` only reads a `*contextstate.MemStore` and a
   `contextstate.Session`, never mints or commits.
-- Spool storage. Phase 67 owns durable overflow storage. `Plan` emits
-  a `contextstate.ContentRef` for every elided payload; it writes
-  nothing durable itself. The `*memory.Store` cache is a
+- Spool storage. The `spool` package owns durable overflow storage.
+  `Plan` emits a `contextstate.ContentRef` for every elided payload;
+  it writes nothing durable itself. The `*memory.Store` cache is a
   same-process decode cache only, not a spool: it holds resolved
   payload bytes, not elision output, and a caller may run `Plan`
   without one surviving process restart. `NewPlanner` binds to the
   concrete `*contextstate.MemStore` type, not an interface. This is
   deliberate for this phase, since `MemStore` is the only shipped
-  payload source; phase 67 revisits the binding if a durable spool
-  needs a different payload-source shape.
+  payload source; `contextplan` does not yet consume `spool`, and a
+  later change revisits the binding if a durable spool needs a
+  different payload-source shape.
 - Any concrete provider client. A caller supplies its own
   `provider.Completer`; `contextplan` calls only
   `provider.TokenEstimator`.

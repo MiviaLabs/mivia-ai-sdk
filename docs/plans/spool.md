@@ -1,5 +1,10 @@
 # spool
 
+Status: shipped. One new leaf package plus a `tools.Tool` wrapper,
+implementing `docs/plans/agents/phase67_truncation_spool.md` under
+the phase 65 `contextstate` contract. No standalone phase 67 plan
+file remains.
+
 ## Goal
 
 `spool` stores oversized content under a principal-scoped grant and
@@ -11,8 +16,9 @@ The ref's format is a `ContentStore` implementation's own choice.
 `spool` does not guarantee a `contextstate.ContentRef`-shaped string;
 `memory.Store`'s refs happen to be `envelope.ContextRef` values today,
 but a caller using a different `ContentStore` may mint refs some other
-way. Phase 66, the expected consumer that resolves these refs, must
-pick a `ContentStore` whose ref format it can parse.
+way. `contextplan`, the expected consumer that resolves these refs,
+must pick a `ContentStore` whose ref format it can parse; it does not
+yet consume `spool`.
 
 ## Scope
 

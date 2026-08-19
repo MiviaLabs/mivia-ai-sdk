@@ -24,6 +24,8 @@ package agentrun
   Room string
   Budget *contextbudget.Limits
   Monitor *heartbeat.Monitor
+  Hooks *hooks.Registry
+  Tracer *trace.Tracer
   Wait agent.AckWait
 }
   type Run struct {

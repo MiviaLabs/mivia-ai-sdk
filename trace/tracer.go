@@ -8,10 +8,12 @@ import (
 
 // Tracer issues sequential SpanID values through Start. Create one
 // with New. Safe for concurrent Start calls; a sync.Mutex guards the
-// counter.
+// counter. Every started span is retained, so Spans can report the
+// whole tree after a run ends.
 type Tracer struct {
-	mu   sync.Mutex
-	next SpanID
+	mu    sync.Mutex
+	next  SpanID
+	spans []*Span
 }
 
 // New creates a Tracer with no spans started. It has no error path.
@@ -31,13 +33,23 @@ func (t *Tracer) Start(ctx context.Context, name string) (context.Context, *Span
 	}
 	t.mu.Lock()
 	t.next++
-	id := t.next
-	t.mu.Unlock()
 	s := &Span{
-		ID:       id,
+		ID:       t.next,
 		ParentID: parentID,
 		Name:     name,
 		Start:    time.Now(),
 	}
+	t.spans = append(t.spans, s)
+	t.mu.Unlock()
 	return withSpan(ctx, s), s
+}
+
+// Spans returns every span this Tracer started, in start order. The
+// slice is a copy; the spans themselves stay shared, so Attributes
+// and EndTime read live values. The result is empty and non-nil
+// before any Start call.
+func (t *Tracer) Spans() []*Span {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]*Span(nil), t.spans...)
 }

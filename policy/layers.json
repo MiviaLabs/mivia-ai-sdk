@@ -31,10 +31,12 @@
       "events",
       "flow",
       "heartbeat",
+      "hooks",
       "identity",
       "machine",
       "memory",
-      "tools"
+      "tools",
+      "trace"
     ],
     "channel": [],
     "contextbudget": [],

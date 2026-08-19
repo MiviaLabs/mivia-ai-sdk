@@ -32,6 +32,8 @@ Inside:
   `withLoopState` are the exact precedent this plan reuses.
 - Attribute recording on a live or ended span through `SetAttribute`
   and a safe, copy-based `Attributes` reader.
+- Span retention: `Tracer.Spans` returns every started span in start
+  order, so a composition layer's span tree reads after the run.
 
 Outside:
 

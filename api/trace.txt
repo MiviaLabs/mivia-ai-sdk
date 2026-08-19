@@ -4,6 +4,7 @@ package trace
   func (s *Span) End()
   func (s *Span) EndTime() (time.Time)
   func (s *Span) SetAttribute(key, value string)
+  func (t *Tracer) Spans() ([]*Span)
   func (t *Tracer) Start(ctx context.Context, name string) (context.Context, *Span)
   func New() (*Tracer)
   func SpanFrom(ctx context.Context) (*Span, bool)

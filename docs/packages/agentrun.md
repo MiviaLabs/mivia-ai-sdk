@@ -16,6 +16,12 @@ mirrors `api/agentrun.txt`.
   `Artifacts` each need `Tools`. `Ask` needs a non-empty `AskTo`.
 - `Runner` — the composed pipeline `New` returns. Build it with `New`;
   the fields stay unexported.
+- `Hooks` — the `hooks.Registry` gating tool calls: pre-tool veto,
+  post-tool observation, and the run's stop point with the final
+  status. Needs `Tools`.
+- `Tracer` — the `trace.Tracer` opening a root span per run and a
+  child span per tool call, so a run's span tree reads after the run
+  through `Tracer.Spans`.
 - `Artifacts` — a record of each gated step's tool result, keyed by step
   ID. A step repeated inside a loop overwrites the entry, so the bare ID
   holds the latest iteration's result. Every run also appends to a

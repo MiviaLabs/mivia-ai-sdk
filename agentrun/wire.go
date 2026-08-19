@@ -14,9 +14,11 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // Runner carries the blocks New validated and wired. Build it with New;
@@ -35,6 +37,8 @@ type Runner struct {
 	room      string
 	budget    *contextbudget.Limits
 	monitor   *heartbeat.Monitor
+	hooks     *hooks.Registry
+	tracer    *trace.Tracer
 	wait      agent.AckWait
 }
 
@@ -42,16 +46,32 @@ type Runner struct {
 // the one envelope thread the run's step messages share; an empty
 // threadID fails before any block runs, wrapping agent.ErrNoThread. in
 // is the starting record. Run returns the final status, the final
-// record, and the first error.
+// record, and the first error. A wired Tracer opens one root span for
+// the run and child spans for every gated step's tool call. A wired
+// Hooks registry fires PointPreTool before each tool call, PointPostTool
+// after the ack confirms, and PointStop with the final status once the
+// walk ends, success or failure.
 func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (machine.Status, machine.InOut, error) {
 	if threadID == "" {
 		return machine.Status(""), in, fmt.Errorf("agentrun: %w", agent.ErrNoThread)
+	}
+	if r.tracer != nil {
+		var span *trace.Span
+		ctx, span = r.tracer.Start(ctx, "agentrun.run")
+		span.SetAttribute("thread", threadID)
+		defer span.End()
 	}
 	wait := r.wait
 	if r.tools != nil {
 		wait = r.chain()
 	}
-	return r.agent.Run(ctx, threadID, r.machine, in, wait, r.bus, r.monitor, r.room, r.budget)
+	status, rec, err := r.agent.Run(ctx, threadID, r.machine, in, wait, r.bus, r.monitor, r.room, r.budget)
+	if r.hooks != nil {
+		if ferr := r.hooks.Fire(ctx, hooks.PointStop, status); ferr != nil {
+			return status, rec, fmt.Errorf("agentrun: stop hook: %w", ferr)
+		}
+	}
+	return status, rec, err
 }
 
 // Bus returns the resolved event bus New subscribed and wired. Callers
@@ -73,7 +93,18 @@ func (r *Runner) Bus() *events.Bus {
 // Ask round trip.
 func (r *Runner) chain() agent.AckWait {
 	return func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+		if r.tracer != nil {
+			var span *trace.Span
+			ctx, span = r.tracer.Start(ctx, "agentrun.tool")
+			span.SetAttribute("step", msg.ID)
+			defer span.End()
+		}
 		name := toolNameFor(r.tools, msg.ID)
+		if r.hooks != nil {
+			if err := r.hooks.Fire(ctx, hooks.PointPreTool, msg); err != nil {
+				return envelope.Ack{}, fmt.Errorf("agentrun: step %q: pre-tool hook: %w", msg.ID, err)
+			}
+		}
 		out, err := r.tools.RunScoped(ctx, name, tools.InOut{Value: msg.Payload}, r.scope)
 		if err != nil {
 			if r.ask != nil && errors.Is(err, agent.ErrEscalated) {
@@ -97,7 +128,13 @@ func (r *Runner) chain() agent.AckWait {
 		if err != nil {
 			return envelope.Ack{}, err
 		}
-		return ack.Confirm(), nil
+		confirmed := ack.Confirm()
+		if r.hooks != nil {
+			if err := r.hooks.Fire(ctx, hooks.PointPostTool, confirmed); err != nil {
+				return envelope.Ack{}, fmt.Errorf("agentrun: step %q: post-tool hook: %w", msg.ID, err)
+			}
+		}
+		return confirmed, nil
 	}
 }
 

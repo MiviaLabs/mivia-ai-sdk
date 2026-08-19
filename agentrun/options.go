@@ -10,10 +10,12 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // Sentinel errors for New and Run; test with errors.Is. The matrix
@@ -61,6 +63,15 @@ type Options struct {
 	Budget *contextbudget.Limits
 	// Monitor beats each gated step's id. Optional.
 	Monitor *heartbeat.Monitor
+	// Hooks gates each gated step's tool call and observes the run's
+	// stop. PointPreTool fires before the tool and vetoes; a veto
+	// fails the step. PointPostTool fires after the ack confirms.
+	// PointStop fires with the final status once the walk ends.
+	// Optional; it needs Tools.
+	Hooks *hooks.Registry
+	// Tracer opens one root span per run and one child span per
+	// gated step's tool call. Optional.
+	Tracer *trace.Tracer
 	// Wait resolves each gated step's ack. It is mutually exclusive
 	// with Tools.
 	Wait agent.AckWait
@@ -144,6 +155,8 @@ func New(opts Options) (*Runner, error) {
 		room:      opts.Room,
 		budget:    opts.Budget,
 		monitor:   opts.Monitor,
+		hooks:     opts.Hooks,
+		tracer:    opts.Tracer,
 		wait:      opts.Wait,
 	}, nil
 }

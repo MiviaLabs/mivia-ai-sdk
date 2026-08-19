@@ -18,7 +18,8 @@ touches the filesystem. The exported surface below mirrors
   `patterns` once. An invalid glob returns an error naming the
   pattern's index.
 - `Matcher.Matches(path string) bool` — reports whether `path`
-  matches the compiled pattern set.
+  matches the compiled pattern set. A nil `*Matcher` holds no pattern,
+  so it matches nothing and returns false.
 
 ## Invariants
 
@@ -31,6 +32,9 @@ touches the filesystem. The exported surface below mirrors
 - `Matches` cleans the input with `path.Clean` and treats `\` the
   same as `/` before matching, so the caller need not normalize
   first.
+- `Matches` on a nil `*Matcher` returns false and does not panic. A
+  nil `Matcher` matching nothing is what a nil `workspace.Options.Deny`
+  already means.
 
 ## Failure modes
 
@@ -43,8 +47,11 @@ touches the filesystem. The exported surface below mirrors
 
 ## Cross-references
 
-None. `secretpath` declares no internal import edge and has no
-caller inside this module yet.
+- `workspace` — `workspace.Options.Deny` is a `*secretpath.Matcher`.
+  `workspace` consults it before every filesystem call and returns
+  `workspace.ErrSecretPath` on a match.
+
+`secretpath` declares no internal import edge of its own.
 
 ## Wire contract
 

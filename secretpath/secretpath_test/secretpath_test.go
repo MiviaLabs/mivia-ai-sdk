@@ -240,6 +240,20 @@ func TestNewMatcherEmptyPatternList(t *testing.T) {
 	}
 }
 
+// TestMatchesNilReceiver pins the nil guard. Without it the method
+// reads m.patterns on a nil receiver and panics.
+func TestMatchesNilReceiver(t *testing.T) {
+	var m *secretpath.Matcher
+	cases := []string{"secrets/key.pem", "", "/etc/passwd"}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			if m.Matches(input) {
+				t.Errorf("Matches(%q) on a nil Matcher = true, want false", input)
+			}
+		})
+	}
+}
+
 func TestMatchesEmptyPathInput(t *testing.T) {
 	m, err := secretpath.NewMatcher([]string{"secrets/*"})
 	if err != nil {

@@ -26,6 +26,9 @@ func (w *Workspace) WriteFile(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := w.denied(resolved, path); err != nil {
+		return err
+	}
 	if dir := filepath.Dir(resolved); dir != "." {
 		if err := w.r.MkdirAll(dir, writeDirMode); err != nil {
 			return classify(path, err)

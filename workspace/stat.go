@@ -9,6 +9,9 @@ func (w *Workspace) Stat(path string) (os.FileInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := w.denied(resolved, path); err != nil {
+		return nil, err
+	}
 	info, err := w.r.Stat(resolved)
 	if err != nil {
 		return nil, classify(path, err)

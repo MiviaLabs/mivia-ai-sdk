@@ -14,9 +14,11 @@ package workspace
   type Options struct {
   Root string
   MaxReadBytes int64
+  Deny *secretpath.Matcher
 }
   type Workspace struct {
 }
   var ErrEscape
   var ErrInvalidLimit
+  var ErrSecretPath
   var ErrTooLarge

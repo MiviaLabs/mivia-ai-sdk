@@ -58,8 +58,12 @@ func compilePattern(p string) (compiledPattern, error) {
 // Matches reports whether path matches the compiled pattern set. It
 // cleans the input with path.Clean and treats '\' the same as '/'
 // first. Patterns apply in list order; the last matching pattern,
-// positive or negated, decides the result.
+// positive or negated, decides the result. A nil *Matcher holds no
+// pattern, so it matches nothing and returns false.
 func (m *Matcher) Matches(input string) bool {
+	if m == nil {
+		return false
+	}
 	clean := path.Clean(strings.ReplaceAll(input, "\\", "/"))
 	result := false
 	for _, cp := range m.patterns {

@@ -9,26 +9,46 @@ the bytes `workspace` hands back. Today the three ship as leaves with
 no non-test consumer anywhere in the module.
 
 This is a composition change. It adds one import edge, one `Options`
-field, one sentinel, and one `envfile` function. It builds no tool
-wrapper.
+field, one sentinel, one nil guard in `secretpath`, and one `envfile`
+function. It builds no tool wrapper.
+
+## Status
+
+The `workspace` half is shipped: `Options.Deny`, `ErrSecretPath`, the
+two-stage deny check, and the `secretpath` nil guard. See
+`docs/plans/workspace.md` change two.
+
+The `envfile` half is deferred to a follow-up change: `LoadBytes`, its
+`api/envfile.txt` line, its `docs/packages/envfile.md` and
+`docs/plans/envfile.md` entries, its `AGENTS.md` entry, the
+`envfile/envfile_test/` rows, and `secret_integration_test.go`, which
+calls `LoadBytes` and cannot build before it. Every Scope, API, Tests,
+and Verification item below that names `envfile` belongs to that
+follow-up. Nothing in the shipped half depends on it.
 
 ## Scope
 
 Inside:
 
-- `workspace` consults an optional `*secretpath.Matcher` before every
-  filesystem call. `ReadFile`, `ReadFileLimit`, `WriteFile`, `List`,
-  and `Stat` each check the cleaned root-relative path against the
-  matcher and return `ErrSecretPath` on a match. The surface is the
-  new `Options.Deny` field and `ErrSecretPath`.
+- `workspace` consults an optional `*secretpath.Matcher` before the
+  filesystem call. The check lives at four sites: `ReadFileLimit`,
+  `WriteFile`, `List`, and `Stat`. `ReadFile` is
+  `ReadFileLimit(path, 0)` and holds no check of its own, so it
+  inherits one. A fifth copy would drift from the other four. The
+  surface is the new `Options.Deny` field and `ErrSecretPath`.
   `docs/plans/workspace.md` holds the full `workspace` surface, and
-  its change one already lands `Options`, `Validate`, and `OpenWith`
+  its change one already landed `Options`, `Validate`, and `OpenWith`
   for the read bound.
+- The rule itself lives in one unexported method,
+  `(*Workspace) denied(resolved, path string) error` in
+  `confine.go`. It holds the nil test, the `Matches` call, the
+  symlink walk, and the `ErrSecretPath` wrap. Each of the four sites
+  calls it in one line. `docs/plans/workspace.md` specifies it.
 - The deny check runs before the read bound, so a denied path over
   the bound reports `ErrSecretPath`. See `docs/plans/workspace.md`.
 - The denial runs after the lexical confinement check and before the
-  `os.Root` call. That order has two consequences, and this plan
-  states both.
+  `os.Root` call. That order has three consequences, and this plan
+  states all three.
 - A path that lexically escapes the root reports `ErrEscape`. The
   lexical check runs first, so the matcher never sees such a path.
 - A root-local symlink whose own name is denied reports
@@ -36,14 +56,35 @@ Inside:
   The name check runs before `os.Root` resolves the link. An escaping
   path can therefore report `ErrSecretPath`.
 - A symlink with a permitted name that resolves outside the root
-  reports `ErrEscape`. It passes the matcher and fails inside
-  `os.Root`.
-- A nil `Deny` matcher denies nothing. Each method tests its `deny`
-  field for nil before it calls `Matches`. The nil test is required,
-  not stylistic: `secretpath.Matcher.Matches` reads `m.patterns`, so a
-  call on a nil `*Matcher` panics, and the Semgrep rule
-  `sdk.go.no-panic-in-packages` bans a panic in a package.
-  `Open(root)` leaves `deny` nil, so no existing caller changes.
+  reports `ErrEscape` when `Deny` is nil. It passes the matcher and
+  fails inside `os.Root`. With `Deny` set it reports `ErrSecretPath`
+  instead, because the symlink walk below refuses it first.
+- **Scope increase: refuse a symlink component when `Deny` is set.**
+  A name policy alone fails open through aliasing, and the earlier
+  plan's mitigation for that was measured false. So `denied` walks
+  every prefix of the resolved path with `os.Root.Lstat`, including
+  the final component, and returns `ErrSecretPath` when any component
+  is a symlink. The walk runs only when `Deny` is non-nil, and only
+  after the name check permits the path.
+  `docs/plans/workspace.md` owns the full specification: the prefix
+  set, the `Lstat` error rule, the O(depth) cost, and the residual
+  race.
+- The consequence for a caller: a workspace with a `Deny` policy
+  refuses every symlink path, denied or not. That is a deliberate
+  tightening. A caller who needs symlinks inside the root sets no
+  `Deny` and enforces the policy itself.
+- A nil `Deny` matcher denies nothing, and `Open(root)` leaves it nil,
+  so no existing caller changes.
+- `secretpath.Matcher.Matches` becomes nil-safe: `if m == nil {
+  return false }` at the top of the method. A nil `Matcher` matching
+  nothing is exactly what a nil `Options.Deny` already means. Today a
+  call on a nil `*Matcher` reads `m.patterns` and panics, and the
+  Semgrep rule `sdk.go.no-panic-in-packages` cannot see that, because
+  it matches a literal `panic(` and not a nil dereference. The guard
+  removes the failure class instead of relying on every caller to
+  remember it.
+- The two fixes compose. `denied` still tests `w.deny` for nil, now to
+  skip the symlink walk rather than to avoid a panic.
 - `envfile.LoadBytes(data []byte) (map[string]string, error)` parses
   an already-read dotenv body. `Load` reads the file and calls
   `LoadBytes`, so the two share one parser and one error set.
@@ -56,10 +97,11 @@ Outside:
 
 - Any `tools.Tool` wrapper over `workspace`, `envfile`, or `diff`.
   Phase 71 owns that; see "Phase 71 owns the tool surface" below.
-- A non-test consumer for the four packages. State this plainly:
-  after this change, `workspace`, `envfile`, `secretpath`, and `diff`
-  still have no caller inside the module. The five symbols this
-  change adds ship ahead of their caller.
+- A non-test consumer for `envfile` and `secretpath`. State this
+  plainly: after this change those two still have no caller inside
+  the module, except that `workspace` now imports `secretpath`.
+  `subagent` already wraps `workspace` and `diff` as file tools, so
+  the deny policy reaches a real caller through `workspace`.
 - The reason that was accepted: the policy edge belongs inside the
   confinement boundary, not in the wrapper that comes later. Building
   the edge first keeps the wrapper from owning the safety rule. The
@@ -79,16 +121,66 @@ Outside:
   wrapper that applies `Deny`, and it needs its own plan.
 - Reading the filesystem from `secretpath`. `Matches` stays a pure
   string decision.
+- Resolving a symlink and re-running the matcher on its target. This
+  is the obvious alternative to blanket refusal, and it is worse.
+  `os.Root.Readlink` returns one hop, so a chain needs its own loop
+  and its own bound. Each extra read adds a second check-then-use
+  window between the resolution and the open. It still misses hard
+  links, which carry no link target to read. Recorded here so phase 71
+  does not relitigate it.
+
+## Why the write side is denied too
+
+Denying reads is obvious. Denying writes needs its reason written
+down, because the objection is real: an agent may legitimately want to
+write its own `.env`.
+
+- The threat is plant-and-redirect. An agent that can write a denied
+  path can overwrite `.env` with an attacker-chosen endpoint or key,
+  and the next turn reads it back and uses it. Read-only denial leaves
+  that path open, so a read-only policy protects the current secret
+  and loses the next one.
+- The same argument covers a denied config file, a denied credentials
+  file, and a denied private key.
+- The workaround is in the policy, not in the API. A caller that wants
+  one writable path adds a negation pattern, such as `!config/app.env`
+  after `config/`, or omits that path from the deny list. `secretpath`
+  already supports negation, and the last matching pattern decides.
+- No write-only or read-only mode is added to `Options`. One matcher,
+  one meaning. A second mode would double the policy surface for one
+  caller that does not exist yet.
 
 Residual risk, stated plainly:
 
 - The `Deny` matcher is a name policy, not a content policy. A file
   named `notes.txt` holding an API key is not denied.
-- A symlink inside the root that points at a denied in-root path
-  bypasses the name check, because `os.Root` follows an in-root
-  symlink and the matcher only sees the name the caller typed. A
-  caller that needs content-level assurance denies the directory,
-  not the file.
+- The symlink walk is check-then-use. It closes the planted-link case.
+  It does not close a concurrent attacker who already holds write
+  access to the root and swaps a component between the walk and the
+  open. `os.Root` still confines the target to the root, so the limit
+  is on secrecy, not on confinement.
+- A hard link is the same aliasing class, and the walk does not close
+  it. A hard link carries no distinguishing mode bit, so `Lstat`
+  reports a regular file. Measured with a `secrets/` deny list:
+  `os.Link` from `secrets/key.pem` to `innocent.txt` gives
+  `symlink=false`, the walk permits, and `ReadFile("innocent.txt")`
+  returns the secret with a nil error.
+- The hard-link case ranks below the symlink case for three reasons.
+  `workspace` exposes no `Link`, so this package cannot create one.
+  Git carries no hard link, so a checkout cannot plant one. Creating
+  one needs write access through another channel.
+- The case is still real, because tar and zip archives carry hard
+  links, and archive extraction is inside the planted-checkout threat
+  the walk names. Closing it needs inode identity, which is a
+  different mechanism and a different plan. The limit goes in the
+  `ErrSecretPath` doc comment, not only here.
+- The matcher is byte-exact, because `path.Match` is. On a
+  case-insensitive filesystem, the default on darwin and windows,
+  `SECRETS/key.pem` opens the file that `secrets/` denies, and the
+  matcher reports false. A Unicode-normalizing filesystem does the
+  same across NFC and NFD spellings of one name. This change adds no
+  case folding and no normalization: that behavior belongs to
+  `secretpath` and needs its own plan.
 - `List` returns the names of denied files inside a permitted
   directory. It denies the listing of a denied directory, not the
   existence of a denied name.
@@ -137,11 +229,25 @@ Change one of `docs/plans/workspace.md` lands all three, because the
 read bound needs an open-time option. This change adds the third
 `Options` field and the sentinel only.
 
+`ErrSecretPath` wraps the same way `ErrEscape` does. The name check
+uses `fmt.Errorf("%w: %s", ErrSecretPath, path)`, matching
+`workspace/confine.go:29`. It echoes the caller's raw path, not the
+resolved one, so the two sentinels read alike.
+
+The symlink walk uses the same sentinel and a different text:
+`fmt.Errorf("%w: %s: symlink component", ErrSecretPath, path)`. One
+message for both refusals would lie, because a permitted link to a
+permitted file is a symlink and not a secret path.
+`docs/plans/workspace.md` states why a second sentinel was rejected.
+
 `envfile` delta:
 
 - `func LoadBytes(data []byte) (map[string]string, error)`
 
-`secretpath` delta: none. The package is used as it is.
+`secretpath` delta: no exported-surface change, so `api/secretpath.txt`
+does not move. The package does change: `Matches` gains a nil-receiver
+guard. A behavior change with no lock diff needs a test instead of a
+lock, and one is listed under "Tests".
 
 `policy/layers.json` rows, exact:
 
@@ -164,36 +270,89 @@ Reasoning behind the shape:
 
 ## Tests
 
-`workspace/workspace_test/`:
+All new `workspace` cases live in
+`workspace/workspace_test/secret_test.go`. Each one below names what
+it kills.
 
-- `secret_test.go`, table-driven over the four methods. A `Deny`
-  matcher for `.env` and `secrets/` denies `.env`,
-  `secrets/api.json`, and `secrets`. It permits `notes.txt` and
-  `data/notes.txt`. Every denial matches `ErrSecretPath` under
-  `errors.Is`.
-- A denied `WriteFile` leaves the target file unchanged on disk, and
-  creates no parent directory.
-- A lexically escaping path that also matches the matcher, such as
-  `../.env`, returns `ErrEscape`, not `ErrSecretPath`.
-- A symlink case, using `os.Symlink`. A link inside the root named
-  `.env` points at a file outside the root. `ReadFile(".env")`
-  returns `ErrSecretPath`, not `ErrEscape`, pinning the stated order.
-- A second symlink case. A link inside the root named `notes.txt`
-  points at a file outside the root. `ReadFile("notes.txt")` returns
-  `ErrEscape`, because the matcher permits the name.
-- An absolute caller path inside the root:
+- `TestDenyAcrossMethods`, table-driven over the four methods that
+  hold the check: `ReadFileLimit`, `WriteFile`, `List`, and `Stat`.
+  The table drives `ReadFileLimit` directly, not only through
+  `ReadFile`, because `ReadFileLimit` is where the check lives. One
+  extra row calls `ReadFile` and asserts the same result, pinning the
+  inheritance. A `Deny` matcher for `.env` and `secrets/` denies
+  `.env`, `secrets/api.json`, and `secrets`. It permits `notes.txt`
+  and `data/notes.txt`. Every denial matches `ErrSecretPath` under
+  `errors.Is`. Kills: a check missing from any one of the four sites.
+- `TestDeniedWriteTouchesNothing`: a denied `WriteFile` leaves the
+  target file unchanged on disk and creates no parent directory.
+  Kills: a check placed after `os.Root.MkdirAll`.
+- `TestEscapeBeatsDeny`: a lexically escaping path that also matches
+  the matcher, such as `../.env`, returns `ErrEscape`, not
+  `ErrSecretPath`. Kills: a check placed before `resolve`.
+- `TestDeniedNameLinkOutOfRoot`: a link inside the root named `.env`
+  points at a file outside the root. `ReadFile(".env")` returns
+  `ErrSecretPath`, not `ErrEscape`. Kills: a check placed after the
+  `os.Root` call.
+- `TestPermittedNameLinkOutOfRoot`, two rows on one fixture: a link
+  inside the root named `notes.txt` points at a file outside the root.
+  With the `Deny` matcher set, `ReadFile("notes.txt")` returns
+  `ErrSecretPath`, because the walk refuses the link before `os.Root`
+  sees it. With a nil `Deny`, the same call returns `ErrEscape`. The
+  pair pins both the walk's precedence over `ErrEscape` and the
+  unchanged no-policy behavior.
+- `TestAbsoluteCallerPathDenied`:
   `ReadFile(filepath.Join(w.Root(), "secrets", "api.json"))` returns
-  `ErrSecretPath`. This is the one vector that separates the two
-  candidate inputs. `resolve` returns `secrets/api.json`, which the
-  pattern matches. The raw caller string starts with the root's
-  absolute prefix, which the pattern does not match. A builder who
-  passes the raw string to `Matches` fails only this case, so it is
-  the pin for "the matcher sees `resolve`'s output".
-- A nil `Deny` permits every path, proving `Open` keeps its old
-  behavior. The same case calls all four methods, proving no method
-  calls `Matches` on a nil `*Matcher`.
-- `Options.Validate`: blank `Root` fails; set `Root` with nil `Deny`
-  passes; set `Root` with a compiled matcher passes.
+  `ErrSecretPath`. `resolve` returns `secrets/api.json`, which the
+  pattern matches; the raw caller string carries the root's absolute
+  prefix, which it does not. Kills: passing the raw string to
+  `Matches` instead of `resolve`'s output. This is the one vector that
+  separates the two candidate inputs.
+- `TestNilDenyPermitsEverything`: a nil `Deny` permits every path,
+  through all four methods, proving `Open` keeps its old behavior and
+  that no `Lstat` walk runs. Kills: a walk that runs unconditionally.
+- `TestOptionsValidate`: blank `Root` fails; set `Root` with nil
+  `Deny` passes; set `Root` with a compiled matcher passes.
+
+Symlink-walk cases, all in the same file, all skipped on Windows where
+symlink creation needs a privilege. Each one is `ErrSecretPath` under
+the walk; each one was a silent success before it.
+
+- `TestFileSymlinkToDeniedFile`: `Deny` is `secrets/`. Create
+  `secrets/key.pem` and a file symlink `innocent.txt` pointing at it.
+  `ReadFile("innocent.txt")` returns `ErrSecretPath`. Kills: a walk
+  that skips the final component. This case read the secret with a nil
+  error before the walk.
+- `TestDirectorySymlinkToDeniedDirectory`: `Deny` is `secrets/`.
+  Create a directory symlink `sdir` pointing at `secrets`.
+  `ReadFile("sdir/key.pem")` returns `ErrSecretPath`. Kills: a walk
+  that tests the final component only. This is the case that falsified
+  the earlier plan's "deny the directory, not the file" advice, and
+  not pinning it is how the wrong sentence survived.
+- `TestWriteThroughSymlinkDenied`: with the same `innocent.txt` link,
+  `WriteFile("innocent.txt", data)` returns `ErrSecretPath`, and
+  `secrets/key.pem` still holds its original bytes. Kills: a walk
+  wired into the read path only. Before the walk this write
+  overwrote the secret through the link.
+- `TestDeniedAndMissing`: `ReadFile(".env")` on a workspace with a
+  `.env` deny pattern and no `.env` on disk returns `ErrSecretPath`,
+  and does not match `fs.ErrNotExist`. Kills: a check placed after the
+  open. It also pins the property that a denial leaks the policy and
+  never the filesystem.
+- `TestSymlinkPermittedWithoutDeny`: the same `innocent.txt` fixture
+  on a workspace with a nil `Deny` reads the target. Kills: a walk
+  that ignores the nil test, and pins that no existing caller changes.
+- `TestDanglingSymlinkDenied`, two rows on one fixture: a symlink
+  `dangle` inside the root points at a missing in-root name. With
+  `Deny` set, `ReadFile("dangle")` returns `ErrSecretPath`. With a nil
+  `Deny`, it returns an error matching `fs.ErrNotExist`. Kills: a walk
+  that treats a broken link as absent. It reaches the same shape as
+  `TestDeniedAndMissing` through a different mechanism, so both stay.
+- `TestWalkErrorNamesSymlink`: the error from
+  `ReadFile("innocent.txt")` matches `ErrSecretPath` and its text
+  contains `symlink component`, while the error from
+  `ReadFile(".env")` matches `ErrSecretPath` and its text does not.
+  Kills: one shared message for the two refusals, which misattributes
+  the walk's refusal to the deny patterns.
 - `secret_integration_test.go`: the composed path end to end. Open a
   workspace with a `Deny` matcher for `secrets/`. Write
   `config/app.env` through the workspace. Read it back through
@@ -212,23 +371,39 @@ Reasoning behind the shape:
 - The existing error-message case still asserts no error text
   contains a parsed value, now driven through `LoadBytes`.
 
-`secretpath/secretpath_test/`: no change. The package's behavior is
-unchanged.
+`secretpath/secretpath_test/`:
+
+- One new row in the existing `Matches` table, or one small test
+  beside it: `var m *secretpath.Matcher` and
+  `m.Matches("secrets/key.pem")` returns false and does not panic.
+  Kills: dropping the nil guard. Without the guard this row panics on
+  the `m.patterns` read.
 
 ## Verification
 
 - `make verify` passes: gofmt, vet, tests under the race detector,
   the doc gate, the structure gate, the plan gate, the deps gate,
   the API gate, the Semgrep scan, and the probe suite.
-- Coverage for `workspace` and `envfile` each reach the 85 percent
-  floor, and the total floor holds.
+- Coverage for `workspace`, `envfile`, and `secretpath` each reach the
+  85 percent floor, and the total floor holds.
 - `make api-update` runs, and the `api/workspace.txt` and
   `api/envfile.txt` diffs land in the same change as the code. The
   lock delta is exactly one new `workspace` symbol, one new
   `Options` field line, and the one `envfile` symbol listed under
   "API". `api_surface` prints one line per exported struct field, so
   the `Deny` field shows as its own line. See `api/dispatch.txt` for
-  that rendering.
+  that rendering. `api/secretpath.txt` does not change.
+- The `ErrSecretPath` doc comment names three things: the name check,
+  the symlink-component refusal, and the residual race. The race
+  sentence says that a concurrent writer inside the root can swap a
+  component between the check and the open, and that `os.Root` still
+  confines the target to the root. A limit no caller reads is not
+  documented, so it lives in the doc comment and in
+  `docs/packages/workspace.md`, not only in this plan.
+- `docs/packages/workspace.md` also gains the case-insensitive and
+  Unicode-normalizing filesystem limit, under residual risk.
+- `docs/packages/secretpath.md` states that `Matches` on a nil
+  `*Matcher` returns false.
 - `docs/packages/envfile.md` gains a `LoadBytes` entry under
   "Functions", and it lands in the same commit. The entry states that
   `Load` reads the file and delegates to `LoadBytes`, and that
@@ -259,12 +434,13 @@ unchanged.
 ## Build order
 
 1. The `workspace` confinement, file-mode, and read-bound change,
-   from `docs/plans/workspace.md`. It rewrites every method body and
-   adds `Options`, so it goes first and lands its own
+   from `docs/plans/workspace.md`. **Shipped**, in commits `f3adff3`,
+   `3bf7496`, `78e1934`, and `f8ec0fb`. It landed its own
    `api/workspace.txt` diff.
-2. This change. It edits the same method bodies to add one check
-   each, and lands the second `api/workspace.txt` diff plus the
-   `api/envfile.txt` diff.
+2. This change. It adds one line to each of the four method bodies,
+   adds `denied` to `confine.go`, adds the nil guard to
+   `secretpath.Matches`, and lands the second `api/workspace.txt` diff
+   plus the `api/envfile.txt` diff.
 
 Neither change depends on phase 69 or phase 70. Neither touches
 `agentloop`, `tools`, `subagent`, or `spool`. Both may land before,
@@ -307,6 +483,13 @@ set.
   `Open` must keep its current behavior. The "no secret policy"
   restriction is a phase-71 caller-side invariant, enforced by the
   phase-71 `Validate` named above.
+- That mandatory `Deny` has a consequence phase 71 must meet
+  deliberately, not discover. A non-nil `Deny` turns on the symlink
+  walk, so no model-driven file tool can read through any symlink at
+  all. Vendored dependency trees, `node_modules` layouts, and dotfile
+  trees all use symlinks, and every one of those paths refuses. Phase
+  71 either accepts that refusal, narrows the walk with its own
+  option, or documents the workaround for its users.
 - It builds its workspace through `workspace.OpenWith`.
 - It calls `Registry.RunScoped`, never `Registry.Run`, matching the
   rule phase 69 already states for a model-chosen call.
@@ -317,6 +500,6 @@ set.
   `tools.SchemaTool`, and fixing that explosion is phase 70's work,
   not phase 71's.
 
-If phase 71 does not land, the five symbols this change adds stay
-uncalled, and the four packages stay leaves with test-only callers.
+If phase 71 does not land, the three symbols this change adds stay
+uncalled, and the four packages keep test-only callers.
 That is the accepted risk of this plan, recorded here on purpose.

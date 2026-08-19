@@ -2,7 +2,8 @@
 
 `workspace` confines all filesystem access to one root directory, so
 a tool or agent that reads and writes files cannot escape its
-sandbox through traversal or a symlink. It is a leaf package. The
+sandbox through traversal or a symlink. It imports `secretpath`, so an
+optional deny policy refuses a secret path at the same boundary. The
 exported surface below mirrors `api/workspace.txt`.
 
 ## Types
@@ -11,8 +12,9 @@ exported surface below mirrors `api/workspace.txt`.
   holds an open `os.Root`, so it owns a file descriptor. Fields are
   unexported; build one with `Open` or `OpenWith`, and release it with
   `Close`.
-- `Options` — the open-time configuration: `Root string` and
-  `MaxReadBytes int64`. See `OpenWith`.
+- `Options` — the open-time configuration: `Root string`,
+  `MaxReadBytes int64`, and `Deny *secretpath.Matcher`. A nil `Deny`
+  denies nothing. See `OpenWith`.
 
 ## Constants
 
@@ -32,7 +34,7 @@ exported surface below mirrors `api/workspace.txt`.
   returns that error unchanged.
 - `Options.Validate() error` — `Root` must not be blank.
   `MaxReadBytes` must be `Unbounded`, zero, or a positive value at or
-  under `math.MaxInt64 - 1`.
+  under `math.MaxInt64 - 1`. `Deny` may be nil.
 - `Workspace.Root() string` — returns the resolved root path.
 - `Workspace.Close() error` — closes the open root. `Close` is
   idempotent. Every method returns an error matching `fs.ErrClosed`
@@ -72,6 +74,13 @@ exported surface below mirrors `api/workspace.txt`.
 - `WriteFile` creates a new file with mode `0o600` and a new parent
   directory with mode `0o700`. The mode applies at create only, so
   `WriteFile` does not tighten an existing file.
+- A non-nil `Deny` refuses a path in two stages. The name check
+  matches the cleaned root-relative path against the matcher. The
+  symlink walk then refuses any path whose components hold a symlink.
+  The check runs before the syscall, so a denied write creates no
+  parent directory and a denied read opens no descriptor.
+- A nil `Deny` runs neither stage, so `Open` keeps its behavior and a
+  symlink inside the root stays readable.
 - A `Workspace` is not safe against a hostile root directory.
   `os.Root` does not prohibit traversal of filesystem boundaries,
   bind mounts, `/proc` special files, or device files.
@@ -95,11 +104,43 @@ Use `errors.Is` to test the escape case.
   neither `Unbounded`, nor zero, nor a positive value at or under
   `math.MaxInt64 - 1`. `Options.Validate` and `ReadFileLimit` both
   return it. `ReadFileLimit` opens no file in that case.
+- `ErrSecretPath` ("workspace: path is a secret path") — `Options.Deny`
+  refuses the path. Every one of `ReadFileLimit`, `WriteFile`, `List`,
+  and `Stat` returns it, and `ReadFile` inherits it from
+  `ReadFileLimit`. The symlink walk's text adds `symlink component`,
+  so a permitted link to a permitted file is not reported as a secret
+  path. Pinned by `workspace/workspace_test/secret_test.go`.
+
+Precedence between the sentinels is fixed. `ErrInvalidLimit` beats
+both `ErrEscape` and `ErrSecretPath`. A lexical `ErrEscape` beats
+`ErrSecretPath`. `ErrSecretPath` beats `ErrTooLarge`, beats
+`fs.ErrNotExist`, and beats `fs.ErrClosed`.
+
+## Residual risk of the deny policy
+
+Four limits apply to `Options.Deny`. Each one lives in the
+`ErrSecretPath` doc comment too.
+
+- The symlink walk is check-then-use. A concurrent writer inside the
+  root can swap a component between the walk and the open. `os.Root`
+  still confines the target to the root, so the limit is on secrecy
+  and not on confinement.
+- A hard link to a denied file is not detected. A hard link carries no
+  distinguishing mode bit, so `Lstat` reports a regular file.
+- The matcher is byte-exact, because `path.Match` is. A
+  case-insensitive filesystem, the default on darwin and windows,
+  opens a denied file under a spelling the matcher permits. A
+  Unicode-normalizing filesystem does the same across NFC and NFD.
+- The matcher is a name policy and not a content policy. A file named
+  `notes.txt` holding an API key is not denied.
 
 ## Cross-references
 
-None. `workspace` declares no internal import edge and has no caller
-inside this module yet.
+- `secretpath` — `Options.Deny` is a `*secretpath.Matcher`. The caller
+  compiles the pattern list with `secretpath.NewMatcher` and handles a
+  bad pattern where it wrote it.
+
+`subagent` wraps `workspace` as file tools.
 
 ## Wire contract
 

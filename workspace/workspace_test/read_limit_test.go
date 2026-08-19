@@ -293,6 +293,30 @@ func TestInvalidLimit(t *testing.T) {
 	})
 }
 
+// TestSecretPathBeatsLimit pins the order between the deny check and
+// the bound. The deny check needs no open file, so it answers first.
+func TestSecretPathBeatsLimit(t *testing.T) {
+	root := t.TempDir()
+	writeSized(t, root, ".env", 64)
+	w, err := workspace.OpenWith(workspace.Options{
+		Root:         root,
+		MaxReadBytes: 1,
+		Deny:         newMatcher(t, []string{".env"}),
+	})
+	if err != nil {
+		t.Fatalf("OpenWith: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	_, err = w.ReadFile(".env")
+	if !errors.Is(err, workspace.ErrSecretPath) {
+		t.Fatalf("ReadFile(.env) error = %v, want ErrSecretPath", err)
+	}
+	if errors.Is(err, workspace.ErrTooLarge) {
+		t.Errorf("ReadFile(.env) error = %v, want no ErrTooLarge", err)
+	}
+}
+
 // TestEscapeBeatsLimit pins that a bound cannot be measured on a path
 // the confinement already refuses.
 func TestEscapeBeatsLimit(t *testing.T) {

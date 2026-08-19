@@ -11,11 +11,17 @@ so one hostile file cannot exhaust the process memory.
 
 This plan covers two changes, built in order:
 
-- Change one, confinement, file mode, and the read bound. Change one
-  lands as two commits, A then B. See "Build order" below.
-- Change two, secret-path denial. Wire `secretpath` into the
-  `Workspace`. `docs/plans/secrets.md` owns the reasoning for change
-  two; this plan owns the resulting `workspace` surface.
+- Change one, confinement, file mode, and the read bound. **Shipped.**
+  Commit A is `f3adff3`, commit B is `3bf7496`, and two follow-ups
+  are `78e1934` and `f8ec0fb`. Its sections below are kept as the
+  record of what shipped. A builder starting change two changes
+  nothing in change one.
+- Change two, secret-path denial. Shipped. `secretpath` is wired into
+  the `Workspace` through `Options.Deny`, and a denied path returns
+  `ErrSecretPath`. `docs/plans/secrets.md` owns the reasoning for
+  change two; this plan owns the resulting `workspace` surface. The
+  `envfile.LoadBytes` half of `docs/plans/secrets.md` is deferred; see
+  that plan's status line.
 
 ## Scope
 
@@ -69,15 +75,21 @@ security fix.
 - `(*Workspace) ReadFile(path string) ([]byte, error)`: reads a file
   named relative to the root, under the workspace's own bound. After
   commit B it is `ReadFileLimit(path, 0)` and adds no logic of its
-  own. (change two) Returns `ErrSecretPath` when `deny` is non-nil and
-  `deny.Matches` reports true on the cleaned root-relative path. The
-  non-nil test is required, because `Matches` on a nil `*Matcher`
-  panics.
+  own. Change two adds no check here. `ReadFile` inherits the deny
+  check from `ReadFileLimit`.
 - `(*Workspace) ReadFileLimit(path string, limit int64) ([]byte, error)`:
   the same read with a per-call bound. A zero `limit` uses the
   workspace's `MaxReadBytes`. A positive `limit` replaces it, up or
   down. `Unbounded` removes it for this call only. Any other value
   returns `ErrInvalidLimit`, and the method opens no file. (commit B)
+  (change two) Calls `w.denied(resolved, path)` after `resolve` and
+  before `os.Root.Open`, and returns its error.
+- The deny check lives at four call sites and no more:
+  `ReadFileLimit`, `WriteFile`, `List`, and `Stat`. `ReadFile` is
+  `ReadFileLimit(path, 0)`, so a fifth check there would duplicate the
+  rule and the two copies would drift. Each of the four calls one
+  line: `if err := w.denied(resolved, path); err != nil { return err }`.
+  The rule itself lives once, in `denied`. See "The deny check" below.
 - Both read methods route through `os.Root.Open`, not
   `os.Root.ReadFile`, because `os.Root.ReadFile` reads the whole file
   and takes no limit. The body is: `resolve`, the deny check, then
@@ -111,10 +123,9 @@ security fix.
   file relative to the root, through `os.Root.WriteFile`, creating
   any missing parent directory under the root through
   `os.Root.MkdirAll`. The signature keeps `perm os.FileMode` in commit
-  A and drops it in commit B. (change two) Returns `ErrSecretPath`
-  when `deny` is non-nil and `deny.Matches` reports true on the
-  cleaned root-relative path. The non-nil test is required, because
-  `Matches` on a nil `*Matcher` panics.
+  A and drops it in commit B. (change two) Calls
+  `w.denied(resolved, path)` after `resolve` and before
+  `os.Root.MkdirAll`, so a denied write creates no parent directory.
 - `WriteFile` runs `classify` on both syscall errors: the
   `os.Root.MkdirAll` error and the `os.Root.WriteFile` error. Missing
   the first one is a real gap. An escaping intermediate symlink is
@@ -129,19 +140,13 @@ security fix.
   sorts the entries by filename, because `(*os.File).ReadDir` returns
   raw directory order where `os.ReadDir` sorts. The sort keeps the
   contract `subagent.WorkspaceListTool` already states. The opened
-  file closes before List returns. (change two) Returns
-  `ErrSecretPath` when `deny` is non-nil and `deny.Matches` reports
-  true on the cleaned root-relative path. The non-nil test is
-  required, because `Matches` on a nil `*Matcher` panics.
+  file closes before List returns. (change two) Calls
+  `w.denied(resolved, path)` after `resolve` and before
+  `os.Root.Open`.
 - `(*Workspace) Stat(path string) (os.FileInfo, error)`: stats a path
   relative to the root, through `os.Root.Stat`, with `classify` on the
-  error. (change two) Returns `ErrSecretPath` when `deny` is non-nil
-  and `deny.Matches` reports true on the cleaned root-relative path.
-  The non-nil test is required, because `Matches` on a nil `*Matcher`
-  panics.
-- The denial check runs after `resolve` and before the `os.Root`
-  call, on `resolve`'s output. `docs/plans/secrets.md` owns the
-  ordering rationale and the test vectors.
+  error. (change two) Calls `w.denied(resolved, path)` after `resolve`
+  and before `os.Root.Stat`.
 - `resolve(path string) (string, error)` in `confine.go`: turns the
   caller's path into a cleaned, root-relative path for the `os.Root`
   call. It is pure string work and touches no file. It keeps the
@@ -188,18 +193,25 @@ security fix.
   workspace uses when the caller sets nothing; `Unbounded int64 = -1`,
   the explicit opt-out. The unexported `maxReadLimit` is
   `math.MaxInt64 - 1`, so `limit+1` cannot overflow. (commit B)
-- Ordering inside a read method is fixed: `resolve` first, the deny
-  check second, the bound third. A path that is both denied and over
-  the bound returns `ErrSecretPath`. The deny check needs no file, and
-  the bound cannot be measured without opening one, so the cheaper and
-  stricter refusal wins. One path always produces one answer.
-- The limit-value check runs before `resolve`, because an invalid
-  limit is a caller bug and touches no path. `ErrInvalidLimit`
-  therefore beats `ErrEscape` and `ErrSecretPath`.
+- `ReadFileLimit` has five stages, in this fixed order. One, validate
+  the limit value through `effectiveLimit`. Two, `resolve`. Three, the
+  deny check. Four, `os.Root.Open`. Five, measure the bytes against
+  the bound. The shipped code already runs stages one, two, four, and
+  five in that order; change two inserts stage three.
+- Stage one and stage five are two different things, and this plan
+  names them apart. Stage one validates the limit *value*, and it runs
+  first because an invalid value is a caller bug that touches no path.
+  Stage five enforces the limit, and it runs last because no bound can
+  be measured before a file is open.
+- The consequences are the precedence rows listed under "The deny
+  check". `ErrInvalidLimit` beats `ErrEscape` and `ErrSecretPath`;
+  `ErrSecretPath` beats `ErrTooLarge`. One path always produces one
+  answer.
 - File layout: `workspace.go` holds `Workspace`, `Options`,
   `Validate`, `Open`, `OpenWith`, `Root`, `Close`, and the unexported
   `validateLimit` helper; `confine.go` holds `resolve`, `withinRoot`,
-  and `classify`; `read.go`, `write.go`, `list.go`, and `stat.go` each
+  `classify`, and (change two) `denied` plus its symlink-walk helper;
+  `read.go`, `write.go`, `list.go`, and `stat.go` each
   hold one concern. `validateLimit(v int64) error` enforces the one
   limit rule: `Unbounded`, zero, or a positive value at or below
   `maxReadLimit` passes; any other value returns `ErrInvalidLimit`.
@@ -215,11 +227,151 @@ security fix.
   field, so a zero-means-unbounded rule would ship an uncapped
   workspace to every caller who never read this plan. `Options{}`
   therefore yields `DefaultMaxReadBytes`.
+- Change two's zero value points the other way, and the tension is
+  deliberate. A nil `Deny` denies nothing. The two rules differ
+  because `MaxReadBytes` has a safe default to fall back on and `Deny`
+  has none: `secretpath` ships no built-in pattern list, so a
+  fail-closed nil would have to refuse every path or invent a policy
+  the caller never wrote. A fail-closed nil would also break
+  `Open(root)`, which every existing caller uses.
+- The compensating control sits one layer up. The phase-71 file-tool
+  options carry their own `Deny *secretpath.Matcher`, and their
+  `Validate` rejects a nil one. The model-reachable path therefore
+  fails closed, while the library primitive stays usable without a
+  policy. See `docs/plans/secrets.md`.
 - `Unbounded` is a named constant, not a bool and not a bare negative
   number. A reader sees `MaxReadBytes: workspace.Unbounded` at the
   call site and needs no table to read it. A separate
   `UnboundedReads bool` would make two fields express one value and
   would need a conflict rule. A bare `-1` would read as a mistake.
+
+### The deny check (change two)
+
+One unexported method holds the whole rule:
+`func (w *Workspace) denied(resolved, path string) error` in
+`confine.go`. `resolved` is `resolve`'s output, the cleaned
+root-relative name. `path` is the caller's raw string, used in the
+error text only.
+
+- `denied` returns nil at once when `w.deny` is nil. A workspace
+  opened through `Open`, or through `OpenWith` with no `Deny`, does no
+  extra work and makes no extra syscall.
+- Stage one, the name check: `w.deny.Matches(resolved)`. A match
+  returns `fmt.Errorf("%w: %s", ErrSecretPath, path)`.
+- Stage two, the symlink walk: refuse any `resolved` that carries a
+  symlink component. See below.
+- The two stages run in that order. The name check is pure string work
+  and is the common denial, so it costs no syscall. The walk exists to
+  catch a permitted name that aliases a denied one. Both stages return
+  the same sentinel, so the order changes the cost and the message
+  text, never the verdict. A path that fails both is a denied name, so
+  the name check's message is the accurate one for it.
+- Neither stage opens a file descriptor at any of the four sites.
+  `os.Root.Lstat` returns a `FileInfo` and no open file.
+- The nil test lives here and nowhere else. Change two adds no
+  remembered guard to a method body. `secretpath.Matcher.Matches` also
+  becomes nil-safe in the same change, so the nil test is a
+  walk-skipping optimization, not the last line between the package
+  and a panic. See `docs/plans/secrets.md`.
+
+The symlink walk:
+
+- It walks every prefix of `resolved`, shortest first, and calls
+  `w.r.Lstat` on each. For `a/b/c.txt` the prefixes are `a`, `a/b`,
+  and `a/b/c.txt`.
+- The final component is included. That is the load-bearing case: a
+  permitted name such as `innocent.txt` may itself be the link to a
+  denied file.
+- A prefix whose `FileInfo.Mode()&fs.ModeSymlink` is non-zero returns
+  `fmt.Errorf("%w: %s: symlink component", ErrSecretPath, path)`. The
+  suffix separates the walk's refusal from the name check's. See
+  "API".
+- `resolved == "."` walks nothing. The root itself is the open
+  `os.Root`, and it holds no component to test.
+- A failing `Lstat` is not a symlink. `denied` ignores the error and
+  continues the walk. A missing component, an unreadable parent, and a
+  closed root all fall in that class.
+- Ignoring the error is safe, and the reason is reachability, not
+  state-independence. A failing `Lstat` cannot hide a reachable
+  symlink, because `statat` and `openat` traverse the same chain from
+  the same root descriptor. Any state that fails the walk's `Lstat`
+  fails the following open with the same error. Three measured rows:
+  `EACCES` under a `0o000` parent, `ENOTDIR` under a file, and
+  `ENOENT` on a missing component.
+- A later failure can never mask an earlier link, because the walk
+  runs shortest first. A symlink is caught at its own prefix before
+  any deeper `Lstat` runs.
+- The walk's verdict is state-dependent by design. Reading whether a
+  component is a symlink is a state read, and that read is the walk's
+  whole job. The deny-before-existence row in "Precedence" is decided
+  at stage one, by the name check, which returns before the walk runs.
+- Cost: O(depth) `Lstat` syscalls per call, and only when `Deny` is
+  non-nil and the name check permits the path. A workspace with no
+  deny policy pays nothing, so change one's syscall-lean read path is
+  unchanged for every caller that sets no `Deny`.
+
+Why the walk exists, and what it does not close:
+
+- Without it the name policy fails open through aliasing. Three
+  measured cases, all with a `secrets/` deny list. A file symlink
+  `innocent.txt` pointing at `secrets/key.pem` returns the secret from
+  `ReadFile("innocent.txt")` with a nil error. A directory symlink
+  `sdir` pointing at `secrets` returns the same secret from
+  `ReadFile("sdir/key.pem")`. A write to `innocent.txt` overwrites
+  `secrets/key.pem` through the link.
+- The directory case is why the earlier mitigation was wrong. That
+  plan advised denying the directory instead of the file. `sdir` is a
+  denied directory, and the read still succeeded.
+- No cheap atomic fix exists. `os.Root.OpenFile` ignores
+  `syscall.O_NOFOLLOW`, measured on go1.26.0, so the open cannot
+  refuse a link on its own.
+- The walk is check-then-use. It closes the planted-checkout case,
+  where a repository, an archive, or an earlier agent turn already
+  placed the link. It does not close the concurrent-attacker case,
+  where a writer that already holds access to the root swaps a
+  component between the walk and the open.
+- The residual race is a secrecy limit, not a confinement limit.
+  `os.Root` confines the target to the root either way. The winning
+  attacker reads a denied in-root file; the attacker does not leave
+  the root.
+- The limit belongs in code and in the package reference, not only in
+  a plan. It goes in the `ErrSecretPath` doc comment and in
+  `docs/packages/workspace.md`. See "Verification".
+- The walk is a scope increase over the change-two plan first
+  approved. It is accepted, because that plan's stated mitigation was
+  measured false.
+
+Precedence, pinned rows:
+
+- An invalid limit beats an escape and beats a denial.
+- A lexical escape beats a denial. The matcher never sees a path that
+  leaves the root lexically.
+- A denial beats a syscall escape. A denied name that is a link out of
+  the root reports `ErrSecretPath`.
+- A denial beats `ErrTooLarge`. The deny check needs no file; the
+  bound needs an open one.
+- A permitted name that links out of the root has two answers, and the
+  policy picks which. With a nil `Deny` it reports `ErrEscape`, from
+  inside `os.Root`. With `Deny` set it reports `ErrSecretPath`,
+  because the walk refuses the link before `os.Root` sees it. This is
+  the one row the walk turns over. `docs/plans/secrets.md` states the
+  same two cases and pins them in one test.
+- A dangling symlink follows that same rule, through a different
+  mechanism. With a nil `Deny` it reports `fs.ErrNotExist`. With
+  `Deny` set it reports `ErrSecretPath`, because the walk refuses any
+  symlink component and never reaches the missing target.
+- A denial beats non-existence. A denied path that does not exist
+  reports `ErrSecretPath`, because the name check precedes the open.
+  This is a property, not an accident: a denial leaks the policy and
+  never the filesystem.
+- A denial beats a closed workspace. `resolve` still succeeds after
+  `Close`, so a denied path reports `ErrSecretPath` rather than
+  `fs.ErrClosed`. A permitted path still reports `fs.ErrClosed`.
+- The three sentinels stay distinct. `ErrSecretPath`, `ErrEscape`, and
+  `fs.ErrNotExist` are not blurred into one answer. The matcher is
+  caller-configured, and a deny decision made before the open reveals
+  nothing about the filesystem, so no disclosure argument buys the
+  loss of diagnosability.
 
 ### Callers this change touches
 
@@ -281,6 +433,23 @@ edit it.
   the package safe against a root an attacker prepared.
 - The `Deny` matcher is a name policy, not a content policy. See the
   residual-risk list in `docs/plans/secrets.md`.
+- Hard-link detection. A hard link carries no distinguishing mode bit,
+  so the symlink walk cannot see it. Measured: `os.Link` from
+  `secrets/key.pem` to `innocent.txt` leaves the walk permitting, and
+  the read returns the secret. `docs/plans/secrets.md` records the
+  scope and the reason.
+- Resolving a link and re-matching its target. Rejected; see
+  `docs/plans/secrets.md`.
+- Case folding and Unicode normalization in the matcher. `Matches`
+  goes through `path.Match`, which is byte-exact. A case-insensitive
+  filesystem, such as the default on darwin or windows, opens the same
+  file from `SECRETS/key.pem` while the matcher reports false on it.
+  A normalizing filesystem does the same across NFC and NFD spellings.
+  Change two adds no per-platform folding: that behavior belongs to
+  `secretpath` and needs its own plan. The gap is recorded as a
+  residual risk in `docs/plans/secrets.md`.
+- A defense against a concurrent attacker on the symlink walk. See
+  "The deny check".
 - A labelled `ErrEscape` under a concurrent attacker. A deterministic
   escape reports `ErrEscape`. A refusal that arrives while an attacker
   swaps a path component may report the raw syscall error instead. A
@@ -365,6 +534,34 @@ Surface added by change two:
 needs a place to live at open time. Change two then adds one field and
 one sentinel to a struct that already exists. `docs/plans/secrets.md`
 states the same split.
+
+Change two's lock delta is exactly two lines in `api/workspace.txt`:
+the `ErrSecretPath` variable and the `Deny` field. `api_surface`
+prints one line per exported struct field, so `Deny` renders on its
+own line beside `Root` and `MaxReadBytes`.
+
+`ErrSecretPath` wraps like `ErrEscape`, so the two sentinels read
+alike. The name check uses
+`fmt.Errorf("%w: %s", ErrSecretPath, path)`, matching
+`confine.go:29`. The `path` it echoes is the caller's raw string, not
+`resolve`'s output, again matching `ErrEscape`.
+
+The symlink walk uses one sentinel and a different text:
+`fmt.Errorf("%w: %s: symlink component", ErrSecretPath, path)`. The
+two refusals are different facts, so one message for both would lie. A
+permitted link to a permitted file is not a secret path; it is a
+symlink. An agent cannot self-correct from a message that names the
+wrong cause, and a human reads the deny patterns for a rule that is
+not there. A second sentinel was rejected: it would add a lock line,
+add a precedence row, and force every caller to test two values. One
+sentinel plus distinct text costs nothing and stops the message from
+lying.
+
+Change two threatens no structure limit. `read.go` is 69 lines,
+`write.go` 35, `list.go` 30, and `stat.go` 17; each gains one line.
+`confine.go` is 72 lines and gains `denied` plus its walk helper, so
+it stays far under the 500-line file limit and the 80-line function
+limit.
 
 Reasoning behind the shape:
 
@@ -643,9 +840,11 @@ size is exact.
   the stated order between the deny check and the bound.
 - `TestEscapeBeatsLimit`: `ReadFile("../outside.txt")` on a
   1-byte-limited workspace returns `ErrEscape`, not `ErrTooLarge`.
-- Change-two `Options.Validate` and secret-denial cases live in
+- Change-two `Options.Validate`, deny, and symlink-walk cases live in
   `workspace/workspace_test/secret_test.go`. See
   `docs/plans/secrets.md`; do not duplicate them here.
+  `TestSecretPathBeatsLimit` stays in this file, because it is a
+  precedence case against the bound.
 
 ### New file `workspace/workspace_test/confine_integration_test.go` (commit A)
 
@@ -717,7 +916,8 @@ where symlink creation needs a privilege.
 
 ## Verification
 
-Run the list below for commit A, then again for commit B.
+Run the list below for commit A, then again for commit B, then again
+for change two. The change-two-only items follow the shared list.
 
 - `make verify` passes: gofmt, vet, tests under the race detector,
   the doc gate, the structure gate, the plan gate, the deps gate,
@@ -770,3 +970,30 @@ Run the list below for commit A, then again for commit B.
   `validateLimit` helper, so no comment states the limit rule alone.
   `effectiveLimit` calls `validateLimit` before it maps a passing
   value onto the value the read uses.
+
+Change two only:
+
+- `python3 scripts/check_deps.py` passes against the existing row
+  `"workspace": ["secretpath"]`. Change two is the commit that first
+  uses that edge. `policy/layers.json` needs no edit.
+- `make api-update` runs, and `api/workspace.txt` gains exactly the
+  `ErrSecretPath` line and the `Deny` field line.
+- The `ErrSecretPath` doc comment states four things: the name check,
+  the symlink-component refusal, the residual race, and the hard-link
+  limit. The race sentence must say that a concurrent writer inside
+  the root can swap a component between the check and the open, and
+  that `os.Root` still confines the target to the root. The hard-link
+  sentence must say that a hard link to a denied file is not detected.
+- `docs/packages/workspace.md` changes in the same commit. It gains
+  `ErrSecretPath` under "Failure modes", the `Deny` field under
+  "Types", the `secretpath` edge under "Cross-references", and a
+  residual-risk paragraph carrying the same race limit plus the
+  case-insensitive-filesystem limit. Its "Cross-references" section
+  today says `workspace` declares no internal import edge; that
+  sentence becomes false.
+- `AGENTS.md`'s `workspace` entry drops "A leaf package; no internal
+  imports", names the `secretpath` import, and lists `ErrSecretPath`.
+- `secretpath.Matcher.Matches` becomes nil-safe in the same change.
+  See `docs/plans/secrets.md`. `api/secretpath.txt` does not change.
+- Coverage for `workspace` and `secretpath` each stay at or above the
+  85 percent floor.

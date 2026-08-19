@@ -14,6 +14,9 @@ func (w *Workspace) List(path string) ([]os.DirEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := w.denied(resolved, path); err != nil {
+		return nil, err
+	}
 	f, err := w.r.Open(resolved)
 	if err != nil {
 		return nil, classify(path, err)

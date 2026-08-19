@@ -56,6 +56,56 @@ func withinRoot(root, p string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// denied holds the whole secret-path rule, so each of ReadFileLimit,
+// WriteFile, List, and Stat calls it in one line and states no rule of
+// its own. resolved is resolve's cleaned root-relative name, which the
+// matcher reads; path is the caller's raw string, used in the error
+// text only. A nil deny matcher returns nil at once, so a Workspace
+// with no policy makes no extra syscall. The name check runs first,
+// because it is pure string work and is the common denial. The symlink
+// walk runs second, and only when the name check permits. See
+// ErrSecretPath.
+func (w *Workspace) denied(resolved, path string) error {
+	if w == nil || w.deny == nil {
+		return nil
+	}
+	if w.deny.Matches(resolved) {
+		return fmt.Errorf("%w: %s", ErrSecretPath, path)
+	}
+	if w.hasSymlinkComponent(resolved) {
+		return fmt.Errorf("%w: %s: symlink component", ErrSecretPath, path)
+	}
+	return nil
+}
+
+// hasSymlinkComponent reports whether any prefix of resolved is a
+// symlink. It walks the prefixes shortest first and includes the final
+// component, because a permitted name can itself be the link to a
+// denied file. A resolved value of "." walks nothing: the root is the
+// open os.Root and holds no component to test. A failing Lstat is not
+// a symlink, so the walk ignores the error and continues. That is
+// safe, because statat and openat traverse the same chain from the
+// same root descriptor, so any state that fails an Lstat fails the
+// following open with the same error. Shortest-first order also keeps
+// a later failure from masking an earlier link.
+func (w *Workspace) hasSymlinkComponent(resolved string) bool {
+	if resolved == "." {
+		return false
+	}
+	parts := strings.Split(resolved, string(filepath.Separator))
+	for i := range parts {
+		prefix := filepath.Join(parts[:i+1]...)
+		info, err := w.r.Lstat(prefix)
+		if err != nil {
+			continue
+		}
+		if info.Mode()&fs.ModeSymlink != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // classify maps an os.Root confinement refusal onto ErrEscape, so a
 // caller tests one sentinel for a lexical escape and a syscall escape
 // alike. It returns any other error unchanged, including a missing

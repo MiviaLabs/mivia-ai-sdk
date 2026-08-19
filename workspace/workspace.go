@@ -6,6 +6,8 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 )
 
 // DefaultMaxReadBytes is the read bound a Workspace uses when its
@@ -35,6 +37,22 @@ var ErrTooLarge = errors.New("workspace: file exceeds read limit")
 // zero, nor a positive value at or under maxReadLimit.
 var ErrInvalidLimit = errors.New("workspace: invalid read limit")
 
+// ErrSecretPath reports that Options.Deny refuses a path. Two rules
+// return it. The name check matches the cleaned root-relative path
+// against the matcher. The symlink walk refuses any path whose
+// components hold a symlink, because a permitted name can otherwise
+// alias a denied file; that refusal names "symlink component" in its
+// text. Four limits apply. The walk is check-then-use: a concurrent
+// writer inside the root can swap a component between the check and
+// the open, and os.Root still confines the target to the root, so the
+// limit is on secrecy and not on confinement. A hard link to a denied
+// file is not detected, because a hard link carries no distinguishing
+// mode bit. A case-insensitive or Unicode-normalizing filesystem opens
+// a denied file under a spelling the byte-exact matcher permits. The
+// matcher is a name policy and not a content policy, so a permitted
+// name holding a secret is not denied.
+var ErrSecretPath = errors.New("workspace: path is a secret path")
+
 // Workspace confines filesystem access to one resolved root
 // directory. It holds an open os.Root, so a Workspace owns a file
 // descriptor and needs Close.
@@ -42,6 +60,7 @@ type Workspace struct {
 	root         string
 	r            *os.Root
 	maxReadBytes int64
+	deny         *secretpath.Matcher
 }
 
 // Options configures one Workspace at open time. See OpenWith.
@@ -51,11 +70,14 @@ type Options struct {
 	// MaxReadBytes bounds one read. Zero selects DefaultMaxReadBytes
 	// and Unbounded removes the bound. See Validate.
 	MaxReadBytes int64
+	// Deny refuses a path it matches, and refuses any path holding a
+	// symlink component. A nil Deny denies nothing. See ErrSecretPath.
+	Deny *secretpath.Matcher
 }
 
 // Validate reports whether o names a usable Workspace. Root must not
 // be blank. MaxReadBytes must be Unbounded, zero, or a positive value
-// at or under maxReadLimit.
+// at or under maxReadLimit. Deny may be nil, which denies nothing.
 func (o Options) Validate() error {
 	if o.Root == "" {
 		return errors.New("workspace: Root is blank")
@@ -113,7 +135,7 @@ func OpenWith(opts Options) (*Workspace, error) {
 	if limit == 0 {
 		limit = DefaultMaxReadBytes
 	}
-	return &Workspace{root: resolved, r: r, maxReadBytes: limit}, nil
+	return &Workspace{root: resolved, r: r, maxReadBytes: limit, deny: opts.Deny}, nil
 }
 
 // Root returns the Workspace's resolved absolute root path.

@@ -167,11 +167,8 @@ under an alias in the one file that needs it, and name no new type
 "SDK blocks as tools" package, and the loop is a caller of blocks, not
 a block exposed as a tool.
 
-Add one row to `policy/layers.json`:
-
-```json
-"agentloop": ["provider", "tools", "trace", "hooks", "usage", "events"]
-```
+Add one row to `policy/layers.json`; see `docs/plans/agentloop.md` for
+the exact row.
 
 `trace` opens one span per iteration and one per tool call, matching
 `agentrun`'s tracer wiring. `hooks` fires `PointPreTool` and
@@ -197,34 +194,41 @@ adds `MaxIterations`, which bounds one loop's turns. The two bounds
 compose: depth caps how deep, iterations cap how long. This phase
 adds no third counter and duplicates nothing.
 
+## Turns and calls are not spend
+
+`MaxIterations` bounds turns and `MaxCallsPerTurn` bounds calls
+within a turn, but neither bounds tokens, and therefore neither
+bounds cost. A model that stays under both caps can still run up an
+arbitrarily large bill: a small `MaxIterations` with a large context
+window and a model that pads every response still spends real money
+per call. `contextbudget.Limits` does not close this gap either; it
+caps one call's message bytes and event count going in, not the
+tokens a provider bills coming out. `usage.Accumulator` records the
+actual spend, but only ever accumulates; nothing reads it back to
+stop a run. The loop is the one component in this SDK that can run
+away on its own, unattended, for as long as the model keeps
+requesting tools, and it is the one place lacking `agent.Run`'s own
+`ErrOverBudget` precedent for the resource that matters most: money.
+
+`Options.MaxTotalTokens` closes the gap the same way `Budget` closes
+its own: a positive cap, checked after every call against a running
+total, tripping a sentinel error that fails the run. It is a separate
+field from `Budget` because the two check different things at
+different times. `Budget.Fits` is a pre-flight check on one call's
+projected message size; `MaxTotalTokens` is a post-flight check on
+tokens the provider already billed, summed across every call the run
+has made so far. Reusing `Budget`'s `MaxEvents`/`MaxBytes` shape for
+token spend would conflate "how big is this request" with "how much
+has this run cost," two questions with different answers at
+different points in the loop.
+
 ## API
 
-- `type Options struct` — fields: `Completer provider.Completer`,
-  `Tools *tools.Registry`, `Scope *tools.Scope`, `Model string`,
-  `MaxIterations int`, `MaxCallsPerTurn int`, `OnToolError ErrorPolicy`,
-  `Hooks *hooks.Registry`, `Tracer *trace.Tracer`,
-  `Usage *usage.Accumulator`, `SessionID string`, `Bus *events.Bus`,
-  `Trim func([]provider.Message) []provider.Message`.
-- `func (o Options) Validate() error` — enforces every invariant this
-  plan states. `Completer` and `Tools` are required. `MaxIterations`
-  must be positive. `Usage` requires `SessionID`.
-- `func New(opts Options) (*Loop, error)` — validates, then binds.
-- `type Loop struct` — built only through `New`.
-- `func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)`
-- `type Result struct` — `Final provider.Message`,
-  `History []provider.Message`, `Iterations int`,
-  `Usage provider.Usage`, `Stop StopReason`.
-- `type StopReason string` and its constants: `StopNoToolCalls`,
-  `StopMaxIterations`, `StopToolError`, `StopHookVeto`.
-- `type ErrorPolicy string` and its constants: `ErrorPolicyReport`,
-  `ErrorPolicyFail`. `ErrorPolicyReport` is the zero value and sends
-  the tool's error text back as the tool result.
-- `func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)`
-  — the second return holds the names skipped for a missing schema.
-- Sentinel errors: `ErrNoCompleter`, `ErrNoTools`, `ErrMaxIterations`,
-  `ErrUnrenderableResult`, `ErrCallsPerTurnExceeded`.
-- In `tools`: `type SchemaTool interface` and
-  `func SchemaOf(t Tool) ([]byte, bool)`.
+`docs/plans/agentloop.md` is the sole source of truth for the exact
+API surface (the `Options` struct, `Trim`'s signature, the sentinel
+error list, and everything else callable); this plan states only the
+design rationale above and does not restate that surface, to avoid
+the two documents drifting apart on every future edit.
 
 `Run` calls `Registry.RunScoped`, never `Registry.Run`. A
 model-chosen call is the case tool scoping and approval exist for. A
@@ -298,8 +302,10 @@ claim, not a verified property.
   unrenderable case, and the `ResultBudgetOf` truncation.
 - `loop_integration_test.go` — a scripted `Completer` and a real
   `tools.Registry` run a two-tool, three-iteration task end to end.
-  A second case runs the same loop wrapped as one `flow.Step` tool
-  through `agentrun`, proving the two composition models nest.
+  The nesting case — a built `Loop` wrapped as one `flow.Step` tool
+  through `agentrun`, proving the two composition models nest — is
+  deferred to phase 70, where `subagent.LoopTool` exists to do the
+  wrapping; this phase does not write that case.
 - `loop_bench_test.go` — one iteration's allocation cost, with the
   baseline recorded in this plan before the phase closes.
 

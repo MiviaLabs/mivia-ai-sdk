@@ -24,7 +24,8 @@ Inside:
   the called tool's own `DecodeArguments`.
 - The result render path: `tools.Out` to `RoleTool` message content.
 - Termination bounds: maximum iterations, maximum tool calls per
-  turn, and context cancellation.
+  turn, a cumulative token ceiling across the whole run, and context
+  cancellation.
 - The tool-failure policy: report the error to the model as a tool
   result, or end the run.
 - A `Result` value holding the final message, the message history,
@@ -63,7 +64,7 @@ Outside:
 
 - `type Options struct` — `Completer provider.Completer`,
   `Tools *tools.Registry`, `Scope *tools.Scope`, `Model string`,
-  `MaxIterations int`, `MaxCallsPerTurn int`,
+  `MaxIterations int`, `MaxCallsPerTurn int`, `MaxTotalTokens int`,
   `OnToolError ErrorPolicy`, `Hooks *hooks.Registry`,
   `Tracer *trace.Tracer`, `Usage *usage.Accumulator`,
   `SessionID string`, `Bus *events.Bus`,
@@ -74,7 +75,8 @@ Outside:
   `SessionID`. A non-nil `Budget` must pass
   `contextbudget.Limits.Validate`. `MaxCallsPerTurn` zero means
   unbounded, matching `flow.LoopPolicy.Max`'s zero-means-unbounded
-  precedent.
+  precedent. `MaxTotalTokens` must not be negative; zero means
+  unbounded, the same precedent.
 - `func New(opts Options) (*Loop, error)` — validates, then binds.
 - `type Loop struct` — built only through `New`. Unexported fields.
 - `func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)`
@@ -99,20 +101,58 @@ Outside:
   `StopNoToolCalls`, indistinguishable from success.
 - Sentinel errors: `ErrNoCompleter`, `ErrNoTools`, `ErrMaxIterations`,
   `ErrUnrenderableResult`, `ErrCallsPerTurnExceeded`, `ErrNoSchemas`,
-  `ErrOverBudget`.
+  `ErrOverBudget`, `ErrTokenBudgetExceeded`.
 
 `Options.Trim` runs before each `Completer` call on the full message
-history. Its signature is bindable to `contextplan.Plan`: the caller
-closes over the planner, session, window, and estimator, and passes
-ctx and errors straight through. A non-nil trim error fails the run
-for that iteration, wrapped with the iteration count. A nil `Trim`
-passes the history through unchanged.
+history. Its signature is type-compatible with a closure over
+`contextplan.Planner.Plan`: `Plan`'s signature is
+`(ctx, *contextstate.Session, Window, provider.TokenEstimator) (PlanResult, error)`
+and never consumes `Trim`'s `msgs []provider.Message` argument, so a
+binding closure must discard `msgs` and read history from the
+`Session` it closes over instead. Keeping that `Session` synchronized
+with the loop's growing history is the caller's responsibility, out
+of this plan's scope; context-window management belongs to phase 66
+(see Scope, Outside). A non-nil trim error fails the run for that
+iteration, wrapped with the iteration count. A nil `Trim` passes the
+history through unchanged.
 
 `Options.Budget` caps the loop's context, following `agent.Run`'s
 `ErrOverBudget` precedent. Before each `Completer` call, `Run` sums
 the message content bytes and the message count, and calls
 `Budget.Fits`. A failure returns `ErrOverBudget` wrapped with the
 iteration count. A nil `Budget` means uncapped.
+
+A positive `MaxCallsPerTurn` trips when one turn's response requests
+more calls than the bound: that turn fails the run
+(`ErrCallsPerTurnExceeded` wrapped), before any call in the turn
+runs. This trip always fails the run, regardless of `OnToolError`.
+It is not routed through the report/fail policy: `OnToolError`
+governs what `Run` does with a tool-run error that has a
+`ToolCallID` to attach a report to, and the trip happens before any
+call executes, so there is no call and no `ToolCallID` to report
+against. A zero `MaxCallsPerTurn` means unbounded, matching
+`flow.LoopPolicy.Max`'s precedent.
+
+A positive `MaxTotalTokens` caps the run's cumulative spend, not one
+call's context. `MaxIterations` bounds turns, `MaxCallsPerTurn`
+bounds calls within a turn, and `Budget` bounds one call's message
+size; none of the three bounds tokens actually billed across the
+run. `Run` keeps its own running token total, seeded at zero and
+independent of `Options.Usage` (which is optional, keyed by
+`SessionID`, and persists across runs). After each `Completer` call
+returns, `Run` adds `resp.Usage.TotalTokens` to that running total,
+then checks it against `MaxTotalTokens`. A total over the cap fails
+the run with `ErrTokenBudgetExceeded`, wrapped with the iteration
+count; the response that tripped the cap is still appended to
+history and still recorded onto `Options.Usage`, so a caller with a
+`Usage` accumulator sees the exact spend that ended the run, not an
+undercount. A zero `MaxTotalTokens` means unbounded.
+
+Hitting `MaxIterations` is not an error: `Run` returns
+`Result{Stop: StopMaxIterations}, nil`, a normal, graceful stop, the
+same shape as `StopNoToolCalls`. `ErrMaxIterations` is reserved for
+`Options.Validate()` rejecting a non-positive `MaxIterations` value —
+a construction-time validation error, not a runtime stop.
 
 `trace.Tracer` opens one span per iteration and one per tool call.
 `hooks.Registry` fires `PointPreTool` and `PointPostTool` per tool
@@ -192,8 +232,10 @@ same footprint the package already holds.
 `agentloop/agentloop_test/`, one external package:
 
 - `options_test.go` — one case per invariant `Validate` claims,
-  including `MaxCallsPerTurn == 0` passing validation (unbounded) and
-  a negative `Budget` field failing validation.
+  including `MaxCallsPerTurn == 0` passing validation (unbounded), a
+  negative `Budget` field failing validation, `MaxTotalTokens == 0`
+  passing validation (unbounded), and a negative `MaxTotalTokens`
+  failing validation.
 - `definitions_test.go` — a registry with schema-bearing and
   schema-free tools yields the right definitions and skip list. A
   `Scope` denial removes a tool from the offered set. A registry
@@ -212,15 +254,32 @@ same footprint the package already holds.
   `ErrorPolicyReport` and fails the run under `ErrorPolicyFail`, the
   same as a failed `Run`. A `Budget` that the history outgrows fails
   the run with `ErrOverBudget`. A `Trim` hook returning an error
-  fails the run.
+  fails the run. A turn whose response requests more calls than a
+  positive `MaxCallsPerTurn` fails the run before any call in that
+  turn runs, asserting `ErrCallsPerTurnExceeded` under both
+  `ErrorPolicyReport` and `ErrorPolicyFail`, since the trip is
+  policy-independent. A model that always calls a tool with
+  `MaxIterations` reached asserts
+  `Result{Stop: StopMaxIterations}` returned with `err == nil`. A
+  scripted `Completer` whose responses' summed `Usage.TotalTokens`
+  crosses a positive `MaxTotalTokens` on the second iteration fails
+  the run with `ErrTokenBudgetExceeded` wrapped with the iteration
+  count, and a paired case with `Options.Usage` set asserts the
+  tripping call's tokens still landed in the accumulator's total. A
+  zero `MaxTotalTokens` with the same scripted responses runs to
+  `StopMaxIterations` unaffected.
 - `render_test.go` — the render order (string, then UTF-8 bytes,
   then JSON fallback), the unrenderable case, and the
   `ResultBudgetOf` truncation.
 - `loop_integration_test.go` — a scripted `Completer` and a real
   `tools.Registry` run a two-tool, three-iteration task end to end.
   One case binds `Options.Trim` to a closure over
-  `contextplan.Planner.Plan`, proving the shapes meet without
-  swallowing errors.
+  `contextplan.Planner.Plan`, proving only that the two signatures are
+  type-compatible and that the closure's ctx and error returns pass
+  straight through `Trim`'s call site without being swallowed; the
+  closure discards `msgs` and reads from a `Session` the test seeds
+  once, since keeping that `Session` synchronized with the loop's
+  history is out of this plan's scope.
   The nesting proof — a built `Loop` wrapped as one `flow.Step` tool
   through `agentrun`, showing the two composition models nest —
   belongs to phase 70, where `subagent.LoopTool` will exist to do the
@@ -234,6 +293,15 @@ implements `SchemaTool`, one that does not, and a typed nil.
 `tools/tools_test/registry_test.go` gains one case: `Tools()` on a
 Registry holding several tools returns all of them sorted by name,
 and `Tools()` on an empty Registry returns an empty, non-nil slice.
+
+`tools/tools_test/registry_run_scoped_concurrent_test.go` (or a
+sibling file matching that pattern) gains one race sub-case: N
+goroutines call `Tools()` on a Registry concurrently with N goroutines
+calling `Add`, under `go test -race`. Every `Tools()` call returns a
+consistent, non-corrupt snapshot; no call panics. `Tools()` reads the
+same map as `Add`/`Remove` under the same mutex, so it is in scope for
+tools.md's "required for every method that touches the tools map"
+concurrent-test policy.
 
 Every scripted `Completer` lives in the test package. No concrete
 model client ships in this SDK, and this plan adds none.

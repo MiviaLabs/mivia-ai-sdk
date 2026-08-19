@@ -527,6 +527,14 @@ Test: `tools/tools_test/schema_test.go` covers `SchemaOf` on a tool
 that implements `SchemaTool`, one that does not, and a typed nil.
 `tools/tools_test/registry_test.go` gains a case for `Tools()`
 returning a name-sorted, non-nil snapshot, including the empty case.
+`Tools()` reads the same map as `Add`, `Get`, `Remove`, `Run`, and
+`RunScoped` under the same mutex, so this plan's own "required for
+every method that touches the tools map" policy
+(`registry_run_scoped_concurrent_test.go`, above) applies to it too:
+`registry_run_scoped_concurrent_test.go` gains one race sub-case
+racing N goroutines calling `Tools()` against N goroutines calling
+`Add`, under `go test -race`, asserting every `Tools()` call returns a
+consistent, non-corrupt snapshot and no call panics.
 
 `make api-update` locks `SchemaTool`, `SchemaOf`, and
 `Registry.Tools()` into `api/tools.txt` in the same change as

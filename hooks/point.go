@@ -11,7 +11,7 @@ const (
 	pointUnset Point = iota
 	// PointPreTool fires before a tool call runs.
 	PointPreTool
-	// PointPostTool fires after a tool call's ack confirms.
+	// PointPostTool fires after a step's ack confirms, tool or Ask round trip.
 	PointPostTool
 	// PointStop fires at a run's stop.
 	PointStop

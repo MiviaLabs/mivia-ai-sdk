@@ -99,6 +99,18 @@ func TestWrapCompleterConstructionRejects(t *testing.T) {
 	}
 }
 
+// TestZeroValueAccumulatorRecords proves the zero-value Accumulator
+// records without panicking, its map initializing on first Record.
+func TestZeroValueAccumulatorRecords(t *testing.T) {
+	var acc usage.Accumulator
+	if err := acc.Record("session-z", provider.Usage{TotalTokens: 4}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if got, ok := acc.Total("session-z"); !ok || got.TotalTokens != 4 {
+		t.Fatalf("Total = %+v,%v, want the recorded turn", got, ok)
+	}
+}
+
 // streamingCompleter answers one streamed turn of two chunks.
 type streamingCompleter struct{}
 

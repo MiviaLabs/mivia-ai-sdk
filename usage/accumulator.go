@@ -27,8 +27,8 @@ var (
 // Accumulator holds one running provider.Usage total per session
 // identifier, guarded for concurrent access. Its fields stay
 // unexported; a caller reaches the state only through Record, Total,
-// and Reset. Built only through New; the zero value's nil map panics
-// on write.
+// and Reset. New is the constructor; the zero value also works,
+// because Record initializes the map on first call.
 type Accumulator struct {
 	mu     sync.Mutex
 	totals map[string]provider.Usage
@@ -51,6 +51,9 @@ func (a *Accumulator) Record(sessionID string, u provider.Usage) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.totals == nil {
+		a.totals = make(map[string]provider.Usage)
+	}
 	total := a.totals[sessionID]
 	total.PromptTokens += u.PromptTokens
 	total.CompletionTokens += u.CompletionTokens

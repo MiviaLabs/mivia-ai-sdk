@@ -10,6 +10,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // TestDepthGuardStopsSelfSpawn proves a runner whose tool is itself
@@ -27,7 +28,8 @@ func TestDepthGuardStopsSelfSpawn(t *testing.T) {
 	}
 	// agentrun.New validates the registry up front, so a placeholder
 	// tool holds the step's name until the real, self-referencing
-	// tool exists to replace it.
+	// tool exists to replace it. One tracer counts the spawn spans.
+	tr := trace.New()
 	reg := tools.New()
 	if err := reg.Add(okTool{name: "child"}); err != nil {
 		t.Fatalf("Add placeholder: %v", err)
@@ -36,15 +38,20 @@ func TestDepthGuardStopsSelfSpawn(t *testing.T) {
 	if !reg.Remove("child") {
 		t.Fatal("Remove placeholder: name not held")
 	}
-	if err := reg.Add(subagent.AsTool("child", inner, subagent.ToolOptions{})); err != nil {
+	if err := reg.Add(subagent.AsTool("child", inner, subagent.ToolOptions{Tracer: tr})); err != nil {
 		t.Fatalf("Add tool: %v", err)
 	}
 	outer := runnerOver(t, plan, m, reg)
 
-	tool := subagent.AsTool("child", outer, subagent.ToolOptions{})
+	tool := subagent.AsTool("child", outer, subagent.ToolOptions{Tracer: tr})
 	_, err = tool.Run(ctx, tools.InOut{Value: "go"})
 	if err == nil {
 		t.Fatal("Run succeeded, want the depth bound")
+	}
+	// The default bound is three: three spawns pass the guard
+	// before the fourth refuses.
+	if spawns := len(tr.Spans()); spawns != 3 {
+		t.Fatalf("spawn spans = %d, want exactly 3 before the default bound", spawns)
 	}
 	if !strings.Contains(err.Error(), subagent.ErrMaxDepth.Error()) {
 		t.Fatalf("error %v lacks the depth sentinel", err)
@@ -55,7 +62,8 @@ func TestDepthGuardStopsSelfSpawn(t *testing.T) {
 }
 
 // TestDepthBoundIsConfigurable proves Depth 1 stops the very first
-// nested spawn.
+// nested spawn, counting the spawned executions so the boundary
+// itself is pinned, not only the eventual error.
 func TestDepthBoundIsConfigurable(t *testing.T) {
 	ctx := context.Background()
 	plan, err := flow.New([]flow.Step{{ID: "child", To: "done", Payload: "go"}}, nil)
@@ -67,6 +75,7 @@ func TestDepthBoundIsConfigurable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
+	tr := trace.New()
 	reg := tools.New()
 	if err := reg.Add(okTool{name: "child"}); err != nil {
 		t.Fatalf("Add placeholder: %v", err)
@@ -75,15 +84,18 @@ func TestDepthBoundIsConfigurable(t *testing.T) {
 	if !reg.Remove("child") {
 		t.Fatal("Remove placeholder: name not held")
 	}
-	if err := reg.Add(subagent.AsTool("child", inner, subagent.ToolOptions{Depth: 1})); err != nil {
+	if err := reg.Add(subagent.AsTool("child", inner, subagent.ToolOptions{Depth: 1, Tracer: tr})); err != nil {
 		t.Fatalf("Add tool: %v", err)
 	}
 	outer := runnerOver(t, plan, m, reg)
 
-	tool := subagent.AsTool("child", outer, subagent.ToolOptions{Depth: 1})
+	tool := subagent.AsTool("child", outer, subagent.ToolOptions{Depth: 1, Tracer: tr})
 	_, err = tool.Run(ctx, tools.InOut{Value: "go"})
 	if err == nil {
 		t.Fatal("Run succeeded, want the depth bound at one")
+	}
+	if spawns := len(tr.Spans()); spawns != 1 {
+		t.Fatalf("spawn spans = %d, want exactly 1 before the bound", spawns)
 	}
 	if !strings.Contains(err.Error(), subagent.ErrMaxDepth.Error()) {
 		t.Fatalf("error %v lacks the depth sentinel", err)

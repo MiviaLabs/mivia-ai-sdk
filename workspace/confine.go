@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 )
 
 // rootEscapeText is the inner error text os.Root reports when a path
@@ -35,14 +36,19 @@ func (w *Workspace) resolve(path string) (string, error) {
 	return rel, nil
 }
 
-// withinRoot reports whether p is root or lies under root. It is wrong
-// for a root of "/", where it reports false for every path; the defect
-// fails closed and docs/plans/workspace.md records it.
+// withinRoot reports whether p is root or lies under root. It goes
+// through filepath.Rel, so a root of "/", which already ends in a
+// separator, holds its children like any other root. p is the
+// lexically cleaned path; a Rel failure denies.
 func withinRoot(root, p string) bool {
-	if p == root {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
 		return true
 	}
-	return len(p) > len(root) && p[:len(root)] == root && p[len(root)] == filepath.Separator
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // classify maps an os.Root confinement refusal onto ErrEscape, so a

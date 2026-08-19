@@ -305,12 +305,12 @@ edit it.
   `filepath.EvalSymlinks` resolves it and the read succeeds. After
   commit A the read returns `ErrEscape`. A caller that needs the link
   followed uses a relative symlink.
-- A root of `/`. `withinRoot` (`workspace/confine.go:40`) indexes
+- A root of `/` once failed closed. `withinRoot` indexed
   `p[len(root)]` for the separator, which is the character after the
-  separator when `root` is `/`. Measured: `Stat("etc")` under a root
-  of `/` returns `ErrEscape`. The defect fails closed, and no caller
-  binds a workspace to `/`. This plan leaves `withinRoot` unchanged
-  and records the limit, so the next reader does not read it as new.
+  separator when `root` is `/`. `Stat("etc")` under a root of `/`
+  returned `ErrEscape`. `withinRoot` now goes through `filepath.Rel`,
+  which this plan already names as the correct classifier, so the
+  limit is gone. `confine_internal_test.go` pins the root-`/` rows.
 
 ## API
 
@@ -443,10 +443,10 @@ accurate justification is narrow:
 - The fourth `TestTraversalEscape` vector does not pin the pre-check.
   It pins the state-independence of the verdict, which `filepath.Clean`
   owns.
-- The pre-check is the sole cause of the root-`/` limit recorded in
-  Scope-Outside. `filepath.Rel` alone would classify `Stat("etc")`
-  under a root of `/` correctly. The limit stays recorded and
-  unchanged: it fails closed, and no caller binds a workspace to `/`.
+- The pre-check was the sole cause of the root-`/` limit once recorded
+  in Scope-Outside. `filepath.Rel` classifies `Stat("etc")` under a
+  root of `/` correctly, so the pre-check now calls `filepath.Rel`
+  itself and the limit is closed.
 
 `resolveDeepestExisting` is deleted in commit A. It is the part that
 did filesystem work between the check and the syscall, so it is the
@@ -481,7 +481,10 @@ cannot pin it, because they assert no error class at all.
 ## Tests
 
 Tests live in `workspace/workspace_test/`, table-driven where the case
-set grows. Commit A splits the escape and `classify` cases out of
+set grows. One exception: `workspace/confine_internal_test.go` is
+`package workspace`, because `withinRoot` is unexported and no
+temporary directory can produce a root of `/`. It is the whitebox
+pattern `flow/wave_select_internal_test.go` already sets. Commit A splits the escape and `classify` cases out of
 `workspace_test.go` into `escape_test.go`, because the combined file
 passes the 500-line structure limit. `workspace_test.go` keeps the
 open, lifecycle, round-trip, and listing cases.

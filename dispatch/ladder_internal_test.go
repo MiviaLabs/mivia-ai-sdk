@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/ed25519"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
+	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // echoHandler restates the message payload it receives.
@@ -64,6 +67,10 @@ func TestProcessLine_EmitIsBestEffort(t *testing.T) {
 		t.Fatalf("encode message: %v", err)
 	}
 
+	led, err := ledger.New(nil, nil)
+	if err != nil {
+		t.Fatalf("ledger.New() error: %v", err)
+	}
 	e := &Endpoint{
 		id:   "endpoint-1",
 		room: r,
@@ -71,6 +78,12 @@ func TestProcessLine_EmitIsBestEffort(t *testing.T) {
 			return echoHandler{}, nil
 		},
 		bus: events.New(),
+		taskOpts: taskrun.Options{
+			Ledger: led,
+			Actor:  ledger.Actor("endpoint-1"),
+			Owner:  ledger.OwnerID("endpoint-1"),
+			Lease:  time.Second,
+		},
 	}
 
 	out := e.processLine(context.Background(), line)

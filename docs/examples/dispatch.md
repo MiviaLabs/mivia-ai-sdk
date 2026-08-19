@@ -46,6 +46,14 @@ if err != nil {
 }
 ```
 
+Size `Options.ReplayLease` above `Handler.Handle`'s expected p99
+latency. `taskrun.Run` claims the replay key once, then calls `Handle`
+synchronously with no lease renewal. A lease shorter than `Handle`'s
+real latency re-runs `Handle` on an ordinary slow call, not only on a
+crash. An `agentrun`-backed `Handler` can exceed the 30-second
+`DefaultReplayLease` during normal operation, so size `ReplayLease`
+for that handler explicitly; do not rely on the default.
+
 `restater` is any type implementing `Handler`, for example one that
 echoes the payload back with a prefix:
 
@@ -98,6 +106,39 @@ carries `From: "support-agent"` and
 passed every ladder stage — decode, signature, room admission,
 resolve, and handle — before the endpoint built and confirmed the
 ack.
+
+## Replay protection
+
+`Options.Ledger` defaults to a bounded in-memory ledger when left
+nil, so `endpoint` above already rejects a replayed message. Tune the
+default ledger's memory footprint without opting out of the
+convenience by setting `ReplayCapacity`:
+
+```go
+endpoint, err := dispatch.New(dispatch.Options{
+	ID:             "support-agent",
+	Room:           r,
+	Resolve:        resolve,
+	ReplayCapacity: 10000,
+})
+```
+
+Supply a caller-built `*ledger.Ledger` to own the store, its
+capacity, and its eviction policy directly:
+
+```go
+led, err := ledger.New(ledger.NewMemStore(), nil)
+if err != nil {
+	return fmt.Errorf("build ledger: %w", err)
+}
+
+endpoint, err := dispatch.New(dispatch.Options{
+	ID:      "support-agent",
+	Room:    r,
+	Resolve: resolve,
+	Ledger:  led,
+})
+```
 
 ## Wiring into agent.Run
 

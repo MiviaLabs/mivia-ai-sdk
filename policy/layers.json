@@ -62,7 +62,9 @@
       "agent",
       "envelope",
       "events",
-      "room"
+      "ledger",
+      "room",
+      "taskrun"
     ],
     "durablefence": [],
     "e2e": [

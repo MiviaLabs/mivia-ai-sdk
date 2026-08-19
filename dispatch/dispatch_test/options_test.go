@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/dispatch"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -58,33 +59,55 @@ func TestNewValidation(t *testing.T) {
 			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve},
 			want: nil,
 		},
+		{
+			name: "negative replay lease",
+			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: -time.Second},
+			want: dispatch.ErrBadReplayLease,
+		},
+		{
+			name: "sub-second replay lease",
+			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: 500 * time.Millisecond},
+			want: dispatch.ErrBadReplayLease,
+		},
+		{
+			name: "negative replay capacity",
+			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayCapacity: -1},
+			want: dispatch.ErrBadReplayLease,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := tc.opts.Validate(); !errors.Is(err, tc.want) {
-				t.Fatalf("Validate() error = %v, want %v", err, tc.want)
-			}
-			e, err := dispatch.New(tc.opts)
-			if tc.want == nil {
-				if err != nil {
-					t.Fatalf("New() error = %v, want nil", err)
-				}
-				if e == nil {
-					t.Fatal("New() endpoint is nil")
-				}
-				if e.Handler() == nil {
-					t.Fatal("Handler() is nil")
-				}
-				return
-			}
-			if !errors.Is(err, tc.want) {
-				t.Fatalf("New() error = %v, want %v", err, tc.want)
-			}
-			if e != nil {
-				t.Fatalf("New() endpoint = %v, want nil", e)
-			}
+			assertValidationCase(t, tc.opts, tc.want)
 		})
+	}
+}
+
+// assertValidationCase runs opts through Options.Validate and New and
+// checks both answer want, or both succeed when want is nil.
+func assertValidationCase(t *testing.T, opts dispatch.Options, want error) {
+	t.Helper()
+	if err := opts.Validate(); !errors.Is(err, want) {
+		t.Fatalf("Validate() error = %v, want %v", err, want)
+	}
+	e, err := dispatch.New(opts)
+	if want == nil {
+		if err != nil {
+			t.Fatalf("New() error = %v, want nil", err)
+		}
+		if e == nil {
+			t.Fatal("New() endpoint is nil")
+		}
+		if e.Handler() == nil {
+			t.Fatal("Handler() is nil")
+		}
+		return
+	}
+	if !errors.Is(err, want) {
+		t.Fatalf("New() error = %v, want %v", err, want)
+	}
+	if e != nil {
+		t.Fatalf("New() endpoint = %v, want nil", e)
 	}
 }
 
@@ -106,8 +129,8 @@ func TestNewBuildsBusWhenNil(t *testing.T) {
 	srv := httptest.NewServer(e.Handler())
 	defer srv.Close()
 
-	msg := signIn(t, key, "room-1", "m-1", "hello")
-	data, err := msg.Encode()
+	probeMsg := signIn(t, key, "room-1", "m-1-probe", "hello")
+	data, err := probeMsg.Encode()
 	if err != nil {
 		t.Fatalf("Encode() error: %v", err)
 	}
@@ -119,6 +142,7 @@ func TestNewBuildsBusWhenNil(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
+	msg := signIn(t, key, "room-1", "m-1", "hello")
 	results, err := dispatch.Send(context.Background(), srv.URL, []envelope.Message{msg})
 	if err != nil {
 		t.Fatalf("Send() error: %v", err)

@@ -9,16 +9,18 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
+	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // Endpoint receives NDJSON envelope messages and answers with NDJSON
 // acks. Build one with New.
 type Endpoint struct {
-	id      string
-	room    *room.Room
-	resolve func(ctx context.Context, m envelope.Message) (Handler, error)
-	bus     *events.Bus
-	maxBody int64
+	id       string
+	room     *room.Room
+	resolve  func(ctx context.Context, m envelope.Message) (Handler, error)
+	bus      *events.Bus
+	maxBody  int64
+	taskOpts taskrun.Options
 }
 
 // Handler serves POST requests with NDJSON bodies. A non-POST method

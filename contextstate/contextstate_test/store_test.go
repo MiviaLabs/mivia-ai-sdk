@@ -207,6 +207,12 @@ var conflictRows = []struct {
 		r.Checkpoint.ActiveContext[0] ^= 1
 	}},
 	{"turn id", func(_ *testing.T, r *contextstate.CommitRequest) { r.TurnID++ }},
+	{"extra source event", func(t *testing.T, r *contextstate.CommitRequest) {
+		r.NewSourceEvents = append(r.NewSourceEvents, fixtureEvent("session-a", 2))
+	}},
+	{"extra payload", func(t *testing.T, r *contextstate.CommitRequest) {
+		r.Payloads = append(r.Payloads, fixturePayload(t, "session-a", []byte("other-payload")))
+	}},
 }
 
 func TestStoreCheckpointConflictTable(t *testing.T) {
@@ -292,6 +298,67 @@ func TestStoreZeroLimitsAdmitLargeCommit(t *testing.T) {
 	}
 	if err := store.Checkpoint(req); err != nil {
 		t.Fatalf("zero-value Limits rejected a large commit: %v", err)
+	}
+}
+
+// TestStoreDefensiveCopies pins the store's isolation: a caller's
+// mutation after write must never reach stored state, and a mutation
+// of a returned copy must never poison a later read.
+func TestStoreDefensiveCopies(t *testing.T) {
+	store := newStore(t, contextstate.Limits{})
+	req := validRequest(t, "session-a", "op-1", contextstate.Revision{}, 1)
+	if err := store.Checkpoint(req); err != nil {
+		t.Fatalf("first commit: %v", err)
+	}
+	// Mutating the committed request's slices must make the retry
+	// conflict, not alias into the stored operation.
+	req.Payloads[0].Data[0] ^= 1
+	req.Checkpoint.ActiveContext[0] ^= 1
+	req.NewSourceEvents[0].Kind = "edited"
+	if err := store.Checkpoint(req); !errors.Is(err, contextstate.ErrCheckpointConflict) {
+		t.Fatalf("retry after caller mutation: %v, want ErrCheckpointConflict", err)
+	}
+	// A write-path copy: mutating the caller's record after Put must
+	// not change the stored payload.
+	record := fixturePayload(t, "session-b", []byte("isolated-payload"))
+	if err := store.Put(record); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	record.Data[0] ^= 1
+	stored, err := store.Get(record.Ref)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !bytes.Equal(stored.Data, []byte("isolated-payload")) {
+		t.Fatal("caller mutation reached the stored payload")
+	}
+	// A read-path copy: mutating a returned record must not poison a
+	// later Get.
+	stored.Data[0] ^= 1
+	again, err := store.Get(record.Ref)
+	if err != nil {
+		t.Fatalf("second Get: %v", err)
+	}
+	if !bytes.Equal(again.Data, []byte("isolated-payload")) {
+		t.Fatal("mutation of a returned record poisoned the store")
+	}
+	// A session read copy: mutating the returned session must not
+	// poison a later Session read.
+	session, err := store.Session("session-a")
+	if err != nil {
+		t.Fatalf("Session: %v", err)
+	}
+	session.Active.ActiveContext[0] ^= 1
+	session.Source[0].Kind = "edited"
+	reread, err := store.Session("session-a")
+	if err != nil {
+		t.Fatalf("second Session: %v", err)
+	}
+	if reread.Active.ActiveContext[0] == session.Active.ActiveContext[0] {
+		t.Fatal("returned active context aliases stored state")
+	}
+	if reread.Source[0].Kind == "edited" {
+		t.Fatal("returned event slice aliases stored state")
 	}
 }
 

@@ -109,11 +109,10 @@ func (r ContentRef) Validate() error {
 	if !IsRef(r.Ref) {
 		return invalid("content.ref", "must be a canonical content address")
 	}
+	// IsRef plus this equality imply SHA256 is 64 lowercase hex
+	// characters; no third check can fire after both.
 	if r.Ref != HashPrefix+r.SHA256 {
 		return invalid("content.ref", "does not match the bare digest")
-	}
-	if !isLowerHex(r.SHA256, digestHexLen) {
-		return invalid("content.sha256", "must be 64 lowercase hex characters")
 	}
 	if err := validateIdentifier("content.namespace", r.Namespace); err != nil {
 		return err

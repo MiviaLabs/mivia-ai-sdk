@@ -3,6 +3,7 @@ package contextstate_test
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -86,6 +87,9 @@ func TestContentRefValidate(t *testing.T) {
 		{"ref off the bare digest", func(r *contextstate.ContentRef) {
 			r.Ref = contextstate.HashPrefix + otherDigest
 		}, true},
+		{"sha256 off the ref digest", func(r *contextstate.ContentRef) {
+			r.SHA256 = otherDigest
+		}, true},
 		{"blank namespace", func(r *contextstate.ContentRef) { r.Namespace = "" }, true},
 		{"blank workspace id", func(r *contextstate.ContentRef) { r.WorkspaceID = "" }, true},
 		{"blank session id", func(r *contextstate.ContentRef) { r.SessionID = "" }, true},
@@ -105,6 +109,33 @@ func TestContentRefValidate(t *testing.T) {
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("Validate rejected a valid ContentRef: %v", err)
+			}
+		})
+	}
+}
+
+func TestNewContentRefRejectsInvalidIdentifier(t *testing.T) {
+	cases := []struct {
+		name      string
+		namespace string
+		sessionID string
+	}{
+		{"blank namespace", "", "session-a"},
+		{"namespace over max", strings.Repeat("n", contextstate.MaxIdentifierBytes+1), "session-a"},
+		{"blank session id", "fixture-ns", ""},
+		{"session id over max", "fixture-ns", strings.Repeat("s", contextstate.MaxIdentifierBytes+1)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ref, err := contextstate.NewContentRef(tc.namespace, "workspace-a", tc.sessionID, "subject-a", []byte("ref-bytes"))
+			if err == nil {
+				t.Fatal("NewContentRef accepted an invalid identifier")
+			}
+			if !errors.Is(err, contextstate.ErrInvalidRecord) {
+				t.Fatalf("error %v does not wrap ErrInvalidRecord", err)
+			}
+			if ref != (contextstate.ContentRef{}) {
+				t.Fatalf("failed constructor returned %+v, want the zero value", ref)
 			}
 		})
 	}

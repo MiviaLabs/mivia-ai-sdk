@@ -165,6 +165,33 @@ var commitRejections = []struct {
 	}},
 }
 
+// TestNewCommitRequestRejectsInvalidParts pins the constructor's
+// error path: the derived fields are always consistent, so the parts
+// the caller supplies must carry the failure.
+func TestNewCommitRequestRejectsInvalidParts(t *testing.T) {
+	t.Run("blank session id", func(t *testing.T) {
+		_, err := contextstate.NewCommitRequest("", contextstate.Revision{}, fixtureBinding, nil, nil, commitCheckpoint("", "op-1", contextstate.Revision{}, 0), fixtureBinding, 7)
+		if !errors.Is(err, contextstate.ErrInvalidRecord) {
+			t.Fatalf("blank session: %v, want ErrInvalidRecord", err)
+		}
+	})
+	t.Run("event from another session", func(t *testing.T) {
+		events := fixtureEvents("session-b", 0, 1)
+		_, err := contextstate.NewCommitRequest("session-a", contextstate.Revision{}, fixtureBinding, events, nil, commitCheckpoint("session-a", "op-1", contextstate.Revision{}, 1), fixtureBinding, 7)
+		if !errors.Is(err, contextstate.ErrInvalidRecord) {
+			t.Fatalf("foreign event: %v, want ErrInvalidRecord", err)
+		}
+	})
+	t.Run("checkpoint revision mismatch", func(t *testing.T) {
+		checkpoint := commitCheckpoint("session-a", "op-1", contextstate.Revision{}, 1)
+		checkpoint.Revision.Source = 5
+		_, err := contextstate.NewCommitRequest("session-a", contextstate.Revision{}, fixtureBinding, nil, nil, checkpoint, fixtureBinding, 7)
+		if !errors.Is(err, contextstate.ErrInvalidRecord) {
+			t.Fatalf("mismatched checkpoint: %v, want ErrInvalidRecord", err)
+		}
+	})
+}
+
 func TestCommitRequestValidateRejections(t *testing.T) {
 	for _, tc := range commitRejections {
 		t.Run(tc.name, func(t *testing.T) {

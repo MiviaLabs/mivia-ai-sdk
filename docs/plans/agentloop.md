@@ -1,9 +1,9 @@
 # Plan: agentloop
 
-Status: plan, ready for plan review. See
-`docs/plans/agents/phase69_agentloop.md` for the full design
-rationale. This file is the declarative contract `check_plan.py` and
-`make api-update` gate against.
+Status: shipped. Phase 69's design rationale is folded into this
+file; no standalone phase 69 plan file remains. This file is the
+declarative contract `check_plan.py` and `make api-update` gate
+against.
 
 ## Goal
 

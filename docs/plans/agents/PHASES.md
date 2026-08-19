@@ -349,6 +349,27 @@ no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
 package plan lives at docs/plans/skills.md.
 
+Phase 69 (`agentloop`) has shipped. It adds one composition package:
+`Run` takes a `provider.Completer`, a `tools.Registry`, and a
+starting message list, offers the registry's tools to the model,
+runs the tool calls the model requests, appends the results as
+`RoleTool` messages, and repeats until the model returns no tool
+call or a bound trips. It depends on the shipped phase 62
+(`Message.ToolCalls`) and adds no import cycle. Its package plan
+lives at docs/plans/agentloop.md; no standalone phase 69 plan file
+remains.
+
+Phase 71 (file tools, gated by a mandatory secret policy) has
+shipped. It corrects the five `subagent` file tools shipped without
+an enforced secret policy: `FileToolOptions{Root, Deny
+*secretpath.Matcher, MaxReadBytes}` and `OpenFileTools` now gate
+every `WorkspaceReadTool`/`WorkspaceWriteTool`/`WorkspaceListTool`/
+`WorkspaceStatTool`/`DiffTool` behind a mandatory `Deny` matcher;
+`FileToolOptions.Validate` rejects a nil `Deny` before any workspace
+opens. It adds no new package. Its addendum lives in
+docs/plans/subagent.md's "File tools addendum"; no standalone phase
+71 plan file remains.
+
 Phase 74 is plan-only and not scheduled. It is the mutation kit's
 second rollout step: seven new per-package floors (`workspace`,
 `subagent`, `agentloop`, `mcp`, `dispatch`, `a2aclient`, `schema`),
@@ -356,6 +377,17 @@ a re-measured `ledger` floor, and a new `make mutation-gate` target
 that runs every floored package's sweep on demand. It depends on the
 shipped phase 54 kit and adds no new package. See
 docs/plans/agents/phase74_mutation_coverage_rollout.md.
+
+Phase 75 (orphan-package gate and probe-basename collision gate) has
+shipped. It adds `scripts/check_orphan_packages.py`, which fails on
+a top-level package with zero non-test internal callers unless
+`policy/pending_wiring.json` declares it with a reason, a target,
+and a `permanent` flag; `make verify-fast` and `make verify --probe`
+both run it. It also adds a post-write basename-collision check
+inside `scripts/check_semgrep_probes.py`, so two scoped-rule probes
+sharing one fixture basename fail loudly instead of silently
+overwriting each other's expected entry. It adds no new package. No
+standalone phase 75 plan file remains.
 
 ## Gate interactions
 

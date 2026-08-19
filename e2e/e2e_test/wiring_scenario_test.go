@@ -153,9 +153,9 @@ func TestWiredStackComposesAllFour(t *testing.T) {
 	}
 }
 
-// assertWiredTree pins the four-level span tree: the orchestrator's
+// assertWiredTree pins the five-level span tree: the orchestrator's
 // run root, its tool span, the spawn span, the sub-run's root, and
-// the sub-run's model-tool span, each nested under the last.
+// the sub-run's own model-tool span, each nested under the last.
 func assertWiredTree(t *testing.T, tr *trace.Tracer) {
 	t.Helper()
 	spans := tr.Spans()
@@ -165,7 +165,7 @@ func assertWiredTree(t *testing.T, tr *trace.Tracer) {
 	// Disambiguate duplicated names by shape: the orchestrator's run
 	// root parents nothing, the sub-run's root parents the spawn, and
 	// each tool span parents its own run root.
-	var root, subRoot, orchTool, spawn *trace.Span
+	var root, subRoot, orchTool, spawn, subTool *trace.Span
 	for _, s := range spans {
 		switch {
 		case s.Name == "agentrun.run" && s.ParentID == 0:
@@ -176,13 +176,15 @@ func assertWiredTree(t *testing.T, tr *trace.Tracer) {
 			spawn = s
 		case s.Name == "agentrun.tool" && root != nil && s.ParentID == root.ID:
 			orchTool = s
+		case s.Name == "agentrun.tool" && subRoot != nil && s.ParentID == subRoot.ID:
+			subTool = s
 		}
 	}
-	if root == nil || subRoot == nil || orchTool == nil || spawn == nil {
+	if root == nil || subRoot == nil || orchTool == nil || spawn == nil || subTool == nil {
 		t.Fatalf("tree shapes missing: %+v", spans)
 	}
 	for _, link := range []struct{ child, parent *trace.Span }{
-		{orchTool, root}, {spawn, orchTool}, {subRoot, spawn},
+		{orchTool, root}, {spawn, orchTool}, {subRoot, spawn}, {subTool, subRoot},
 	} {
 		if link.child.ParentID != link.parent.ID {
 			t.Errorf("%s parent = %d, want %d (%s)", link.child.Name, link.child.ParentID, link.parent.ID, link.parent.Name)

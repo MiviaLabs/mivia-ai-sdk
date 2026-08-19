@@ -40,6 +40,7 @@
     ],
     "channel": [],
     "contextbudget": [],
+    "contextstate": [],
     "diff": [],
     "discovery": [],
     "dispatch": [
@@ -61,7 +62,9 @@
       "provider",
       "tools"
     ],
-    "envelope": [],
+    "envelope": [
+      "contextstate"
+    ],
     "envfile": [],
     "events": [],
     "flow": [

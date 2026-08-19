@@ -227,13 +227,15 @@ Go SDK for building AI agents. Module:
   at the start of a task, the same way you read this file. Not a
   substitute for a rule enforced by a gate above — a fact that hardens
   into a rule belongs in this file or a gate script, not a memory file.
+- `.agents/hooks.json` — PreToolUse lifecycle hooks for Antigravity,
+  wiring `scripts/agent_hook_guard.py` across command and file tools.
 - `.claude/` — aliases only: the agents and the delivery skill
   symlink to `.agents/`. `.claude/settings.json` stays here and wires
   PreToolUse hooks to `scripts/agent_hook_guard.py`. The guard blocks
   hook bypass, core.hooksPath overrides, and manual edits to generated
   `api/` locks and `.semgrepignore`. It covers Bash, Write, Edit,
   MultiEdit, and NotebookEdit.
-- `CLAUDE.md` — thin adapter; imports this file only.
+- `CLAUDE.md`, `GEMINI.md` — thin adapters; import this file only.
 - Root: no Go code. Root holds go.mod, README, this file, Makefile.
 
 ## Trigger words

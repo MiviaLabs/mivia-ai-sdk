@@ -1,0 +1,24 @@
+{
+  "agent-hook-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c '[ -f scripts/agent_hook_guard.py ] && exec python3 scripts/agent_hook_guard.py || exec python3 ../scripts/agent_hook_guard.py'"
+          }
+        ]
+      },
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c '[ -f scripts/agent_hook_guard.py ] && exec python3 scripts/agent_hook_guard.py || exec python3 ../scripts/agent_hook_guard.py'"
+          }
+        ]
+      }
+    ]
+  }
+}

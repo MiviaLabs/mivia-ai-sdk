@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """PreToolUse guard for agent hooks. Reads the hook event JSON from
-stdin and exits 2 (block) with a reason on stderr when the call is a
-forbidden action:
-- Bash: Git hook bypass flags, skip env vars, core.hooksPath overrides,
+stdin and blocks forbidden actions:
+- Commands: Git hook bypass flags, skip env vars, core.hooksPath overrides,
   or direct writes to api/*.txt and .semgrepignore.
-- Write/Edit/MultiEdit/NotebookEdit: manual edits to generated api/*.txt
-  locks (use make api-update) or the pinned .semgrepignore.
+- File edits: manual edits to generated api/*.txt locks (use make api-update)
+  or the pinned .semgrepignore.
+Supports both Claude Code and Antigravity hook protocols.
 The guard is best-effort against careless agents. It is not a security
 boundary; a determined actor can bypass it. No CI exists in this repo,
-so gates on the committed tree stay aspirational until CI exists.
-Any other call exits 0 (allow)."""
+so gates on the committed tree stay aspirational until CI exists."""
 import json
 import os
 import re
@@ -47,7 +46,8 @@ SED_TARGET = re.compile(
 )
 API_LOCK = re.compile(r"(^|/)api/[^/]+\.txt$")
 
-FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+FILE_TOOLS_CLAUDE = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+FILE_TOOLS_ANTIGRAVITY = ("write_to_file", "replace_file_content", "multi_replace_file_content")
 SUBST = re.compile(r"\$\([^)]*\)")
 BACKTICK = re.compile(r"`[^`]*`")
 
@@ -140,51 +140,63 @@ def locked_target(path: str) -> str:
     return ""
 
 
+def check_command(cmd: str) -> str:
+    """Check command for forbidden bypass or writes. Return reason if blocked."""
+    norm = normalize(cmd)
+    if HOOKS_PATH.search(norm) and norm != "git config core.hooksPath .githooks":
+        return "blocked: core.hooksPath overrides are forbidden; use `make install-hooks`"
+    if BYPASS.search(bypass_text(cmd)):
+        return "blocked: Git hook bypass is forbidden; fix the gate failure instead"
+    for target in write_targets(norm):
+        if locked_target(clean_token(target)):
+            return "blocked: api/ locks and .semgrepignore are generated; run `make api-update` and commit the diff"
+    return ""
+
+
+def check_file_target(path: str) -> str:
+    """Check file path for locked targets. Return reason if blocked."""
+    locked = locked_target(path)
+    if locked == "api":
+        return "blocked: api/ locks are generated; run `make api-update` and commit the diff"
+    if locked == "semgrepignore":
+        return "blocked: .semgrepignore is pinned by scripts/check_semgrepignore.py; change the gate deliberately"
+    return ""
+
+
 def main() -> int:
     try:
         event = json.load(sys.stdin)
     except json.JSONDecodeError:
         return 0  # unparseable input must not block the workflow
+
+    if "toolCall" in event:
+        call = event.get("toolCall", {})
+        tool = call.get("name", "")
+        args = call.get("args", {})
+        reason = ""
+        if tool == "run_command":
+            reason = check_command(args.get("CommandLine", ""))
+        elif tool in FILE_TOOLS_ANTIGRAVITY:
+            reason = check_file_target(args.get("TargetFile", ""))
+
+        if reason:
+            print(json.dumps({"decision": "deny", "reason": reason}))
+        else:
+            print(json.dumps({"decision": "allow"}))
+        return 0
+
     tool = event.get("tool_name", "")
     data = event.get("tool_input", {})
-
+    reason = ""
     if tool == "Bash":
-        cmd = data.get("command", "")
-        norm = normalize(cmd)
-        if HOOKS_PATH.search(norm) and norm != "git config core.hooksPath .githooks":
-            print(
-                "blocked: core.hooksPath overrides are forbidden; use `make install-hooks`",
-                file=sys.stderr,
-            )
-            return 2
-        if BYPASS.search(bypass_text(cmd)):
-            print(
-                "blocked: Git hook bypass is forbidden; fix the gate failure instead",
-                file=sys.stderr,
-            )
-            return 2
-        for target in write_targets(norm):
-            if locked_target(clean_token(target)):
-                print(
-                    "blocked: api/ locks and .semgrepignore are generated; run `make api-update` and commit the diff",
-                    file=sys.stderr,
-                )
-                return 2
-    if tool in FILE_TOOLS:
+        reason = check_command(data.get("command", ""))
+    elif tool in FILE_TOOLS_CLAUDE:
         path = data.get("file_path") or data.get("path") or data.get("notebook_path") or ""
-        locked = locked_target(path)
-        if locked == "api":
-            print(
-                "blocked: api/ locks are generated; run `make api-update` and commit the diff",
-                file=sys.stderr,
-            )
-            return 2
-        if locked == "semgrepignore":
-            print(
-                "blocked: .semgrepignore is pinned by scripts/check_semgrepignore.py; change the gate deliberately",
-                file=sys.stderr,
-            )
-            return 2
+        reason = check_file_target(path)
+
+    if reason:
+        print(reason, file=sys.stderr)
+        return 2
     return 0
 
 

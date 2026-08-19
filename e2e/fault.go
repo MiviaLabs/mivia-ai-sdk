@@ -32,36 +32,62 @@ func faultErr(seam string) error {
 }
 
 // FaultStore wraps a ledger.Store and faults one call. The FaultOn-th
-// call returns an error wrapping ErrFault; every other call passes
-// through unchanged.
+// call returns an error wrapping ErrFault; the HangOn-th call blocks
+// until ctx is done, then returns ctx.Err(); every other call passes
+// through unchanged. Zero on a mode disables it.
 type FaultStore struct {
 	// Store is the wrapped ledger.Store. Required.
 	Store ledger.Store
 	// FaultOn is the 1-based call to fail. Zero disables faults.
 	FaultOn int32
+	// HangOn is the 1-based call to block until ctx is done. Zero disables.
+	HangOn int32
 
 	calls atomic.Int32
 }
 
-// Load faults on the target call, else passes through.
+// hang blocks until ctx is done on the HangOn-th call. Zero disables
+// hang. It reports whether the call hung.
+func (f *FaultStore) hang(ctx context.Context, n int32) bool {
+	if f.HangOn != 0 && n == f.HangOn {
+		<-ctx.Done()
+		return true
+	}
+	return false
+}
+
+// Load faults or hangs on its target call, else passes through.
 func (f *FaultStore) Load(ctx context.Context, key ledger.IdempotencyKey) (ledger.TaskState, bool, error) {
-	if fault(&f.calls, f.FaultOn) {
+	n := f.calls.Add(1)
+	if f.hang(ctx, n) {
+		return ledger.TaskState{}, false, ctx.Err()
+	}
+	if n == f.FaultOn {
 		return ledger.TaskState{}, false, faultErr("ledger store")
 	}
 	return f.Store.Load(ctx, key)
 }
 
-// CompareAndSwap faults on the target call, else passes through.
+// CompareAndSwap faults or hangs on its target call, else passes
+// through.
 func (f *FaultStore) CompareAndSwap(ctx context.Context, key ledger.IdempotencyKey, old, new ledger.TaskState) (bool, error) {
-	if fault(&f.calls, f.FaultOn) {
+	n := f.calls.Add(1)
+	if f.hang(ctx, n) {
+		return false, ctx.Err()
+	}
+	if n == f.FaultOn {
 		return false, faultErr("ledger store")
 	}
 	return f.Store.CompareAndSwap(ctx, key, old, new)
 }
 
-// Range faults on the target call, else passes through.
+// Range faults or hangs on its target call, else passes through.
 func (f *FaultStore) Range(ctx context.Context, fn func(ledger.TaskState) bool) error {
-	if fault(&f.calls, f.FaultOn) {
+	n := f.calls.Add(1)
+	if f.hang(ctx, n) {
+		return ctx.Err()
+	}
+	if n == f.FaultOn {
 		return faultErr("ledger store")
 	}
 	return f.Store.Range(ctx, fn)

@@ -35,6 +35,7 @@ package e2e
   type FaultStore struct {
   Store ledger.Store
   FaultOn int32
+  HangOn int32
 }
   type FaultWait struct {
   Inner agent.AckWait

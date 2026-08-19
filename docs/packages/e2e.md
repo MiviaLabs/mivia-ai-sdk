@@ -28,7 +28,9 @@ wrapping `ErrFault`; every other call passes through.
 
 - `ErrFault` — the sentinel each injected fault wraps. A failing run
   matches it through `errors.Is`.
-- `FaultStore` — wraps a `ledger.Store`. Its `FaultOn`-th call faults.
+- `FaultStore` — wraps a `ledger.Store`. Its `FaultOn`-th call faults;
+  its `HangOn`-th call blocks until the context cancels, then returns
+  the context error.
 - `FaultNotifier` — wraps a `channel.Notifier`. Its `FaultOn`-th ask
   faults.
 - `FaultCompleter` — wraps a `provider.Completer`. Its `FaultOn`-th
@@ -39,7 +41,10 @@ wrapping `ErrFault`; every other call passes through.
   cancels, then returns the context error.
 
 `HangCompleter` blocks instead of faulting. It models a provider that
-never answers unless the caller cancels.
+never answers unless the caller cancels. The panic scenarios do not
+ship a decorator: the semgrep gate forbids `panic` outside test files,
+so `faults_panic_test.go` and `faults_store_panic_test.go` define a
+`panicCompleter` and a `panicStore` in the test package.
 
 A block behind a concrete type carries no decorator. memory's `Store`
 is such a case and stays out of the kit.
@@ -75,6 +80,15 @@ behavior:
 - `faults_hang_test.go` — a provider that never answers; the run
   returns once the deadline fires and the error wraps
   `context.DeadlineExceeded`.
+- `faults_store_hang_test.go` — a ledger store that hangs on its
+  first call; the run returns once the deadline fires and the error
+  wraps `context.DeadlineExceeded`.
+- `faults_panic_test.go` — a panicking provider on a one-step,
+  non-panel plan; the panic propagates out of `Run` uncaught and the
+  test's own `recover` sees a value matching `ErrFault`.
+- `faults_store_panic_test.go` — a panicking ledger store on a
+  one-step, non-panel plan; the panic propagates out of `Run` uncaught
+  and the test's own `recover` sees a value matching `ErrFault`.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
 growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP

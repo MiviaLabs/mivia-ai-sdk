@@ -63,33 +63,54 @@ func (t *ThreadCapture) Messages() []envelope.Message
 ```
 
 The fault kit is a named capability of the harness. Each decorator
-wraps one seam as an interface. `FaultOn`, `HangOn`, and `PanicOn` are
-three independent, reusable fault modes over the same 1-based call
-counter: the FaultOn-th call errors, wrapping `ErrFault`; the HangOn-th
-call blocks until `ctx` is done, then returns `ctx.Err()`; the
-PanicOn-th call panics with a value wrapping `ErrFault`. Zero disables
-a mode. Every other call passes through unchanged. A scenario opts
-into a hang or a panic the same way it already opts into an error: by
-setting the matching field.
+wraps one seam as an interface and fails its FaultOn-th call with an
+error wrapping `ErrFault`; every other call passes through. `HangOn`
+generalizes a second fault mode over the same 1-based call counter,
+but ships only where a scenario exercises it, so no field ships
+untested: `FaultStore` gains `HangOn`, proven by its own new scenario
+below. `FaultCompleter` gains no new field; its hang coverage stays
+on the existing, unconditional `HangCompleter`. The HangOn-th call
+blocks until `ctx` is done, then returns `ctx.Err()`. Zero disables a
+mode; every mode on one decorator shares the one call counter.
+`FaultNotifier` and `FaultWait` keep only `FaultOn` this round:
+adding `HangOn` there too with no scenario exercising it would ship
+untested surface. A later change adds it once a scenario needs it,
+following this same shape.
+
+A panicking seam is a test-local decorator, not a shipped one. The
+semgrep gate forbids `panic` outside test files, so no shipped fault
+decorator can panic. The panic scenarios define `panicCompleter` and
+`panicStore` inside `e2e/e2e_test/`, where the gate allows `panic`,
+and drive the same propagation contract through them.
 
 ```go
 // fault.go
 var ErrFault error
 
-type FaultStore struct{ Store ledger.Store; FaultOn, HangOn, PanicOn int32 }
+type FaultStore struct {
+	Store ledger.Store
+	// FaultOn is the 1-based call to fail. Zero disables faults.
+	FaultOn int32
+	// HangOn is the 1-based call to block until ctx is done. Zero disables.
+	HangOn int32
+}
 func (f *FaultStore) Load(...) (ledger.TaskState, bool, error)
 func (f *FaultStore) CompareAndSwap(...) (bool, error)
 func (f *FaultStore) Range(...) error
 
-type FaultNotifier struct{ Notifier channel.Notifier; FaultOn, HangOn, PanicOn int32 }
+type FaultNotifier struct{ Notifier channel.Notifier; FaultOn int32 }
 func (f *FaultNotifier) Notify(...) (channel.Answer, error)
 
-type FaultCompleter struct{ Completer provider.Completer; FaultOn, HangOn, PanicOn int32 }
+type FaultCompleter struct {
+	Completer provider.Completer
+	// FaultOn is the 1-based call to fail. Zero disables faults.
+	FaultOn int32
+}
 func (f *FaultCompleter) Name() string
 func (f *FaultCompleter) Chat(...) (provider.Response, error)
 func (f *FaultCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 
-type FaultWait struct{ Inner agent.AckWait; FaultOn, HangOn, PanicOn int32 }
+type FaultWait struct{ Inner agent.AckWait; FaultOn int32 }
 func (f *FaultWait) Wait(...) (envelope.Ack, error)
 
 type HangCompleter struct{}
@@ -98,15 +119,24 @@ func (h *HangCompleter) Chat(...) (provider.Response, error)
 func (h *HangCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 ```
 
-`HangCompleter` stays as the unconditional convenience case: it blocks
-on every call, not just its HangOn-th. `FaultCompleter{HangOn: n}` is
-the general form for the other seams and for a provider that must
-answer normally up to call n. Neither replaces the other; both ship.
+Each new field gets a one-line doc comment matching the existing
+`FaultOn` comment style shown above; `check_docs.py` does not enforce
+it on an unexported-looking struct-literal field list, but the style
+stays consistent regardless.
 
-A panicking call panics with `faultErr(seam)`, the same error value
-`FaultOn` would have returned. A scenario that recovers the panic
-itself asserts `errors.Is` against the recovered value, the same way
-it already asserts a returned error.
+`HangCompleter` stays as the unconditional convenience case for the
+provider seam: it blocks on every call, not just an Nth one. It is
+untouched by this change and keeps covering
+`TestFaultHangCompleterSurfacesTimeout`. `FaultStore{HangOn: n}` is
+the opt-in, Nth-call form, proven by its own scenario below; a
+scenario that needs a store to answer normally up to call n, then
+hang, uses the opt-in form. The provider seam keeps only the
+unconditional form this round.
+
+A test-local panicking seam panics with `faultErr(seam)`, the same
+error value `FaultOn` would have returned. A scenario that recovers
+the panic itself asserts `errors.Is` against the recovered value, the
+same way it already asserts a returned error.
 
 The kit raises the seam only where the block already exposes an
 interface. A block behind a concrete type keeps no decorator: memory's
@@ -153,6 +183,21 @@ Each scenario states its wiring, inputs, and asserted outputs.
   fifth call. Outputs: the run error matches `ErrFault` and names the
   store, step one's artifact survives in the bag, and step two never
   confirms.
+- `faults_store_hang_test.go` — wires ledger and agentrun, mirroring
+  `faults_store_test.go`'s two-step, Admit-Claim-Complete wiring but
+  over `FaultStore{HangOn: 1}` and a run context that carries a
+  deadline. Outputs: the run returns once the deadline fires, and the
+  error wraps `context.DeadlineExceeded`, proving `HangOn` on a
+  non-Completer seam behaves like `faults_hang_test.go`'s Completer
+  case.
+- `faults_store_panic_test.go` — wires ledger and agentrun over a
+  one-step, non-panel plan so the panicking store call runs in the
+  same goroutine as the test's own call to `Run`. Input: a step whose
+  Admit call runs over a test-local `panicStore`. Outputs: `Run` never
+  returns normally; the test's own deferred `recover` around the
+  `Run` call observes a value matching
+  `errors.Is(recovered.(error), e2e.ErrFault)`, proving a panicking
+  store matches `faults_panic_test.go`'s Completer case.
 - `faults_notifier_test.go` — wires channel, tools, agentrun, and the
   harness `FaultNotifier`. Input: an escalating tool with an `Ask`
   notifier set to fault on the first ask. Outputs: the escalation
@@ -171,8 +216,8 @@ Each scenario states its wiring, inputs, and asserted outputs.
   answers, with a run context that carries a deadline. Outputs: the
   run returns once the deadline fires, and the error wraps
   `context.DeadlineExceeded`.
-- `faults_panic_test.go` — wires subagent and agentrun with the
-  harness `FaultCompleter{PanicOn: 1}`, on a one-step, non-panel plan
+- `faults_panic_test.go` — wires subagent and agentrun with a
+  test-local `panicCompleter`, on a one-step, non-panel plan
   so the panicking tool call runs in the same goroutine as the test's
   own call to `Runner.Run`. Input: a one-step runner whose sole tool
   panics on its first call. Outputs: `Run` never returns normally; the

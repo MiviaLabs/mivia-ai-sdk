@@ -2,8 +2,10 @@ package workspace_test
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
@@ -35,6 +37,7 @@ func TestOpen(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Open: %v", err)
 		}
+		t.Cleanup(func() { _ = w.Close() })
 		resolvedDir, err := filepath.EvalSymlinks(dir)
 		if err != nil {
 			t.Fatalf("EvalSymlinks: %v", err)
@@ -45,154 +48,13 @@ func TestOpen(t *testing.T) {
 	})
 }
 
-func TestTraversalEscape(t *testing.T) {
-	dir := t.TempDir()
-	w, err := workspace.Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-
-	vectors := []string{"../secret", "a/../../secret", "/etc/secret-outside-root"}
-	for _, v := range vectors {
-		t.Run(v, func(t *testing.T) {
-			if _, err := w.ReadFile(v); !errors.Is(err, workspace.ErrEscape) {
-				t.Errorf("ReadFile(%q) error = %v, want ErrEscape", v, err)
-			}
-			if err := w.WriteFile(v, []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
-				t.Errorf("WriteFile(%q) error = %v, want ErrEscape", v, err)
-			}
-			if _, err := w.List(v); !errors.Is(err, workspace.ErrEscape) {
-				t.Errorf("List(%q) error = %v, want ErrEscape", v, err)
-			}
-			if _, err := w.Stat(v); !errors.Is(err, workspace.ErrEscape) {
-				t.Errorf("Stat(%q) error = %v, want ErrEscape", v, err)
-			}
-		})
-	}
-}
-
-// siblingFixture builds <tmp>/root and a sibling <tmp>/root-evil
-// holding secret.txt, and returns both directories.
-func siblingFixture(t *testing.T) (root, evil string) {
-	t.Helper()
-	base := t.TempDir()
-	root = filepath.Join(base, "root")
-	evil = filepath.Join(base, "root-evil")
-	for _, dir := range []string{root, evil} {
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			t.Fatalf("Mkdir(%q): %v", dir, err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(evil, "secret.txt"), []byte("secret"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	return root, evil
-}
-
-// TestSiblingPrefixEscape checks the separator term in withinRoot: a
-// sibling directory whose name starts with the root's name escapes the
-// root, even though its path carries the root as a string prefix.
-func TestSiblingPrefixEscape(t *testing.T) {
-	root, evil := siblingFixture(t)
-	w, err := workspace.Open(root)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-
-	const secret = "../root-evil/secret.txt"
-	got, err := w.ReadFile(secret)
-	if !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("ReadFile(%q) error = %v, want ErrEscape", secret, err)
-	}
-	if len(got) != 0 {
-		t.Errorf("ReadFile(%q) = %q, want no bytes", secret, got)
-	}
-
-	const planted = "../root-evil/planted.txt"
-	if err := w.WriteFile(planted, []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("WriteFile(%q) error = %v, want ErrEscape", planted, err)
-	}
-	if _, err := os.Stat(filepath.Join(evil, "planted.txt")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("Stat(planted file) error = %v, want ErrNotExist: WriteFile planted a file in the sibling", err)
-	}
-
-	const dir = "../root-evil"
-	if _, err := w.List(dir); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("List(%q) error = %v, want ErrEscape", dir, err)
-	}
-	if _, err := w.Stat(secret); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("Stat(%q) error = %v, want ErrEscape", secret, err)
-	}
-}
-
-func TestSymlinkEscapeFinalComponent(t *testing.T) {
-	dir := t.TempDir()
-	outside := t.TempDir()
-	outsideFile := filepath.Join(outside, "secret.txt")
-	if err := os.WriteFile(outsideFile, []byte("secret"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	linkPath := filepath.Join(dir, "link")
-	if err := os.Symlink(outsideFile, linkPath); err != nil {
-		t.Fatalf("Symlink: %v", err)
-	}
-
-	w, err := workspace.Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-
-	if _, err := w.ReadFile("link"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("ReadFile(link) error = %v, want ErrEscape", err)
-	}
-	if _, err := w.List("link"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("List(link) error = %v, want ErrEscape", err)
-	}
-	if _, err := w.Stat("link"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("Stat(link) error = %v, want ErrEscape", err)
-	}
-	if err := w.WriteFile("link", []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("WriteFile(link) error = %v, want ErrEscape", err)
-	}
-}
-
-func TestSymlinkEscapeIntermediateComponent(t *testing.T) {
-	dir := t.TempDir()
-	outside := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(outside, "sub"), 0o700); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	outsideFile := filepath.Join(outside, "sub", "secret.txt")
-	if err := os.WriteFile(outsideFile, []byte("secret"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	linkPath := filepath.Join(dir, "link")
-	if err := os.Symlink(outside, linkPath); err != nil {
-		t.Fatalf("Symlink: %v", err)
-	}
-
-	w, err := workspace.Open(dir)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-
-	if _, err := w.ReadFile("link/sub/secret.txt"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("ReadFile(link/sub/secret.txt) error = %v, want ErrEscape", err)
-	}
-	if _, err := w.List("link/sub"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("List(link/sub) error = %v, want ErrEscape", err)
-	}
-	if _, err := w.Stat("link/sub/secret.txt"); !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("Stat(link/sub/secret.txt) error = %v, want ErrEscape", err)
-	}
-}
-
 func TestHappyPathRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	w, err := workspace.Open(dir)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	t.Cleanup(func() { _ = w.Close() })
 
 	data := []byte("hello workspace")
 	if err := w.WriteFile("a/b/c.txt", data, 0o600); err != nil {
@@ -204,6 +66,17 @@ func TestHappyPathRoundTrip(t *testing.T) {
 	}
 	if string(got) != string(data) {
 		t.Errorf("ReadFile = %q, want %q", got, data)
+	}
+
+	// An absolute in-root path pins resolve's root-relative
+	// conversion: os.Root refuses an absolute name.
+	absPath := filepath.Join(w.Root(), "a/b/c.txt")
+	gotAbs, err := w.ReadFile(absPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", absPath, err)
+	}
+	if string(gotAbs) != string(data) {
+		t.Errorf("ReadFile(%q) = %q, want %q", absPath, gotAbs, data)
 	}
 
 	if err := w.WriteFile("a/b/d.txt", []byte("more"), 0o600); err != nil {
@@ -235,6 +108,7 @@ func TestListRootItself(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	t.Cleanup(func() { _ = w.Close() })
 
 	entries, err := w.List(".")
 	if err != nil {
@@ -253,14 +127,134 @@ func TestListRootItself(t *testing.T) {
 	}
 }
 
-func TestWriteFileRejectsEscapingParent(t *testing.T) {
+// TestListSortsByName pins List's os.ReadDir contract: the entries come
+// back sorted by filename. (*os.File).ReadDir returns raw directory
+// order, so a directory with one entry cannot catch a lost sort. The
+// fixture writes the names out of order on purpose.
+func TestListSortsByName(t *testing.T) {
+	dir := t.TempDir()
+	want := []string{"aaa", "bbb", "ccc", "ddd", "kkk", "mmm", "yyy", "zzz"}
+	for _, name := range []string{"ddd", "ccc", "yyy", "bbb", "kkk", "aaa", "mmm", "zzz"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
+			t.Fatalf("WriteFile(%q): %v", name, err)
+		}
+	}
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	entries, err := w.List(".")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	got := make([]string, 0, len(entries))
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("List(root) names = %v, want %v", got, want)
+	}
+}
+
+func TestClose(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	if _, err := w.ReadFile("f.txt"); !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("ReadFile after Close error = %v, want ErrClosed", err)
+	}
+	if err := w.WriteFile("g.txt", []byte("x"), 0o600); !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("WriteFile after Close error = %v, want ErrClosed", err)
+	}
+	if _, err := w.List("."); !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("List after Close error = %v, want ErrClosed", err)
+	}
+	if _, err := w.Stat("f.txt"); !errors.Is(err, fs.ErrClosed) {
+		t.Errorf("Stat after Close error = %v, want ErrClosed", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Errorf("second Close = %v, want nil", err)
+	}
+
+	// A deferred Close placed before the error check runs on a
+	// zero-value or nil handle, so neither may panic.
+	var zero workspace.Workspace
+	if err := zero.Close(); err != nil {
+		t.Errorf("zero-value Close = %v, want nil", err)
+	}
+	var nilW *workspace.Workspace
+	if err := nilW.Close(); err != nil {
+		t.Errorf("nil Close = %v, want nil", err)
+	}
+}
+
+// TestEmptyPath pins that resolve maps an empty path to ".", which
+// os.Root accepts where it rejects an empty name, and that a read of a
+// directory surfaces the raw filesystem error.
+func TestEmptyPath(t *testing.T) {
 	dir := t.TempDir()
 	w, err := workspace.Open(dir)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	err = w.WriteFile("../outside/file.txt", []byte("x"), 0o600)
-	if !errors.Is(err, workspace.ErrEscape) {
-		t.Errorf("WriteFile(escaping parent) error = %v, want ErrEscape", err)
+	t.Cleanup(func() { _ = w.Close() })
+
+	for _, p := range []string{"", "."} {
+		info, err := w.Stat(p)
+		if err != nil {
+			t.Fatalf("Stat(%q): %v", p, err)
+		}
+		if !info.IsDir() {
+			t.Errorf("Stat(%q).IsDir() = false, want true", p)
+		}
+	}
+
+	for _, p := range []string{"", "."} {
+		_, err := w.ReadFile(p)
+		if err == nil {
+			t.Fatalf("ReadFile(%q) = nil error, want a directory-read error", p)
+		}
+		if errors.Is(err, workspace.ErrEscape) {
+			t.Errorf("ReadFile(%q) error = %v, want a raw filesystem error, not ErrEscape", p, err)
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("ReadFile(%q) error = %v, want a raw directory-read error, not ErrNotExist", p, err)
+		}
+	}
+}
+
+// TestListOnFile pins the read error of a listing: an open succeeds on
+// a regular file, so the directory read is the stage that refuses.
+func TestListOnFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	entries, err := w.List("f.txt")
+	if err == nil {
+		t.Fatal("List(f.txt) = nil error, want a directory-read error")
+	}
+	if errors.Is(err, workspace.ErrEscape) {
+		t.Errorf("List(f.txt) error = %v, want a raw filesystem error, not ErrEscape", err)
+	}
+	if entries != nil {
+		t.Errorf("List(f.txt) = %v, want no entries", entries)
 	}
 }

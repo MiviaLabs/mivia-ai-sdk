@@ -1,16 +1,23 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"path/filepath"
 )
 
-// resolve confines path to the Workspace's root: it joins and cleans
-// path onto root, rejects lexical traversal, resolves any symlink
-// components against the deepest existing ancestor, and rejects the
-// result if it still escapes root. Every one of ReadFile, WriteFile,
-// List, and Stat calls resolve before touching the filesystem.
+// rootEscapeText is the inner error text os.Root reports when a path
+// leaves the open root. The standard library exports no sentinel for
+// it, so this constant gives the text compare one named point. See
+// classify.
+const rootEscapeText = "path escapes from parent"
+
+// resolve turns path into a cleaned, root-relative name for an os.Root
+// call. It is pure string work and touches no file, so it opens no
+// window between a check and a syscall. An empty path resolves to ".".
+// Every one of ReadFile, WriteFile, List, and Stat calls resolve
+// first; os.Root then owns every symlink decision.
 func (w *Workspace) resolve(path string) (string, error) {
 	var joined string
 	if filepath.IsAbs(path) {
@@ -21,18 +28,16 @@ func (w *Workspace) resolve(path string) (string, error) {
 	if !withinRoot(w.root, joined) {
 		return "", fmt.Errorf("%w: %s", ErrEscape, path)
 	}
-
-	resolved, err := resolveDeepestExisting(joined)
+	rel, err := filepath.Rel(w.root, joined)
 	if err != nil {
-		return "", fmt.Errorf("workspace: %w", err)
-	}
-	if !withinRoot(w.root, resolved) {
 		return "", fmt.Errorf("%w: %s", ErrEscape, path)
 	}
-	return resolved, nil
+	return rel, nil
 }
 
-// withinRoot reports whether p is root or lies under root.
+// withinRoot reports whether p is root or lies under root. It is wrong
+// for a root of "/", where it reports false for every path; the defect
+// fails closed and docs/plans/workspace.md records it.
 func withinRoot(root, p string) bool {
 	if p == root {
 		return true
@@ -40,36 +45,17 @@ func withinRoot(root, p string) bool {
 	return len(p) > len(root) && p[:len(root)] == root && p[len(root)] == filepath.Separator
 }
 
-// resolveDeepestExisting resolves every symlink in p, including one
-// at p's final component. When p does not fully exist, it resolves
-// symlinks in the deepest existing ancestor and rejoins the missing
-// suffix unresolved, matching the WriteFile case of a not-yet-created
-// file.
-func resolveDeepestExisting(p string) (string, error) {
-	cur := p
-	var suffix []string
-	for {
-		_, lstatErr := os.Lstat(cur)
-		if lstatErr == nil {
-			break
-		}
-		if !os.IsNotExist(lstatErr) {
-			return "", lstatErr
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return "", lstatErr
-		}
-		suffix = append([]string{filepath.Base(cur)}, suffix...)
-		cur = parent
+// classify maps an os.Root confinement refusal onto ErrEscape, so a
+// caller tests one sentinel for a lexical escape and a syscall escape
+// alike. It returns any other error unchanged, including a missing
+// file and a permission refusal.
+func classify(path string, err error) error {
+	if err == nil {
+		return nil
 	}
-
-	resolved, err := filepath.EvalSymlinks(cur)
-	if err != nil {
-		return "", err
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) && pathErr.Err != nil && pathErr.Err.Error() == rootEscapeText {
+		return fmt.Errorf("%w: %s: %w", ErrEscape, path, err)
 	}
-	for _, s := range suffix {
-		resolved = filepath.Join(resolved, s)
-	}
-	return resolved, nil
+	return err
 }

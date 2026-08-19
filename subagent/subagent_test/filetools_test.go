@@ -24,6 +24,7 @@ func openWorkspace(t *testing.T) *workspace.Workspace {
 	if err != nil {
 		t.Fatalf("workspace.Open: %v", err)
 	}
+	t.Cleanup(func() { _ = ws.Close() })
 	return ws
 }
 

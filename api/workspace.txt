@@ -1,4 +1,5 @@
 package workspace
+  func (w *Workspace) Close() (error)
   func (w *Workspace) List(path string) ([]os.DirEntry, error)
   func (w *Workspace) ReadFile(path string) ([]byte, error)
   func (w *Workspace) Root() (string)

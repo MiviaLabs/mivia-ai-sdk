@@ -33,7 +33,7 @@ package subagent
   func (t *heartbeatTool) Name() (string)
   func (t *heartbeatTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *inboxTool) Name() (string)
-  func (t *inboxTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (t *inboxTool) Run(ctx context.Context, _ tools.InOut) (tools.Out, error)
   func (t *ledgerTool) Name() (string)
   func (t *ledgerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *memoryTool) Name() (string)

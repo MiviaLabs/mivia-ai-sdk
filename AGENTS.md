@@ -213,9 +213,13 @@ Go SDK for building AI agents. Module:
   stops asking or a bound trips (MaxIterations, MaxCallsPerTurn,
   MaxTotalTokens, Budget, or ctx cancellation). A wired Hooks registry
   fires PointPreTool and PointPostTool per tool call, and PointStop
-  once on every return path out of Run. Imports provider, tools,
-  trace, hooks, usage, events, and contextbudget. Never imports
-  subagent; subagent imports agentloop starting in phase 70.
+  once on every return path out of Run. Options.Window plans every
+  iteration: Compact through the contextsummary Summarizer at the
+  trigger, Observe after every Chat, and one prompt-too-long recovery
+  retry under a one-percent trigger with a CompactionNotice.
+  Imports provider, tools, trace, hooks, usage, events,
+  contextbudget, schema, contextplan, and contextsummary. Never
+  imports subagent; subagent imports agentloop starting in phase 70.
 - `e2e/` — the end-to-end scenario harness: deterministic tools,
   an event recorder, and a thread-capturing resolver. The scenarios
   in `e2e/e2e_test/` wire real high-level blocks together and assert

@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -71,7 +73,34 @@ var (
 	// OnToolError exactly like ErrArgumentValidation and
 	// tools.ErrUnknownName. Test with errors.Is.
 	ErrToolNotOffered = errors.New("agentloop: tool call names a tool not offered when New ran")
+	// ErrPlanFailed is Run's error when the planning step cannot produce
+	// an estimate or a plan: an estimator error or an invalid Window at
+	// iteration time. Test with errors.Is.
+	ErrPlanFailed = errors.New("agentloop: context planning failed")
+	// ErrCompactionFailed is Run's error when a required compaction
+	// cannot complete: the retention set alone exceeds the window
+	// (wrapping contextplan.ErrRetentionOverflow), the summarizer call
+	// failed (wrapping the contextsummary sentinel), or the compacted
+	// history still exceeds the window. Test with errors.Is.
+	ErrCompactionFailed = errors.New("agentloop: compaction failed")
+	// ErrSummarizerRequired is Options.Validate's error when Window is
+	// set and Summarizer is nil. Test with errors.Is.
+	ErrSummarizerRequired = errors.New("agentloop: Window requires Summarizer")
+	// ErrEstimatorRequired is Options.Validate's error when Window is
+	// set and Calibrated is nil. Test with errors.Is.
+	ErrEstimatorRequired = errors.New("agentloop: Window requires Calibrated")
+	// ErrTrimExcluded is Options.Validate's error when both Window and
+	// Trim are set. Test with errors.Is.
+	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
 )
+
+// RecoveryTargetTokens is the fixed compaction target of the
+// prompt-too-long recovery path.
+const RecoveryTargetTokens = 16384
+
+// CompactionNotice is the user-role message content Run appends after
+// a recovery compaction, so the model sees that compaction occurred.
+const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
 
 // ErrorPolicy names what Run does with a tool-run error: report it to
 // the model as a tool result, or end the run.
@@ -158,6 +187,16 @@ type Options struct {
 	// per tool call whose result reaches history. A nil Audit means
 	// Run performs no audit call, at no added cost.
 	Audit AuditFunc
+	// Window plans every iteration against a token budget. A nil Window
+	// disables planning; the loop then runs exactly as before. A non-nil
+	// Window requires Summarizer and Calibrated, and excludes Trim.
+	Window *contextplan.Window
+	// Summarizer runs the LLM summary every compaction requires.
+	// Required when Window is set.
+	Summarizer *contextsummary.Summarizer
+	// Calibrated estimates tokens for planning and receives one Observe
+	// call after every Chat. Required when Window is set.
+	Calibrated *contextplan.Calibrated
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -209,8 +248,9 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, MaxIterations
 // positive, Usage requires a non-blank SessionID, a non-nil Budget
-// passes contextbudget.Limits.Validate, and MaxTotalTokens is not
-// negative.
+// passes contextbudget.Limits.Validate, MaxTotalTokens is not
+// negative, and a non-nil Window passes Window.Validate, requires
+// Summarizer, requires Calibrated, and excludes Trim.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -231,6 +271,20 @@ func (o Options) Validate() error {
 	}
 	if o.MaxTotalTokens < 0 {
 		return errors.New("agentloop: MaxTotalTokens must not be negative")
+	}
+	if o.Window != nil {
+		if err := o.Window.Validate(); err != nil {
+			return fmt.Errorf("agentloop: invalid Window: %w", err)
+		}
+		if o.Summarizer == nil {
+			return ErrSummarizerRequired
+		}
+		if o.Calibrated == nil {
+			return ErrEstimatorRequired
+		}
+		if o.Trim != nil {
+			return ErrTrimExcluded
+		}
 	}
 	return nil
 }

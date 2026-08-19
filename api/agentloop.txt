@@ -1,8 +1,10 @@
 package agentloop
   const AuditKindCompletion = "completion"
   const AuditKindToolCall = "tool_call"
+  const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
+  const RecoveryTargetTokens = 16384
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
@@ -42,6 +44,9 @@ package agentloop
   Budget *contextbudget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
   Audit AuditFunc
+  Window *contextplan.Window
+  Summarizer *contextsummary.Summarizer
+  Calibrated *contextplan.Calibrated
 }
   type Result struct {
   Final provider.Message
@@ -53,12 +58,17 @@ package agentloop
   type StopReason string
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
+  var ErrCompactionFailed
+  var ErrEstimatorRequired
   var ErrInvalidSchema
   var ErrMaxIterations
   var ErrNoCompleter
   var ErrNoSchemas
   var ErrNoTools
   var ErrOverBudget
+  var ErrPlanFailed
+  var ErrSummarizerRequired
   var ErrTokenBudgetExceeded
   var ErrToolNotOffered
+  var ErrTrimExcluded
   var ErrUnrenderableResult

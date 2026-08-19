@@ -68,6 +68,8 @@ flowchart LR
     agentloop --> events
     agentloop --> contextbudget
     agentloop --> schema
+    agentloop --> contextplan
+    agentloop --> contextsummary
     usage --> provider
     providerregistry --> provider
     scheduler --> events
@@ -334,8 +336,16 @@ flowchart LR
   `AuditRecord` per completion and per tool call, keeping `agentloop`
   envelope-agnostic: a caller signs its own audit trail from those
   records, outside the block, the way `agent.confirmStep` signs `flow`
-  steps. `agentloop` imports `provider`, `tools`, `trace`, `hooks`,
-  `usage`, `events`, `contextbudget`, and `schema`; it never imports
+  steps. A non-nil `Options.Window` plans every iteration against a
+  token budget: under the trigger the history passes through; at or
+  above it, `contextplan.Compact` plus one `contextsummary` call
+  rebuild the history around an injected summary message, and one
+  `Calibrated.Observe` after every turn keeps the estimate honest. A
+  `provider.ErrPromptTooLong` rejection recovers once through a
+  one-percent trigger, a bounded target, one `CompactionNotice`, and
+  exactly one retry. `agentloop` imports `provider`, `tools`,
+  `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
+  `contextplan`, and `contextsummary`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A

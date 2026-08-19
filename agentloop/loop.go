@@ -5,6 +5,8 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -56,6 +58,9 @@ type Loop struct {
 	defs            []provider.ToolDefinition
 	schemas         map[string]*schema.Compiled
 	audit           AuditFunc
+	window          *contextplan.Window
+	summarizer      *contextsummary.Summarizer
+	calibrated      *contextplan.Calibrated
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -98,6 +103,9 @@ func New(opts Options) (*Loop, error) {
 		defs:            defs,
 		schemas:         schemas,
 		audit:           opts.Audit,
+		window:          opts.Window,
+		summarizer:      opts.Summarizer,
+		calibrated:      opts.Calibrated,
 	}, nil
 }
 

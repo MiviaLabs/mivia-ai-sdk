@@ -14,10 +14,11 @@ or a bound trips. The exported surface below mirrors
 - `Options` — the config struct `New` validates and wires:
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
-  `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`.
-  `Completer` and `Tools` are required; the rest are optional. `Bus`
-  is reserved for the loop's own events, pending a future event
-  vocabulary; `Run` does not yet emit anything through it.
+  `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
+  `Window`, `Summarizer`, `Calibrated`. `Completer` and `Tools` are
+  required; the rest are optional. `Bus` is reserved for the loop's
+  own events, pending a future event vocabulary; `Run` does not yet
+  emit anything through it.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
@@ -101,6 +102,59 @@ Use `errors.Is` to test these.
   `Arguments` fail `schema.Compiled.Validate` against the resolved
   tool's compiled schema, wrapped with the call ID and the underlying
   `schema` error. Never reaches `DecodeArguments`.
+- `ErrPlanFailed` ("agentloop: context planning failed") — `Run`'s
+  error when the per-iteration estimate fails.
+- `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
+  error when a required compaction cannot complete: a
+  `contextplan.Compact` failure (wrapping its sentinel), a summarizer
+  failure (wrapping the `contextsummary` sentinel), or a rebuilt
+  history still over `Window.Budget` (wrapping
+  `contextplan.ErrRetentionOverflow`). Nothing is sent for that
+  iteration.
+- `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
+  `Options.Validate` returns it when `Window` is set and `Summarizer`
+  is nil.
+- `ErrEstimatorRequired` ("agentloop: Window requires Calibrated") —
+  `Options.Validate` returns it when `Window` is set and `Calibrated`
+  is nil.
+- `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
+  exclusive") — `Options.Validate` returns it when both `Window` and
+  `Trim` are set.
+
+## Context planning and prompt-too-long recovery
+
+A non-nil `Options.Window` plans every iteration against a token
+budget. `Window` requires `Summarizer` and `Calibrated`, and excludes
+`Trim`; a nil `Window` keeps the loop exactly as it was.
+
+Before each `Completer.Chat`, `Run` estimates the history through
+`Calibrated` and passes through under `Window.CompactTrigger`. At or
+above the trigger it runs the compaction sequence: `contextplan.
+Compact` under a copy of the caller's `Window` whose
+`Compaction.PreserveNames` gained `contextsummary.
+SummaryMessageName` when absent, the prior summary message held aside
+as summarizer input, the dropped messages summarized through
+`contextsummary`, the fresh summary injected after the leading system
+message, and the rebuilt history re-estimated against
+`Window.Budget`. The compacted history replaces the old one only
+after the whole sequence succeeds; a failed compaction returns the
+pre-compaction history in `Result.History`.
+
+After every `Chat` that returns a response, `Run` calls
+`Calibrated.Observe(resp.Usage.TotalTokens)` before the
+`MaxTotalTokens` check. A non-positive `TotalTokens` is a no-op.
+
+On a `provider.ErrPromptTooLong` rejection with a non-nil `Window`,
+`Run` builds a recovery window with `Compaction.TriggerPercent` of 1
+and `Compaction.TargetTokens` of `max(1, min(RecoveryTargetTokens,
+Budget over four))`, runs the compaction sequence with one
+`CompactionNotice` message appended after the summary injection, and
+retries the same iteration exactly once. A second rejection
+propagates. An uncompacted result means the history sits under one
+percent of the budget: `Run` returns the original error unchanged,
+with no retry and no notice. Without a `Window`, the rejection
+propagates unchanged. Compaction is LLM-only: no structural fallback
+path exists anywhere in `Run`.
 
 ## Result shape
 

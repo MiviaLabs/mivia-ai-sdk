@@ -2,6 +2,7 @@ package agentloop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
@@ -56,20 +57,23 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 			return l.hardFail(history, iterations, totalUsage), err
 		}
 
-		iterCtx := ctx
-		var span *trace.Span
-		if l.tracer != nil {
-			iterCtx, span = l.tracer.Start(ctx, "agentloop.iteration")
-		}
-		req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
-		resp, err := l.completer.Chat(iterCtx, req)
-		if span != nil {
-			span.End()
-		}
-		if err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
+		if l.window != nil {
+			planned, err := l.planHistory(ctx, history, iterations)
+			if err != nil {
+				return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+			}
+			history = planned
 		}
 
+		at := l.runChat(ctx, history, iterations)
+		if at.err != nil {
+			if at.fromRecovery {
+				return Result{History: history, Iterations: iterations, Usage: totalUsage}, at.err
+			}
+			return l.hardFail(history, iterations, totalUsage), at.err
+		}
+		resp, req := at.resp, at.req
+		history = at.history
 		history = append(history, resp.Message)
 		iterations++
 		totalUsage = sumUsage(totalUsage, resp.Usage)
@@ -81,6 +85,9 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 				return l.hardFail(history, iterations, totalUsage),
 					fmt.Errorf("agentloop: iteration %d: audit: %w", iterations, err)
 			}
+		}
+		if l.calibrated != nil {
+			l.calibrated.Observe(resp.Usage.TotalTokens)
 		}
 		runningTokens += billedTokens(resp.Usage)
 		if l.maxTotalTokens > 0 && runningTokens > l.maxTotalTokens {
@@ -96,7 +103,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
 		}
 
-		newHistory, veto, err := l.runToolCalls(iterCtx, history, resp.ToolCalls, iterations)
+		newHistory, veto, err := l.runToolCalls(at.iterCtx, history, resp.ToolCalls, iterations)
 		history = newHistory
 		if err != nil {
 			return l.hardFail(history, iterations, totalUsage), err
@@ -105,6 +112,45 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopHookVeto}, nil
 		}
 	}
+}
+
+// chatAttempt carries one iteration's Completer outcome. iterCtx is
+// the span-annotated context the iteration ran under, for the turn's
+// later tool calls. When err is set, fromRecovery distinguishes the
+// recovery path's carrying Result rule from the base hard-fail rule.
+type chatAttempt struct {
+	resp         provider.Response
+	req          provider.Request
+	history      []provider.Message
+	iterCtx      context.Context
+	err          error
+	fromRecovery bool
+}
+
+// runChat performs one iteration's Completer call under the iteration
+// span, recovering exactly once from a prompt-too-long rejection when
+// a window is set.
+func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int) chatAttempt {
+	var span *trace.Span
+	if l.tracer != nil {
+		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
+	}
+	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+	resp, err := l.completer.Chat(ctx, req)
+	if span != nil {
+		span.End()
+	}
+	if err == nil {
+		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx}
+	}
+	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
+		return chatAttempt{err: err, iterCtx: ctx}
+	}
+	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations)
+	if rerr != nil {
+		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
+	}
+	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx}
 }
 
 // hardFail builds the Result a hard-fail error return carries. Every

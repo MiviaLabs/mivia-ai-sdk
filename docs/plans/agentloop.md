@@ -1301,7 +1301,7 @@ adds no new import.
 
 ## Addendum: context planning and prompt-too-long recovery
 
-Status: plan, ready for plan review. This addendum wires the ported
+Status: shipped. This addendum wires the ported
 compaction policy into `Run`. It changes `options.go` and `run.go`.
 It adds two internal imports and no new package.
 

@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -43,14 +44,19 @@ func TestRunHallucinatedSchemaFreeToolName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
+	var content string
 	found := false
 	for _, m := range res.History {
 		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
 			found = true
+			content = m.Content
 		}
 	}
 	if !found {
 		t.Fatalf("no RoleTool message reporting the schema-free-tool error: %+v", res.History)
+	}
+	if !strings.Contains(content, "publishes no schema") {
+		t.Fatalf("tool message content = %q, want it to carry the schema-free-tool error text", content)
 	}
 }
 
@@ -209,5 +215,85 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 	}
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+}
+
+// TestRunScopeDeniedToolName proves a model-requested call naming a
+// registered, schema-bearing tool that Options.Scope denies is
+// reported through RunScoped's ErrScopeDenied, the same as any other
+// tool-run error, and the denied tool never runs.
+func TestRunScopeDeniedToolName(t *testing.T) {
+	allowed := &schemaEchoTool{name: "allowed", schema: []byte(`{}`), result: "x"}
+	denied := &schemaEchoTool{name: "denied", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, allowed)
+	mustAdd(t, reg, denied)
+	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"allowed"}})
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "denied", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Scope: scope, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	var content string
+	found := false
+	for _, m := range res.History {
+		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
+			found = true
+			content = m.Content
+		}
+	}
+	if !found {
+		t.Fatalf("no RoleTool message reporting the scope-denied error: %+v", res.History)
+	}
+	if !strings.Contains(content, tools.ErrScopeDenied.Error()) {
+		t.Fatalf("tool message content = %q, want it to carry %q", content, tools.ErrScopeDenied.Error())
+	}
+	if denied.callCount() != 0 {
+		t.Fatalf("denied.callCount() = %d, want 0: a scope-denied tool must never run", denied.callCount())
+	}
+}
+
+// TestRunToolExecutionError proves a tool's own Run method returning
+// an error propagates through the same report/fail path as an
+// unknown name or a decode failure.
+func TestRunToolExecutionError(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), runErr: errBoom}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	var content string
+	found := false
+	for _, m := range res.History {
+		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
+			found = true
+			content = m.Content
+		}
+	}
+	if !found {
+		t.Fatalf("no RoleTool message reporting the tool's own run error: %+v", res.History)
+	}
+	if !strings.Contains(content, errBoom.Error()) {
+		t.Fatalf("tool message content = %q, want it to carry %q", content, errBoom.Error())
+	}
+	if tool.callCount() != 1 {
+		t.Fatalf("tool.callCount() = %d, want 1", tool.callCount())
 	}
 }

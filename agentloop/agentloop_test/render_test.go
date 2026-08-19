@@ -147,6 +147,24 @@ func TestRenderTruncatesAtMarkerBoundary(t *testing.T) {
 	}
 }
 
+// TestRenderTruncatesAtExactMarkerLength covers the truncateContent
+// boundary where budget equals the marker's own length exactly: the
+// budget is large enough to hold the marker alone, so the result is
+// the marker with no content bytes ahead of it.
+func TestRenderTruncatesAtExactMarkerLength(t *testing.T) {
+	tool := &budgetedSchemaTool{
+		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 100)},
+		maxBytes:       len("...[truncated]"),
+	}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if got != "...[truncated]" {
+		t.Fatalf("content = %q, want the marker alone", got)
+	}
+}
+
 func TestRenderTruncatesOverBudget(t *testing.T) {
 	tool := &budgetedSchemaTool{
 		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 100)},

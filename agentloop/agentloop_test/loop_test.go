@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -128,14 +129,19 @@ func TestRunUnknownToolName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() error = %v, want nil", err)
 		}
+		var content string
 		found := false
 		for _, m := range res.History {
 			if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
 				found = true
+				content = m.Content
 			}
 		}
 		if !found {
 			t.Fatalf("no RoleTool message reporting the unknown-name error: %+v", res.History)
+		}
+		if !strings.Contains(content, tools.ErrUnknownName.Error()) {
+			t.Fatalf("tool message content = %q, want it to carry %q", content, tools.ErrUnknownName.Error())
 		}
 	})
 	t.Run("fail", func(t *testing.T) {
@@ -211,14 +217,19 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Run() error = %v, want nil", err)
 		}
+		var content string
 		found := false
 		for _, m := range res.History {
 			if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
 				found = true
+				content = m.Content
 			}
 		}
 		if !found {
 			t.Fatalf("no RoleTool message reporting the decode error: %+v", res.History)
+		}
+		if !strings.Contains(content, errBoom.Error()) {
+			t.Fatalf("tool message content = %q, want it to carry %q", content, errBoom.Error())
 		}
 		if tool.callCount() != 0 {
 			t.Fatalf("tool call count = %d, want 0: a decode failure never reaches Run", tool.callCount())
@@ -337,5 +348,51 @@ func TestRunTrimDropsToolReplyPassesValidation(t *testing.T) {
 	}
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+}
+
+// TestRunCompleterChatErrorFirstIteration proves a Completer.Chat error
+// on the very first call fails the run with the wrapped error and the
+// zero-value Result, since no iteration has completed yet.
+func TestRunCompleterChatErrorFirstIteration(t *testing.T) {
+	completer := &scriptedCompleter{errs: []error{errBoom}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("Run() error = %v, want errBoom", err)
+	}
+	if res.Iterations != 0 || !isZeroMessage(res.Final) || len(res.History) != 0 {
+		t.Fatalf("Result = %+v, want the zero value: no iteration completed", res)
+	}
+}
+
+// TestRunCompleterChatErrorLaterIteration proves a Completer.Chat error
+// after at least one iteration completed fails the run with the
+// wrapped error and a Result carrying that prior iteration's
+// accumulated History and Iterations, per hardFail's rule.
+func TestRunCompleterChatErrorLaterIteration(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{
+		responses: []provider.Response{toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"})},
+		errs:      []error{nil, errBoom},
+	}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("Run() error = %v, want errBoom", err)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1: the prior successful iteration must be preserved", res.Iterations)
+	}
+	if len(res.History) == 0 {
+		t.Fatalf("History is empty, want the prior iteration's accumulated state")
 	}
 }

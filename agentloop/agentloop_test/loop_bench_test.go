@@ -32,3 +32,34 @@ func BenchmarkRunOneIteration(b *testing.B) {
 		}
 	}
 }
+
+// maxAllocsPerOneIteration bounds BenchmarkRunOneIteration's measured
+// allocs/op. Baseline is 6 allocs/op; the margin to 10 catches a
+// regression of a few extra allocations in New or the hot loop path
+// without flaking on GOMAXPROCS or allocator jitter.
+const maxAllocsPerOneIteration = 10
+
+// TestRunOneIterationAllocBudget asserts BenchmarkRunOneIteration's
+// same workload stays within maxAllocsPerOneIteration allocs/op, using
+// testing.AllocsPerRun instead of only reporting a number a human must
+// compare against the doc comment above.
+func TestRunOneIterationAllocBudget(t *testing.T) {
+	reg := tools.New()
+	msgs := []provider.Message{textMessage(provider.RoleUser, "hi")}
+
+	got := testing.AllocsPerRun(100, func() {
+		completer := &scriptedCompleter{responses: []provider.Response{
+			{Message: textMessage(provider.RoleAssistant, "hi there")},
+		}}
+		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 1})
+		if err != nil {
+			t.Fatalf("New() error = %v, want nil", err)
+		}
+		if _, err := loop.Run(context.Background(), msgs); err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+	})
+	if got > maxAllocsPerOneIteration {
+		t.Fatalf("AllocsPerRun = %.1f, want at most %d", got, maxAllocsPerOneIteration)
+	}
+}

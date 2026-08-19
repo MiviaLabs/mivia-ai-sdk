@@ -16,8 +16,12 @@ import (
 // more calls than a positive MaxCallsPerTurn fails the run before any
 // call in that turn runs, under both error policies.
 func TestRunCallsPerTurnExceeded(t *testing.T) {
+	names := map[agentloop.ErrorPolicy]string{
+		agentloop.ErrorPolicyReport: "report",
+		agentloop.ErrorPolicyFail:   "fail",
+	}
 	for _, policy := range []agentloop.ErrorPolicy{agentloop.ErrorPolicyReport, agentloop.ErrorPolicyFail} {
-		t.Run(string(policy)+"-or-report", func(t *testing.T) {
+		t.Run(names[policy], func(t *testing.T) {
 			tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 			reg := tools.New()
 			mustAdd(t, reg, tool)
@@ -41,6 +45,42 @@ func TestRunCallsPerTurnExceeded(t *testing.T) {
 				t.Fatalf("tool call count = %d, want 0: the trip happens before any call runs", tool.callCount())
 			}
 		})
+	}
+}
+
+// TestRunMaxCallsPerTurnZeroUnbounded proves a zero MaxCallsPerTurn
+// lets a turn requesting many calls run every one of them, unlike a
+// positive bound. This is the behavioral proof "zero means unbounded"
+// only Validate covered before this test: a >0-only guard bug (for
+// example dropping the positivity check) would fail every one of these
+// calls instead of running them.
+func TestRunMaxCallsPerTurnZeroUnbounded(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{Index: 0, ID: "call-1", Name: "echo"},
+			provider.ToolCall{Index: 1, ID: "call-2", Name: "echo"},
+			provider.ToolCall{Index: 2, ID: "call-3", Name: "echo"},
+		),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, MaxCallsPerTurn: 0,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	if tool.callCount() != 3 {
+		t.Fatalf("tool call count = %d, want 3: a zero MaxCallsPerTurn must not bound the turn", tool.callCount())
 	}
 }
 

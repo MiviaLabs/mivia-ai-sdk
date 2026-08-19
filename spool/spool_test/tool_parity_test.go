@@ -171,6 +171,43 @@ func innerFor(mask int) tools.Tool {
 	}
 }
 
+// TestSpoolToolSchemaForwardsToInner proves the wrapper's SchemaTool
+// methods, when present, actually delegate to inner's own
+// ParameterSchema and DecodeArguments rather than merely satisfying
+// the interface: a wrapper that returned a fixed or empty schema, or
+// that ignored raw and returned a fixed InOut, would still pass
+// TestSpoolToolInterfaceParity's type-assertion check but fails here.
+func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
+	for mask := 8; mask < 1<<len(probes); mask++ {
+		inner := innerFor(mask)
+		innerSchema, ok := inner.(tools.SchemaTool)
+		if !ok {
+			t.Fatalf("subset %04b: innerFor built a tool without SchemaTool, want the schema bit set", mask)
+		}
+		wrapped := spool.SpoolTool("wrapped", 8, newFakeStore(), inner)
+		wrappedSchema, ok := wrapped.(tools.SchemaTool)
+		if !ok {
+			t.Fatalf("subset %04b: wrapper does not implement SchemaTool, want it to", mask)
+		}
+
+		wantSchema := innerSchema.ParameterSchema()
+		gotSchema := wrappedSchema.ParameterSchema()
+		if string(gotSchema) != string(wantSchema) {
+			t.Errorf("subset %04b: ParameterSchema() = %s, want inner's own %s", mask, gotSchema, wantSchema)
+		}
+
+		raw := []byte(`distinct-payload-42`)
+		wantIn, wantErr := innerSchema.DecodeArguments(raw)
+		gotIn, gotErr := wrappedSchema.DecodeArguments(raw)
+		if gotErr != wantErr {
+			t.Errorf("subset %04b: DecodeArguments error = %v, want %v", mask, gotErr, wantErr)
+		}
+		if gotIn != wantIn {
+			t.Errorf("subset %04b: DecodeArguments = %+v, want inner's own %+v", mask, gotIn, wantIn)
+		}
+	}
+}
+
 func TestSpoolToolInterfaceParity(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
 		inner := innerFor(mask)

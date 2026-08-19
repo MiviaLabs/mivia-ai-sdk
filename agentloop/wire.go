@@ -55,7 +55,7 @@ func renderValue(v any) (string, error) {
 // render calls this only when 0 < budget < len(content), so both
 // slice bounds below stay in range.
 func truncateContent(content string, budget int) string {
-	if budget <= len(truncationMarker) {
+	if budget < len(truncationMarker) {
 		return content[:budget]
 	}
 	return content[:budget-len(truncationMarker)] + truncationMarker

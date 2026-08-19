@@ -160,6 +160,8 @@
     "usage": [
       "provider"
     ],
-    "workspace": []
+    "workspace": [
+      "secretpath"
+    ]
   }
 }

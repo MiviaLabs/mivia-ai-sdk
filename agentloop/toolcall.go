@@ -134,11 +134,14 @@ func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.To
 // name and tools.ErrScopeDenied for a name l.scope excludes, both
 // before ever calling schema.Compiled.Validate, DecodeArguments, or
 // RunScoped: a scope-denied tool's decoder must never see
-// model-supplied bytes. l.schemas[call.Name] is guaranteed to hit
-// once call.Name has passed both the l.scope check and the
-// tools.SchemaTool assertion: those are the same two conditions,
-// applied in either order, that decide defs membership inside
-// Definitions, and l.schemas is keyed by that same defs set.
+// model-supplied bytes. l.schemas[call.Name] hits whenever call.Name
+// was in the Scope-offered set New compiled from. A miss means a
+// tool the caller registered on the shared *tools.Registry after New
+// ran: reg.Get and l.scope.Allowed both read the live registry and
+// the live scope, so the call still reaches this point, but l.schemas,
+// frozen at New, carries no entry for it. decodeAndRun returns
+// ErrToolNotOffered in that case, instead of indexing a nil
+// *schema.Compiled.
 func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.Tool, tools.Out, error) {
 	t, ok := l.reg.Get(call.Name)
 	if !ok {
@@ -151,7 +154,11 @@ func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.
 	if !ok {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool %q publishes no schema", call.Name)
 	}
-	if err := l.schemas[call.Name].Validate(call.Arguments); err != nil {
+	compiled, ok := l.schemas[call.Name]
+	if !ok {
+		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, ErrToolNotOffered)
+	}
+	if err := compiled.Validate(call.Arguments); err != nil {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w: %w", call.ID, ErrArgumentValidation, err)
 	}
 	in, err := st.DecodeArguments(call.Arguments)

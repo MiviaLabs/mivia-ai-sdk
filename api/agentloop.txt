@@ -60,4 +60,5 @@ package agentloop
   var ErrNoTools
   var ErrOverBudget
   var ErrTokenBudgetExceeded
+  var ErrToolNotOffered
   var ErrUnrenderableResult

@@ -60,6 +60,17 @@ var (
 	// through OnToolError exactly like a DecodeArguments failure. Test
 	// with errors.Is.
 	ErrArgumentValidation = errors.New("agentloop: tool call arguments failed schema validation")
+	// ErrToolNotOffered is decodeAndRun's error when a model-chosen call
+	// names a tool with no entry in l.schemas, the schema set New
+	// compiled once from the Scope-offered tools at construction time.
+	// This happens when a caller registers a schema-bearing,
+	// Scope-allowed tool on the shared *tools.Registry after New already
+	// ran: Registry.Get and Scope.Allowed both read the live registry and
+	// the live scope, so the call still reaches decodeAndRun, but
+	// l.schemas, frozen at New, carries no entry for it. Routed through
+	// OnToolError exactly like ErrArgumentValidation and
+	// tools.ErrUnknownName. Test with errors.Is.
+	ErrToolNotOffered = errors.New("agentloop: tool call names a tool not offered when New ran")
 )
 
 // ErrorPolicy names what Run does with a tool-run error: report it to

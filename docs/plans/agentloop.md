@@ -1068,3 +1068,229 @@ reproduction case failing on the pre-fix code and passing after.
 This addendum adds no conformance vector, no new gate, and no
 `policy/layers.json` change. It runs no `make api-update`, since it
 adds no exported symbol.
+
+## Addendum: a nil-schema panic on a tool registered after New
+
+Status: plan, ready for plan review. This addendum fixes a
+nil-pointer panic an adversarial logic review found in `toolcall.go`.
+It changes `toolcall.go` and `options.go`. It adds one new sentinel
+error and no new package.
+
+### Addendum bug
+
+`New` compiles `l.schemas`, a `map[string]*schema.Compiled`, once, at
+construction time, keyed by the `Scope`-offered `defs` set
+`Definitions` returns at that same moment. `decodeAndRun`
+(`toolcall.go:154`) then indexes `l.schemas[call.Name]` and calls
+`.Validate` on the result, unguarded:
+
+```go
+if err := l.schemas[call.Name].Validate(call.Arguments); err != nil {
+```
+
+The surrounding doc comment states this lookup "is guaranteed to hit
+once `call.Name` has passed both the `l.scope` check and the
+`tools.SchemaTool` assertion." That claim holds only while the
+`*tools.Registry` a `Loop` was built over stays fixed after `New`
+runs. `reg.Get` (`toolcall.go:143`) and `l.scope.Allowed`
+(`toolcall.go:147`) both read the live registry and the live scope,
+not the `New`-time snapshot. A caller that adds a schema-bearing,
+scope-allowed tool to the shared registry after `New` has already
+run — a realistic pattern for a long-running agent with dynamic tool
+registration — breaks the invariant: the model can later call that
+tool by name, `reg.Get` and `l.scope.Allowed` both admit the call, and
+`l.schemas[call.Name]` returns the zero value, a nil `*schema.
+Compiled`. `(*schema.Compiled).Validate` is not nil-safe
+(`schema/validate.go:22`); calling it on a nil receiver panics, rather
+than returning a typed error `OnToolError` could route.
+
+No existing test reproduces this. `TestRunDefinitionsCachedOnce`
+(`agentloop_test/loop_bounds_test.go:135`) proves a tool registered
+after `New` is never offered to the model, in `Request.Tools`; it
+never scripts the completer to call that tool by name anyway, so the
+panic path is unexercised.
+
+### Addendum decision: a runtime guard, not a documentation-only contract
+
+Two options were weighed.
+
+- Option A (recommended): guard the `l.schemas` lookup in
+  `decodeAndRun` and return a new sentinel error, routed through the
+  existing `OnToolError` policy, on a miss.
+- Option B: document that a caller must not mutate `Tools` after
+  `New`, and enforce nothing.
+
+Option A is recommended. Every other tool-call failure this function
+already handles — an unresolved `call.Name`
+(`tools.ErrUnknownName`), a scope-denied `call.Name`
+(`tools.ErrScopeDenied`), a missing `SchemaTool` implementation, an
+argument-validation failure (`ErrArgumentValidation`) — degrades to a
+typed error routed through `OnToolError`, never a panic. A
+documentation-only contract leaves this one lookup as the sole path
+in `decodeAndRun` that can crash the process on a model-facing input,
+which is inconsistent with the function's own established shape and
+with a tool-calling loop's threat model: `call.Name` and
+`call.Arguments` are both model-supplied, and a model can be made to
+name a tool the caller added late, whether by an intentional dynamic
+registration pattern or by chance. A runtime guard closes the gap
+without asking every caller to police a mutation rule the type system
+does not enforce.
+
+### Addendum scope
+
+Inside:
+
+- Guarding `l.schemas[call.Name]` in `decodeAndRun` with a
+  comma-ok lookup, returning a new sentinel error on a miss.
+- One new sentinel error, `ErrToolNotOffered`.
+- Updating `decodeAndRun`'s doc comment in `toolcall.go` to state the
+  guarded behavior instead of the now-corrected "guaranteed to hit"
+  claim.
+- A regression test proving the guarded path runs without a panic,
+  under both `ErrorPolicyReport` and `ErrorPolicyFail`.
+- A second, unrelated regression test closing an uncovered branch:
+  the `AuditKindToolCall` audit-error branch inside `runToolCalls`
+  (`toolcall.go:39-49`), which no existing test exercises.
+
+Outside:
+
+- Enforcing registry immutability after `New`. Rejected above.
+- Recomputing `l.schemas` per call or per iteration. The base plan's
+  `New` doc comment already states `Tools` and `Scope` are "not
+  documented as mutating mid-run," and recomputing would reintroduce
+  the shared-registry blast-radius problem the argument-validation
+  addendum's scoped compile loop already solved. This addendum keeps
+  `l.schemas` a fixed, `New`-time snapshot; it only makes a miss on
+  that snapshot fail safely instead of panicking.
+- Any change to `tools.Registry`, `tools.Scope`, or `schema.Compiled`.
+  The fix is entirely inside `agentloop`.
+- Any change to `Definitions` or `compileSchemas`. Both already build
+  the correct `New`-time set; the bug is `decodeAndRun` trusting that
+  set stays complete forever, not a defect in how the set is built.
+
+### Addendum API
+
+New in `agentloop`:
+
+```go
+// ErrToolNotOffered is decodeAndRun's error when a model-chosen call
+// names a tool with no entry in l.schemas, the schema set New
+// compiled once from the Scope-offered tools at construction time.
+// This happens when a caller registers a schema-bearing,
+// Scope-allowed tool on the shared *tools.Registry after New already
+// ran: Registry.Get and Scope.Allowed both read the live registry and
+// the live scope, so the call still reaches decodeAndRun, but
+// l.schemas, frozen at New, carries no entry for it. Routed through
+// OnToolError exactly like ErrArgumentValidation and
+// tools.ErrUnknownName. Test with errors.Is.
+var ErrToolNotOffered = errors.New("agentloop: tool call names a tool not offered when New ran")
+```
+
+`ErrToolNotOffered` lands in `api/agentloop.txt` via `make
+api-update`, in the same change as the code. No other exported symbol
+changes.
+
+### Addendum fix, exact shape
+
+`toolcall.go:154`, before:
+
+```go
+if err := l.schemas[call.Name].Validate(call.Arguments); err != nil {
+    return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w: %w", call.ID, ErrArgumentValidation, err)
+}
+```
+
+After:
+
+```go
+compiled, ok := l.schemas[call.Name]
+if !ok {
+    return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, ErrToolNotOffered)
+}
+if err := compiled.Validate(call.Arguments); err != nil {
+    return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w: %w", call.ID, ErrArgumentValidation, err)
+}
+```
+
+This sits between the existing `SchemaTool` type-assertion branch
+(`toolcall.go:150-153`) and the existing `DecodeArguments` call
+(`toolcall.go:157`), matching the shape of the two branches directly
+above it: `reg.Get`'s `!ok` branch and the `l.scope.Allowed` `false`
+branch. Every branch in `decodeAndRun` now returns a wrapped, typed
+error on a mismatch and never panics.
+
+`decodeAndRun`'s doc comment (`toolcall.go:130-141`) changes its
+closing sentence from asserting the lookup "is guaranteed to hit" to
+stating the guarded contract: `l.schemas[call.Name]` hits whenever
+`call.Name` was in the `Scope`-offered set `New` compiled from; a miss
+means a tool the caller registered on the shared registry after `New`
+ran, and `decodeAndRun` returns `ErrToolNotOffered` instead of
+indexing a nil `*schema.Compiled`.
+
+### Addendum tests
+
+New file `agentloop/agentloop_test/schema_drift_test.go`. A dedicated
+file, not an addition to `loop_bounds_test.go`
+(393 lines) or `argument_validation_test.go`: the concern is registry
+drift after `New`, distinct from both the bounds/cache-reuse cases in
+`loop_bounds_test.go` and the schema-compile cases in
+`argument_validation_test.go`, and keeping it separate matches this
+plan's existing precedent of splitting a new concern into its own
+file (`loop_bounds_tokens_test.go`).
+
+- `TestDecodeAndRunToolRegisteredAfterNewReportsUnderReportPolicy` —
+  builds a `Loop` over an empty registry, then registers a
+  schema-bearing tool named `"late"` on the same `*tools.Registry`
+  after `New` returns. A scripted `Completer` calls `"late"` on
+  iteration one and returns a no-tool-call response on iteration two.
+  `Options.Audit` records every `AuditRecord`. Asserts `Run` returns
+  `nil` error (default `ErrorPolicyReport`), the `AuditKindToolCall`
+  record for the call carries `errors.Is(rec.Err,
+  agentloop.ErrToolNotOffered)`, and the appended `RoleTool` message's
+  `Content` starts with `ToolErrorPrefix`. This is the primary
+  reproduction: on the unguarded code, this case panics instead of
+  returning a value, crashing the whole test binary rather than
+  merely failing.
+- `TestDecodeAndRunToolRegisteredAfterNewFailsUnderFailPolicy` — same
+  setup, `OnToolError: ErrorPolicyFail`. Asserts `Run` returns a
+  non-nil error satisfying `errors.Is(err,
+  agentloop.ErrToolNotOffered)`, and the returned `Result` carries
+  the accumulated `History` and `Iterations` at the point of failure,
+  matching every other hard-fail case in this plan's Result-shape
+  rule.
+
+Closing the uncovered `AuditKindToolCall`-audit-error branch: one new
+case, `TestAuditFuncErrorOnToolCallFailsRun`, added to the existing
+`agentloop_test/audit_test.go` (328 lines; stays under the 500-line
+structure gate). It belongs beside `TestAuditFuncErrorFailsRun`, which
+exercises only the sibling `AuditKindCompletion` branch in `run.go`;
+the new case exercises `toolcall.go:39-49`'s `AuditKindToolCall`
+branch inside `runToolCalls`, the one no existing test reaches. A
+scripted `Completer` requests one successful tool call, then an
+`Audit` func that returns `nil` for `AuditKindCompletion` and a
+sentinel error for `AuditKindToolCall`. Asserts `Run` returns a
+non-nil error satisfying `errors.Is(err, errAudit)` (the file's
+existing sentinel), and the returned `Result`'s `History` already
+contains the tool call's `RoleTool` message, matching
+`runToolCalls`'s documented append-then-audit order.
+
+### Addendum verification
+
+`make verify` passes: gofmt, vet, the race detector, the coverage
+floor at 85 percent for `agentloop` and the module total, the doc
+gate, the structure gate, the plan gate, the deps gate (unchanged
+`policy/layers.json`), the API gate against the regenerated
+`api/agentloop.txt`, the Semgrep scan, and the probe suite.
+
+`go test -race ./agentloop/...` passes, including both new
+`schema_drift_test.go` cases, which crash the test binary on the
+pre-fix code and pass cleanly after.
+
+`make api-update` runs, and the `api/agentloop.txt` diff, adding
+`ErrToolNotOffered`, lands in the same change as the code.
+
+This addendum adds no conformance vector and no new gate. It changes
+no other package: `l.reg.Get`, `l.scope.Allowed`, and
+`schema.Compiled.Validate` all stay unchanged, and
+`policy/layers.json`'s `agentloop` row is unchanged, since the fix
+adds no new import.

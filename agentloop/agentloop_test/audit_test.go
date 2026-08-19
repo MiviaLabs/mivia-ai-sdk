@@ -295,6 +295,47 @@ func TestAuditFuncErrorFailsRun(t *testing.T) {
 	}
 }
 
+// TestAuditFuncErrorOnToolCallFailsRun proves a non-nil Audit error
+// from the AuditKindToolCall branch inside runToolCalls fails the
+// run, the same way an AuditKindCompletion error already does in
+// TestAuditFuncErrorFailsRun. The returned Result's History already
+// contains the tool call's RoleTool message, matching runToolCalls's
+// documented append-then-audit order.
+func TestAuditFuncErrorOnToolCallFailsRun(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+	}}
+	auditFn := func(ctx context.Context, rec agentloop.AuditRecord) error {
+		if rec.Kind == agentloop.AuditKindToolCall {
+			return errAudit
+		}
+		return nil
+	}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditFn})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, errAudit) {
+		t.Fatalf("Run() error = %v, want errAudit", err)
+	}
+	if len(res.History) == 0 {
+		t.Fatalf("History is empty, want it to already contain the tool call's RoleTool message")
+	}
+	found := false
+	for _, m := range res.History {
+		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("History = %+v, want a RoleTool message for call-1, appended before the audit error", res.History)
+	}
+}
+
 // TestAuditNilRunsUnchanged proves a nil Options.Audit runs unchanged
 // from the base plan's existing behavior.
 func TestAuditNilRunsUnchanged(t *testing.T) {

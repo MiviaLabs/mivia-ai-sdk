@@ -108,17 +108,17 @@ func TestFaultStoreMidCeremonyFailsRunAndKeepsStepOneArtifact(t *testing.T) {
 // paths of Load, CompareAndSwap, and Range the ceremony does not reach.
 func TestFaultStoreDecoratorFaultsOnTheNthCall(t *testing.T) {
 	ctx := context.Background()
-	// A zero FaultOn never faults; every method forwards.
+	// A zero FaultOn never faults; every method forwards its result.
 	fs := &e2e.FaultStore{Store: ledger.NewMemStore()}
-	if _, _, err := fs.Load(ctx, "a"); err != nil {
-		t.Fatalf("Load pass = %v, want nil", err)
+	if _, found, err := fs.Load(ctx, "a"); err != nil || found {
+		t.Fatalf("Load pass = found=%v,%v, want not found and nil", found, err)
 	}
 	if err := fs.Range(ctx, func(ledger.TaskState) bool { return true }); err != nil {
 		t.Fatalf("Range pass = %v, want nil", err)
 	}
-	if _, err := fs.CompareAndSwap(ctx, "b", ledger.TaskState{},
-		ledger.TaskState{Status: ledger.StatusPending}); err != nil {
-		t.Fatalf("CompareAndSwap pass = %v, want nil", err)
+	if ok, err := fs.CompareAndSwap(ctx, "b", ledger.TaskState{},
+		ledger.TaskState{Status: ledger.StatusPending}); err != nil || !ok {
+		t.Fatalf("CompareAndSwap pass = ok=%v,%v, want true and nil", ok, err)
 	}
 	// FaultOn 2 faults the second call of each method in turn.
 	fl := &e2e.FaultStore{Store: ledger.NewMemStore(), FaultOn: 2}

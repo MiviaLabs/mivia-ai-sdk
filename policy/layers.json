@@ -94,6 +94,13 @@
       "envelope",
       "heartbeat"
     ],
+    "runconfig": [
+      "agentrun",
+      "flow",
+      "machine",
+      "subagent",
+      "tools"
+    ],
     "scheduler": [
       "events"
     ],

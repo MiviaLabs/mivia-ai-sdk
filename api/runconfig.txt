@@ -1,0 +1,39 @@
+package runconfig
+  const ChannelKind = "channel"
+  const DiscoveryKind = "discovery"
+  const FlowKind = "flow"
+  const HeartbeatKind = "heartbeat"
+  const LedgerKind = "ledger"
+  const MemoryKind = "memory"
+  const ProviderKind = "provider"
+  const ProviderRegistryKind = "providerregistry"
+  const RoomKind = "room"
+  const SchedulerKind = "scheduler"
+  const TriggerKind = "trigger"
+  func (b *Blocks) Set(kind Kind, t tools.Tool)
+  func (d *Definition) Runner() (*agentrun.Runner, error)
+  func (s stepTool) Name() (string)
+  func (s stepTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func Load(data []byte) (*Definition, error)
+  func NewBlocks() (*Blocks)
+  type Binding struct {
+  Step string
+  Tool string
+  Kind Kind
+  Internal bool
+}
+  type Blocks struct {
+}
+  type Definition struct {
+  Plan *flow.Definition
+  Machine *machine.Definition
+  Options agentrun.Options
+  Tools []string
+  Bindings []Binding
+  Blocks *Blocks
+  External *tools.Registry
+}
+  type Kind string
+  var ErrBadDocument
+  var ErrUnknownInternal
+  var ErrUnknownTool

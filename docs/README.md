@@ -87,7 +87,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
 - [packages/e2e.md](packages/e2e.md) — the end-to-end scenario suite: real high-level blocks wired together, one full run per scenario, outputs asserted across the handoffs.
 - [packages/subagent.md](packages/subagent.md) — the SDK's blocks as tools: a runner becomes a spawnable subagent, `RunAll` runs several at once, internal tools expose the blocks, and a signed-message mailbox carries both directions.
-- [packages/envfile.md](packages/envfile.md) — dotenv loading: `Load` parses `KEY=VALUE` lines into a map without leaking values into errors.
+- [packages/envfile.md](packages/envfile.md) — dotenv loading: `Load` and `LoadBytes` parse `KEY=VALUE` lines into a map without leaking values into errors.
 - [packages/secretpath.md](packages/secretpath.md) — glob-style secret path matching: a `Matcher` reports whether a path matches a configured pattern list.
 - [packages/workspace.md](packages/workspace.md) — filesystem confinement: `Open` binds a handle to a root directory and rejects traversal or symlink escapes.
 - [packages/diff.md](packages/diff.md) — bounded unified line diffs: `Unified` fails closed past a caller's line budget.

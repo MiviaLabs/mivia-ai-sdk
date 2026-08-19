@@ -17,6 +17,12 @@ In scope:
 - A documented decision on which Go version CI pins.
 - A written recommendation for branch protection, scoped as a
   follow-up the user applies through GitHub repo settings.
+- Update AGENTS.md:483-484 and docs/architecture.md's Gate system
+  section once the workflow ships. State that CI runs `make verify`
+  on push and pull request to `main`. State that CI stays
+  informational only until branch protection is enabled. This is a
+  doc edit alongside the workflow file, not a Makefile or gate-script
+  change.
 
 Out of scope:
 
@@ -47,10 +53,11 @@ observable contract:
   - `push` on branch `main`.
   - `pull_request` targeting branch `main`.
 - One job, `verify`, on `ubuntu-latest`:
-  1. `actions/checkout` (standard action, pinned to a major version
-     tag).
-  2. `actions/setup-go` (standard action, pinned to a major version
-     tag), configured with `go-version-file: go.mod` so CI always
+  1. `actions/checkout` (standard action, pinned to a full commit
+     SHA, with the version tag as a trailing comment).
+  2. `actions/setup-go` (standard action, pinned to a full commit
+     SHA, with the version tag as a trailing comment), configured
+     with `go-version-file: go.mod` so CI always
      builds with the version go.mod declares, and with its built-in
      module cache enabled (`cache: true`), keyed on `go.sum`.
   3. Install Semgrep through `pip install semgrep`, pinned to one
@@ -59,6 +66,10 @@ observable contract:
      Action and needs no separate justification under the
      no-third-party-Action rule.
   4. `make verify`.
+- Standing rule: pin every GitHub Action in this workflow to a full
+  commit SHA, with the version tag as a trailing comment. This rule
+  applies to `actions/checkout`, `actions/setup-go`, and any Action
+  added to this workflow later.
 - No third-party GitHub Action beyond `actions/checkout` and
   `actions/setup-go`.
 - No repository secret. `make verify` needs none; see Verification.
@@ -101,15 +112,31 @@ Findings from this planning pass, folded into the plan:
   tagged build; one `make verify` call exercises both the default
   build and the `ledger_sqlite`-tagged build.
 - No test in the tree makes a real network call or reads a real
-  secret. The only network-shaped strings found are inert: an
-  unresolvable `http://example.com/...` `$ref` used to test schema
-  validation failure in `schema/schema_test/compile_test.go`, and a
-  literal `https://example.test/v1` string used to test secret
-  redaction in `workspace/workspace_test/secret_integration_test.go`.
+  secret. Two network-shaped strings are inert: an unresolvable
+  `http://example.com/...` `$ref` used to test schema validation
+  failure in `schema/schema_test/compile_test.go`, and a literal
+  `https://example.test/v1` string used to test secret redaction in
+  `workspace/workspace_test/secret_integration_test.go`.
   `mcp/stdio_transport_test.go` re-execs the test binary as a local
   subprocess gated by an environment variable; it opens no network
-  connection. CI needs no repository secret and no network-access
+  connection. The `dispatch/dispatch_test` package
+  (`badrequest_test.go`, `ladder_test.go`, `replay_test.go`,
+  `reject_test.go`, `bodylimit_test.go`) and
+  `mcp/http_transport_test.go` open real sockets through
+  `httptest.NewServer`, and `dispatch/dispatch_test/client_test.go`
+  dials `http://127.0.0.1:1` to force a connection-refused error.
+  Every one of these stays on loopback and needs no egress, so none
+  is a CI risk. CI needs no repository secret and no network-access
   exception.
+- Pinning Semgrep in CI (see API, step 3) but not in local
+  development creates a version-drift risk: a contributor's local
+  `make verify` can pass against a different Semgrep version than CI
+  enforces. Recommend, as a follow-up outside this plan's scope, that
+  local dev pin the same Semgrep version, for example documented in
+  README's dev-setup section as a future addition.
+- Private-repo GitHub Actions minutes are quota-limited on GitHub's
+  free tier. This repo's expected commit frequency stays well under
+  that quota. A period of heavy commit volume should watch usage.
 - CI enforcement today is informational only: the repo has no branch
   protection rule, so a failing check does not block a merge or a
   direct push to `main`. This plan's workflow file does not change

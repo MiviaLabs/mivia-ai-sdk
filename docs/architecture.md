@@ -830,6 +830,11 @@ package's stored floor in `scripts/mutation_denylist/<pkg>.json`. It
 never runs inside `verify` or `verify-fast`, since a full sweep costs
 minutes.
 
+GitHub Actions CI runs `make verify` on every push and pull request to
+`main`, defined in `.github/workflows/ci.yml`. No branch protection
+rule exists yet, so CI stays informational only: a failing check does
+not block a merge or a direct push.
+
 ## Invariants
 
 The architecture enforces these rules:

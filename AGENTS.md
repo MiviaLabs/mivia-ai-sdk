@@ -480,6 +480,7 @@ the profile lists every package and that the total and each package
 reach 85.
 
 The hook guard and the pre-commit hook are best-effort against
-careless agents. They are not a security boundary. No CI exists in
-this repo, so gates on the committed tree stay aspirational until CI
-exists.
+careless agents. They are not a security boundary. GitHub Actions CI
+now runs `make verify` on every push and pull request to `main`. No
+branch protection rule exists yet, so CI stays informational only: a
+failing check does not block a merge or a direct push.

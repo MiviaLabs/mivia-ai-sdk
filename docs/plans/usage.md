@@ -24,10 +24,11 @@ zero. Inside: safe concurrent `Record` calls against the same session
 from more than one goroutine.
 
 Inside: `WrapCompleter`, one composition seam. It wraps a
-`provider.Completer` so every completed turn records its usage under
-a session, letting any provider consumer — a subagent tool, a
-providerregistry entry — gain per-session totals without importing
-this package's accumulator directly. A blank session id fails
+`provider.Completer` so every completed `Chat` turn records its
+usage under a session. Any provider consumer — a subagent tool, a
+providerregistry entry — then gains per-session totals without
+calling `Record` itself. A streamed turn records nothing. A blank
+sessionID, a nil `Accumulator`, or a nil `Completer` fails
 construction.
 
 Outside: cost-in-currency conversion. A caller multiplies the `Total`
@@ -42,6 +43,7 @@ lifecycle, ownership, or dependency graph.
 
 The surface below lands in `api/usage.txt` via `make api-update`.
 
+- `WrapCompleter(sessionID string, a *Accumulator, c provider.Completer) (provider.Completer, error)` — the recording wrapper over one `Completer`.
 - `type Accumulator struct { ... }` holds one running `provider.Usage`
   total per session identifier, guarded by a `sync.Mutex`. Unexported
   fields; built only through `New`.
@@ -85,6 +87,8 @@ Test files live in `usage/usage_test/`:
   cases cover an unknown `sessionID` and a known one. `Reset` cases
   cover a recorded session, an unknown session (no-op), a blank
   `sessionID`, and a `Record` call after `Reset` starting a fresh sum.
+- `wrap_test.go` — per-turn recording, the construction rejections,
+  and the streamed passthrough recording nothing.
 - `accumulator_race_test.go` — run under `go test -race`. Concurrent
   `Record` calls against the same `sessionID` prove no lost update;
   concurrent `Record` calls across many distinct `sessionID` values
@@ -120,7 +124,9 @@ Test files live in `usage/usage_test/`:
   statements.
 - `policy/layers.json` carries the row `"usage": ["provider"]`.
 - `api/usage.txt` lands via `make api-update`, holding `Accumulator`,
-  `New`, `Record`, `Total`, `Reset`, and `ErrBlankSessionID`.
+  `New`, `Record`, `Total`, `Reset`, `WrapCompleter`, and the
+  sentinels `ErrBlankSessionID`, `ErrNilAccumulator`, and
+  `ErrNilCompleter`.
 - `docs/architecture.md` carries a `usage/` bullet describing the
   package and its one import.
 - `AGENTS.md`'s Layout section carries a `usage/` line.

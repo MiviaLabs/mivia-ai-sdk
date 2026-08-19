@@ -48,6 +48,8 @@ type Options struct {
 	Room     string
 	Budget   *contextbudget.Limits
 	Monitor  *heartbeat.Monitor
+	Hooks    *hooks.Registry
+	Tracer   *trace.Tracer
 	Wait     agent.AckWait
 }
 
@@ -106,6 +108,9 @@ following files exist:
 
 - `options_test.go` — table-driven over every `New` rejection, a case
   with neither resolver returning `ErrNoResolver`, and the accept path.
+- `hooks_tracer_test.go` — the pre-tool veto before the tool, the
+  post-tool veto after it, the pre-tool-tool-post-stop ordering with
+  payload pins, and the root-to-child span nesting.
 - `resolution_test.go` — the tool-resolution rules: big-panel members
   skip the check, `Sub` children resolve recursively, and a set
   `Receiver` is accepted.
@@ -141,7 +146,7 @@ following files exist:
 
 - `policy/layers.json` grants agentrun the
   `["agent", "channel", "contextbudget", "envelope", "events", "flow",
-  "heartbeat", "identity", "machine", "memory", "tools"]` edges.
+  "heartbeat", "identity", "machine", "memory", "tools", "hooks", "trace"]` edges.
 - `make api-update` lands `api/agentrun.txt`, the `agent.Plan` and
   `agent.Signer` lines in `api/agent.txt`, and the `flow.Definition`
   `Steps` and `Panels` lines in `api/flow.txt`, in the same change.

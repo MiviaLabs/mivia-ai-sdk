@@ -20,6 +20,7 @@ mirrors `api/trace.txt`.
 ## Functions and methods
 
 - `New()` — creates a `Tracer` with no spans started. No error path.
+- `Tracer.Spans()` — every started span in start order, non-nil and empty before the first start.
 - `Tracer.Start(ctx, name)` — creates a `Span` named `name`, sets
   its `ParentID` from the span already in `ctx`, if any, and returns
   a `ctx` carrying the new span alongside the span itself. IDs start

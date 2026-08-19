@@ -16,9 +16,10 @@ surface below mirrors `api/usage.txt`.
 
 - `New()` — creates an empty `Accumulator`.
 - `WrapCompleter(sessionID, a, c)` — wraps one `provider.Completer`
-  so every completed turn records its usage under sessionID in `a`.
-  The composition seam for any provider consumer; a blank sessionID
-  fails construction, and an erroring turn records nothing.
+  so every completed `Chat` turn records its usage under sessionID in
+  `a`. The composition seam for any provider consumer. A blank
+  sessionID, a nil `a`, or a nil `c` fails construction. An erroring
+  turn records nothing; a streamed turn records nothing.
 - `Accumulator.Record(sessionID, u)` — adds `u`'s four fields onto the
   running total keyed by `sessionID`. Creates the session's total on
   its first call; every later call for the same `sessionID` adds onto

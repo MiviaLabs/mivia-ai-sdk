@@ -2,7 +2,10 @@
 
 Status: shipped. `trace` ships as a pure leaf package
 with zero internal imports. The shipped `events` package is precedent
-only, never an import. This matches the `tools` and `trigger`
+only, never an import. After shipping, two composition layers wired
+it: `agentrun.Options.Tracer` opens run and tool spans, and
+`subagent.ToolOptions.Tracer` opens one spawn span per spawn. The
+module map in docs/architecture.md carries both edges. This matches the `tools` and `trigger`
 precedent of shipping with no caller yet.
 
 ## Goal

@@ -27,9 +27,14 @@ Inside:
   `LedgerTool.OpRun` wraps the full taskrun ceremony; a blocked or
   replayed key fails with the ceremony's own sentinel.
 - Internal tools over direct string payloads: `FlowTool` runs a flow
-  plan and reports the final status; `ProviderTool` runs one turn; `ProviderRegistryTool` routes one turn over `providerregistry`'s named fallback order. ToolOptions.Tracer opens one span per spawn
-  through a caller-supplied Completer; `TriggerTool` fires a named
-  trigger; `ChannelTool` asks a human through a Notifier.
+  plan and reports the final status; `ProviderTool` runs one turn;
+  `ProviderRegistryTool` routes one turn over `providerregistry`'s
+  named fallback order; `TriggerTool` fires a named trigger;
+  `ChannelTool` asks a human through a Notifier.
+- Spawn tracing: `ToolOptions.Tracer` opens one `subagent.spawn` span
+  per spawn through a caller-supplied `trace.Tracer`. A runner wired
+  with the same tracer instance nests its run's spans under the
+  spawn span.
 - The message plane: `Mailbox` holds signed messages for one
   recipient; `SendTool` signs with a caller identity and delivers;
   `InboxTool` drains payloads as JSON. Any sender - orchestrator,
@@ -64,6 +69,7 @@ func SchedulerTool(name string, s *scheduler.Scheduler, job scheduler.Job) tools
 func HeartbeatTool(name string, m *heartbeat.Monitor) tools.Tool
 func DiscoveryTool(name string) tools.Tool
 func ProviderTool(name string, c provider.Completer) tools.Tool
+func ProviderRegistryTool(name string, reg *providerregistry.Registry, order []string, retryable providerregistry.Retryable) tools.Tool
 func TriggerTool(name string, reg *trigger.Registry) tools.Tool
 func ChannelTool(name string, ask channel.Notifier, recipient string) tools.Tool
 
@@ -77,15 +83,18 @@ func InboxTool(name string, box *Mailbox) tools.Tool
 `policy/layers.json` grants subagent the
 `["agent", "agentrun", "channel", "discovery", "envelope", "events",
 "flow", "heartbeat", "identity", "ledger", "machine", "memory",
-"provider", "room", "scheduler", "taskrun", "tools", "trigger"]`
+"provider", "providerregistry", "room", "scheduler", "taskrun",
+"tools", "trace", "trigger"]`
 edges. The package imports each block only through its public API.
 
 ## Tests
 
 Tests live in `subagent/subagent_test/`, one external package:
 
-- `astool_test.go` — status and artifact results, failure
-  propagation, repeated spawns on fresh threads.
+- `astool_test.go`
+- `providerregistrytool_test.go` — fallback routing, the
+  all-failed sentinel, usage composition, and the spawn-span
+  nesting under the caller's span.
 - `runall_test.go` — proved overlap through start gates, join order,
   and sibling isolation on error.
 - `depth_test.go` — the self-spawn bound and its configuration.

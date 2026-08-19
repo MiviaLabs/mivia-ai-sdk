@@ -18,7 +18,7 @@ references.
 
 ## Package map
 
-The diagram shows the twenty-seven packages and the import edges between
+The diagram shows the thirty-one packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
 `provider`, `tools`, and `trigger` are leaves: they import no other
@@ -48,6 +48,7 @@ flowchart LR
     a2aclient --> a2a
     a2aclient --> envelope
     mcp --> tools
+    usage --> provider
     scheduler --> events
     a2aack --> a2aclient
     a2aack --> agent
@@ -105,6 +106,7 @@ flowchart LR
     provider[provider]
     tools[tools]
     trigger[trigger]
+    usage[usage]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
@@ -276,7 +278,7 @@ flowchart LR
   one work func. See [packages/taskrun.md](packages/taskrun.md).
 - `subagent/` — the SDK's blocks as tools. `AsTool` wraps a built
   runner as a spawnable subagent tool behind a depth guard, `RunAll`
-  joins concurrent spawns, ten internal tools expose the blocks, and
+  joins concurrent spawns, eleven internal tools expose the blocks, and
   a signed-message mailbox carries both directions between
   orchestrators, subagents, and humans. See
   [packages/subagent.md](packages/subagent.md).

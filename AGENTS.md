@@ -68,12 +68,16 @@ Go SDK for building AI agents. Module:
 - `secretpath/` — glob-style secret path matching: Matcher, NewMatcher,
   Matches. Reports whether a path matches a configured pattern list. A
   leaf package; no internal imports.
-- `workspace/` — filesystem confinement: Workspace, Open, Close, Root,
-  ReadFile, WriteFile, List, Stat, ErrEscape. Open binds a handle to a
+- `workspace/` — filesystem confinement: Workspace, Options, Validate,
+  Open, OpenWith, Close, Root, ReadFile, ReadFileLimit, WriteFile,
+  List, Stat, DefaultMaxReadBytes, Unbounded, ErrEscape, ErrTooLarge,
+  ErrInvalidLimit. Open binds a handle to a
   root directory through `os.Root`, so confinement runs at the syscall
   level, not through a path check the caller performs before a separate
   syscall. Every method rejects a path that escapes the root through
-  traversal or a symlink. Close releases the held `os.Root`. A leaf
+  traversal or a symlink. A read carries a byte bound: `Options{}`
+  yields `DefaultMaxReadBytes`, and only `Unbounded` removes it, so an
+  unset field fails closed. Close releases the held `os.Root`. A leaf
   package; no internal imports.
 - `diff/` — bounded unified line diffs: Unified, ErrTooLarge. Unified
   computes a line-level diff and fails closed past a caller's line

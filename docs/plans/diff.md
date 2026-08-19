@@ -30,8 +30,7 @@ Inside:
   GNU diff's default), becomes one hunk; hunks within `2*N` lines of
   each other merge into one, matching GNU diff's default grouping.
 - `Unified` has no input-size bound; a caller bounds `len(a)` and
-  `len(b)` before calling, the same division of labor
-  `workspace.ReadFile` documents. `maxLines` bounds only rendered
+  `len(b)` before calling. `maxLines` bounds only rendered
   output, not the LCS table computation.
 
 Outside:

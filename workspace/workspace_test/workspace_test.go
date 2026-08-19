@@ -57,7 +57,7 @@ func TestHappyPathRoundTrip(t *testing.T) {
 	t.Cleanup(func() { _ = w.Close() })
 
 	data := []byte("hello workspace")
-	if err := w.WriteFile("a/b/c.txt", data, 0o600); err != nil {
+	if err := w.WriteFile("a/b/c.txt", data); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	got, err := w.ReadFile("a/b/c.txt")
@@ -79,7 +79,7 @@ func TestHappyPathRoundTrip(t *testing.T) {
 		t.Errorf("ReadFile(%q) = %q, want %q", absPath, gotAbs, data)
 	}
 
-	if err := w.WriteFile("a/b/d.txt", []byte("more"), 0o600); err != nil {
+	if err := w.WriteFile("a/b/d.txt", []byte("more")); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	entries, err := w.List("a/b")
@@ -96,6 +96,91 @@ func TestHappyPathRoundTrip(t *testing.T) {
 	}
 	if info.Size() != int64(len(data)) {
 		t.Errorf("Stat().Size() = %d, want %d", info.Size(), len(data))
+	}
+}
+
+// TestOpenRejectsBlankRoot pins that Open routes through
+// Options.Validate. A blank root once bound the working directory,
+// because filepath.Abs("") returns it.
+func TestOpenRejectsBlankRoot(t *testing.T) {
+	_, openErr := workspace.Open("")
+	if openErr == nil {
+		t.Fatal(`Open("") = nil error, want error`)
+	}
+	_, optErr := workspace.OpenWith(workspace.Options{})
+	if optErr == nil {
+		t.Fatal("OpenWith(Options{}) = nil error, want error")
+	}
+	if openErr.Error() != optErr.Error() {
+		t.Errorf("Open(\"\") = %v, OpenWith(Options{}) = %v, want the same error", openErr, optErr)
+	}
+	if err := (workspace.Options{}).Validate(); err == nil || err.Error() != openErr.Error() {
+		t.Errorf("Options{}.Validate() = %v, want Open(\"\")'s error %v", err, openErr)
+	}
+}
+
+// TestWriteFileMode pins the modes WriteFile applies at create: 0o600
+// for the file and 0o700 for each created parent directory. No
+// os.FileMode reaches the package from a caller.
+func TestWriteFileMode(t *testing.T) {
+	dir := t.TempDir()
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	if err := w.WriteFile("a/b/c.txt", []byte("x")); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cases := []struct {
+		path string
+		want fs.FileMode
+	}{
+		{path: "a", want: 0o700},
+		{path: "a/b", want: 0o700},
+		{path: "a/b/c.txt", want: 0o600},
+	}
+	for _, tc := range cases {
+		info, err := w.Stat(tc.path)
+		if err != nil {
+			t.Fatalf("Stat(%q): %v", tc.path, err)
+		}
+		if got := info.Mode().Perm(); got != tc.want {
+			t.Errorf("Stat(%q).Mode().Perm() = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestWriteFileKeepsExistingMode pins that the create mode applies at
+// create only: WriteFile never tightens an existing file.
+func TestWriteFileKeepsExistingMode(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "wide.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
+	w, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	if err := w.WriteFile("wide.txt", []byte("new")); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	info, err := w.Stat("wide.txt")
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o644 {
+		t.Errorf("Stat(wide.txt).Mode().Perm() = %v, want 0644", got)
+	}
+	data, err := w.ReadFile("wide.txt")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "new" {
+		t.Errorf("ReadFile = %q, want %q", data, "new")
 	}
 }
 
@@ -174,7 +259,7 @@ func TestClose(t *testing.T) {
 	if _, err := w.ReadFile("f.txt"); !errors.Is(err, fs.ErrClosed) {
 		t.Errorf("ReadFile after Close error = %v, want ErrClosed", err)
 	}
-	if err := w.WriteFile("g.txt", []byte("x"), 0o600); !errors.Is(err, fs.ErrClosed) {
+	if err := w.WriteFile("g.txt", []byte("x")); !errors.Is(err, fs.ErrClosed) {
 		t.Errorf("WriteFile after Close error = %v, want ErrClosed", err)
 	}
 	if _, err := w.List("."); !errors.Is(err, fs.ErrClosed) {

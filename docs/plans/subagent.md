@@ -188,17 +188,18 @@ Inside:
   bound root. `maxResultBytes`, when positive, publishes
   `tools.ResultBudgetTool`, so `agentloop`'s `render` truncates an
   oversized read instead of flooding the model's context; a
-  non-positive value publishes no budget. `ws.ReadFile` today carries
-  no size bound of its own (see `workspace/read.go`'s doc comment),
-  so this tool-level cap is the only bound in the current shipped
-  `workspace` surface (`api/workspace.txt`). Not privileged.
+  non-positive value publishes no budget. `ws.ReadFile` carries
+  `workspace.DefaultMaxReadBytes` of its own, so this tool-level cap
+  is the second bound, and it applies after the read allocates. Not
+  privileged.
   `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
 - `WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool`.
   Writes one file at a caller-model-supplied path plus
-  caller-model-supplied content. Creates the file with a fixed mode,
-  `0o600`; no `os.FileMode` argument ever reaches the model, matching
-  the reasoning `docs/plans/workspace.md` already states for
-  dropping `WriteFile`'s `perm` parameter on a model-reachable path.
+  caller-model-supplied content. `workspace.WriteFile` creates the
+  file with a fixed `0o600` mode; no `os.FileMode` argument reaches
+  the model, matching the reasoning `docs/plans/workspace.md` states
+  for dropping `WriteFile`'s `perm` parameter on a model-reachable
+  path.
   The one truly dangerous operation this addendum adds: it mutates
   the filesystem inside `ws`'s root. Implements `tools.PrivilegedTool`
   returning `true`, so `tools.Scope.Allowed` denies it unless a
@@ -277,17 +278,17 @@ Outside:
   gate. A direct `tools.Registry.Run` caller, outside `agentloop`,
   gets no such cap; that caller supplies its own bound the way it
   already must for every other tool argument.
-- Tracking the in-flight `docs/plans/workspace.md` migration to
-  `os.Root`, `Close`, `Options`, `ReadFileLimit`, and `ErrTooLarge`.
-  This addendum targets the shipped surface locked in
-  `api/workspace.txt` today: `Open`, `Root`, `ReadFile`, `WriteFile`
-  (with `perm`), `List`, `Stat`, `ErrEscape`. When that migration
-  lands, `WorkspaceWriteTool`'s hardcoded `0o600` argument to
-  `WriteFile` drops along with the parameter, and
-  `WorkspaceReadTool`'s own `maxResultBytes` cap stays as a
-  second, tool-level bound layered under any workspace-level one.
-  Both are follow-up edits to this addendum's code, not a blocker on
-  it.
+- The `docs/plans/workspace.md` migration to `os.Root`, `Close`,
+  `Options`, `ReadFileLimit`, and `ErrTooLarge` has landed, and this
+  addendum's code follows it. `WorkspaceWriteTool`'s hardcoded `0o600`
+  argument to `WriteFile` is gone, dropped with the parameter;
+  `workspace.WriteFile` owns the create mode. `WorkspaceReadTool`'s own
+  `maxResultBytes` cap stays as a second, tool-level bound layered
+  under the workspace-level one. `workspace.Open` now yields
+  `workspace.DefaultMaxReadBytes`, so `WorkspaceReadTool` returns
+  `workspace.ErrTooLarge` on a file over that size. It succeeded on
+  such a file before, because `maxResultBytes` caps the result only
+  after the allocation.
 
 ### Who supplies the Workspace
 

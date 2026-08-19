@@ -9,26 +9,47 @@ exported surface below mirrors `api/workspace.txt`.
 
 - `Workspace` — a handle bound to one resolved root directory. It
   holds an open `os.Root`, so it owns a file descriptor. Fields are
-  unexported; build one with `Open` and release it with `Close`.
+  unexported; build one with `Open` or `OpenWith`, and release it with
+  `Close`.
+- `Options` — the open-time configuration: `Root string` and
+  `MaxReadBytes int64`. See `OpenWith`.
+
+## Constants
+
+- `DefaultMaxReadBytes int64 = 10 << 20` — the read bound a
+  `Workspace` uses when the caller sets no `MaxReadBytes`.
+- `Unbounded int64 = -1` — the explicit opt-out from the read bound.
 
 ## Functions and methods
 
 - `Open(root string) (*Workspace, error)` — resolves `root` to an
   absolute, symlink-free real path, opens it with `os.OpenRoot`, and
   returns a handle bound to the open root. `root` must exist and be a
-  directory. Close the result.
+  directory. `Open` is `OpenWith(Options{Root: root})`, so its reads
+  carry `DefaultMaxReadBytes`. Close the result.
+- `OpenWith(opts Options) (*Workspace, error)` — the same open under
+  the read bound `opts` names. It calls `opts.Validate` first and
+  returns that error unchanged.
+- `Options.Validate() error` — `Root` must not be blank.
+  `MaxReadBytes` must be `Unbounded`, zero, or a positive value at or
+  under `math.MaxInt64 - 1`.
 - `Workspace.Root() string` — returns the resolved root path.
 - `Workspace.Close() error` — closes the open root. `Close` is
   idempotent. Every method returns an error matching `fs.ErrClosed`
-  after `Close`. `Close` on a nil handle returns nil, so a deferred
-  `Close` before the error check is safe.
+  after `Close`, except `ReadFileLimit` with an invalid limit, which
+  returns `ErrInvalidLimit` before it touches the root. `Close` on a
+  nil handle returns nil, so a deferred `Close` before the error check
+  is safe.
 - `Workspace.ReadFile(path string) ([]byte, error)` — reads a file
-  named relative to the root. Unbounded by design; a caller that
-  needs a byte cap applies its own after the read, the division of
-  labor `contextbudget` already uses for a model call's context.
-- `Workspace.WriteFile(path string, data []byte, perm os.FileMode) error`
-  — writes a file relative to the root, creating missing parent
-  directories under the root as needed.
+  named relative to the root, under the workspace's own read bound. It
+  is `ReadFileLimit(path, 0)`.
+- `Workspace.ReadFileLimit(path string, limit int64) ([]byte, error)`
+  — the same read under a per-call bound. A zero `limit` uses the
+  workspace's `MaxReadBytes`, a positive `limit` replaces it, up or
+  down, and `Unbounded` removes it for this call only.
+- `Workspace.WriteFile(path string, data []byte) error` — writes a
+  file relative to the root, creating missing parent directories under
+  the root as needed. It takes no `os.FileMode`.
 - `Workspace.List(path string) ([]os.DirEntry, error)` — lists a
   directory relative to the root, sorted by filename.
 - `Workspace.Stat(path string) (os.FileInfo, error)` — stats a path
@@ -45,6 +66,12 @@ exported surface below mirrors `api/workspace.txt`.
   window exists between the check and the syscall for a concurrent
   rename or symlink swap to exploit. An absolute symlink is refused,
   even when its target lies inside the root.
+- A read is bounded. `Options{}` yields `DefaultMaxReadBytes`, so an
+  unset field bounds the read instead of removing the bound. Only
+  `Unbounded` removes it.
+- `WriteFile` creates a new file with mode `0o600` and a new parent
+  directory with mode `0o700`. The mode applies at create only, so
+  `WriteFile` does not tighten an existing file.
 - A `Workspace` is not safe against a hostile root directory.
   `os.Root` does not prohibit traversal of filesystem boundaries,
   bind mounts, `/proc` special files, or device files.
@@ -61,6 +88,13 @@ Use `errors.Is` to test the escape case.
   arrives while an attacker swaps a path component may report the raw
   syscall error instead. It still fails closed; only the error class
   is unlabelled.
+- `ErrTooLarge` ("workspace: file exceeds read limit") — the file is
+  longer than the read's effective bound. It wraps no filesystem
+  error, because it is this package's own policy refusal.
+- `ErrInvalidLimit` ("workspace: invalid read limit") — the bound is
+  neither `Unbounded`, nor zero, nor a positive value at or under
+  `math.MaxInt64 - 1`. `Options.Validate` and `ReadFileLimit` both
+  return it. `ReadFileLimit` opens no file in that case.
 
 ## Cross-references
 
@@ -90,7 +124,7 @@ func main() {
     }
     defer w.Close()
 
-    if err := w.WriteFile("notes/plan.txt", []byte("plan the release\n"), 0o600); err != nil {
+    if err := w.WriteFile("notes/plan.txt", []byte("plan the release\n")); err != nil {
         panic(err)
     }
 
@@ -106,6 +140,8 @@ func main() {
 
 `Open` binds a handle to the current directory and `Close` releases
 its descriptor. `WriteFile` creates
-the missing `notes` directory under the root and writes the file.
-`ReadFile` reads it back. A path like `../outside` or a symlink
-pointing outside the root would fail both calls with `ErrEscape`.
+the missing `notes` directory under the root and writes the file with
+mode `0o600`. `ReadFile` reads it back under `DefaultMaxReadBytes`. A
+path like `../outside` or a symlink pointing outside the root would
+fail both calls with `ErrEscape`. A file over the bound would fail the
+read with `ErrTooLarge`.

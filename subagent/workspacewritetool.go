@@ -17,12 +17,9 @@ type WorkspaceWriteArgs struct {
 	Content string `json:"content"`
 }
 
-// workspaceWriteFileMode is the fixed mode WorkspaceWriteTool creates
-// a file with. No os.FileMode argument ever reaches the model.
-const workspaceWriteFileMode = 0o600
-
 // WorkspaceWriteTool returns a tool that writes one file inside ws,
-// relative to ws's bound root, with a fixed 0o600 mode. Implements
+// relative to ws's bound root, with the fixed mode workspace.WriteFile
+// applies. No os.FileMode argument reaches the model. Implements
 // tools.PrivilegedTool: tools.Scope.Allowed denies it unless a
 // caller's ScopeOptions.Allowlist names it explicitly.
 func WorkspaceWriteTool(name string, ws *workspace.Workspace) tools.Tool {
@@ -63,13 +60,13 @@ func (t *workspaceWriteTool) ExecutionProfile() tools.ExecutionProfile {
 func (t *workspaceWriteTool) Privileged() bool { return true }
 
 // Run writes args.Content to args.Path, relative to t.ws's bound
-// root, creating the file with workspaceWriteFileMode.
+// root. workspace.WriteFile owns the create mode.
 func (t *workspaceWriteTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceWriteArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)
 	}
-	if err := t.ws.WriteFile(args.Path, []byte(args.Content), workspaceWriteFileMode); err != nil {
+	if err := t.ws.WriteFile(args.Path, []byte(args.Content)); err != nil {
 		return tools.Out{}, err
 	}
 	return tools.Out{Value: "ok"}, nil

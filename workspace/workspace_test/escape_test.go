@@ -48,7 +48,7 @@ func TestTraversalEscape(t *testing.T) {
 			if _, err := w.ReadFile(v); !errors.Is(err, workspace.ErrEscape) {
 				t.Errorf("ReadFile(%q) error = %v, want ErrEscape", v, err)
 			}
-			if err := w.WriteFile(v, []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
+			if err := w.WriteFile(v, []byte("x")); !errors.Is(err, workspace.ErrEscape) {
 				t.Errorf("WriteFile(%q) error = %v, want ErrEscape", v, err)
 			}
 			if _, err := w.List(v); !errors.Is(err, workspace.ErrEscape) {
@@ -113,7 +113,7 @@ func TestSiblingPrefixEscape(t *testing.T) {
 	}
 
 	const planted = "../root-evil/planted.txt"
-	if err := w.WriteFile(planted, []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
+	if err := w.WriteFile(planted, []byte("x")); !errors.Is(err, workspace.ErrEscape) {
 		t.Errorf("WriteFile(%q) error = %v, want ErrEscape", planted, err)
 	}
 	if _, err := os.Stat(filepath.Join(evil, "planted.txt")); !errors.Is(err, os.ErrNotExist) {
@@ -153,7 +153,7 @@ func TestSymlinkEscapeFinalComponent(t *testing.T) {
 	assertSyscallEscape(t, "List(link)", listErr)
 	_, statErr := w.Stat("link")
 	assertSyscallEscape(t, "Stat(link)", statErr)
-	assertSyscallEscape(t, "WriteFile(link)", w.WriteFile("link", []byte("x"), 0o600))
+	assertSyscallEscape(t, "WriteFile(link)", w.WriteFile("link", []byte("x")))
 }
 
 func TestSymlinkEscapeIntermediateComponent(t *testing.T) {
@@ -186,7 +186,7 @@ func TestSymlinkEscapeIntermediateComponent(t *testing.T) {
 
 	// The write is refused by the directory creation, so this case is
 	// the only pin on the MkdirAll branch of classify.
-	writeErr := w.WriteFile("link/sub/planted.txt", []byte("x"), 0o600)
+	writeErr := w.WriteFile("link/sub/planted.txt", []byte("x"))
 	assertSyscallEscape(t, "WriteFile(link/sub/planted.txt)", writeErr)
 	if _, err := os.Stat(filepath.Join(outside, "sub", "planted.txt")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("Stat(planted file) error = %v, want ErrNotExist: WriteFile planted a file outside the root", err)
@@ -200,7 +200,7 @@ func TestWriteFileRejectsEscapingParent(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	t.Cleanup(func() { _ = w.Close() })
-	err = w.WriteFile("../outside/file.txt", []byte("x"), 0o600)
+	err = w.WriteFile("../outside/file.txt", []byte("x"))
 	if !errors.Is(err, workspace.ErrEscape) {
 		t.Errorf("WriteFile(escaping parent) error = %v, want ErrEscape", err)
 	}
@@ -270,7 +270,7 @@ func TestAbsoluteSymlinkInsideRoot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = w.Close() })
 
-	if err := w.WriteFile("inside.txt", []byte("inside"), 0o600); err != nil {
+	if err := w.WriteFile("inside.txt", []byte("inside")); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 	if err := os.Symlink(filepath.Join(w.Root(), "inside.txt"), filepath.Join(w.Root(), "abslink")); err != nil {

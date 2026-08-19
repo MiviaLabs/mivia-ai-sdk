@@ -88,7 +88,7 @@ func TestWriteFollowsNoSwappedSymlink(t *testing.T) {
 		defer wg.Done()
 		defer cancel()
 		for i := 0; i < raceIterations && ctx.Err() == nil; i++ {
-			_ = w.WriteFile("staging/out.txt", []byte("payload"), 0o600)
+			_ = w.WriteFile("staging/out.txt", []byte("payload"))
 		}
 	}()
 	go func() {

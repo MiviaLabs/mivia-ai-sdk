@@ -1,11 +1,22 @@
 package workspace
+  const DefaultMaxReadBytes = 10 << 20
+  const Unbounded = -1
+  func (o Options) Validate() (error)
   func (w *Workspace) Close() (error)
   func (w *Workspace) List(path string) ([]os.DirEntry, error)
   func (w *Workspace) ReadFile(path string) ([]byte, error)
+  func (w *Workspace) ReadFileLimit(path string, limit int64) ([]byte, error)
   func (w *Workspace) Root() (string)
   func (w *Workspace) Stat(path string) (os.FileInfo, error)
-  func (w *Workspace) WriteFile(path string, data []byte, perm os.FileMode) (error)
+  func (w *Workspace) WriteFile(path string, data []byte) (error)
   func Open(root string) (*Workspace, error)
+  func OpenWith(opts Options) (*Workspace, error)
+  type Options struct {
+  Root string
+  MaxReadBytes int64
+}
   type Workspace struct {
 }
   var ErrEscape
+  var ErrInvalidLimit
+  var ErrTooLarge

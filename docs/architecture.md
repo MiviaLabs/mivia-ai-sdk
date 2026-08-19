@@ -19,13 +19,14 @@ API references.
 
 ## Package map
 
-The diagram shows the forty packages and the import edges between
+The diagram shows the forty-one packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `channel`, `contextbudget`, `contextstate`, `discovery`,
 `durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
 `contextplan` imports `contextstate`, `provider`, and `memory`.
+`spool` imports `tools` alone.
 
 ```mermaid
 flowchart LR
@@ -55,6 +56,7 @@ flowchart LR
     a2aclient --> a2a
     a2aclient --> envelope
     mcp --> tools
+    spool --> tools
     usage --> provider
     providerregistry --> provider
     scheduler --> events
@@ -313,6 +315,18 @@ flowchart LR
   returning `ErrToolDeclined` for a decline. `tools` imports no other
   package in this module; `mcp` imports `tools`, and the agent binding
   is a later phase. See [packages/tools.md](packages/tools.md).
+- `spool/` — a principal-scoped grant store for oversized content. It
+  provides `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`,
+  `ContentStore`, `WithPrincipal`, `PrincipalFrom`, and `SpoolTool`.
+  `Spool.Spool` writes content to a caller-supplied `ContentStore`,
+  grants one principal the right to read it back, and returns a
+  bounded view plus a reference. `NewSpool`'s `maxGrantBytes` budget
+  evicts the oldest grants, by insertion order, once a new grant would
+  exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
+  `maxBytes` spools instead of returning in full, and the wrapper
+  forwards `ExecutionProfile`, `MaxResultBytes`, and `Privileged` from
+  the wrapped tool whenever it implements them. `spool` imports
+  `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
   `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,

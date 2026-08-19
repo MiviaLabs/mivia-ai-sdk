@@ -54,13 +54,23 @@ func groupHunks(ops []op, context int) []hunkRange {
 // renderUnified formats hunks as unified-diff text lines, including
 // the "---"/"+++" file headers and each hunk's "@@" header.
 func renderUnified(name string, ops []op, hunks []hunkRange, aLen, bLen int, aTrailing, bTrailing bool) []string {
-	lines := []string{"--- " + name, "+++ " + name}
+	capacity := 2 + len(hunks)
+	for _, h := range hunks {
+		capacity += h.end - h.start
+	}
+	capacity += 2 // A little extra buffer to handle noNewlineMarker safely without allocating
+
+	lines := make([]string, 0, capacity)
+	lines = append(lines, "--- "+name, "+++ "+name)
 	for _, h := range hunks {
 		hunkOps := ops[h.start:h.end]
 		aStart, aCount, bStart, bCount := hunkHeader(ops, h)
 		lines = append(lines, fmt.Sprintf("@@ -%s +%s @@", rangeText(aStart, aCount), rangeText(bStart, bCount)))
 		for _, o := range hunkOps {
-			lines = append(lines, string(o.kind)+o.text)
+			buf := make([]byte, 1+len(o.text))
+			buf[0] = o.kind
+			copy(buf[1:], o.text)
+			lines = append(lines, string(buf))
 			if noNewlineAfter(o, aLen, bLen, aTrailing, bTrailing) {
 				lines = append(lines, noNewlineMarker)
 			}

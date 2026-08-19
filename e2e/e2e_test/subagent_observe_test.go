@@ -14,9 +14,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// TestOrchestratorObservesSpawnedRun proves the orchestrator's bus
-// receives the spawned subagent's delivered, acked, and verified
-// events live, alongside its own.
 // observeSubRunner builds the one-step worker the orchestrator
 // spawns and observes.
 func observeSubRunner(t *testing.T) *agentrun.Runner {
@@ -54,6 +51,9 @@ func countName(names []events.Name, name events.Name) int {
 	return n
 }
 
+// TestOrchestratorObservesSpawnedRun proves the orchestrator's bus
+// receives the spawned subagent's delivered, acked, and verified
+// events live, alongside its own.
 func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 	ctx := context.Background()
 	subRunner := observeSubRunner(t)
@@ -105,15 +105,6 @@ func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 		t.Fatalf("status = %q, want delegated", status)
 	}
 	names := rec.Names()
-	count := func(name events.Name) int {
-		n := 0
-		for _, got := range names {
-			if got == name {
-				n++
-			}
-		}
-		return n
-	}
 	// The subagent's forwarded thread verification lands alongside
 	// the orchestrator's own: two of each event on one bus.
 	for name, want := range map[events.Name]int{
@@ -121,7 +112,7 @@ func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 		agent.MessageDeliveredEvent: 2,
 		agent.MessageAckedEvent:     2,
 	} {
-		if got := count(name); got != want {
+		if got := countName(names, name); got != want {
 			t.Errorf("%s = %d, want %d", name, got, want)
 		}
 	}

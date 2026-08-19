@@ -176,6 +176,14 @@ func TestBugfixTriageRoutes(t *testing.T) {
 			if _, ok := artifacts.Get("clean_exit"); tc.onFixPath && ok {
 				t.Errorf("clean_exit ran on the fix path; the route must exclude it")
 			}
+			if !tc.onFixPath {
+				if _, ok := artifacts.Get("fix_plan"); ok {
+					t.Errorf("fix_plan ran off the fix path; the route must exclude it")
+				}
+				if _, ok := artifacts.Get("implement"); ok {
+					t.Errorf("implement ran off the fix path; the route must exclude it")
+				}
+			}
 		})
 	}
 }

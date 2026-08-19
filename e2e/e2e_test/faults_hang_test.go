@@ -10,6 +10,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -53,5 +54,21 @@ func TestFaultHangCompleterSurfacesTimeout(t *testing.T) {
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+}
+
+// TestHangCompleterStreamSurfacesTimeout covers the stream half the
+// run scenario does not reach: ChatStream blocks until ctx is done,
+// then returns the deadline error, and Name stays a fixed label.
+func TestHangCompleterStreamSurfacesTimeout(t *testing.T) {
+	h := &e2e.HangCompleter{}
+	if got := h.Name(); got != "hang-completer" {
+		t.Fatalf("Name = %q, want hang-completer", got)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := h.ChatStream(ctx, provider.Request{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ChatStream = %v, want it to wrap context.DeadlineExceeded", err)
 	}
 }

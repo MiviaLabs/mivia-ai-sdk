@@ -117,16 +117,16 @@ func TestProviderRegistryToolRecordsUsage(t *testing.T) {
 	if err != nil || out.Value != "from backup" {
 		t.Fatalf("Run = %v, %v; want the backup's reply", out.Value, err)
 	}
-	// The failed primary turn recorded nothing; only the unwrapped
-	// backup answered, so this session holds no counts yet. A wrapped
-	// backup would hold its own session's counts instead.
+	// A failed wrapped turn records nothing: the session holds no
+	// counts even though the wrapped primary ran.
 	if _, ok := acc.Total("session-1"); ok {
 		t.Fatal("Total(session-1): want no counts from a failed turn")
 	}
 }
 
 // TestAsToolTracesSpawn proves a ToolOptions Tracer opens one span
-// per spawn and the spawn span nests under the ctx's existing span.
+// per spawn and the spawn span nests under the span already sitting
+// in the caller's ctx.
 func TestAsToolTracesSpawn(t *testing.T) {
 	plan, err := flow.New([]flow.Step{{ID: "work", To: "done", Payload: "go"}}, nil)
 	if err != nil {
@@ -144,19 +144,24 @@ func TestAsToolTracesSpawn(t *testing.T) {
 	}
 	runner := runnerOver(t, plan, m, reg)
 	tr := trace.New()
+	ctx, parent := tr.Start(context.Background(), "caller.step")
+	parent.End()
 	tool := subagent.AsTool("helper", runner, subagent.ToolOptions{Tracer: tr})
-	out, err := tool.Run(context.Background(), tools.InOut{Value: "go"})
+	out, err := tool.Run(ctx, tools.InOut{Value: "go"})
 	if err != nil || out.Value != "done" {
 		t.Fatalf("Run = %v, %v; want done", out.Value, err)
 	}
 	spans := tr.Spans()
-	if len(spans) != 1 || spans[0].Name != "subagent.spawn" {
-		t.Fatalf("spans = %+v, want one spawn span", spans)
+	if len(spans) != 2 || spans[1].Name != "subagent.spawn" {
+		t.Fatalf("spans = %+v, want the caller span then one spawn span", spans)
 	}
-	if attr, ok := spans[0].Attributes()["thread"]; !ok || !strings.HasPrefix(attr, "helper-") {
+	if spans[1].ParentID != parent.ID {
+		t.Fatalf("spawn parent = %d, want the caller span %d", spans[1].ParentID, parent.ID)
+	}
+	if attr, ok := spans[1].Attributes()["thread"]; !ok || !strings.HasPrefix(attr, "helper-") {
 		t.Fatalf("spawn thread attribute = %q,%v", attr, ok)
 	}
-	if spans[0].EndTime().IsZero() {
+	if spans[1].EndTime().IsZero() {
 		t.Fatal("spawn span must end")
 	}
 }

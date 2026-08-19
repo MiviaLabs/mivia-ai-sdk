@@ -9,14 +9,21 @@ import (
 )
 
 // WrapCompleter returns a provider.Completer that records every
-// completed turn's usage under sessionID in a. The wrapper keeps the
-// inner Completer's name, messages, and streaming behavior; it only
-// adds the Record call after a turn completes. A blank sessionID
-// fails construction with ErrBlankSessionID, wrapped, so counts are
-// never silently dropped. A turn that errors records nothing.
+// completed Chat turn's usage under sessionID in a. The wrapper
+// keeps the inner Completer's name and messages. A blank sessionID,
+// a nil Accumulator, or a nil Completer fails construction, so
+// counts are never silently dropped. A turn that errors records
+// nothing; a streamed turn records nothing, matching ChatStream's
+// passthrough.
 func WrapCompleter(sessionID string, a *Accumulator, c provider.Completer) (provider.Completer, error) {
 	if strings.TrimSpace(sessionID) == "" {
 		return nil, fmt.Errorf("usage: wrap: sessionID %q: %w", sessionID, ErrBlankSessionID)
+	}
+	if a == nil {
+		return nil, fmt.Errorf("usage: wrap: %w", ErrNilAccumulator)
+	}
+	if c == nil {
+		return nil, fmt.Errorf("usage: wrap: %w", ErrNilCompleter)
 	}
 	return &recordingCompleter{sessionID: sessionID, acc: a, inner: c}, nil
 }
@@ -37,17 +44,14 @@ func (r *recordingCompleter) Chat(ctx context.Context, req provider.Request) (pr
 	if err != nil {
 		return resp, err
 	}
-	if recErr := r.acc.Record(r.sessionID, resp.Usage); recErr != nil {
-		return resp, recErr
-	}
+	// The constructor validated the sessionID, so Record cannot fail.
+	_ = r.acc.Record(r.sessionID, resp.Usage)
 	return resp, nil
 }
 
-// ChatStream runs the inner ChatStream, aggregates the chunks through
-// provider.RunTurn's own contract, and records nothing: a streamed
-// turn's usage lands when the caller completes it through Chat's
-// path. Callers that need streamed totals wrap the aggregated turn
-// themselves.
+// ChatStream passes the inner ChatStream through unchanged. A
+// streamed turn records nothing; a caller that needs streamed totals
+// wraps the aggregated turn itself.
 func (r *recordingCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	return r.inner.ChatStream(ctx, req)
 }

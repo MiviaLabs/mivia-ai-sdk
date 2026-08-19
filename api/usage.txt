@@ -10,3 +10,5 @@ package usage
   type Accumulator struct {
 }
   var ErrBlankSessionID
+  var ErrNilAccumulator
+  var ErrNilCompleter

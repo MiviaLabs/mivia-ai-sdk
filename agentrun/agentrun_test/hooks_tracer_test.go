@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -32,20 +33,37 @@ func oneStepPlanMachine(t *testing.T) (*flow.Definition, *machine.Definition) {
 }
 
 // hookRun wires one runner over the shared plan with the given hooks
-// registry and a counting tool.
-func hookRun(t *testing.T, reg *hooks.Registry) (*agentrun.Runner, *int) {
+// registry, a counting tool, and an order log the tool appends to.
+func hookRun(t *testing.T, reg *hooks.Registry, order *[]string) (*agentrun.Runner, *int) {
 	t.Helper()
 	plan, m := oneStepPlanMachine(t)
 	calls := 0
-	tools_ := tools.New()
-	addTools(t, tools_, runCounterTool{calls: &calls})
+	toolReg := tools.New()
+	addTools(t, toolReg, markerTool{calls: &calls, order: order})
 	runner, err := agentrun.New(agentrun.Options{
-		Agent: mustAgent(t, plan), Machine: m, Tools: tools_, Hooks: reg,
+		Agent: mustAgent(t, plan), Machine: m, Tools: toolReg, Hooks: reg,
 	})
 	if err != nil {
 		t.Fatalf("agentrun.New: %v", err)
 	}
 	return runner, &calls
+}
+
+// markerTool counts its calls and appends its marker to the shared
+// order log, so a test can pin the tool between the hook points.
+type markerTool struct {
+	calls *int
+	order *[]string
+}
+
+// Name returns the registry name.
+func (markerTool) Name() string { return "work" }
+
+// Run counts the call and marks the order log.
+func (m markerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	*m.calls++
+	*m.order = append(*m.order, "tool")
+	return tools.Out{Value: "ran"}, nil
 }
 
 // TestHooksVetoFailsStep proves a PointPreTool veto fails the step
@@ -57,7 +75,7 @@ func TestHooksVetoFailsStep(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("hooks.Add: %v", err)
 	}
-	runner, calls := hookRun(t, reg)
+	runner, calls := hookRun(t, reg, &[]string{})
 	_, _, err := runner.Run(context.Background(), "thread-veto", machine.InOut{})
 	if err == nil {
 		t.Fatal("Run succeeded, want the veto failure")
@@ -70,26 +88,38 @@ func TestHooksVetoFailsStep(t *testing.T) {
 	}
 }
 
-// TestHooksFireInOrder proves the three points fire around one tool
-// call in order: pre-tool, post-tool, then stop with the final
-// status.
+// TestHooksFireInOrder proves the points fire around one tool call
+// in order — pre-tool, tool, post-tool, stop — that the stop payload
+// is the final status, and the post payload is the confirmed ack.
 func TestHooksFireInOrder(t *testing.T) {
 	reg := hooks.New()
-	var order []string
-	record := func(name string) hooks.Handler {
-		return func(ctx context.Context, payload any) (bool, error) {
-			order = append(order, name)
+	order := []string{}
+	var stopPayload any
+	var postPayload any
+	handlers := []struct {
+		point hooks.Point
+		name  string
+	}{
+		{hooks.PointPreTool, "pre"},
+		{hooks.PointPostTool, "post"},
+		{hooks.PointStop, "stop"},
+	}
+	for _, h := range handlers {
+		h := h
+		if err := reg.Add(h.point, h.name, func(ctx context.Context, payload any) (bool, error) {
+			order = append(order, h.name)
+			switch h.point {
+			case hooks.PointStop:
+				stopPayload = payload
+			case hooks.PointPostTool:
+				postPayload = payload
+			}
 			return true, nil
+		}); err != nil {
+			t.Fatalf("hooks.Add(%s): %v", h.name, err)
 		}
 	}
-	for point, name := range map[hooks.Point]string{
-		hooks.PointPreTool: "pre", hooks.PointPostTool: "post", hooks.PointStop: "stop",
-	} {
-		if err := reg.Add(point, name, record(name)); err != nil {
-			t.Fatalf("hooks.Add(%s): %v", name, err)
-		}
-	}
-	runner, calls := hookRun(t, reg)
+	runner, calls := hookRun(t, reg, &order)
 	status, _, err := runner.Run(context.Background(), "thread-order", machine.InOut{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -97,9 +127,40 @@ func TestHooksFireInOrder(t *testing.T) {
 	if status != "done" || *calls != 1 {
 		t.Fatalf("status = %q, calls = %d, want done and 1", status, *calls)
 	}
-	want := []string{"pre", "post", "stop"}
-	if len(order) != 3 || order[0] != want[0] || order[1] != want[1] || order[2] != want[2] {
+	want := []string{"pre", "tool", "post", "stop"}
+	if len(order) != 4 || order[0] != want[0] || order[1] != want[1] ||
+		order[2] != want[2] || order[3] != want[3] {
 		t.Fatalf("hook order = %v, want %v", order, want)
+	}
+	if got, ok := stopPayload.(machine.Status); !ok || got != "done" {
+		t.Fatalf("stop payload = %#v, want the final status done", stopPayload)
+	}
+	if ack, ok := postPayload.(envelope.Ack); !ok || ack.Status != envelope.AckConfirmed {
+		t.Fatalf("post payload = %#v, want the confirmed ack", postPayload)
+	}
+}
+
+// TestHooksPostVetoFailsAfterTool proves a PointPostTool veto fails
+// the step after the tool ran, with the error naming the step and the
+// hook.
+func TestHooksPostVetoFailsAfterTool(t *testing.T) {
+	reg := hooks.New()
+	if err := reg.Add(hooks.PointPostTool, "auditor", func(ctx context.Context, payload any) (bool, error) {
+		return false, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add: %v", err)
+	}
+	order := []string{}
+	runner, calls := hookRun(t, reg, &order)
+	_, _, err := runner.Run(context.Background(), "thread-post-veto", machine.InOut{})
+	if err == nil {
+		t.Fatal("Run succeeded, want the post-tool veto failure")
+	}
+	if !strings.Contains(err.Error(), "work") || !strings.Contains(err.Error(), "auditor") {
+		t.Fatalf("Run error %q lacks the step and the hook name", err)
+	}
+	if *calls != 1 {
+		t.Fatalf("tool calls = %d, want 1; the veto must follow the tool", *calls)
 	}
 }
 

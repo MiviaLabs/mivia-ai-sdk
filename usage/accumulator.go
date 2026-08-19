@@ -9,12 +9,20 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
-// ErrBlankSessionID is Record's and Reset's error when sessionID is
-// empty after strings.TrimSpace, checked with errors.Is. The name and
-// the TrimSpace-empty definition match the existing blank-identifier
-// sentinels in this codebase: tools.ErrBlankName, trigger.ErrBlankName,
-// providerregistry.ErrBlankName, and scheduler.ErrBlankID.
-var ErrBlankSessionID = errors.New("usage: sessionID must not be blank")
+// The sentinels below cover Record's, Reset's, and WrapCompleter's
+// rejection causes, checked with errors.Is.
+var (
+	// ErrBlankSessionID is Record's and Reset's error when sessionID is
+	// blank after trimming, and WrapCompleter's construction error for
+	// the same cause.
+	ErrBlankSessionID = errors.New("usage: sessionID must not be blank")
+	// ErrNilAccumulator is WrapCompleter's construction error for a
+	// nil Accumulator.
+	ErrNilAccumulator = errors.New("usage: accumulator must not be nil")
+	// ErrNilCompleter is WrapCompleter's construction error for a nil
+	// Completer.
+	ErrNilCompleter = errors.New("usage: completer must not be nil")
+)
 
 // Accumulator holds one running provider.Usage total per session
 // identifier, guarded for concurrent access. Its fields stay

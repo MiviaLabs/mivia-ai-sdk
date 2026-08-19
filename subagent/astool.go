@@ -36,7 +36,7 @@ type ToolOptions struct {
 	// Tracer opens one span per spawn, named subagent.spawn, carrying
 	// the spawn's thread as an attribute. A runner wired with its own
 	// Tracer nests that run's spans under the spawn span when both
-	// read the same ctx.
+	// use the same Tracer instance.
 	Tracer *trace.Tracer
 }
 

@@ -51,5 +51,6 @@ func (t *Tracer) Start(ctx context.Context, name string) (context.Context, *Span
 func (t *Tracer) Spans() []*Span {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]*Span(nil), t.spans...)
+	out := make([]*Span, 0, len(t.spans))
+	return append(out, t.spans...)
 }

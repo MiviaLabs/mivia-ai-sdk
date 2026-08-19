@@ -68,7 +68,12 @@ func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (ma
 	status, rec, err := r.agent.Run(ctx, threadID, r.machine, in, wait, r.bus, r.monitor, r.room, r.budget)
 	if r.hooks != nil {
 		if ferr := r.hooks.Fire(ctx, hooks.PointStop, status); ferr != nil {
-			return status, rec, fmt.Errorf("agentrun: stop hook: %w", ferr)
+			herr := fmt.Errorf("agentrun: stop hook: %w", ferr)
+			if err != nil {
+				err = errors.Join(err, herr)
+			} else {
+				err = herr
+			}
 		}
 	}
 	return status, rec, err
@@ -130,8 +135,8 @@ func (r *Runner) chain() agent.AckWait {
 		}
 		confirmed := ack.Confirm()
 		if r.hooks != nil {
-			if err := r.hooks.Fire(ctx, hooks.PointPostTool, confirmed); err != nil {
-				return envelope.Ack{}, fmt.Errorf("agentrun: step %q: post-tool hook: %w", msg.ID, err)
+			if err := r.firePostTool(ctx, msg, confirmed); err != nil {
+				return envelope.Ack{}, err
 			}
 		}
 		return confirmed, nil
@@ -169,7 +174,21 @@ func (r *Runner) askRoundTrip(ctx context.Context, msg envelope.Message) (envelo
 	if err != nil {
 		return envelope.Ack{}, err
 	}
-	return ack.Confirm(), nil
+	confirmed := ack.Confirm()
+	if r.hooks != nil {
+		if err := r.firePostTool(ctx, msg, confirmed); err != nil {
+			return envelope.Ack{}, err
+		}
+	}
+	return confirmed, nil
+}
+
+// firePostTool runs the PointPostTool handlers for one confirmed ack.
+func (r *Runner) firePostTool(ctx context.Context, msg envelope.Message, ack envelope.Ack) error {
+	if err := r.hooks.Fire(ctx, hooks.PointPostTool, ack); err != nil {
+		return fmt.Errorf("agentrun: step %q: post-tool hook: %w", msg.ID, err)
+	}
+	return nil
 }
 
 // resolveGatedSteps verifies every Confirm-gated step ID in plan

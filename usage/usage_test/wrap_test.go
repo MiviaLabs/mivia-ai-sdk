@@ -2,6 +2,7 @@ package usage_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -45,6 +46,9 @@ func TestWrapCompleterRecordsEachTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WrapCompleter: %v", err)
 	}
+	if wrapped.Name() != "counting" {
+		t.Fatalf("wrapped.Name() = %q, want the inner name kept", wrapped.Name())
+	}
 
 	for i := 0; i < 2; i++ {
 		resp, rerr := provider.RunTurn(context.Background(), wrapped, provider.Request{
@@ -70,12 +74,74 @@ func TestWrapCompleterRecordsEachTurn(t *testing.T) {
 	}
 }
 
-// TestWrapCompleterBlankSessionFails proves a blank session id fails
-// construction rather than silently dropping counts.
-func TestWrapCompleterBlankSessionFails(t *testing.T) {
-	_, err := usage.WrapCompleter("  ", usage.New(), &countingCompleter{})
-	if err == nil {
-		t.Fatal("WrapCompleter with a blank session: want an error")
+// TestWrapCompleterConstructionRejects proves a blank sessionID, a
+// nil Accumulator, and a nil Completer each fail construction with
+// their sentinel, rather than panicking at turn time.
+func TestWrapCompleterConstructionRejects(t *testing.T) {
+	cases := []struct {
+		name    string
+		session string
+		acc     *usage.Accumulator
+		inner   provider.Completer
+		want    error
+	}{
+		{name: "blank session", session: "  ", acc: usage.New(), inner: &countingCompleter{}, want: usage.ErrBlankSessionID},
+		{name: "nil accumulator", session: "s", acc: nil, inner: &countingCompleter{}, want: usage.ErrNilAccumulator},
+		{name: "nil completer", session: "s", acc: usage.New(), inner: nil, want: usage.ErrNilCompleter},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := usage.WrapCompleter(tc.session, tc.acc, tc.inner)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("WrapCompleter error = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}
+
+// streamingCompleter answers one streamed turn of two chunks.
+type streamingCompleter struct{}
+
+// Name returns the stub's name.
+func (streamingCompleter) Name() string { return "streaming" }
+
+// Chat is unused by the stream test.
+func (streamingCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	return provider.Response{}, nil
+}
+
+// ChatStream yields one content chunk and one done chunk carrying
+// usage.
+func (streamingCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	ch := make(chan provider.Chunk, 2)
+	ch <- provider.Chunk{Delta: "stre"}
+	ch <- provider.Chunk{Delta: "amed", Done: true,
+		Usage: provider.Usage{PromptTokens: 5, CompletionTokens: 5, TotalTokens: 10}}
+	close(ch)
+	return ch, nil
+}
+
+// TestWrapCompleterStreamRecordsNothing proves the wrapper passes a
+// streamed turn through unchanged and records no usage for it,
+// matching the documented passthrough.
+func TestWrapCompleterStreamRecordsNothing(t *testing.T) {
+	acc := usage.New()
+	wrapped, err := usage.WrapCompleter("session-s", acc, streamingCompleter{})
+	if err != nil {
+		t.Fatalf("WrapCompleter: %v", err)
+	}
+	resp, err := provider.RunTurn(context.Background(), wrapped, provider.Request{
+		Stream:   true,
+		Messages: []provider.Message{{Role: provider.RoleUser, Content: "go"}},
+	})
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if resp.Message.Content != "streamed" {
+		t.Fatalf("streamed content = %q, want the passthrough", resp.Message.Content)
+	}
+	if _, ok := acc.Total("session-s"); ok {
+		t.Fatal("Total(session-s): want nothing recorded for a streamed turn")
 	}
 }
 

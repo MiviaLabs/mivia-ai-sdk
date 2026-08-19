@@ -63,11 +63,13 @@ type Options struct {
 	Budget *contextbudget.Limits
 	// Monitor beats each gated step's id. Optional.
 	Monitor *heartbeat.Monitor
-	// Hooks gates each gated step's tool call and observes the run's
-	// stop. PointPreTool fires before the tool and vetoes; a veto
-	// fails the step. PointPostTool fires after the ack confirms.
-	// PointStop fires with the final status once the walk ends.
-	// Optional; it needs Tools.
+	// Hooks observes and gates the run through the hooks registry.
+	// PointPreTool fires before each gated step's tool and vetoes;
+	// a veto fails the step. PointPostTool fires after each ack
+	// confirms, including an Ask round trip's confirmed ack. Both
+	// fire only with Tools: the Wait resolver runs no tool chain.
+	// PointStop fires with the final status once the walk ends, with
+	// either resolver. Optional.
 	Hooks *hooks.Registry
 	// Tracer opens one root span per run and one child span per
 	// gated step's tool call. Optional.

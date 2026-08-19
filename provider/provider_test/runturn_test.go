@@ -364,6 +364,53 @@ func TestRunTurnValidatesFirstInvalidEntryAmongDifferentSentinels(t *testing.T) 
 	}
 }
 
+// TestRunTurnValidatesToolCallsPairingBeforeDispatch pins RunTurn's
+// dispatch guard against the ErrToolCallIDUnexpected and
+// ErrToolCallsUnexpected sentinels, the two Message.Validate branches
+// no other RunTurn-level test reaches; the guard's coverage of
+// ErrToolCallIDRequired and ErrUnknownRole lives in the tests above.
+func TestRunTurnValidatesToolCallsPairingBeforeDispatch(t *testing.T) {
+	cases := []struct {
+		name    string
+		msg     provider.Message
+		wantErr error
+	}{
+		{
+			name:    "tool call id on a non-tool role",
+			msg:     provider.Message{Role: provider.RoleUser, ToolCallID: "call-1"},
+			wantErr: provider.ErrToolCallIDUnexpected,
+		},
+		{
+			name: "tool calls on a non-assistant role",
+			msg: provider.Message{
+				Role:      provider.RoleUser,
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallsUnexpected,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := &fakeCompleter{name: "fake"}
+			req := provider.Request{Stream: false, Messages: []provider.Message{c.msg}}
+
+			got, err := provider.RunTurn(context.Background(), f, req)
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("RunTurn() error = %v, want errors.Is %v", err, c.wantErr)
+			}
+			if err != c.wantErr {
+				t.Fatalf("RunTurn() error = %v, want the unwrapped sentinel %v (identity)", err, c.wantErr)
+			}
+			if !reflect.DeepEqual(got, provider.Response{}) {
+				t.Fatalf("RunTurn() response = %+v, want zero value", got)
+			}
+			if f.chatCalled || f.streamCalled {
+				t.Fatal("RunTurn() dispatched to the Completer despite an invalid message")
+			}
+		})
+	}
+}
+
 func TestRunTurnStreamMergeKeepsFirstNonEmptyIDAndName(t *testing.T) {
 	chunks := []provider.Chunk{
 		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},

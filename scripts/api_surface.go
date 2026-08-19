@@ -182,19 +182,26 @@ func appendSpec(blocks []string, fset *token.FileSet, tok token.Token, spec ast.
 // typeBlock renders a type declaration; structs list exported fields with
 // tags because fields are the wire contract.
 func typeBlock(fset *token.FileSet, s *ast.TypeSpec) string {
-	name := "type " + s.Name.Name
+	var b strings.Builder
+	b.WriteString("type ")
+	b.WriteString(s.Name.Name)
 	if s.TypeParams != nil {
-		name += "[" + fieldList(fset, s.TypeParams) + "]"
+		b.WriteString("[")
+		b.WriteString(fieldList(fset, s.TypeParams))
+		b.WriteString("]")
 	}
 	if s.Assign.IsValid() {
-		return name + " = " + expr(fset, s.Type)
+		b.WriteString(" = ")
+		b.WriteString(expr(fset, s.Type))
+		return b.String()
 	}
 	st, ok := s.Type.(*ast.StructType)
 	if !ok {
-		return name + " " + expr(fset, s.Type)
+		b.WriteString(" ")
+		b.WriteString(expr(fset, s.Type))
+		return b.String()
 	}
-	var b strings.Builder
-	b.WriteString(name + " struct {\n")
+	b.WriteString(" struct {\n")
 	for _, f := range st.Fields.List {
 		if len(f.Names) == 0 {
 			b.WriteString("  " + expr(fset, f.Type) + tag(f) + "\n")

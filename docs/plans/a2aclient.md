@@ -628,3 +628,219 @@ sentinel:
   `errors.Is(err, ErrNoDataPart)`.
 - a case where the task carries no status message and no history:
   assert `errors.Is(err, ErrNoResultMessage)`.
+
+## Addendum: Loopback extraction to a2aloopback
+
+Status: planned, not yet built.
+
+### Problem
+
+`a2aclient/loopback.go` is production, non-`_test.go` source. It
+stands up a real gRPC A2A server as a test fixture. It carries no
+build tag, so any binary that imports `a2aclient` for its real
+purpose, the client adapter, also compiles `loopbackExecutor`,
+`Loopback`, and their imports: `a2agrpc`, `a2asrv`,
+`a2asrv/eventqueue`, and `google.golang.org/grpc`'s server-side
+machinery. `a2aclient`'s own production files, `client.go`, `grpc.go`,
+and `state.go`, import only `github.com/a2aproject/a2a-go/a2a`
+(confirmed by direct read: `grpc.go`'s `a2acore` alias) and
+`github.com/a2aproject/a2a-go/a2aclient` (`a2asdk`), plus
+`google.golang.org/grpc` for the dial. They never import `a2asrv`,
+`a2agrpc`, or `eventqueue`. The server-side packages are dead weight
+for every real caller: they exist only because `loopback.go` lives in
+the same package.
+
+### Decision
+
+Extract `Loopback` and its two supporting types to a new package,
+`a2aloopback`, following the `durablefence` precedent already in this
+module: a leaf-ish package that ships real (non-`_test.go`) source but
+carries a documented, convention-only rule that no production code may
+import it. See `docs/plans/a2aloopback.md`.
+
+This is not the file's original author changing their mind carelessly.
+The file's own doc comment gives a real reason to keep `Loopback` out
+of a `_test.go` file: `a2aack/a2aack_test`, an external test package in
+a different directory, calls `a2aclient.Loopback()`, and Go does not
+let an external test package import another package's `_test.go`
+files. That constraint still holds. The fix is not to move `Loopback`
+into `a2aclient/*_test.go`; it is to move it into its own ordinary
+package, which any external test package, including `a2aack_test`, can
+import exactly like any other production package. `durablefence`
+already proves this shape works in this module:
+`ledger/ledger_test/scenario_test.go` imports it today.
+
+The alternative, gating `loopback.go` behind a build tag inside
+`a2aclient` (the `ledger_sqlite` precedent), was rejected. `ledger`'s
+tag keeps one build variant fully out of the default binary; nobody
+needs `SQLiteStore` and `Loopback` at once. Here, `a2aclient`'s own
+integration test, `grpc_loopback_integration_test.go`, needs `Loopback`
+inside the same `make verify` run that also builds the default,
+untagged `a2aclient` package: a tag-gated `loopback.go` would force
+that test file onto the same tag, dropping it out of `make verify`'s
+default coverage run and into a second, easy-to-forget target the way
+`verify-ledger-sqlite` already is. `a2aack_test` would need the same
+tag on every file in its directory, even the files that never call
+`Loopback`, since a build tag applies per file, not per call site.
+Extraction avoids all of this: no tag, one `make verify` run, every
+caller opts in by import, not by build flag.
+
+### What moves, what stays
+
+- `a2aclient/loopback.go`: deleted. Its content moves, unchanged in
+  behavior, to `a2aloopback/loopback.go`. `dataFromRaw` gets a private
+  copy in `a2aloopback`, since `a2aclient/grpc.go`'s original is
+  unexported and cannot be imported across packages.
+- `a2aclient/grpc_loopback_integration_test.go`: stays in `a2aclient`,
+  `package a2aclient`, unchanged in every assertion. Its two calls to
+  `Loopback()` become `a2aloopback.Loopback()`, with a new import of
+  `github.com/MiviaLabs/mivia-ai-sdk/a2aloopback`. This file is
+  `_test.go`, so `scripts/check_deps.py` never checks its imports;
+  `policy/layers.json`'s `a2aclient` row does not change and does not
+  need to list `a2aloopback`.
+- `a2aack/a2aack_test/integration_test.go`: `a2aclient.Loopback()`
+  becomes `a2aloopback.Loopback()`. The file keeps its `a2aclient`
+  import for `a2aclient.New`; it adds an `a2aloopback` import.
+- `a2aack/a2aack_test/wait_test.go`: same change, same reasoning.
+- `a2aack/a2aack_test/helpers_test.go`: no functional change, only a
+  comment fix. Its package doc comment names `a2aclient.Loopback`; the
+  builder updates the wording to `a2aloopback.Loopback` and to note the
+  stdlib-only rule now holds outside `a2aclient` and `a2aloopback`,
+  not `a2aclient` alone.
+- No other caller exists. `grep -rln "a2aclient.Loopback"` across the
+  module returns exactly these three files plus the two in
+  `a2aclient` itself, confirmed at plan time.
+
+`a2aclient`'s production surface, `Client`, `New`, `Close`, `Send`,
+`Status`, `Result`, `TaskHandle`, `State`, and the nine sentinel
+errors, does not change. No real, non-test external consumer of
+`a2aclient` is affected: only the test fixture moves.
+
+### policy/layers.json
+
+`a2aclient`'s row stays `["a2a", "envelope"]`, unchanged: its
+production files never imported anything that needs a new edge, and
+losing `loopback.go` removes no internal edge either, since
+`loopback.go` used only `a2a` and `envelope` among internal packages.
+
+A new row: `"a2aloopback": ["a2a", "envelope"]`. See
+`docs/plans/a2aloopback.md`.
+
+### api/a2aclient.txt
+
+`make api-update` removes three lines from `api/a2aclient.txt`:
+`func Loopback(...)`, `func (e *loopbackExecutor) Cancel(...)`, and
+`func (e *loopbackExecutor) Execute(...)`. The same three land in the
+new `api/a2aloopback.txt`, with `Loopback` as the only exported
+symbol; `loopbackExecutor`'s methods appear in the lock file the same
+way they did in `a2aclient` today, since the api-lock generator
+records every top-level func declaration regardless of receiver export
+status.
+
+### AGENTS.md
+
+Four edits, applied by the builder alongside the code, per this
+file's existing "AGENTS.md: the stated exception" precedent above.
+Read `AGENTS.md` directly before editing; the exact current text is
+quoted below so the builder does not have to locate or paraphrase it.
+
+**Edit one, the `a2aclient/` bullet (`AGENTS.md:110-115`).** The
+current bullet reads:
+
+```text
+- `a2aclient/` — the a2a-go client adapter: Client, New, Close,
+  TaskHandle, State, Send, Status, Result. Imports a2a and envelope.
+  Sends one task, polls its status, and fetches its result over
+  a2aproject/a2a-go's gRPC transport; re-verifies the signature after
+  every remote hop. The only package allowed to import a2a-go and its
+  google.golang.org/grpc dial dependency.
+```
+
+Its last sentence, "The only package allowed to import a2a-go and its
+google.golang.org/grpc dial dependency," becomes false the moment
+`a2aloopback` exists: two packages import those modules, not one.
+Replace that last sentence with:
+
+```text
+  One of two packages allowed to import a2a-go and its
+  google.golang.org/grpc dial dependency; a2aloopback is the other.
+```
+
+**Edit two, the `a2aack/` bullet (`AGENTS.md:116-124`), not the
+`a2aclient/` bullet.** The current bullet reads:
+
+```text
+- `a2aack/` — the remote step ack: Options, Options.Validate, Remote,
+  Wait, and sentinels. Turns a remote A2A task round trip into an
+  `agent.AckWait`. This is an edge adapter, not an ordinary block: its
+  one purpose is to adapt a remote transport to the composition layer,
+  so it may import `agent` for the `AckWait` type, one of two
+  exceptions to the rule that a block never imports the agent
+  (`dispatch` is the other). Imports a2aclient, agent, and envelope.
+  Carries no a2a-go import of its own; the loopback test fixture is
+  exported a2aclient surface.
+```
+
+Its last sentence, "Carries no a2a-go import of its own; the loopback
+test fixture is exported a2aclient surface," already correctly says
+`a2aack` itself carries no a2a-go import; it needs a different fix
+than the `a2aclient` bullet does. Only its second half is stale: the
+loopback fixture no longer lives on `a2aclient`'s exported surface.
+Replace that last sentence with:
+
+```text
+  Carries no a2a-go import of its own; the loopback test fixture lives
+  in a2aloopback.
+```
+
+**Edit three, a new bullet, placed immediately after the `a2aclient/`
+bullet:**
+
+```text
+- `a2aloopback/` — the A2A loopback test fixture: `Loopback` starts a
+  real gRPC A2A server on a loopback port for cross-package tests. No
+  production code may import it, the same convention `durablefence`
+  uses. Imports `a2a` and `envelope` internally, and
+  `github.com/a2aproject/a2a-go`'s server-side packages plus
+  `google.golang.org/grpc` externally, the same exception `a2aclient`
+  carries, scoped to this package instead.
+```
+
+**Edit four, the Rules section's existing exception sentence
+(`AGENTS.md:389`):**
+
+```text
+Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
+`google.golang.org/grpc`; no other package may add a third-party
+import without its own plan review.
+```
+
+replaced with:
+
+```text
+Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
+`google.golang.org/grpc`; `a2aloopback` may import the same two
+modules, scoped to its own gRPC test-server fixture; no other package
+may add a third-party import without its own plan review.
+```
+
+This names the same two modules, not a new one: `a2aloopback` carries
+the server-side half of the one already-approved `a2a-go` dependency,
+split out of `a2aclient` for the reason above, not a new, arbitrary
+third-party import.
+
+### Verification
+
+`make verify` passes only once all of the following land together:
+the `a2aloopback` package and its tests (see
+`docs/plans/a2aloopback.md`); the deletion of
+`a2aclient/loopback.go`; the updated
+`grpc_loopback_integration_test.go` and the three `a2aack_test` files;
+the `policy/layers.json` new row; the two `semgrep/sdk-standards.yml`
+new rules, `sdk.go.a2aloopback-scoped-third-party-import` and
+`sdk.go.no-a2aloopback-import`, plus the `stdlib-only-imports`
+exclude-list entry; the two `check_semgrep_probes.py` new probe pairs
+(see `docs/plans/a2aloopback.md`); and the four AGENTS.md edits above.
+`docs/architecture.md` does not change: this move adds no
+message-semantics rule and changes no module in the dependency map,
+only which package one existing module lives behind.

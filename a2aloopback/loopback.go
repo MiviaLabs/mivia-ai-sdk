@@ -1,8 +1,9 @@
-package a2aclient
+package a2aloopback
 
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
 	"net"
 	"sync"
@@ -25,8 +26,7 @@ const loopbackBind = "127.0.0.1:0"
 // freshly signed envelope that restates the request's payload. The
 // response envelope binds its ID and ThreadID to the A2A ids the server
 // mints, exactly as a real responding agent must, so the post-hop
-// signature check passes. See grpc_loopback_integration_test.go for the
-// same executor used in-package.
+// signature check passes.
 type loopbackExecutor struct {
 	key ed25519.PrivateKey
 }
@@ -98,11 +98,22 @@ func loopbackPayload(reqCtx *a2asrv.RequestContext) (string, error) {
 	return "", errors.New("loopback: request carries no payload")
 }
 
+// dataFromRaw unmarshals raw envelope JSON into the map[string]any
+// shape a2a-go's DataPart carries. A private copy of
+// a2aclient/grpc.go's unexported helper of the same name: that
+// original cannot be imported across packages.
+func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // Loopback starts a gRPC A2A server on a 127.0.0.1 loopback port. It
 // returns the address and a stop function. Each received task completes
-// promptly. It ships for cross-package tests; the a2a-go exception
-// covers a2aclient/*.go only, so the server handler must live in
-// a2aclient's non-test source.
+// promptly. No production package may import this package; see the
+// package doc comment.
 func Loopback() (addr string, stop func() error, err error) {
 	lis, err := net.Listen("tcp", loopbackBind)
 	if err != nil {

@@ -169,6 +169,36 @@ def main() -> int:
             'package a2aclient\n\nimport "github.com/a2aproject/a2a-go/a2aclient"\n\nvar _ = a2aclient.Config{}\n'
         )
 
+        # a2aloopback-scoped rule pair: proves the stdlib-only exclude
+        # and the new scoped rule fire together, in a path-scoped
+        # directory the flat PROBES loop above cannot exercise. The
+        # third fixture, clean_a2aloopback_internal_import.go, pins the
+        # regression an omitted first pattern-not-regex line would
+        # cause: it would fire ERROR on a2aloopback's own required
+        # internal import of envelope.
+        a2aloopback_rid = "sdk.go.a2aloopback-scoped-third-party-import"
+        a2aloopback_dir = tmp / "a2aloopback"
+        a2aloopback_dir.mkdir()
+        (a2aloopback_dir / "viol_a2aloopback_other_import.go").write_text(
+            'package a2aloopback\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n'
+        )
+        (a2aloopback_dir / "clean_a2a_go_srv_import.go").write_text(
+            'package a2aloopback\n\nimport "github.com/a2aproject/a2a-go/a2asrv"\n\nvar _ = a2asrv.AgentExecutor(nil)\n'
+        )
+        (a2aloopback_dir / "clean_a2aloopback_internal_import.go").write_text(
+            'package a2aloopback\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/envelope"\n\nvar _ = envelope.Message{}\n'
+        )
+
+        # no-a2aloopback-import rule pair: proves only the allowed
+        # caller paths may import a2aloopback.
+        no_a2aloopback_rid = "sdk.go.no-a2aloopback-import"
+        (tmp / "viol_a2aloopback_prod_import.go").write_text(
+            'package p\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"\n\nvar _ = a2aloopback.Loopback\n'
+        )
+        (a2aclient_dir / "clean_a2aloopback_caller_import_test.go").write_text(
+            'package a2aclient\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"\n\nvar _ = a2aloopback.Loopback\n'
+        )
+
         # mcp-scoped rule pair: proves the stdlib-only exclude and the
         # new scoped rule fire together, in a path-scoped directory the
         # flat PROBES loop above cannot exercise.
@@ -218,6 +248,11 @@ def main() -> int:
             expected[cfile] = rid
         expected["viol_other_import.go"] = a2aclient_rid
         expected["clean_a2a_import.go"] = a2aclient_rid
+        expected["viol_a2aloopback_other_import.go"] = a2aloopback_rid
+        expected["clean_a2a_go_srv_import.go"] = a2aloopback_rid
+        expected["clean_a2aloopback_internal_import.go"] = a2aloopback_rid
+        expected["viol_a2aloopback_prod_import.go"] = no_a2aloopback_rid
+        expected["clean_a2aloopback_caller_import_test.go"] = no_a2aloopback_rid
         expected["viol_mcp_other_import.go"] = mcp_rid
         expected["clean_go_sdk_import.go"] = mcp_rid
         expected["viol_ledger_other_import.go"] = ledger_rid
@@ -257,6 +292,42 @@ def main() -> int:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
         if "sdk.go.stdlib-only-imports" in clean_hits:
             problems.append("sdk.go.stdlib-only-imports: fired inside the excluded a2aclient/ directory")
+
+        # Explicit a2aloopback-scoped assertions, parallel to the
+        # a2aclient block above: the scoped rule fires on the
+        # violation, stays silent on both clean imports, and the
+        # scoped exclude keeps stdlib-only-imports out of all three.
+        # clean_a2aloopback_internal_import.go is the regression pin
+        # for an omitted first pattern-not-regex line: without it, the
+        # rule would fire ERROR on a2aloopback's own required envelope
+        # import.
+        a2aloopback_other_hits = hits.get("viol_a2aloopback_other_import.go", set())
+        a2aloopback_srv_hits = hits.get("clean_a2a_go_srv_import.go", set())
+        a2aloopback_internal_hits = hits.get("clean_a2aloopback_internal_import.go", set())
+        if a2aloopback_rid not in a2aloopback_other_hits:
+            problems.append(f"{a2aloopback_rid}: violation file viol_a2aloopback_other_import.go did not fire")
+        if a2aloopback_rid in a2aloopback_srv_hits:
+            problems.append(f"{a2aloopback_rid}: clean file clean_a2a_go_srv_import.go fired")
+        if a2aloopback_rid in a2aloopback_internal_hits:
+            problems.append(f"{a2aloopback_rid}: clean file clean_a2aloopback_internal_import.go fired")
+        for name, name_hits in (
+            ("viol_a2aloopback_other_import.go", a2aloopback_other_hits),
+            ("clean_a2a_go_srv_import.go", a2aloopback_srv_hits),
+            ("clean_a2aloopback_internal_import.go", a2aloopback_internal_hits),
+        ):
+            if "sdk.go.stdlib-only-imports" in name_hits:
+                problems.append(f"sdk.go.stdlib-only-imports: fired inside the excluded a2aloopback/ directory ({name})")
+
+        # Explicit no-a2aloopback-import assertions: the rule fires on
+        # a production-looking import outside every exclude path, and
+        # stays silent on a file matching the /a2aclient/*_test.go
+        # exclude.
+        no_a2aloopback_viol_hits = hits.get("viol_a2aloopback_prod_import.go", set())
+        no_a2aloopback_clean_hits = hits.get("clean_a2aloopback_caller_import_test.go", set())
+        if no_a2aloopback_rid not in no_a2aloopback_viol_hits:
+            problems.append(f"{no_a2aloopback_rid}: violation file viol_a2aloopback_prod_import.go did not fire")
+        if no_a2aloopback_rid in no_a2aloopback_clean_hits:
+            problems.append(f"{no_a2aloopback_rid}: clean file clean_a2aloopback_caller_import_test.go fired")
 
         # Explicit mcp-scoped assertions, parallel to the a2aclient
         # block above: the scoped rule fires on the violation, stays

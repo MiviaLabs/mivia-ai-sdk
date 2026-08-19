@@ -19,14 +19,15 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-two packages and the import edges between
-them. An arrow points from an importer to the package it imports.
-`channel`, `contextbudget`, `contextstate`, `discovery`,
+The diagram shows the forty-three packages and the import edges
+between them. An arrow points from an importer to the package it
+imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
 `durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
 `contextplan` imports `contextstate`, `provider`, and `memory`.
-`spool` imports `tools` alone.
+`spool` imports `tools` alone. `a2aloopback` imports `a2a` and
+`envelope`, the same two internal packages `a2aclient` imports.
 
 ```mermaid
 flowchart LR
@@ -55,6 +56,8 @@ flowchart LR
     a2a --> envelope
     a2aclient --> a2a
     a2aclient --> envelope
+    a2aloopback --> a2a
+    a2aloopback --> envelope
     mcp --> tools
     spool --> tools
     agentloop --> provider
@@ -268,12 +271,20 @@ flowchart LR
   `Result`. `Send` maps a signed message through `a2a.ToPart` and
   sends it as a remote task; `Status` polls the task's state; `Result`
   maps the output back through `a2a.FromPart` and re-verifies the
-  signature. `a2aclient` imports `a2a` and `envelope`. It is the only
-  package in this module allowed to import the third-party
+  signature. `a2aclient` imports `a2a` and `envelope`. It is one of
+  two packages in this module allowed to import the third-party
   `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
   dial dependency `a2a-go`'s gRPC transport needs; this is the
-  module's first external network call.
+  module's first external network call. `a2aloopback` is the other.
   See [packages/a2aclient.md](packages/a2aclient.md).
+- `a2aloopback/` — a gRPC A2A loopback test fixture. It provides
+  `Loopback`, which starts a real A2A server on a 127.0.0.1 port and
+  returns the address and a stop function. `a2aloopback` imports `a2a`
+  and `envelope`, plus the same third-party `a2a-go`/`grpc` exception
+  `a2aclient` carries, scoped to the server-side packages a production
+  client never needs. It follows `durablefence`'s convention: no
+  production package may import it; only `a2aclient`'s own tests and
+  `a2aack`'s tests do.
 - `a2aack/` — the remote step ack. It provides `Options`,
   `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
   an `agent.AckWait` that sends a gated step as a remote task, polls

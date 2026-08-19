@@ -1,0 +1,4 @@
+package a2aloopback
+  func (e *loopbackExecutor) Cancel(ctx context.Context, reqCtx *a2asrv.RequestContext, queue eventqueue.Queue) (error)
+  func (e *loopbackExecutor) Execute(ctx context.Context, reqCtx *a2asrv.RequestContext, queue eventqueue.Queue) (error)
+  func Loopback() (addr string, stop func() error, err error)

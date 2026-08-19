@@ -111,8 +111,15 @@ Go SDK for building AI agents. Module:
   TaskHandle, State, Send, Status, Result. Imports a2a and envelope.
   Sends one task, polls its status, and fetches its result over
   a2aproject/a2a-go's gRPC transport; re-verifies the signature after
-  every remote hop. The only package allowed to import a2a-go and its
-  google.golang.org/grpc dial dependency.
+  every remote hop. One of two packages allowed to import a2a-go and its
+  google.golang.org/grpc dial dependency; a2aloopback is the other.
+- `a2aloopback/` — the A2A loopback test fixture: `Loopback` starts a
+  real gRPC A2A server on a loopback port for cross-package tests. No
+  production code may import it, the same convention `durablefence`
+  uses. Imports `a2a` and `envelope` internally, and
+  `github.com/a2aproject/a2a-go`'s server-side packages plus
+  `google.golang.org/grpc` externally, the same exception `a2aclient`
+  carries, scoped to this package instead.
 - `a2aack/` — the remote step ack: Options, Options.Validate, Remote,
   Wait, and sentinels. Turns a remote A2A task round trip into an
   `agent.AckWait`. This is an edge adapter, not an ordinary block: its
@@ -120,8 +127,8 @@ Go SDK for building AI agents. Module:
   so it may import `agent` for the `AckWait` type, one of two
   exceptions to the rule that a block never imports the agent
   (`dispatch` is the other). Imports a2aclient, agent, and envelope.
-  Carries no a2a-go import of its own; the loopback test fixture is
-  exported a2aclient surface.
+  Carries no a2a-go import of its own; the loopback test fixture lives
+  in a2aloopback.
 - `dispatch/` — the NDJSON envelope endpoint: Handler, Options,
   Options.Validate, New, Endpoint, Endpoint.Handler, Send, SendResult,
   and sentinels. `Endpoint.Handler` answers POST requests whose body
@@ -387,7 +394,8 @@ any stage means stop and escalate to the user.
   public remote or push to one.
 - No third-party dependencies. Standard library only.
   Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
-  `google.golang.org/grpc`; `mcp` may import
+  `google.golang.org/grpc`; `a2aloopback` may import the same two
+  modules, scoped to its own gRPC test-server fixture; `mcp` may import
   `github.com/modelcontextprotocol/go-sdk`; `ledger` may import
   `modernc.org/sqlite`, behind the `ledger_sqlite` build tag only;
   `schema` may import `github.com/santhosh-tekuri/jsonschema/v6`; no

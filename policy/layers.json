@@ -13,6 +13,10 @@
       "a2a",
       "envelope"
     ],
+    "a2aloopback": [
+      "a2a",
+      "envelope"
+    ],
     "agent": [
       "identity",
       "discovery",

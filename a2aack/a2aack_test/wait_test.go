@@ -7,15 +7,16 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
 // TestWaitLiveLoopback runs the real a2aclient.Client through
-// a2aclient.Loopback and asserts the resulting ack: MessageID equals
+// a2aloopback.Loopback and asserts the resulting ack: MessageID equals
 // the sent step message's id, Status is confirmed, and From and the
 // restatement come from the server's reply.
 func TestWaitLiveLoopback(t *testing.T) {
-	addr, stop, err := a2aclient.Loopback()
+	addr, stop, err := a2aloopback.Loopback()
 	if err != nil {
 		t.Fatalf("Loopback() error: %v", err)
 	}

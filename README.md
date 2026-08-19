@@ -14,8 +14,8 @@
 Go SDK for building AI agents and workflows. A set of composable
 building blocks, not a monolith. Most packages use the standard
 library only. The `go.mod` file lists the small set of third-party
-dependencies used by `a2aclient`, `mcp`, and `ledger` (the latter
-only when the `ledger_sqlite` build tag is set).
+dependencies used by `a2aclient`, `a2aloopback`, `mcp`, and `ledger`
+(the latter only when the `ledger_sqlite` build tag is set).
 
 ## Features
 
@@ -111,6 +111,8 @@ public API. All twenty-seven ship.
   `a2aclient`.
 - **a2aclient** — the a2a-go client adapter: send a task, poll its
   status, fetch its result over gRPC.
+- **a2aloopback** — a gRPC A2A loopback test fixture: Loopback. No
+  production package may import it.
 - **a2aack** — the remote step ack: a Wait func over one A2A task.
 - **dispatch** — the envelope endpoint: Handler, New, Send, and the
   per-line receive ladder.
@@ -346,6 +348,7 @@ heartbeat/           liveness tracking: Monitor, Beat, Alive, Dead
 discovery/           capability cards: Card, Parse, Match
 a2a/                 A2A v1.0 envelope mapping: ToPart, FromPart
 a2aclient/           the a2a-go client adapter: Send, Status, Result
+a2aloopback/         gRPC A2A loopback test fixture: Loopback
 a2aack/              remote step ack: a Wait func over one A2A task
 dispatch/            envelope endpoint: NDJSON ladder, Send client
 tools/               named-action registry: profiles, scope, approval gating

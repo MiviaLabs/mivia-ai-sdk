@@ -74,6 +74,14 @@ Go SDK for building AI agents. Module:
   DisallowUnknownFields decoding, no retry. Bounded excerpts feed the
   prompt, newest first; a summary failure is caller-visible with no
   structural fallback. Imports provider only.
+- `longtermmemory/` — the tiered long-term memory: Entry with
+  Validate, the Verdict set, Store with Save, Search, Count,
+  PromoteToCore, CoreEntries, Delete, and CoreFrame. CoreTierCap is
+  24 per scope and consolidation at a 0.8 load factor runs one merge
+  pass at Jaccard 0.82 then oldest-archive eviction; core rows are
+  never the deleted side. Ids are content-addressed. CoreFrame
+  renders a bounded block whose entry text is HTML-escaped against
+  the frame tags. A leaf package; no internal imports.
 - `envfile/` — dotenv loading: Load and LoadBytes parse `KEY=VALUE`
   lines into a map without leaking parsed values into an error. Load
   reads the file and delegates to LoadBytes, so the two share one

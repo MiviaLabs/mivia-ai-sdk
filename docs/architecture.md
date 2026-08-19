@@ -509,6 +509,24 @@ flowchart LR
   caller-visible error; no structural fallback exists. `contextsummary`
   imports `provider` only. See
   [packages/contextsummary.md](packages/contextsummary.md).
+- `longtermmemory/` — the tiered long-term memory store. It
+  provides `Entry` with `Validate`, the `Verdict` set, `Result`,
+  `Query`, `Store` with `New`, `Save`, `Search`, `Count`,
+  `PromoteToCore`, `CoreEntries`, `Delete`, and `CoreFrame`, the
+  bounds `CoreTierCap` (24), `DefaultMaxEntries` (500),
+  `DefaultMaxSearchResults` (8), `DefaultFrameBytes` (4 KiB), and
+  `ConsolidateLoadFactor` (0.8), the frame constants `FrameAdvisory`,
+  `FrameOpenTag`, and `FrameCloseTag`, and the sentinels
+  `ErrEntryNotFound`, `ErrCoreTierFull`, `ErrStoreFull`,
+  `ErrQueryRequired`, and `ErrScopeRequired`. Entry ids are
+  content-addressed over every field; consolidation at the load
+  factor runs one near-duplicate merge pass (Jaccard at or above
+  0.82) and then oldest-archive eviction, never touching core rows;
+  `CoreFrame` renders the core tier as a bounded block whose entry
+  text is HTML-escaped against the frame tags, so agent-writable text
+  cannot close the block early. A leaf: no internal imports, standard
+  library only. See
+  [packages/longtermmemory.md](packages/longtermmemory.md).
 - `providerregistry/` — the multi-provider routing package. It
   provides `Registry`, `New`, `Register`, `Get`, `Names`, `Retryable`,
   `Route`, and the sentinels `ErrNilCompleter`, `ErrBlankName`,

@@ -6,7 +6,7 @@ heartbeat, identity, discovery, a2a, a2aclient, a2aack, dispatch,
 tools, contextbudget, mcp, ledger, durablefence, memory, provider,
 contextplan, channel, trigger, trace, skills, scheduler, agent,
 agentrun, subagent, taskrun, e2e, envfile, secretpath, workspace,
-diff, spool, and contextsummary. Each package
+diff, spool, contextsummary, and longtermmemory. Each package
 covers one concern and composes through its exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
@@ -93,6 +93,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/workspace.md](packages/workspace.md) — filesystem confinement: `Open` binds a handle to a root directory and rejects traversal or symlink escapes.
 - [packages/diff.md](packages/diff.md) — bounded unified line diffs: `Unified` fails closed past a caller's line budget.
 - [packages/agentloop.md](packages/agentloop.md) — a tool-calling loop over a `provider.Completer` and a `tools.Registry`: offer tools, run model-requested calls, repeat until the model stops asking or a bound trips.
+- [packages/longtermmemory.md](packages/longtermmemory.md) — the tiered long-term memory: core and archive entries per scope, consolidation near capacity, keyword search, and a bounded, neutralized `CoreFrame` for the system prompt.
 
 ## Examples
 

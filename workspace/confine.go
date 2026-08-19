@@ -18,8 +18,13 @@ const rootEscapeText = "path escapes from parent"
 // call. It is pure string work and touches no file, so it opens no
 // window between a check and a syscall. An empty path resolves to ".".
 // Every one of ReadFile, WriteFile, List, and Stat calls resolve
-// first; os.Root then owns every symlink decision.
+// first; os.Root then owns every symlink decision. A nil or
+// zero-value Workspace holds no root, so resolve denies it here
+// rather than letting a method dereference the absent root.
 func (w *Workspace) resolve(path string) (string, error) {
+	if w == nil || w.r == nil {
+		return "", fmt.Errorf("%w: %s", ErrEscape, path)
+	}
 	var joined string
 	if filepath.IsAbs(path) {
 		joined = filepath.Clean(path)

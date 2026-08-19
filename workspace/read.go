@@ -52,12 +52,17 @@ func (w *Workspace) ReadFileLimit(path string, limit int64) ([]byte, error) {
 // effectiveLimit maps a per-call limit onto the bound one read uses.
 // It calls validateLimit first, so an invalid value refuses before any
 // path work. A zero limit takes the Workspace's bound; any other
-// passing value stands as given.
+// passing value stands as given. A nil or zero-value Workspace holds
+// no bound to take, so a zero limit denies rather than reading an
+// absent field; an invalid limit still loses to validateLimit first.
 func (w *Workspace) effectiveLimit(limit int64) (int64, error) {
 	if err := validateLimit(limit); err != nil {
 		return 0, err
 	}
 	if limit == 0 {
+		if w == nil || w.r == nil {
+			return 0, fmt.Errorf("%w: no root", ErrEscape)
+		}
 		return w.maxReadBytes, nil
 	}
 	return limit, nil

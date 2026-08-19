@@ -284,6 +284,38 @@ func TestClose(t *testing.T) {
 	}
 }
 
+// TestZeroValueDeniesEveryMethod pins that a Workspace holding no root
+// denies every method with ErrEscape. The package bans a panic, and a
+// zero value reaches resolve before any root call, so resolve is where
+// the absent root must be caught.
+func TestZeroValueDeniesEveryMethod(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(w *workspace.Workspace) error
+	}{
+		{"ReadFile", func(w *workspace.Workspace) error { _, err := w.ReadFile("f.txt"); return err }},
+		// A positive limit skips effectiveLimit's own guard, so this
+		// case is the one that proves resolve catches the absent root.
+		{"ReadFileLimit", func(w *workspace.Workspace) error { _, err := w.ReadFileLimit("f.txt", 10); return err }},
+		{"WriteFile", func(w *workspace.Workspace) error { return w.WriteFile("f.txt", []byte("x")) }},
+		{"List", func(w *workspace.Workspace) error { _, err := w.List("."); return err }},
+		{"Stat", func(w *workspace.Workspace) error { _, err := w.Stat("f.txt"); return err }},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var zero workspace.Workspace
+			if err := c.call(&zero); !errors.Is(err, workspace.ErrEscape) {
+				t.Errorf("zero-value %s error = %v, want ErrEscape", c.name, err)
+			}
+			var nilW *workspace.Workspace
+			if err := c.call(nilW); !errors.Is(err, workspace.ErrEscape) {
+				t.Errorf("nil %s error = %v, want ErrEscape", c.name, err)
+			}
+		})
+	}
+}
+
 // TestEmptyPath pins that resolve maps an empty path to ".", which
 // os.Root accepts where it rejects an empty name, and that a read of a
 // directory surfaces the raw filesystem error.

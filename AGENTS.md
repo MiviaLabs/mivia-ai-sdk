@@ -41,6 +41,11 @@ Go SDK for building AI agents. Module:
   still-pending fallback's bookkeeping does not survive the round
   trip.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
+- `contextbudget/` — a leaf primitive: Limits, Validate, Fits. Limits
+  caps one model call's context by byte count and event count, a zero
+  field means no cap. Fits reports whether a candidate total stays
+  under both caps. Imports no internal package; agent imports it for
+  Run's optional budget check.
 
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.
@@ -144,9 +149,13 @@ Go SDK for building AI agents. Module:
   through to the next name only when the caller's Retryable predicate
   approves the failure. Imports provider only.
 - `usage/` — the per-session running total of provider.Usage:
-  Accumulator, New, Record, Total, Reset, ErrBlankSessionID.
+  Accumulator, New, Record, Total, Reset, WrapCompleter,
+  ErrBlankSessionID, ErrNilAccumulator, ErrNilCompleter.
   Record sums one provider.Usage call onto the session's running
-  total, guarded for concurrent use. Imports provider only.
+  total, guarded for concurrent use. WrapCompleter wraps a
+  provider.Completer so every completed Chat turn records its usage
+  under a session id; a streamed turn records nothing. Imports
+  provider only.
 - `channel/` — the ask-and-wait shape: Question, Answer, Notifier. A
   leaf package; no internal imports. Ships one reference transport,
   `NewNDJSONNotifier`, speaking newline-delimited JSON over an

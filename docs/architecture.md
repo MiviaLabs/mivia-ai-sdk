@@ -49,6 +49,7 @@ flowchart LR
     a2aclient --> envelope
     mcp --> tools
     usage --> provider
+    providerregistry --> provider
     scheduler --> events
     a2aack --> a2aclient
     a2aack --> agent
@@ -92,11 +93,14 @@ flowchart LR
     subagent --> trace
     subagent --> trigger
     e2e --> agent
+    e2e --> channel
     e2e --> discovery
     e2e --> envelope
     e2e --> events
     e2e --> flow
     e2e --> identity
+    e2e --> ledger
+    e2e --> provider
     e2e --> tools
     contextbudget[contextbudget]
     discovery[discovery]

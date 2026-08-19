@@ -11,7 +11,8 @@ below mirrors `api/provider.txt`.
 - `Completer` — the required contract: `Name`, `Chat`, `ChatStream`.
 - `Role` — a message's role. Constants: `RoleSystem`, `RoleUser`,
   `RoleAssistant`, `RoleTool`.
-- `Message` — one turn in a conversation.
+- `Message` — one turn in a conversation. `Role`, `Content`,
+  `ToolCallID`, `ToolCalls`.
 - `ToolDefinition` — one tool a model may call.
 - `ToolCall` — one call the model requests, or one fragment while it
   streams.
@@ -33,8 +34,8 @@ below mirrors `api/provider.txt`.
   when false; calls `c.ChatStream`, drains, and aggregates when true.
   Validates every `req.Messages` entry with `Message.Validate` before
   it dispatches. Selects on `ctx.Done()` while it drains a stream.
-- `Message.Validate()` — enforces the `ToolCallID`/`Role` pairing rule
-  and the closed set of `Role` constants.
+- `Message.Validate()` — enforces the `ToolCallID`/`Role` pairing rule,
+  the closed set of `Role` constants, and the `ToolCalls`/`Role` rule.
 - `Chunk.Validate()` — enforces `Err` and `Done == true` are mutually
   exclusive on one `Chunk`.
 
@@ -55,6 +56,11 @@ Use `errors.Is` to test these.
   returns it for a `Role` outside the four declared constants. Pinned
   by `provider/provider_test/types_test.go` and
   `provider/provider_test/runturn_test.go`.
+- `ErrToolCallsUnexpected` ("provider: tool calls unexpected outside
+  RoleAssistant") — `Message.Validate` returns it when `ToolCalls` is
+  non-empty on a `Message` whose `Role` is not `RoleAssistant`. Pinned
+  by `provider/provider_test/types_test.go` and
+  `provider/provider_test/validate_fuzz_test.go`.
 - `ErrChunkErrDoneConflict` ("provider: chunk carries both Err and
   Done") — `Chunk.Validate` returns it when a `Chunk` carries both a
   non-nil `Err` and `Done == true`. Pinned by
@@ -73,6 +79,10 @@ below.
   always returns `ErrUnknownRole`, regardless of `ToolCallID`.
 - `Message.Validate` then checks the `ToolCallID` pairing rule only
   for one of the four known roles.
+- `Message.Validate` rejects a non-empty `ToolCalls` on any known role
+  other than `RoleAssistant`; the `ToolCallID` check runs first.
+- `RunTurn` sets `Response.Message.ToolCalls` to the same merged calls
+  it sets on `Response.ToolCalls`, on the streamed path.
 - `Chat` always waits for the complete response before it returns; a
   caller ignores `Request.Stream` when it calls `Chat` directly.
 - `ChatStream` always returns a channel immediately; the channel

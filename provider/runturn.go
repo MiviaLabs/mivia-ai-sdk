@@ -20,7 +20,9 @@ import (
 // Done == true or a non-nil Err, RunTurn discards any partial
 // aggregation and returns the zero Response alongside
 // ErrStreamClosedEarly; a mid-stream failure never returns a partial
-// Response.
+// Response. On the streamed path Response.Message.ToolCalls carries
+// the same merged calls as Response.ToolCalls after every call.
+// buildResponse assigns both fields the same toolCalls slice.
 func RunTurn(ctx context.Context, c Completer, req Request) (Response, error) {
 	for _, m := range req.Messages {
 		if err := m.Validate(); err != nil {
@@ -95,7 +97,8 @@ func mergeToolCallDelta(calls map[int]*ToolCall, order *[]int, delta *ToolCall) 
 
 // buildResponse assembles the aggregated Response, ordering ToolCalls
 // by ascending Index. Message.Role is set to RoleAssistant
-// unconditionally.
+// unconditionally, and Message.ToolCalls holds the same merged calls
+// as Response.ToolCalls.
 func buildResponse(content *strings.Builder, calls map[int]*ToolCall, order []int, usage Usage, finishReason string) Response {
 	sorted := append([]int(nil), order...)
 	sort.Ints(sorted)
@@ -104,7 +107,7 @@ func buildResponse(content *strings.Builder, calls map[int]*ToolCall, order []in
 		toolCalls = append(toolCalls, *calls[idx])
 	}
 	return Response{
-		Message:      Message{Role: RoleAssistant, Content: content.String()},
+		Message:      Message{Role: RoleAssistant, Content: content.String(), ToolCalls: toolCalls},
 		ToolCalls:    toolCalls,
 		Usage:        usage,
 		FinishReason: finishReason,

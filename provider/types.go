@@ -14,6 +14,9 @@ var (
 	// ErrUnknownRole is Validate's error when Role is outside the four
 	// declared constants.
 	ErrUnknownRole = errors.New("provider: unknown role")
+	// ErrToolCallsUnexpected is Validate's error when ToolCalls is
+	// non-empty on a Message whose Role is not RoleAssistant.
+	ErrToolCallsUnexpected = errors.New("provider: tool calls unexpected outside RoleAssistant")
 	// ErrChunkErrDoneConflict is Chunk.Validate's error when a Chunk
 	// carries both a non-nil Err and Done == true.
 	ErrChunkErrDoneConflict = errors.New("provider: chunk carries both Err and Done")
@@ -37,30 +40,45 @@ const (
 
 // Message is one turn in the conversation Request.Messages carries.
 // ToolCallID is set only, and always, on a RoleTool message; it names
-// the ToolCall.ID the message answers.
+// the ToolCall.ID the message answers. ToolCalls is non-empty only on
+// a RoleAssistant message; it holds the calls that assistant turn made.
 type Message struct {
 	Role       Role
 	Content    string
 	ToolCallID string
+	ToolCalls  []ToolCall
 }
 
-// Validate enforces the ToolCallID/Role pairing rule and the closed
-// set of Role constants. It checks Role legality first: a Role
-// outside the four constants always returns ErrUnknownRole, regardless
-// of ToolCallID. Only for one of the four known roles does Validate
-// then check the ToolCallID pairing rule: ErrToolCallIDUnexpected when
-// ToolCallID is non-empty on a non-RoleTool message; ErrToolCallIDRequired
-// when ToolCallID is empty on a RoleTool message. RunTurn calls
-// Validate on every entry of Request.Messages before it dispatches.
+// Validate enforces the ToolCallID/Role pairing rule, the closed set
+// of Role constants, and the ToolCalls rule. It checks Role legality
+// first: a Role outside the four constants always returns
+// ErrUnknownRole, regardless of ToolCallID or ToolCalls. Only for one
+// of the four known roles does Validate then check the ToolCallID
+// pairing rule: ErrToolCallIDUnexpected when ToolCallID is non-empty
+// on a non-RoleTool message; ErrToolCallIDRequired when ToolCallID is
+// empty on a RoleTool message. Finally, Validate rejects a non-empty
+// ToolCalls on any known Role other than RoleAssistant with
+// ErrToolCallsUnexpected. RunTurn calls Validate on every entry of
+// Request.Messages before it dispatches.
 func (m Message) Validate() error {
 	switch m.Role {
-	case RoleSystem, RoleUser, RoleAssistant:
+	case RoleSystem, RoleUser:
+		if m.ToolCallID != "" {
+			return ErrToolCallIDUnexpected
+		}
+		if len(m.ToolCalls) > 0 {
+			return ErrToolCallsUnexpected
+		}
+	case RoleAssistant:
 		if m.ToolCallID != "" {
 			return ErrToolCallIDUnexpected
 		}
 	case RoleTool:
 		if m.ToolCallID == "" {
 			return ErrToolCallIDRequired
+		}
+		if len(m.ToolCalls) > 0 {
+			return ErrToolCallsUnexpected
 		}
 	default:
 		return ErrUnknownRole

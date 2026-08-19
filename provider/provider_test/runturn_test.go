@@ -111,6 +111,9 @@ func TestRunTurnStreamMergesConcurrentToolCalls(t *testing.T) {
 	if got.Message.Role != provider.RoleAssistant {
 		t.Fatalf("Message.Role = %v, want RoleAssistant", got.Message.Role)
 	}
+	if !reflect.DeepEqual(got.Message.ToolCalls, got.ToolCalls) {
+		t.Fatalf("Message.ToolCalls = %+v, want equal to ToolCalls %+v", got.Message.ToolCalls, got.ToolCalls)
+	}
 }
 
 func TestRunTurnStreamMergesOutOfOrderToolCallIndexes(t *testing.T) {

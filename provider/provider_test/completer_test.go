@@ -80,6 +80,34 @@ func TestFakeChatStreamFails(t *testing.T) {
 	}
 }
 
+// TestRunTurnStreamedMessageCarriesToolCalls drives RunTurn's streamed
+// aggregation through buildResponse and proves Message.ToolCalls stays
+// in sync with Response.ToolCalls. A hand-built Response would set both
+// fields itself and prove nothing, so the case drains a real stream.
+func TestRunTurnStreamedMessageCarriesToolCalls(t *testing.T) {
+	chunks := []provider.Chunk{
+		{ToolCallDelta: &provider.ToolCall{Index: 0, ID: "call-0", Name: "search", Arguments: []byte(`{"q":`)}},
+		{ToolCallDelta: &provider.ToolCall{Index: 0, Arguments: []byte(`"cats"}`)}},
+		{Done: true, FinishReason: "tool_calls"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true, Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}}
+
+	resp, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(resp.Message.ToolCalls, resp.ToolCalls) {
+		t.Fatalf("resp.Message.ToolCalls = %+v, want equal to resp.ToolCalls %+v", resp.Message.ToolCalls, resp.ToolCalls)
+	}
+	if len(resp.Message.ToolCalls) != 1 {
+		t.Fatalf("resp.Message.ToolCalls len = %d, want 1", len(resp.Message.ToolCalls))
+	}
+	if err := resp.Message.Validate(); err != nil {
+		t.Fatalf("resp.Message.Validate() = %v, want nil", err)
+	}
+}
+
 func TestOptionalCapabilityInterfaces(t *testing.T) {
 	capable := &capableFake{fakeCompleter: fakeCompleter{name: "capable"}, contextWindow: 128000, reasoningEffort: "high"}
 	var c provider.Completer = capable

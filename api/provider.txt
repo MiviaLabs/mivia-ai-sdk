@@ -26,6 +26,7 @@ package provider
   Role Role
   Content string
   ToolCallID string
+  ToolCalls []ToolCall
 }
   type ReasoningPolicy interface {
 	ReasoningEffort() string
@@ -68,4 +69,5 @@ package provider
   var ErrStreamClosedEarly
   var ErrToolCallIDRequired
   var ErrToolCallIDUnexpected
+  var ErrToolCallsUnexpected
   var ErrUnknownRole

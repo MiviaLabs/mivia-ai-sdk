@@ -116,6 +116,86 @@ func TestMessageValidate(t *testing.T) {
 	}
 }
 
+func TestMessageValidateToolCalls(t *testing.T) {
+	cases := []struct {
+		name    string
+		msg     provider.Message
+		wantErr error
+	}{
+		{
+			name: "valid assistant with non empty tool calls",
+			msg: provider.Message{
+				Role:      provider.RoleAssistant,
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+		},
+		{
+			name: "invalid assistant with tool calls and tool call id",
+			msg: provider.Message{
+				Role:       provider.RoleAssistant,
+				ToolCallID: "call-1",
+				ToolCalls:  []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallIDUnexpected,
+		},
+		{
+			name: "invalid tool with tool calls and tool call id",
+			msg: provider.Message{
+				Role:       provider.RoleTool,
+				ToolCallID: "call-1",
+				ToolCalls:  []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallsUnexpected,
+		},
+		{
+			name: "invalid tool with tool calls and empty tool call id",
+			msg: provider.Message{
+				Role:      provider.RoleTool,
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallIDRequired,
+		},
+		{
+			name: "invalid system with non empty tool calls",
+			msg: provider.Message{
+				Role:      provider.RoleSystem,
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallsUnexpected,
+		},
+		{
+			name: "invalid user with non empty tool calls",
+			msg: provider.Message{
+				Role:      provider.RoleUser,
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrToolCallsUnexpected,
+		},
+		{
+			name: "invalid unknown role with non empty tool calls",
+			msg: provider.Message{
+				Role:      provider.Role("bogus"),
+				ToolCalls: []provider.ToolCall{{Index: 0, ID: "call-1", Name: "search"}},
+			},
+			wantErr: provider.ErrUnknownRole,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.msg.Validate()
+			if c.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("Validate() = %v, want errors.Is %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
 func TestChunkValidate(t *testing.T) {
 	cases := []struct {
 		name    string

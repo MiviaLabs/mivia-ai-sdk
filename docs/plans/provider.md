@@ -104,14 +104,21 @@ via `make api-update`.
   `ChatStream` before it returns.
 - `type Role string` with constants `RoleSystem`, `RoleUser`,
   `RoleAssistant`, and `RoleTool` names a message's role.
-- `type Message struct { Role Role; Content string; ToolCallID string }`
-  is one turn in the conversation `Request.Messages` carries.
+- `type Message struct { Role Role; Content string; ToolCallID string; ToolCalls []ToolCall }`
+  is one turn in the conversation Request.Messages carries. `ToolCalls`
+  is non-empty only on a `RoleAssistant` message; it holds the calls
+  that assistant turn made, in the same `[]ToolCall` shape
+  `Response.ToolCalls` already returns.
 - `func (m Message) Validate() error` enforces the `ToolCallID`/`Role`
-  pairing rule and the closed set of `Role` constants, each with its
-  own sentinel error: `ErrToolCallIDUnexpected`,
-  `ErrToolCallIDRequired`, and `ErrUnknownRole`. `Validate` checks
+  pairing rule, the closed set of `Role` constants, and the `ToolCalls`
+  rule, each with its own sentinel error:
+  `ErrToolCallIDUnexpected`, `ErrToolCallIDRequired`,
+  `ErrUnknownRole`, and `ErrToolCallsUnexpected`. `Validate` checks
   `Role` legality first: an unknown `Role` always returns
-  `ErrUnknownRole`, regardless of `ToolCallID`.
+  `ErrUnknownRole`, regardless of `ToolCallID`. On a known `Role` other
+  than `RoleAssistant`, a non-empty `ToolCalls` returns
+  `ErrToolCallsUnexpected`. The `ToolCallID` check runs before the
+  `ToolCalls` check, so it wins on precedence.
 - `type ToolDefinition struct { Name string; Description string; Schema []byte }`
   names one tool a model may call.
 - `type ToolCall struct { Index int; ID string; Name string; Arguments []byte }`

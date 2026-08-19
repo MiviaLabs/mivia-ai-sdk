@@ -122,7 +122,17 @@ existing symbol keeps its current shape.
   known `Role` other than `RoleAssistant`, a non-empty `ToolCalls`
   returns `ErrToolCallsUnexpected`. The `Role`-legality check and the
   existing `ToolCallID` check both run first and keep their current
-  behavior and error precedence.
+  behavior and error precedence. The implementation discriminates
+  `RoleAssistant` from the other three known roles: `Validate`'s
+  `switch` keeps `RoleSystem`, `RoleUser`, and `RoleAssistant` under
+  one case for the existing `ToolCallID` check, but splits the new
+  `ToolCalls` check under a `RoleAssistant` case and a `default`
+  minority-role branch. The `default` branch returns
+  `ErrToolCallsUnexpected` for a non-empty `ToolCalls`, so a
+  `RoleSystem` or `RoleUser` message with `ToolCalls` rejects while a
+  `RoleAssistant` message with `ToolCalls` validates. This split makes
+  the rule buildable as written; the shared case cannot hold both
+  outcomes.
 - `ErrToolCallsUnexpected` is the new sentinel, checked with
   `errors.Is`, alongside `ErrToolCallIDUnexpected`,
   `ErrToolCallIDRequired`, and `ErrUnknownRole`.
@@ -149,28 +159,41 @@ the existing file layout.
   `ErrToolCallIDUnexpected`, since the existing `ToolCallID` check
   runs first and independently of `ToolCalls`; a `RoleTool` message
   with a non-empty `ToolCalls` (and a correctly paired `ToolCallID`)
-  is rejected with `ErrToolCallsUnexpected`; a `RoleSystem` or
+  is rejected with `ErrToolCallsUnexpected`; a `RoleTool` message
+  with a non-empty `ToolCalls` and an empty `ToolCallID` is rejected
+  with `ErrToolCallIDRequired`, since the existing `ToolCallID`
+  check runs before the new `ToolCalls` check and must win; a
+  `RoleSystem` or
   `RoleUser` message with a non-empty `ToolCalls` is rejected with
   `ErrToolCallsUnexpected`; an unknown `Role` with a non-empty
   `ToolCalls` still returns `ErrUnknownRole`, proving role legality
   wins first. No separate case covers a `RoleSystem` or `RoleUser`
   message with both a non-empty `ToolCallID` and a non-empty
-  `ToolCalls` set together: `Validate`'s `switch` groups
-  `RoleSystem`, `RoleUser`, and `RoleAssistant` under one case, and
-  the `ToolCallID != ""` check inside that case returns
-  `ErrToolCallIDUnexpected` before the new `ToolCalls` check runs,
-  for all three roles alike. The `RoleAssistant`-with-both-fields case
+  `ToolCalls` set together: `Validate`'s `switch` keeps the
+  `RoleSystem`, `RoleUser`, and `RoleAssistant` cases separate once
+  the new `ToolCalls` check discriminates `RoleAssistant`, and the
+  `ToolCallID != ""` check inside the `RoleSystem` and `RoleUser`
+  cases returns
+  `ErrToolCallIDUnexpected` before the new `ToolCalls` check runs.
+  The `RoleAssistant`-with-both-fields case
   above already exercises that exact branch and that exact
   precedence; a `RoleSystem` or `RoleUser` variant would run the same
   code path to the same outcome and add no new branch coverage, so
   this phase does not add it.
-- `completer_test.go` gains one case: build a `Response` with a
-  non-empty `ToolCalls` from a fake `Completer`, assert
-  `resp.Message.ToolCalls` equals `resp.ToolCalls` (proving
-  `buildResponse`'s new field literal keeps both in sync), and assert
+- `completer_test.go` gains one case that drives `RunTurn`'s streamed
+  aggregation: a fake `Completer` whose `ChatStream` yields terminal
+  `Chunk`s carrying `ToolCallDelta` fragments, so `RunTurn` drains
+  through `buildResponse` in `runturn.go`. The new field literal lives
+  on that streamed path, so the case asserts `resp.Message.ToolCalls`
+  equals `resp.ToolCalls` after a real streamed call, proving the two
+  stay in sync. A hand-built `Response` would set both fields itself
+  and prove nothing, so the case avoids that. The case also asserts
   `Message.Validate` accepts `resp.Message` unchanged, proving
   `history = append(history, resp.Message)` is a legal, complete
-  history entry with no field-by-field copy.
+  history entry with no field-by-field copy. The existing
+  `runturn_test.go` streamed test `TestRunTurnStreamMergesConcurrentToolCalls`
+  also gains a `got.Message.ToolCalls == got.ToolCalls` assertion, so
+  the mirror invariant is pinned on that path too.
 - `completer_integration_test.go` gains a multi-turn case: a
   `RoleUser` message, `resp.Message` appended directly from a first
   `RunTurn` call's `Response` (carrying `ToolCalls` through the
@@ -187,9 +210,14 @@ the existing file layout.
   yields a nil or empty slice; `make` panics on a negative length, so
   the fuzz body clamps `toolCallsLen` to zero when negative before
   calling `make`), and extends the assertions: for a known role other
-  than `RoleAssistant` with `toolCallsLen > 0` and no `ToolCallID`
-  conflict, `Validate` must return `errors.Is(err,
-  ErrToolCallsUnexpected)`; for `RoleAssistant` with `toolCallsLen > 0`
+  than `RoleAssistant` with `toolCallsLen > 0` and a non-empty
+  `ToolCallID` no pairing conflict, `Validate` must return
+  `errors.Is(err, ErrToolCallsUnexpected)`. A `RoleTool` message with
+  `toolCallsLen > 0` and an empty `ToolCallID` must return
+  `ErrToolCallIDRequired`, since the existing `ToolCallID` check runs
+  first; the fuzz body asserts that precedence so it cannot regress
+  to `ErrToolCallsUnexpected`. For
+  `RoleAssistant` with `toolCallsLen > 0`
   and an empty `ToolCallID`, `Validate` must return `nil`. Existing
   seed corpus entries gain a `0` `toolCallsLen` to keep today's
   coverage; new seeds add a non-zero `toolCallsLen` per role.

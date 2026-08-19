@@ -105,6 +105,23 @@ instead of reaching one. When no iteration has completed yet, the
 rule degrades to the zero-value `Result` on its own, with no special
 case for ctx cancellation or any other cause.
 
+## Render path
+
+`render` turns a tool's `Out.Value` into the `RoleTool` message
+content, in a fixed order: a string value passes through unchanged; a
+`[]byte` value valid as UTF-8 becomes its string form; anything else
+falls back to `json.Marshal`. A marshal failure wraps
+`ErrUnrenderableResult`.
+
+When the tool implements `tools.ResultBudgetTool` with a positive bound
+smaller than the rendered content, `render` truncates the content to
+fit the bound. A bound at least as long as the truncation marker keeps
+`bound - len(marker)` content bytes, then appends the marker. The
+result lands at exactly `bound` bytes. A bound equal to the marker's
+own length keeps zero content bytes and returns the marker alone. A
+bound shorter than the marker hard-cuts the content to `bound` bytes
+with no marker, since the marker itself would not fit.
+
 ## Invariants
 
 - `New` calls `Definitions` once; a tool registered after `New` but
@@ -145,6 +162,8 @@ trimming without `agentloop` importing `contextplan` itself. See
 - [tools.md](tools.md) — `SchemaTool`, `SchemaOf`, and
   `Registry.Tools()` let `Definitions` build the offered tool set;
   `DecodeArguments` sits on the tool, not in `agentloop`.
+  `ResultBudgetTool` publishes the bound the render path truncates
+  against; `tools` never enforces it itself. See "Render path" above.
 - [hooks.md](hooks.md) — `PointPreTool`, `PointPostTool`, and
   `PointStop` fire the same way `agentrun.Runner.Run` fires them.
 - [trace.md](trace.md) — a wired `Tracer` opens one span per

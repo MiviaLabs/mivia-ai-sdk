@@ -155,9 +155,18 @@ func TestRunUnknownToolName(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}
-		_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+		res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 		if !errors.Is(err, tools.ErrUnknownName) {
 			t.Fatalf("Run() error = %v, want tools.ErrUnknownName", err)
+		}
+		if res.Iterations != 1 {
+			t.Fatalf("Iterations = %d, want 1: the assistant turn that requested the call already completed", res.Iterations)
+		}
+		if len(res.History) != 2 {
+			t.Fatalf("History len = %d, want 2 (user + assistant turn): per hardFail's rule, the completed turn's state must travel", len(res.History))
+		}
+		if !isZeroMessage(res.Final) || res.Stop != "" {
+			t.Fatalf("Final = %+v, Stop = %v, want both zero: hardFail never sets Final or Stop", res.Final, res.Stop)
 		}
 	})
 }
@@ -248,15 +257,26 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}
-		_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+		res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 		if !errors.Is(err, errBoom) {
 			t.Fatalf("Run() error = %v, want errBoom", err)
+		}
+		if res.Iterations != 1 {
+			t.Fatalf("Iterations = %d, want 1: the assistant turn that requested the call already completed", res.Iterations)
+		}
+		if len(res.History) != 2 {
+			t.Fatalf("History len = %d, want 2 (user + assistant turn): per hardFail's rule, the completed turn's state must travel", len(res.History))
+		}
+		if !isZeroMessage(res.Final) || res.Stop != "" {
+			t.Fatalf("Final = %+v, Stop = %v, want both zero: hardFail never sets Final or Stop", res.Final, res.Stop)
 		}
 	})
 }
 
 // TestRunBudgetExceeded proves a Budget the history outgrows fails
-// the run with ErrOverBudget.
+// the run with ErrOverBudget, and, since the trip happens before any
+// iteration completes, returns the zero-value Result per hardFail's
+// rule.
 func TestRunBudgetExceeded(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
@@ -268,14 +288,18 @@ func TestRunBudgetExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "a much longer starting message")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "a much longer starting message")})
 	if !errors.Is(err, agentloop.ErrOverBudget) {
 		t.Fatalf("Run() error = %v, want ErrOverBudget", err)
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero value: no iteration completed before the budget check tripped", res)
 	}
 }
 
 // TestRunTrimError proves a Trim hook returning an error fails the
-// run.
+// run, and, since the trip happens before any iteration completes,
+// returns the zero-value Result per hardFail's rule.
 func TestRunTrimError(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
@@ -289,15 +313,19 @@ func TestRunTrimError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("Run() error = %v, want errBoom", err)
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero value: no iteration completed before Trim failed", res)
 	}
 }
 
 // TestRunTrimInvalidMessage proves a Trim hook returning a slice with
 // one invalid message fails the run with the wrapped
-// provider.Message.Validate error, before the next Completer call.
+// provider.Message.Validate error, before the next Completer call,
+// and returns the zero-value Result per hardFail's rule.
 func TestRunTrimInvalidMessage(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
@@ -311,12 +339,15 @@ func TestRunTrimInvalidMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if !errors.Is(err, provider.ErrToolCallIDRequired) {
 		t.Fatalf("Run() error = %v, want ErrToolCallIDRequired", err)
 	}
 	if completer.callCount() != 0 {
 		t.Fatalf("Chat call count = %d, want 0: validation must fail before the Completer call", completer.callCount())
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero value: no iteration completed before the trimmed message failed Validate", res)
 	}
 }
 

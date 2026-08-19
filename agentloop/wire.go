@@ -3,6 +3,7 @@ package agentloop
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -56,7 +57,13 @@ func renderValue(v any) (string, error) {
 // slice bounds below stay in range.
 func truncateContent(content string, budget int) string {
 	if budget < len(truncationMarker) {
-		return content[:budget]
+		return validPrefix(content, budget)
 	}
-	return content[:budget-len(truncationMarker)] + truncationMarker
+	return validPrefix(content, budget-len(truncationMarker)) + truncationMarker
+}
+
+// validPrefix cuts content to at most n bytes, then drops a rune left
+// incomplete by that cut, so the result stays valid UTF-8.
+func validPrefix(content string, n int) string {
+	return strings.ToValidUTF8(content[:n], "")
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -119,6 +120,14 @@ func (t *budgetedSchemaTool) MaxResultBytes() int { return t.maxBytes }
 // isZeroMessage reports whether m is the zero provider.Message.
 func isZeroMessage(m provider.Message) bool {
 	return m.Role == "" && m.Content == "" && m.ToolCallID == "" && len(m.ToolCalls) == 0
+}
+
+// isZeroResult reports whether res is the zero agentloop.Result:
+// hardFail's shape for a hard-fail cause that trips before any
+// iteration completes.
+func isZeroResult(res agentloop.Result) bool {
+	return isZeroMessage(res.Final) && len(res.History) == 0 && res.Iterations == 0 &&
+		res.Usage == (provider.Usage{}) && res.Stop == ""
 }
 
 // textMessage builds a provider.Message with the given role and

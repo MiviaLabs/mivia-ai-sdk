@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -37,12 +38,21 @@ func TestRunCallsPerTurnExceeded(t *testing.T) {
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
 			}
-			_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+			res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 			if !errors.Is(err, agentloop.ErrCallsPerTurnExceeded) {
 				t.Fatalf("Run() error = %v, want ErrCallsPerTurnExceeded", err)
 			}
 			if tool.callCount() != 0 {
 				t.Fatalf("tool call count = %d, want 0: the trip happens before any call runs", tool.callCount())
+			}
+			if res.Iterations != 1 {
+				t.Fatalf("Iterations = %d, want 1: the assistant turn that requested the calls already completed", res.Iterations)
+			}
+			if len(res.History) != 2 {
+				t.Fatalf("History len = %d, want 2 (user + assistant turn): per hardFail's rule, the completed turn's state must travel", len(res.History))
+			}
+			if !isZeroMessage(res.Final) || res.Stop != "" {
+				t.Fatalf("Final = %+v, Stop = %v, want both zero: hardFail never sets Final or Stop", res.Final, res.Stop)
 			}
 		})
 	}
@@ -150,9 +160,18 @@ func TestRunMaxTotalTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if !errors.Is(err, agentloop.ErrTokenBudgetExceeded) {
 		t.Fatalf("Run() error = %v, want ErrTokenBudgetExceeded", err)
+	}
+	if res.Iterations != 2 {
+		t.Fatalf("Iterations = %d, want 2: the tripping call itself already completed", res.Iterations)
+	}
+	if len(res.History) != 4 {
+		t.Fatalf("History len = %d, want 4 (user, assistant, tool result, assistant): per hardFail's rule, the accumulated state must travel", len(res.History))
+	}
+	if !isZeroMessage(res.Final) || res.Stop != "" {
+		t.Fatalf("Final = %+v, Stop = %v, want both zero: hardFail never sets Final or Stop", res.Final, res.Stop)
 	}
 	total, ok := acc.Total("sess-1")
 	if !ok {
@@ -328,4 +347,89 @@ func (c *cancelingCompleter) Chat(ctx context.Context, req provider.Request) (pr
 
 func (c *cancelingCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	return nil, errors.New("cancelingCompleter: ChatStream not supported")
+}
+
+// TestRunBudgetExceededLaterIteration proves a Budget that the first
+// iteration fits under, but that the history grown by a tool-call
+// round trip no longer fits, fails the run on the second iteration
+// and preserves the first iteration's already-accumulated state.
+func TestRunBudgetExceededLaterIteration(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5,
+		Budget: &contextbudget.Limits{MaxEvents: 2},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, agentloop.ErrOverBudget) {
+		t.Fatalf("Run() error = %v, want ErrOverBudget", err)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1: the prior successful iteration must be preserved", res.Iterations)
+	}
+	if len(res.History) == 0 {
+		t.Fatalf("History is empty, want the prior iteration's accumulated state")
+	}
+}
+
+// TestRunMidTurnVetoPreservesPriorCall proves a turn with two calls,
+// where the first succeeds and the second is vetoed, returns history
+// carrying the first call's already-appended RoleTool message: a veto
+// stops the turn, it does not discard what already ran.
+func TestRunMidTurnVetoPreservesPriorCall(t *testing.T) {
+	allowed := &schemaEchoTool{name: "allowed", schema: []byte(`{}`), result: "x"}
+	vetoed := &schemaEchoTool{name: "vetoed", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, allowed)
+	mustAdd(t, reg, vetoed)
+	hreg := hooks.New()
+	if err := hreg.Add(hooks.PointPreTool, "selective-veto", func(ctx context.Context, payload any) (bool, error) {
+		call, ok := payload.(provider.ToolCall)
+		if !ok {
+			return true, nil
+		}
+		return call.Name != "vetoed", nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "call-1", Index: 0, Name: "allowed", Arguments: []byte("{}")},
+			provider.ToolCall{ID: "call-2", Index: 1, Name: "vetoed", Arguments: []byte("{}")},
+		),
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopHookVeto {
+		t.Fatalf("Stop = %v, want StopHookVeto", res.Stop)
+	}
+	if allowed.callCount() != 1 {
+		t.Fatalf("allowed.callCount() = %d, want 1: the first call must run before the veto", allowed.callCount())
+	}
+	if vetoed.callCount() != 0 {
+		t.Fatalf("vetoed.callCount() = %d, want 0: a vetoed call must never run", vetoed.callCount())
+	}
+	found := false
+	for _, m := range res.History {
+		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("no RoleTool message for call-1 in history: %+v, want the first call's result preserved", res.History)
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -123,9 +124,15 @@ func TestRenderUnrenderableResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if !errors.Is(err, agentloop.ErrUnrenderableResult) {
 		t.Fatalf("Run() error = %v, want ErrUnrenderableResult", err)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1: the assistant turn that requested the call already completed", res.Iterations)
+	}
+	if len(res.History) != 2 {
+		t.Fatalf("History len = %d, want 2 (user + assistant turn): per hardFail's rule, the completed turn's state must travel", len(res.History))
 	}
 }
 
@@ -179,5 +186,25 @@ func TestRenderTruncatesOverBudget(t *testing.T) {
 	}
 	if !strings.Contains(got, "truncated") {
 		t.Fatalf("content = %q, want a truncation marker", got)
+	}
+}
+
+// TestRenderTruncationStaysValidUTF8 proves a budget that lands
+// mid-rune drops the incomplete trailing bytes instead of emitting
+// invalid UTF-8 to the model.
+func TestRenderTruncationStaysValidUTF8(t *testing.T) {
+	tool := &budgetedSchemaTool{
+		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("héllo wörld中文字 ", 20)},
+		maxBytes:       9,
+	}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("content = %q, want valid UTF-8", got)
+	}
+	if len(got) > 9 {
+		t.Fatalf("content len = %d, want at most 9 (the published budget)", len(got))
 	}
 }

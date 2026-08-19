@@ -130,13 +130,11 @@ make verify-fast     # fast tier: fmt, vet, test, gates, semgrep scan
 make verify          # full tier: coverage floor, semgrep probes, SQLite tests
 ```
 
-See [AGENTS.md](AGENTS.md) for architecture rules, package isolation policies, and contribution guidelines.
-
 ## Author & Contributors
 
 - **Maciej (Mac) Lisowski** — *Author* ([@mac-lisowski](https://github.com/mac-lisowski))
 
-Contributions are welcome! See [AGENTS.md](AGENTS.md) for contribution rules.
+Contributions are welcome!
 
 ## License
 

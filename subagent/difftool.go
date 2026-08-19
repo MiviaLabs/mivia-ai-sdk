@@ -65,7 +65,7 @@ func (t *diffTool) ExecutionProfile() tools.ExecutionProfile {
 // error, including workspace.ErrEscape and workspace.ErrSecretPath,
 // propagates unchanged. A diff over t.maxLines returns
 // diff.ErrTooLarge unchanged.
-func (t *diffTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (t *diffTool) Run(_ context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(DiffArgs)
 	if !ok {
 		return tools.Out{}, badArguments(t.name)

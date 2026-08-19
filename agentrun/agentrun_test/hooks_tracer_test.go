@@ -211,3 +211,86 @@ func TestTracerSpansNest(t *testing.T) {
 		t.Fatalf("tool step attribute = %q,%v", attr, ok)
 	}
 }
+
+// TestHooksAndTracerTogether proves Tools, Hooks, and a Tracer compose
+// on one Runner: the hook order and the span nesting both hold over
+// the same run, and the post-tool hook fires inside the tool span's
+// lifetime.
+func TestHooksAndTracerTogether(t *testing.T) {
+	plan, m := oneStepPlanMachine(t)
+	calls := 0
+	toolReg := tools.New()
+	order := []string{}
+	addTools(t, toolReg, markerTool{calls: &calls, order: &order})
+	tr := trace.New()
+	hookReg := hooks.New()
+	var postSpanOpen bool
+	handlers := []struct {
+		point hooks.Point
+		name  string
+	}{
+		{hooks.PointPreTool, "pre"},
+		{hooks.PointPostTool, "post"},
+		{hooks.PointStop, "stop"},
+	}
+	for _, h := range handlers {
+		h := h
+		if err := hookReg.Add(h.point, h.name, func(ctx context.Context, payload any) (bool, error) {
+			order = append(order, h.name)
+			if h.point == hooks.PointPostTool {
+				for _, s := range tr.Spans() {
+					if s.Name == "agentrun.tool" {
+						postSpanOpen = s.EndTime().IsZero()
+					}
+				}
+			}
+			return true, nil
+		}); err != nil {
+			t.Fatalf("hooks.Add(%s): %v", h.name, err)
+		}
+	}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent: mustAgent(t, plan), Machine: m,
+		Tools: toolReg, Hooks: hookReg, Tracer: tr,
+	})
+	if err != nil {
+		t.Fatalf("agentrun.New: %v", err)
+	}
+	status, _, err := runner.Run(context.Background(), "thread-combo", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != "done" || calls != 1 {
+		t.Fatalf("status = %q, calls = %d, want done and 1", status, calls)
+	}
+	want := []string{"pre", "tool", "post", "stop"}
+	if len(order) != 4 || order[0] != want[0] || order[1] != want[1] ||
+		order[2] != want[2] || order[3] != want[3] {
+		t.Fatalf("hook order = %v, want %v", order, want)
+	}
+	if !postSpanOpen {
+		t.Fatal("post-tool hook fired after the tool span already ended")
+	}
+	spans := tr.Spans()
+	if len(spans) != 2 {
+		t.Fatalf("spans = %d, want 2 (root and tool)", len(spans))
+	}
+	var root, child *trace.Span
+	for _, s := range spans {
+		switch s.Name {
+		case "agentrun.run":
+			root = s
+		case "agentrun.tool":
+			child = s
+		}
+	}
+	if root == nil || child == nil {
+		t.Fatalf("span names missing: %+v", spans)
+	}
+	if child.ParentID != root.ID {
+		t.Fatalf("tool span parent = %v, want the root %v", child.ParentID, root.ID)
+	}
+	if root.EndTime().IsZero() || child.EndTime().IsZero() {
+		t.Fatal("both spans must end")
+	}
+}

@@ -51,7 +51,10 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 // dependent that arrives after its dependency's failure never
 // claims: late admission blocks, like Complete's dependent scan. A
 // Store fault while reading a need fails Admit; admission never
-// guesses between pending and blocked. It returns
+// guesses between pending and blocked. After the record inserts,
+// Admit re-reads its needs and blocks the record when a need failed
+// in that window; see recheckNeeds. A Store fault on that re-read
+// returns the error and leaves the record StatusPending. It returns
 // false, nil, not an error, when the key already holds a record at
 // or above seq, or when the stored record is terminal: a duplicate or
 // late-arriving submission is a no-op against a finished task, not a
@@ -108,7 +111,13 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 				l.emit(ctx, BlockedEvent, fmt.Sprintf("key %s blocked by %s at admission", key, blocker))
 				return true, nil
 			}
-			l.emit(ctx, AdmittedEvent, fmt.Sprintf("key %s admitted at sequence %d", key, seq))
+			blockedLate, err := l.recheckNeeds(ctx, actor, now, key, needsCopy)
+			if err != nil {
+				return false, err
+			}
+			if !blockedLate {
+				l.emit(ctx, AdmittedEvent, fmt.Sprintf("key %s admitted at sequence %d", key, seq))
+			}
 			return true, nil
 		}
 		if err := ctx.Err(); err != nil {
@@ -132,6 +141,32 @@ func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (Idem
 		}
 	}
 	return "", false, nil
+}
+
+// recheckNeeds closes the race between a record's own insert and a
+// need's failure walk. blockingNeed read every need before the insert
+// landed, so a need that failed in that window was missed. A fresh
+// read that finds a failed or blocked need blocks the inserted record
+// through blockOne, which emits BlockedEvent. A fresh read that finds
+// every need live proves the insert preceded any later failure, whose
+// walk then observes this record on its own. It returns whether it
+// blocked the record.
+func (l *Ledger) recheckNeeds(ctx context.Context, actor Actor, now time.Time, key IdempotencyKey, needs []IdempotencyKey) (bool, error) {
+	blocker, blocked, err := l.blockingNeed(ctx, needs)
+	if err != nil {
+		return false, err
+	}
+	if !blocked {
+		return false, nil
+	}
+	cur, found, err := l.store.Load(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	if !found || isTerminalStatus(cur.Status) {
+		return false, nil
+	}
+	return true, l.blockOne(ctx, actor, now, key, cur, blocker)
 }
 
 // State returns the current record for key. The bool is a found

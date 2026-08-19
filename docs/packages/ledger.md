@@ -51,7 +51,9 @@ surface below mirrors `api/ledger.txt`.
   cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
 - `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
   task once per key. A need already failed or blocked lands the new
-  record `StatusBlocked`, so a late dependent never claims. It returns
+  record `StatusBlocked`, so a late dependent never claims. After the
+  record inserts, `Admit` re-reads its needs and blocks it when a need
+  failed in that window. It returns
   `false, nil`, not an error, for a duplicate or a post-completion
   resubmission. On first insert, it stamps `CreatedBy`/`CreatedAt` from
   `actor`/`now`; a rebase over an existing non-terminal record carries
@@ -134,6 +136,10 @@ surface below mirrors `api/ledger.txt`.
   check only the fence token, so a stale owner nobody has taken over
   still holds a valid fence. Pinned by
   `ledger_test/lease_semantics_test.go`.
+- `Admit` re-reads its needs after its own insert and blocks the
+  record through `blockOne` when a need failed in between, so a
+  concurrent failure walk cannot leave a dependent pending. Pinned by
+  `ledger_test/admit_complete_race_test.go`.
 - Every mutating method follows the same retry-and-reclassify contract
   on a losing `CompareAndSwap`: it reloads the record and re-evaluates
   its own eligibility rule, retrying while the caller still

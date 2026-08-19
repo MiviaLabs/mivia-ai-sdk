@@ -153,6 +153,20 @@ via `make api-update`.
   error when it cannot produce an estimate; it returns `(0, nil)` only
   for a `Request` the implementation judges to cost zero tokens.
 
+- `const ReasoningEventKind = "reasoning"` names the
+  `contextstate.SourceEvent.Kind` value a reasoning trace carries, in
+  `reasoning.go`. `type ReasoningEffort string` with constants
+  `ReasoningEffortNone`, `ReasoningEffortLow`, `ReasoningEffortMedium`,
+  and `ReasoningEffortHigh` closes the reasoning-effort vocabulary
+  `ReasoningPolicy.ReasoningEffort()` reports as a string.
+  `type ReasoningBlock struct { Content string; Redacted bool }` is
+  one reasoning segment; it never appears on `Message` or `Response`.
+  `func RedactBlock(b ReasoningBlock) ReasoningBlock` clears `Content`
+  and sets `Redacted`, idempotently. This fold ships as the companion
+  change `docs/plans/contextplan.md` names: `contextplan` compares
+  `contextstate.SourceEvent.Kind` against `ReasoningEventKind` instead
+  of a literal.
+
 No constructor. `provider` defines no concrete type to construct; a
 caller builds its own `Completer` implementation and passes it where
 one is needed.

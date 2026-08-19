@@ -27,6 +27,26 @@ below mirrors `api/provider.txt`.
 - `TokenEstimator` — an optional capability exposing a best-effort
   token count for a given `Request`, ahead of a `Chat` or `ChatStream`
   call.
+- `ReasoningEffort` — the provider-neutral reasoning-effort
+  vocabulary. Constants: `ReasoningEffortNone`, `ReasoningEffortLow`,
+  `ReasoningEffortMedium`, `ReasoningEffortHigh`. `ReasoningPolicy`
+  reports one of these as a string.
+- `ReasoningBlock` — one reasoning segment a model produced. `Content`
+  is empty whenever `Redacted` is true. Never appears on `Message` or
+  `Response`; a caller carries it alongside its own session state.
+- `ReasoningEventKind` — the `contextstate.SourceEvent.Kind` value
+  that marks a reasoning trace. The one place the literal appears;
+  `contextplan.IsReasoningEvent` compares against this constant.
+
+## Reasoning fold
+
+`provider` carries the reasoning vocabulary alongside the completer
+interface, so a caller and `contextplan` share one set of types
+without either importing the other.
+
+- `RedactBlock(b ReasoningBlock) ReasoningBlock` — returns `b` with
+  `Content` cleared and `Redacted` set true. Idempotent: a second call
+  on an already-redacted block returns it unchanged.
 
 ## Functions and methods
 

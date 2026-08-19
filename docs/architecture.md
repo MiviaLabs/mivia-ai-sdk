@@ -12,18 +12,20 @@ enforces. It is the single design reference for this SDK. See
 [packages/a2a.md](packages/a2a.md),
 [packages/a2aclient.md](packages/a2aclient.md),
 [packages/ledger.md](packages/ledger.md),
-[packages/memory.md](packages/memory.md), and
-[packages/provider.md](packages/provider.md) for the exported API
-references.
+[packages/memory.md](packages/memory.md),
+[packages/provider.md](packages/provider.md), and
+[packages/contextplan.md](packages/contextplan.md) for the exported
+API references.
 
 ## Package map
 
-The diagram shows the thirty-four packages and the import edges
-between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
+The diagram shows the forty packages and the import edges between
+them. An arrow points from an importer to the package it imports.
+`channel`, `contextbudget`, `contextstate`, `discovery`,
 `durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
+`contextplan` imports `contextstate`, `provider`, and `memory`.
 
 ```mermaid
 flowchart LR
@@ -36,6 +38,9 @@ flowchart LR
     agent --> heartbeat
     agent --> contextbudget
     envelope --> contextstate
+    contextplan --> contextstate
+    contextplan --> provider
+    contextplan --> memory
     flow --> events
     flow --> machine
     heartbeat --> events
@@ -389,7 +394,9 @@ flowchart LR
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Response`,
   `Chunk`, `Chunk.Validate`, `ContextAccountant`, `ReasoningPolicy`,
-  `TokenEstimator`, and the sentinels `ErrToolCallIDUnexpected`,
+  `TokenEstimator`, `ReasoningEffort` and its four level constants,
+  `ReasoningBlock`, `RedactBlock`, `ReasoningEventKind`, and the
+  sentinels `ErrToolCallIDUnexpected`,
   `ErrToolCallIDRequired`, `ErrUnknownRole`, `ErrToolCallsUnexpected`,
   `ErrChunkErrDoneConflict`, and `ErrStreamClosedEarly`. `Message`
   carries `ToolCalls` on an assistant turn; `RunTurn` copies them onto
@@ -398,8 +405,26 @@ flowchart LR
   implementation in this SDK; a caller supplies its own concrete type.
   `RunTurn` dispatches on `Request.Stream`, validates every message
   first, and aggregates a streamed `Chunk` sequence into one
-  `Response`. `provider` imports no other package in this module. See
+  `Response`. `ReasoningEventKind` is the `contextstate.SourceEvent.Kind`
+  value a reasoning trace carries; `RedactBlock` clears a
+  `ReasoningBlock`'s content and marks it redacted. `provider` imports
+  no other package in this module. See
   [packages/provider.md](packages/provider.md).
+- `contextplan/` — fits one durable session into a bounded provider
+  request. It provides `Planner` with `NewPlanner` and `Plan`,
+  `Window` with `Validate` and `Budget`, `PlanResult`, `Elision`,
+  `ElisionReason` and its three constants, `Calibrate` and
+  `Calibrated`, `IsReasoningEvent`, `StubContent`, and the sentinels
+  `ErrNilStore`, `ErrNilCache`, `ErrMaxTokensNotPositive`,
+  `ErrReserveNegative`, `ErrReserveTooLarge`, and `ErrNilSession`.
+  `Plan` walks a `contextstate.Session`'s source events newest to
+  oldest, keeping each one until `Window.Budget` fills, then stubs or
+  drops the rest; a reasoning event, per `IsReasoningEvent`, never
+  enters the built `provider.Request`. `Calibrated` wraps a
+  `provider.TokenEstimator` with an EWMA correction factor `Observe`
+  updates after each turn. `contextplan` imports `contextstate`,
+  `provider`, and `memory`. See
+  [packages/contextplan.md](packages/contextplan.md).
 - `providerregistry/` — the multi-provider routing package. It
   provides `Registry`, `New`, `Register`, `Get`, `Names`, `Retryable`,
   `Route`, and the sentinels `ErrNilCompleter`, `ErrBlankName`,

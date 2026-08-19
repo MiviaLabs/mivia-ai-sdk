@@ -3,6 +3,7 @@ package contextplan
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -29,12 +30,14 @@ type PlanResult struct {
 }
 
 // Planner fits one session's source events into a bounded provider
-// request. Built only through NewPlanner. Safe for concurrent use
-// through its two dependencies' own concurrency guarantees; Plan
-// holds no mutable state of its own between calls.
+// request. Built only through NewPlanner. Safe for concurrent use:
+// its two dependencies guard their own state, and meta is guarded by
+// metaMu.
 type Planner struct {
-	store *contextstate.MemStore
-	cache *memory.Store
+	store  *contextstate.MemStore
+	cache  *memory.Store
+	metaMu sync.Mutex
+	meta   map[string]contextstate.PayloadRecord
 }
 
 // NewPlanner builds a Planner over store, the durable payload source,
@@ -47,7 +50,7 @@ func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, er
 	if cache == nil {
 		return nil, ErrNilCache
 	}
-	return &Planner{store: store, cache: cache}, nil
+	return &Planner{store: store, cache: cache, meta: make(map[string]contextstate.PayloadRecord)}, nil
 }
 
 // Plan walks sess.Source newest to oldest. For every event it
@@ -135,25 +138,47 @@ func prepend(messages []provider.Message, role string, content []byte) []provide
 	return next
 }
 
-// resolvePayload resolves event's full PayloadRecord: the cache first,
-// then store.Get on a cache miss, always confirmed against the store
-// for the retention and content-reference metadata the cache does not
-// carry. A resolution failure from either dependency propagates
+// resolvePayload resolves event's full PayloadRecord. On a cache hit
+// for both the decoded bytes and the retention metadata, it returns
+// without a store round trip. On a miss of either, it resolves
+// through store.Get once and populates both caches for the next
+// call. A resolution failure from either dependency propagates
 // unwrapped.
 func (p *Planner) resolvePayload(event contextstate.SourceEvent) (contextstate.PayloadRecord, error) {
-	ref := contextstate.ContentRef{Ref: event.PayloadRef}
-	if data, err := p.cache.Get(event.PayloadRef); err == nil {
-		record, err := p.store.Get(ref)
-		if err != nil {
-			return contextstate.PayloadRecord{}, err
-		}
-		record.Data = data
-		return record, nil
+	data, dataErr := p.cache.Get(event.PayloadRef)
+	meta, metaOK := p.metaFor(event.PayloadRef)
+	if dataErr == nil && metaOK {
+		meta.Data = data
+		return meta, nil
 	}
+
+	ref := contextstate.ContentRef{Ref: event.PayloadRef}
 	record, err := p.store.Get(ref)
 	if err != nil {
 		return contextstate.PayloadRecord{}, err
 	}
-	_, _ = p.cache.Put(record.Data)
+	p.putMeta(event.PayloadRef, record)
+	if dataErr != nil {
+		_, _ = p.cache.Put(record.Data)
+	}
 	return record, nil
+}
+
+// metaFor returns the cached retention and content-reference metadata
+// for ref, with Data cleared, and whether it was present.
+func (p *Planner) metaFor(ref string) (contextstate.PayloadRecord, bool) {
+	p.metaMu.Lock()
+	defer p.metaMu.Unlock()
+	meta, ok := p.meta[ref]
+	return meta, ok
+}
+
+// putMeta stores record's retention and content-reference metadata
+// under ref, with Data cleared, for a future resolvePayload call.
+func (p *Planner) putMeta(ref string, record contextstate.PayloadRecord) {
+	meta := record
+	meta.Data = nil
+	p.metaMu.Lock()
+	p.meta[ref] = meta
+	p.metaMu.Unlock()
 }

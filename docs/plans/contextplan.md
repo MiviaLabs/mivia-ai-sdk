@@ -1,9 +1,9 @@
 # Plan: contextplan
 
-Status: planned, not built. Depends on the shipped `contextstate`
-(phase 65) and `provider` interfaces. Companion change: a fold of
-reasoning vocabulary types into `provider`. Design source:
-`docs/plans/agents/phase66_context_planner.md`.
+Status: shipped. Built on the shipped `contextstate` and `provider`
+interfaces, under the phase 66 contract. Companion change: a fold of
+reasoning vocabulary types into `provider`, documented in
+`docs/plans/provider.md`.
 
 ## Goal
 
@@ -127,18 +127,20 @@ the code.
   — `Plan`'s output. `EstimatedTokens` is the estimator's total over
   `Request.Messages`, always at or under `Window.Budget()`.
 - `type Planner struct { ... }` — unexported fields. Built only
-  through `NewPlanner`. Holds the payload source and the decode
-  cache; safe for concurrent use through its two dependencies' own
-  concurrency guarantees, since `Plan` holds no mutable state of its
-  own between calls other than `Calibrated`, which the caller owns
-  separately.
+  through `NewPlanner`. Holds the payload source, the decode cache,
+  and a mutex-guarded metadata cache keyed by `PayloadRef` that
+  stores each resolved record's `Retention` and `ContentRef`; safe
+  for concurrent use, since `Plan` holds no other mutable state of
+  its own between calls other than `Calibrated`, which the caller
+  owns separately.
 - `func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, error)`
   — a nil `store` or nil `cache` is an error.
 - `func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)`
   — walks `sess.Source` newest to oldest. For every event, `Plan`
-  resolves the full `contextstate.PayloadRecord` through the cache
-  first, then `store.Get` on a cache miss, before it decides
-  anything: `Retention` lives on the record, not on `SourceEvent`, so
+  resolves the full `contextstate.PayloadRecord` from the decode
+  cache and the metadata cache together on a full hit, or through
+  `store.Get` once on either miss, before it decides anything:
+  `Retention` lives on the record, not on `SourceEvent`, so
   a resolve happens even for a payload `Plan` ends up fully dropping,
   or for a reasoning event whose content never reaches
   `Request.Messages`. Every `Elision.Ref` is this resolved record's

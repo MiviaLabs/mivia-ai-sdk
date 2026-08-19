@@ -54,6 +54,14 @@ Go SDK for building AI agents. Module:
   package; envelope imports it — ContextRef delegates to Mint, so
   every ref in this SDK has one form. Volume Limits are caller-owned
   and enforced at the store; a zero field means uncapped.
+- `contextplan/` — fits one session into a bounded request: Planner,
+  NewPlanner, Plan; Window with Validate and Budget; PlanResult,
+  Elision, ElisionReason; Calibrate and Calibrated, an EWMA-corrected
+  provider.TokenEstimator; IsReasoningEvent; StubContent. Imports
+  contextstate, provider, and memory. NewPlanner takes a
+  contextstate.MemStore and a memory.Store; Plan drops or trims
+  events to fit Window.Budget, applying StubContent to reasoning
+  events first.
 - `envfile/` — dotenv loading: Load parses `KEY=VALUE` lines into a
   map without leaking parsed values into an error. A leaf package; no
   internal imports.
@@ -172,9 +180,13 @@ Go SDK for building AI agents. Module:
   by `envelope.ContextRef`. A size budget evicts the oldest-inserted
   blobs. Imports envelope only.
 - `provider/` — the model provider interface: Completer, RunTurn,
-  Message, Request, Response, Chunk. A leaf package; no internal
-  imports. No concrete client ships in this SDK; a caller supplies its
-  own `Completer`.
+  Message, Request, Response, Chunk. Also carries the reasoning
+  vocabulary: ReasoningEffort with its four levels, ReasoningPolicy,
+  an optional Completer capability; ReasoningBlock, RedactBlock, and
+  ReasoningEventKind, the contextstate.SourceEvent.Kind literal a
+  reasoning trace carries. A leaf package; no internal imports. No
+  concrete client ships in this SDK; a caller supplies its own
+  `Completer`.
 - `providerregistry/` — the named-provider collection and ordered
   fallback: Registry, Register, Get, Names, Retryable, Route. Route
   walks a caller-chosen order through provider.RunTurn and falls

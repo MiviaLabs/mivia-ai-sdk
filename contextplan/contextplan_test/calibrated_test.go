@@ -62,7 +62,7 @@ func TestCalibratedBoundsClamp(t *testing.T) {
 }
 
 func TestCalibratedAlphaSelection(t *testing.T) {
-	for _, alpha := range []float64{0, -1, -0.5} {
+	for _, alpha := range []float64{0, -1, -0.5, 1.5, 2} {
 		c := contextplan.Calibrate(fixedEstimator{tokens: 100}, alpha)
 		if _, err := c.EstimateTokens(provider.Request{}); err != nil {
 			t.Fatalf("EstimateTokens: %v", err)
@@ -104,6 +104,37 @@ func TestCalibratedAlphaSelection(t *testing.T) {
 	}
 }
 
+// TestCalibratedAlphaAboveOneFallsBackToDefault pins the fallback
+// for alpha > 1, the half of the "outside (0, 1]" range the loose
+// before/after comparisons in TestCalibratedAlphaSelection cannot
+// tell apart from a broken implementation that used the raw
+// out-of-range alpha instead of DefaultSmoothingFactor. A Calibrated
+// built with alpha=1.5 must land on the exact same factor, after one
+// Observe, as one built with the explicit default.
+func TestCalibratedAlphaAboveOneFallsBackToDefault(t *testing.T) {
+	withDefault := contextplan.Calibrate(fixedEstimator{tokens: 100}, contextplan.DefaultSmoothingFactor)
+	aboveOne := contextplan.Calibrate(fixedEstimator{tokens: 100}, 1.5)
+	if _, err := withDefault.EstimateTokens(provider.Request{}); err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if _, err := aboveOne.EstimateTokens(provider.Request{}); err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	withDefault.Observe(200)
+	aboveOne.Observe(200)
+	wantTokens, err := withDefault.EstimateTokens(provider.Request{})
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	gotTokens, err := aboveOne.EstimateTokens(provider.Request{})
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if gotTokens != wantTokens {
+		t.Fatalf("alpha=1.5 EstimateTokens = %d, want %d (the DefaultSmoothingFactor fallback result)", gotTokens, wantTokens)
+	}
+}
+
 func TestCalibratedZeroEstimatesSkip(t *testing.T) {
 	c := contextplan.Calibrate(fixedEstimator{tokens: 0}, 0.5)
 	got, err := c.EstimateTokens(provider.Request{})
@@ -120,6 +151,25 @@ func TestCalibratedZeroEstimatesSkip(t *testing.T) {
 	}
 	if got2 != 0 {
 		t.Fatalf("EstimateTokens after Observe(0) = %d, want 0", got2)
+	}
+}
+
+// TestCalibratedNegativeActualNoop pins the other half of "a
+// non-positive actual is a no-op": Observe(0) alone does not prove a
+// negative actual is also rejected, since both a strict "actual <= 0"
+// guard and a narrower "actual == 0" guard pass that case identically.
+func TestCalibratedNegativeActualNoop(t *testing.T) {
+	c := contextplan.Calibrate(fixedEstimator{tokens: 100}, 0.5)
+	if _, err := c.EstimateTokens(provider.Request{}); err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	c.Observe(-50)
+	got, err := c.EstimateTokens(provider.Request{})
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if got != 100 {
+		t.Fatalf("EstimateTokens = %d, want 100: Observe(-50) must be a no-op", got)
 	}
 }
 

@@ -91,7 +91,8 @@ edges. The package imports each block only through its public API.
 
 Tests live in `subagent/subagent_test/`, one external package:
 
-- `astool_test.go`
+- `astool_test.go` — status and artifact results, failure
+  propagation, and repeated spawns on fresh threads.
 - `providerregistrytool_test.go` — fallback routing, the
   all-failed sentinel, usage composition, and the spawn-span
   nesting under the caller's span.

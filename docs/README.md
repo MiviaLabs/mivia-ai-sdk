@@ -57,7 +57,9 @@ into a `tools.Registry` through `subagent`:
 - [packages/machine.md](packages/machine.md) — the state-machine building block: the status model, the move dispatch, and the JSON wire form.
 - [packages/identity.md](packages/identity.md) — one agent key: an ed25519 pair, the key-file load, the invariant check, and the hex signer string.
 - [packages/discovery.md](packages/discovery.md) — the capability card: a name, an optional description, and a capability list.
+- [packages/hooks.md](packages/hooks.md) — the named, multi-handler lifecycle-point registry.
 - [packages/heartbeat.md](packages/heartbeat.md) — liveness tracking by time: the last beat per id, and which ids have gone silent.
+- [packages/providerregistry.md](packages/providerregistry.md) — the named-provider collection with ordered fallback routing.
 - [packages/room.md](packages/room.md) — standing groups for messages: the roster, the roles, and message admission.
 - [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, and the runner.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.

@@ -11,7 +11,9 @@ with them. The exported surface below mirrors `api/subagent.txt`.
   drives one full run on a fresh thread. `opts.Artifact` names the
   artifact returned, read from `opts.Artifacts`; without one the
   final status returns. `opts.Bus` receives the spawned run's agent
-  events. `opts.Tracer` opens one `subagent.spawn` span per spawn, carrying the spawn's thread. `opts.Depth` bounds recursive spawns; zero means three.
+  events. `opts.Tracer` opens one `subagent.spawn` span per spawn, carrying
+the spawn's thread. `opts.Depth` bounds recursive spawns; zero means
+three.
 - `RunAll(ctx, specs)` — every spec's runner runs concurrently; one
   result per spec, in spec order. One member's error never cancels
   its siblings.

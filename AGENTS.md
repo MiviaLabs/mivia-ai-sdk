@@ -41,8 +41,7 @@ Go SDK for building AI agents. Module:
   still-pending fallback's bookkeeping does not survive the round
   trip.
 - `events/` — the in-process reaction bus. Caller-owned; no shared bus.
-- `heartbeat/` — liveness tracking: Monitor records a beat per id and
-  reports ids that have gone silent past a fixed timeout.
+
 - `identity/` — the agent key wrap: Identity, New, Load, Sign,
   Signer. Imports envelope only.
 - `heartbeat/` — liveness tracking: Monitor records a beat per id and
@@ -159,6 +158,11 @@ Go SDK for building AI agents. Module:
   registered Job at its next scheduled time and emits JobFailedEvent
   on a caller-supplied bus when a Job errors. Imports events only.
 - `agent/` — the composition layer: wires blocks into an agent.
+- `agentrun/` — the config-struct composition layer over agent.Run:
+  Options, New, ValidateMatrix, Artifacts, PayloadOf, and the
+  hooks-and-tracer wiring.
+- `taskrun/` — the ledger admit-claim-complete ceremony around one
+  work func.
 - `api/` — exported-surface locks; `scripts/check_api.py` diffs them.
 - `policy/layers.json` — allowed internal imports per package.
 - `docs/plans/` — one plan per package; `scripts/check_plan.py` gates it.

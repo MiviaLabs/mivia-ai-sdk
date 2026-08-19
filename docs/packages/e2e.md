@@ -72,6 +72,18 @@ See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
 growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP
 tools behind the chain, and scheduled liveness.
 
+- The mivia-agent parity scenarios — `bugfix_flow_test.go`,
+  `panel_review_test.go`, `delivery_repair_test.go`, and
+  `feature_delivery_test.go` — mirror the sibling repo's workflow
+  shapes: verdict routing, refinement loops, evidence repair, panel
+  partial failure, delivery metadata repair, and the human merge.
+- `wiring_scenario_test.go` — the four newest blocks composed at
+  once: a traced orchestrator, a hook-observed step, a spawned
+  subagent, and a registry fallback to a usage-wrapped provider.
+- `wiring_edge_test.go` — the wiring's failure and edge cases: the
+  pre-tool veto before the spawn, `ErrAllFailed` at the top,
+  isolated session totals, and the stop-hook veto after the walk.
+
 ## Failure modes
 
 The fault kit owns one sentinel, `ErrFault`. Every injected fault
@@ -88,14 +100,3 @@ wraps it, so a scenario asserts `errors.Is(runErr, e2e.ErrFault)`.
   answers, and clocks may be scripted; blocks never.
 - Every scenario fails when its wiring breaks. Each drop proves it
   once with a planted fault in a throwaway copy.
-- The mivia-agent parity scenarios — `bugfix_flow_test.go`,
-  `panel_review_test.go`, `delivery_repair_test.go`, and
-  `feature_delivery_test.go` — mirror the sibling repo's workflow
-  shapes: verdict routing, refinement loops, evidence repair, panel
-  partial failure, delivery metadata repair, and the human merge.
-- `wiring_scenario_test.go` — the four newest blocks composed at
-  once: a traced orchestrator, a hook-observed step, a spawned
-  subagent, and a registry fallback to a usage-wrapped provider.
-- `wiring_edge_test.go` — the wiring's failure and edge cases: the
-  pre-tool veto before the spawn, `ErrAllFailed` at the top,
-  isolated session totals, and the stop-hook veto after the walk.

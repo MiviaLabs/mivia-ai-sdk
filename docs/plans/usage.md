@@ -66,7 +66,8 @@ The surface below lands in `api/usage.txt` via `make api-update`.
   it. Returns `ErrBlankSessionID`, wrapped, when `sessionID` is empty
   after `strings.TrimSpace`. `Reset` on a `sessionID` with no prior
   `Record` call is a no-op that returns `nil`, not an error.
-- `ErrBlankSessionID` is the sentinel `Record` and `Reset` return for a
+- `ErrBlankSessionID` is the sentinel `Record`, `Reset`, and
+  `WrapCompleter` at construction return for a
   `sessionID` empty after `strings.TrimSpace`, checked with
   `errors.Is`. Matches the `ErrBlankName`/`ErrBlankID` sentinel shape
   already used by `tools`, `trigger`, `providerregistry`, and
@@ -124,9 +125,10 @@ Test files live in `usage/usage_test/`:
   statements.
 - `policy/layers.json` carries the row `"usage": ["provider"]`.
 - `api/usage.txt` lands via `make api-update`, holding `Accumulator`,
-  `New`, `Record`, `Total`, `Reset`, `WrapCompleter`, and the
-  sentinels `ErrBlankSessionID`, `ErrNilAccumulator`, and
-  `ErrNilCompleter`.
+  `New`, `Record`, `Total`, `Reset`, `WrapCompleter`, the sentinels
+  `ErrBlankSessionID`, `ErrNilAccumulator`, and `ErrNilCompleter`,
+  plus the unexported wrapper's `Chat`, `ChatStream`, and `Name`
+  lines.
 - `docs/architecture.md` carries a `usage/` bullet describing the
   package and its one import.
 - `AGENTS.md`'s Layout section carries a `usage/` line.

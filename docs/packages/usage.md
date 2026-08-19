@@ -36,6 +36,10 @@ surface below mirrors `api/usage.txt`.
 
 Use `errors.Is` to test this.
 
+- `ErrNilAccumulator` ("usage: accumulator must not be nil") —
+  `WrapCompleter`'s construction error for a nil accumulator.
+- `ErrNilCompleter` ("usage: completer must not be nil") —
+  `WrapCompleter`'s construction error for a nil completer.
 - `ErrBlankSessionID` ("usage: sessionID must not be blank") —
   `Record` and `Reset` return it, wrapped, when `sessionID` is empty
   after `strings.TrimSpace`. The name and definition match the

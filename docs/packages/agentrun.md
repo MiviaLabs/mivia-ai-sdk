@@ -17,7 +17,7 @@ mirrors `api/agentrun.txt`.
 - `Runner` — the composed pipeline `New` returns. Build it with `New`;
   the fields stay unexported.
 - `Hooks` — the `hooks.Registry` gating the run: PointPreTool vetoes
-  before the tool, PointPostTool observes the confirmed ack,
+  before the tool, PointPostTool observes the confirmed ack; a veto fails the step,
   PointStop reports the final status. The pre and post points fire
   only with `Tools`; the stop point fires with either resolver.
 - `Tracer` — the `trace.Tracer` opening a root span per run and a

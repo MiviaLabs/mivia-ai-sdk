@@ -20,8 +20,8 @@ references.
 
 The diagram shows the thirty-one packages and the import edges between
 them. An arrow points from an importer to the package it imports.
-`contextbudget`, `discovery`, `durablefence`, `envelope`, `events`,
-`provider`, `tools`, and `trigger` are leaves: they import no other
+`channel`, `contextbudget`, `discovery`, `durablefence`, `envelope`,
+`events`, `hooks`, `provider`, `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module.
 
 ```mermaid
@@ -376,8 +376,9 @@ flowchart LR
   `provider` only. See
   [packages/providerregistry.md](packages/providerregistry.md).
 - `usage/` — the per-session usage accounting package. It provides
-  `Accumulator`, `New`, `Record`, `Total`, `Reset`, and the sentinel
-  `ErrBlankSessionID`. `Record` sums one `provider.Usage` call's four
+  `Accumulator`, `New`, `Record`, `Total`, `Reset`, `WrapCompleter`,
+  and the sentinels `ErrBlankSessionID`, `ErrNilAccumulator`, and
+  `ErrNilCompleter`. `Record` sums one `provider.Usage` call's four
   fields onto the running total keyed by a caller-supplied session
   identifier, guarded for concurrent access; `Total` reads the current
   sum, and `Reset` clears it. `usage` imports `provider` only, for the

@@ -18,7 +18,7 @@ below mirrors `api/hooks.txt`.
 ## Constants
 
 - `PointPreTool` — before a tool call runs.
-- `PointPostTool` — after a tool call runs, success or failure.
+- `PointPostTool` — after a tool call's ack confirms.
 - `PointStop` — at a run's stop.
 
 ## Functions and methods

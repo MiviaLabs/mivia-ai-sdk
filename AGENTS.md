@@ -108,6 +108,11 @@ Go SDK for building AI agents. Module:
   LoopStateFrom pattern; End, SetAttribute, and Attributes are safe
   for concurrent use on one shared Span. A leaf package; no internal
   imports. No caller yet; the tools and trigger precedent.
+- `skills/` — the reusable-instruction-bundle registry: Skill,
+  Validate, Registry, New, Add, Get, Remove, Names, Match. A skill is
+  read, not called: it carries instructions text, trigger phrases, and
+  the tool names it expects available. A leaf package; no internal
+  imports. No caller yet; the agent/subagent wiring is a later phase.
 - `mcp/` — the MCP tool-calling client: Client, Connect, Transport,
   NewStdioTransport, NewStreamableHTTPTransport, ListTools, CallTool,
   and CallToolWithProgress. Imports tools internally and the official

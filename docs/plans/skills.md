@@ -1,16 +1,8 @@
-# Phase 63: skills
+# Plan: skills
 
-Status: shipped. One new leaf package, `skills`, with
-zero internal import edges. It depends on no unshipped phase and can
-build immediately after plan review.
-
-A cross-repo assessment against the sibling consumer repo
-`mivia-agent` found this SDK has no "skill" concept. `mivia-agent`'s
-`internal/skills` package defines a `Definition`: a reusable,
-policy-bearing instruction bundle an agent loads and reads as
-guidance, distinct from `tools.Tool`, an atomic callable action. This
-plan adds the SDK-side analog, kept generic: no SKILL.md parsing, no
-file loading, and no mivia-agent-specific field.
+Status: shipped. See docs/plans/agents/phase63_skills.md
+for the full design rationale, including the rejected reuse of
+`trigger.Condition` and `discovery.Card.Match`.
 
 ## Goal
 
@@ -36,112 +28,60 @@ Inside:
   `Remove`, `Names`, and `Match`.
 
 `skills` is a leaf package: no I/O, no goroutine, no persistence, and
-no file format of its own.
+no file format of its own. It imports nothing of this module. Stdlib
+only: `errors`, `sort`, `strings`, `sync`. The policy row is
+`"skills": []`.
 
 Outside:
 
-- SKILL.md or any frontmatter parsing. A caller's own loader builds
-  a `Skill` value from whatever source format it uses, the same way
-  no package in this module parses an agent card's source file for
-  it; `discovery.Parse` reads bytes already in the wire shape, not a
+- SKILL.md or any frontmatter parsing. A caller's own loader builds a
+  `Skill` value from whatever source format it uses, the same way no
+  package in this module parses an agent card's source file for it;
+  `discovery.Parse` reads bytes already in the wire shape, not a
   markdown dialect.
 - Permission or policy enforcement. `RequiredTools` and any future
   permission field are metadata this package publishes; a caller
   cross-checks `RequiredTools` against its own `tools.Registry`, and
   gates execution through its own `hooks` wiring or an equivalent
   check. `skills` enforces nothing.
-- Resource or lazy-reference loading. A caller that wants an
-  attached file, prompt fragment, or example loads it itself; that is
+- Resource or lazy-reference loading. A caller that wants an attached
+  file, prompt fragment, or example loads it itself; that is
   caller-owned I/O, out of scope for a leaf package.
 - Versioning. `Skill` carries no version field. A caller that needs
-  one names it in `Name` or manages it in its own store; this plan
-  adds no `Version` field until a real caller needs one.
+  one names it in `Name` or manages it in its own store.
 - A poller, a scheduler binding, or any change to `scheduler`,
   `trigger`, `discovery`, `hooks`, `tools`, `agent`, or `subagent`.
   This plan edits none of their files and none of their plans.
+- A `Run` method or any callable field. `tools.Tool.Run` takes an
+  input and returns an output: a caller invokes it and gets a result.
+  `Skill` has no `Run` method. A caller reads `Skill.Instructions`
+  into a prompt or a subagent's context, the same way it reads a
+  file. `skills` never runs anything and never wraps
+  `context.Context`.
 
-### Skill is read, not called
+### Why zero import edges, not two
 
-`tools.Tool.Run` takes an input and returns an output: a caller
-invokes it and gets a result. `Skill` has no `Run` method and no
-callable field. A caller reads `Skill.Instructions` into a prompt or
-a subagent's context, the same way it reads a file. `skills` never
-runs anything and never wraps `context.Context`.
-
-### Import edges: zero, not two
-
-This plan considered two reuse candidates and rejects both.
-
-`trigger.Condition` is `func(ctx context.Context) (bool, error)`: a
-runtime predicate a caller evaluates once, on its own call, tied to a
-`trigger.Action` that then runs. A `Skill.Triggers` entry is a static
-phrase such as `"deploy"` or `"code review"`, matched by string
-comparison, never executed. The two shapes solve different problems:
-one runs code on a condition, the other tags a text bundle for
-discovery. Importing `trigger` would buy `skills` nothing; `Skill`
-has no `Action` to pair a `Condition` with.
+`trigger.Condition` is a runtime predicate a caller evaluates once,
+tied to a `trigger.Action` that then runs. A `Skill.Triggers` entry is
+a static phrase, matched by string comparison, never executed.
+Importing `trigger` would buy `skills` nothing; `Skill` has no
+`Action` to pair a `Condition` with.
 
 `discovery.Card.Match` is the closer shape: a value-receiver method
 that compares a need string against a capability list with
 `strings.EqualFold`, returning the first hit. `skills.Registry.Match`
-reuses that exact comparison rule but cannot reuse the method itself.
-`Card.Match` runs on one `Card`; `Registry.Match` must scan many
-`Skill` values and return every hit, not the first, which is a
-different return shape (`[]Skill` versus `(string, bool)`). Wrapping
-each `Skill` in a synthetic `Card` to call `Match` would add an
-import edge and an adapter step for one reused loop body. `skills`
-instead implements the same `EqualFold` rule directly, in its own
-`match.go`, and states the rule in this plan the same way
-`discovery.md` states it. `skills` stays at zero internal imports,
-matching `tools`, `trigger`, and `discovery`.
-
-### Skill.Validate
-
-`Validate` checks:
-
-- `Name` is non-blank after `strings.TrimSpace`.
-- `Instructions` is non-blank after `strings.TrimSpace`. A skill with
-  no guidance text carries nothing for a caller to read.
-- Every `Triggers` entry is non-blank after `strings.TrimSpace`,
-  mirroring `discovery.Card.Validate`'s capability-entry check.
-- No two `Triggers` entries are equal under `strings.EqualFold` after
-  trim, mirroring `discovery.Card.Validate`'s duplicate-capability
-  check.
-
-`Triggers` may be empty. A skill a caller loads only by explicit
-`Get(name)` call needs no trigger phrase.
-
-`RequiredTools` carries no check. It is advisory metadata; `Add`
-never cross-checks it against any `tools.Registry`, matching the
-Scope section's enforcement boundary.
-
-### Slice aliasing: no defensive copy
-
-`Add` stores the `Skill` value it receives as-is. It does not
-defensively copy `Triggers` or `RequiredTools`. This matches
-`discovery.Card`'s documented choice for `Capabilities`, itself
-matching `envelope.Message`'s convention for its own slice fields:
-this SDK treats an exported slice as caller-owned, aliased storage,
-not a value the package copies on the caller's behalf. `Get` returns
-the same backing arrays it stored; a caller that mutates a slice
-obtained from `Get` mutates the registry's stored `Skill` too.
-
-### Registry.Match
-
-`Match(query string) []Skill` scans every registered skill and keeps
-one whose `Triggers` slice contains an entry equal to `query` under
-`strings.EqualFold`, the same comparison `discovery.Card.Match` uses.
-A blank `query` matches nothing, mirroring `discovery.Card.Match`'s
-blank-need behavior. `Match` never trims `query`; a padded query does
-not match an unpadded trigger entry, again mirroring `discovery`.
-`Match` returns the matches sorted by `Name` ascending, so the result
-is deterministic across calls regardless of Go's unspecified map
-iteration order. `Match` returns `nil`, not an empty non-nil slice,
-when nothing matches.
+reuses that exact comparison rule but not the method itself.
+`Card.Match` runs on one `Card`; `Registry.Match` scans many `Skill`
+values and returns every hit, not the first — a different return
+shape (`[]Skill` versus `(string, bool)`). Wrapping each `Skill` in a
+synthetic `Card` would add an import edge and an adapter step for one
+reused loop body. `skills` implements the same `EqualFold` rule
+directly, in its own `match.go`. `skills` stays at zero internal
+imports, matching `tools`, `trigger`, and `discovery`.
 
 ## API
 
-The surface below lands in `api/skills.txt`.
+The surface below lands in `api/skills.txt` via `make api-update`.
 
 - `type Skill struct { Name string; Instructions string; Triggers []string; RequiredTools []string }`
   — a reusable instruction bundle. `Name` is the registration key.
@@ -153,9 +93,15 @@ The surface below lands in `api/skills.txt`.
   `discovery.Card`'s documented no-copy convention for `Capabilities`
   and `envelope.Message`'s same rule for its own slice fields. A
   caller that mutates a slice after `Add` mutates the registry's
-  stored Skill too.
-- `func (s Skill) Validate() error` — checks the four invariants
-  above. `Add` calls this before it registers a skill.
+  stored `Skill` too.
+- `func (s Skill) Validate() error` — checks: `Name` non-blank after
+  `strings.TrimSpace`; `Instructions` non-blank after
+  `strings.TrimSpace`; every `Triggers` entry non-blank after
+  `strings.TrimSpace`; no two `Triggers` entries equal under
+  `strings.EqualFold` after trim. `Triggers` may be empty. A skill a
+  caller loads only by explicit `Get(name)` call needs no trigger
+  phrase. `RequiredTools` carries no check; it is advisory metadata.
+  `Add` calls `Validate` before it registers a skill.
 - `type Registry struct` — holds skills by name. Unexported fields.
   Built only through `New`. Safe for concurrent `Add`, `Get`,
   `Remove`, `Names`, and `Match`; a `sync.RWMutex` guards the map.
@@ -175,7 +121,10 @@ The surface below lands in `api/skills.txt`.
 - `func (r *Registry) Match(query string) []Skill` — returns every
   registered skill with a `Triggers` entry equal to `query` under
   `strings.EqualFold`. Returns `nil` for a blank `query` or no hit.
-  Results sort by `Name` ascending.
+  `Match` never trims `query`; a padded query does not match an
+  unpadded trigger entry, mirroring `discovery.Card.Match`. Results
+  sort by `Name` ascending, so the result is deterministic across
+  calls regardless of Go's unspecified map iteration order.
 - `var ErrBlankName` — `Validate` returns this when `Name` is blank
   after `strings.TrimSpace`.
 - `var ErrBlankInstructions` — `Validate` returns this when
@@ -233,17 +182,16 @@ Test files live in `skills/skills_test/`, an external test package.
   for deployment (`Triggers: []string{"deploy", "release"}`), and one
   for incident response (`Triggers: []string{"incident", "outage"}`),
   each with a distinct `RequiredTools` list. Run `Match("deploy")` and
-  assert only the deployment skill returns. Run
-  `Match("code review")` and assert only the code-review skill
-  returns. Prove the returned `Skill.RequiredTools` value is the
-  exact slice registered, unread and unenforced by this package: a
-  tool name absent from any real `tools.Registry` still registers and
-  still matches.
+  assert only the deployment skill returns. Run `Match("code review")`
+  and assert only the code-review skill returns. Prove the returned
+  `Skill.RequiredTools` value is the exact slice registered, unread
+  and unenforced by this package: a tool name absent from any real
+  `tools.Registry` still registers and still matches.
 - `match_bench_test.go` — benchmark `Match` over a registry of one
   hundred skills, five triggers each, querying a trigger phrase that
   matches exactly one skill. Target under one microsecond per call.
   `AllocsPerRun` states a budget of two: one slice grow for the
-  single-match result and one for the sort call's internal state: the
+  single-match result and one for the sort call's internal state; the
   builder records the measured baseline in this file.
 - `registry_concurrent_test.go` — modeled on `tools/tools_test/
   registry_concurrent_test.go`'s pattern: N goroutines each call `Add`
@@ -256,34 +204,28 @@ Test files live in `skills/skills_test/`, an external test package.
 
 ## Verification
 
-`make verify` passes. The coverage floor for `skills` holds at or
-above 85 percent. `go test -race ./skills/...` passes, covering
-`registry_concurrent_test.go`.
-
-`policy/layers.json` gains a `skills` row set to `[]`, added by this
-plan ahead of the code, matching the gate's rule that a new package
-needs a row before it has code. `scripts/check_deps.py` passes with
-no edge from `skills` to `trigger`, `discovery`, `tools`, `hooks`,
-`agent`, or `subagent`, and no edge from any of those to `skills`.
-
-`api/skills.txt` lands via `make api-update` in the same change as
-the code, and locks `Skill`, `Validate`, `Registry`, `New`, `Add`,
-`Get`, `Remove`, `Names`, `Match`, `ErrBlankName`,
-`ErrBlankInstructions`, `ErrBlankTrigger`, `ErrDuplicateTrigger`, and
-`ErrDuplicateName`.
-
-`AGENTS.md`'s package layout list gains a `skills/` bullet, matching
-the existing bullets' level of detail: package name, one-sentence
-purpose, and its import edges (none). Inside this module, `skills`
-has zero importers at merge time, the same state `tools`, `hooks`,
-and `trace` were in when their own bullets landed. The `skills/`
-bullet ends with the sentence "No caller yet; the agent/subagent
-wiring is a later phase," matching the honesty marker `tools`
-("No caller yet; the agent binding is a later phase"), `hooks`
-("No caller yet; the tools and flow wiring is a later phase"), and
-`trace` ("No caller yet; the tools and trigger precedent") each
-carry. A cross-repo assessment against `mivia-agent` motivates the
-shape but is not a caller of this module; it names no import edge
-and satisfies no test. `docs/plans/agents/PHASES.md` gains a phase 63
-paragraph recording the shipped shape, in the same change that ships
-the code, matching how phase 57 through phase 61 each closed out.
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for `skills` and for the total.
+- `go test -race ./skills/...` passes, covering
+  `registry_concurrent_test.go`.
+- The `skills` row in `policy/layers.json` is `[]`, already present
+  ahead of the code. `scripts/check_deps.py` passes with no edge from
+  `skills` to `trigger`, `discovery`, `tools`, `hooks`, `agent`, or
+  `subagent`, and no edge from any of those to `skills`.
+- `api/skills.txt` lands via `make api-update` in the same change as
+  the code, and locks `Skill`, `Validate`, `Registry`, `New`, `Add`,
+  `Get`, `Remove`, `Names`, `Match`, `ErrBlankName`,
+  `ErrBlankInstructions`, `ErrBlankTrigger`, `ErrDuplicateTrigger`,
+  and `ErrDuplicateName`.
+- `AGENTS.md`'s package layout list gains a `skills/` bullet, matching
+  the existing bullets' level of detail: package name, one-sentence
+  purpose, and its import edges (none). The bullet ends with the
+  sentence "No caller yet; the agent/subagent wiring is a later
+  phase," matching the honesty marker `tools`, `hooks`, and `trace`
+  each carry for their own no-caller state.
+- `docs/plans/agents/PHASES.md` gains a phase 63 paragraph recording
+  the shipped shape, in the same change that ships the code, matching
+  how phase 57 through phase 61 each closed out.
+- This phase adds no conformance vectors. `skills` carries no wire
+  format of its own; nothing crosses the envelope wire boundary.

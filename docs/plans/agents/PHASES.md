@@ -334,6 +334,21 @@ explicit opt-in. Route exclusion propagates by default, matching
 the sibling repo's transition-driven readiness. No standalone
 phase 61 plan file remains.
 
+Phase 63 (`skills`) has shipped. It adds one leaf package: `Skill`
+carries a name, instructions text, trigger phrases, and required
+tool names; `Skill.Validate` checks a non-blank name, non-blank
+instructions, and no blank or duplicate (case-insensitive) trigger
+entry. `Registry` holds skills by name behind a `sync.RWMutex`;
+`Add`, `Get`, `Remove`, and `Names` match `tools.Registry`'s
+concurrency shape and contracts. `Match` returns every registered
+skill whose `Triggers` list contains the query under
+`strings.EqualFold`, sorted by `Name`, mirroring
+`discovery.Card.Match`'s comparison rule without reusing its type. A
+skill is read, not called: it carries no `Run` method. It depends on
+no unshipped phase and imports no other package in this module. It
+ships with no caller, the same way phase 57 shipped `hooks`. Its
+package plan lives at docs/plans/skills.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

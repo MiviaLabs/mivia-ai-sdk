@@ -3,10 +3,12 @@ package contextplan_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -89,6 +91,116 @@ func TestPlanResolutionCacheHitSkipsStore(t *testing.T) {
 	}
 	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextplan.ElisionReasonRetentionExpired {
 		t.Fatalf("second Elisions = %+v, want one RetentionExpired stub: the cached RetentionCompliance metadata must still protect it", second.Elisions)
+	}
+}
+
+// TestPlanResolutionMetaSurvivesCacheEviction pins that a meta-cache
+// hit on a ref whose decode-cache entry was evicted for budget still
+// resolves correctly: resolvePayload falls through to store.Get on
+// the decode-cache miss, and re-backfills the decode cache, rather
+// than returning a record built from a stale or missing Data.
+func TestPlanResolutionMetaSurvivesCacheEviction(t *testing.T) {
+	store := newStore(t)
+	// A budget that holds both payloads together but not one after
+	// the other, so putting the second payload evicts the first's
+	// decode-cache entry while its meta-cache entry (unbounded, keyed
+	// separately) survives.
+	cache, err := memory.New(40)
+	if err != nil {
+		t.Fatalf("memory.New: %v", err)
+	}
+	planner, err := contextplan.NewPlanner(store, cache)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+
+	dataA := []byte("payload-a-content")
+	refA := putPayload(t, store, "sess-a", contextstate.RetentionSession, dataA)
+	sessA := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refA, len(dataA)),
+	}}
+	est := byteEstimator{}
+	win := contextplan.Window{MaxTokens: 100}
+
+	first, err := planner.Plan(context.Background(), sessA, win, est)
+	if err != nil {
+		t.Fatalf("first Plan (A): %v", err)
+	}
+	if len(first.Request.Messages) != 1 || first.Request.Messages[0].Content != string(dataA) {
+		t.Fatalf("first Plan (A) Messages = %+v, want one message with content %q", first.Request.Messages, dataA)
+	}
+
+	// Resolve a second, larger payload: dataA's decode-cache entry
+	// evicts under the 20-byte budget, but refA's meta stays cached.
+	dataB := []byte("payload-b-content-longer-than-budget")
+	refB := putPayload(t, store, "sess-b", contextstate.RetentionSession, dataB)
+	sessB := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-b", 1, "message", string(provider.RoleUser), refB, len(dataB)),
+	}}
+	if _, err := planner.Plan(context.Background(), sessB, win, est); err != nil {
+		t.Fatalf("second Plan (B): %v", err)
+	}
+	if _, err := cache.Get(refA.Ref); !errors.Is(err, memory.ErrUnknownRef) {
+		t.Fatalf("cache.Get(refA) err = %v, want ErrUnknownRef: the eviction this test relies on did not happen", err)
+	}
+
+	// Resolving A again must still return A's real content: a meta
+	// hit with a decode-cache miss must fall through to store.Get,
+	// not return a record with stale or missing Data.
+	third, err := planner.Plan(context.Background(), sessA, win, est)
+	if err != nil {
+		t.Fatalf("third Plan (A again): %v", err)
+	}
+	if len(third.Request.Messages) != 1 || third.Request.Messages[0].Content != string(dataA) {
+		t.Fatalf("third Plan (A again) Messages = %+v, want one message with content %q", third.Request.Messages, dataA)
+	}
+	if _, err := cache.Get(refA.Ref); err != nil {
+		t.Fatalf("cache.Get(refA) after third Plan: %v, want the decode cache re-backfilled", err)
+	}
+}
+
+// TestPlanResolutionConcurrentSameRef pins that two goroutines
+// resolving the same new ref at the same time never corrupt the meta
+// cache or the decode cache: both calls must see the real content,
+// and neither may observe a torn or partially written cache entry.
+// go test -race exercises the mutex and the two dependencies' own
+// concurrency guarantees together.
+func TestPlanResolutionConcurrentSameRef(t *testing.T) {
+	store := newStore(t)
+	cache := newCache(t)
+	planner, err := contextplan.NewPlanner(store, cache)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+
+	data := []byte("shared-ref-content")
+	ref := putPayload(t, store, "sess-shared", contextstate.RetentionSession, data)
+	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-shared", 1, "message", string(provider.RoleUser), ref, len(data)),
+	}}
+	est := byteEstimator{}
+	win := contextplan.Window{MaxTokens: 100}
+
+	const n = 8
+	results := make([]contextplan.PlanResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = planner.Plan(context.Background(), sess, win, est)
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("goroutine %d: Plan: %v", i, errs[i])
+		}
+		if len(results[i].Request.Messages) != 1 || results[i].Request.Messages[0].Content != string(data) {
+			t.Fatalf("goroutine %d: Messages = %+v, want one message with content %q", i, results[i].Request.Messages, data)
+		}
 	}
 }
 

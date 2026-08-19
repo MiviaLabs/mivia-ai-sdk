@@ -42,7 +42,112 @@ func TestMatchesDirectoryPattern(t *testing.T) {
 		t.Error("Matches(nested file under secrets/) = false, want true")
 	}
 	if m.Matches("secrets-other/file.txt") {
-		t.Error("Matches(sibling with shared prefix) = true, want false")
+		t.Error("Matches(sibling) = true, want false: a metacharacter-free body needs a segment boundary")
+	}
+}
+
+func TestMatchesDirectoryGlob(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		path     string
+		want     bool
+	}{
+		{"glob body matches file under the tree", []string{"secret*/"}, "secrets/key.pem", true},
+		{"glob body matches the directory itself", []string{"secret*/"}, "secrets", true},
+		{"glob body matches a deep file", []string{"secret*/"}, "secrets/deep/nested/key.pem", true},
+		{"glob body anchors at the start", []string{"secret*/"}, "public/secrets/key.pem", false},
+		{"multi-segment body matches the directory", []string{"a/*/keys/"}, "a/x/keys", true},
+		{"multi-segment body matches a deep file", []string{"a/*/keys/"}, "a/x/keys/deep/file.txt", true},
+		{"multi-segment body needs every segment", []string{"a/*/keys/"}, "a/keys", false},
+		{"star never crosses a separator", []string{"a/*/keys/"}, "a/x/y/keys/f", false},
+		{"empty body matches any absolute path", []string{"/"}, "/etc/passwd", true},
+		{"empty body never matches a relative path", []string{"/"}, "a/b", false},
+		{"star body matches a lone segment", []string{"*/"}, "a", true},
+		{"star body matches the first segment of a deeper path", []string{"*/"}, "a/b/c", true},
+		{"star body never matches an absolute path", []string{"*/"}, "/etc/passwd", false},
+		{"absolute body matches a file under the tree", []string{"/etc*/"}, "/etc/passwd", true},
+		{"absolute body matches the directory itself", []string{"/etc*/"}, "/etcx", true},
+		{"absolute body anchors at the root", []string{"/etc*/"}, "/opt/etc/passwd", false},
+		{"backslash escapes the next character", []string{`sec\rets/`}, "secrets/key.pem", true},
+		{"backslash escapes a metacharacter", []string{`sec\*ets/`}, "secXets/f", false},
+		{"escaped metacharacter matches itself", []string{`sec\*ets/`}, "sec*ets/f", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := secretpath.NewMatcher(tt.patterns)
+			if err != nil {
+				t.Fatalf("NewMatcher: %v", err)
+			}
+			if got := m.Matches(tt.path); got != tt.want {
+				t.Errorf("Matches(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesDirectoryGlobNegation(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		checks   map[string]bool
+	}{
+		{
+			name:     "negated file inside a glob directory tree",
+			patterns: []string{"secret*/", "!secret*/public.txt"},
+			checks: map[string]bool{
+				"secrets/public.txt": false,
+				"secrets/key.pem":    true,
+			},
+		},
+		{
+			name:     "star directory negation never clears an absolute path",
+			patterns: []string{"/etc/", "!*/"},
+			checks: map[string]bool{
+				"/etc/passwd": true,
+			},
+		},
+		{
+			name:     "glob directory negation clears a whole tree",
+			patterns: []string{"secrets/key.pem", "!secret*/"},
+			checks: map[string]bool{
+				"secrets/key.pem": false,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m, err := secretpath.NewMatcher(tt.patterns)
+			if err != nil {
+				t.Fatalf("NewMatcher: %v", err)
+			}
+			for p, want := range tt.checks {
+				if got := m.Matches(p); got != want {
+					t.Errorf("Matches(%q) = %v, want %v", p, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestNewMatcherInvalidDirectoryGlob(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+	}{
+		{"positive directory pattern", "bad[/"},
+		{"negated directory pattern", "!bad[/"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := secretpath.NewMatcher([]string{tt.pattern})
+			if err == nil {
+				t.Fatalf("NewMatcher(%q) = nil error, want error", tt.pattern)
+			}
+			if !strings.Contains(err.Error(), "pattern 0") {
+				t.Errorf("NewMatcher(%q) error = %v, want to name pattern index 0", tt.pattern, err)
+			}
+		})
 	}
 }
 
@@ -186,6 +291,11 @@ func FuzzMatches(f *testing.F) {
 		{"secrets/key[AB].pem", "secrets/keyA.pem"},
 		{`secrets\key.pem`, `secrets\key.pem`},
 		{"../secrets/key.pem", "../secrets/key.pem"},
+		{"secret*/", "secrets/key.pem"},
+		{"a/*/keys/", "a/x/keys/f"},
+		{"*/", "a/b"},
+		{"/", "/etc/passwd"},
+		{"*/", "/etc/passwd"},
 	}
 	for _, s := range seeds {
 		f.Add(s.pattern, s.path)

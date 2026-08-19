@@ -73,8 +73,31 @@ func (m *Matcher) Matches(input string) bool {
 // patternMatches reports whether one compiled pattern matches clean.
 func patternMatches(cp compiledPattern, clean string) bool {
 	if cp.isDir {
-		return clean == cp.body || strings.HasPrefix(clean, cp.body+"/")
+		return dirMatches(cp.body, clean)
 	}
 	matched, err := path.Match(cp.body, clean)
 	return err == nil && matched
+}
+
+// dirMatches reports whether body, a directory pattern's glob body,
+// matches an ancestor of clean. The ancestors are every prefix that
+// ends on a '/' boundary, plus clean itself, so a directory pattern
+// matches the directory and everything under it. The empty body keeps
+// its meaning of any absolute path, because no ancestor is ever
+// empty. The walk starts at index one: index zero would add an empty
+// ancestor for an absolute path, and path.Match("*", "") is true, so
+// "*/" would then match every absolute path.
+func dirMatches(body, clean string) bool {
+	if body == "" {
+		return strings.HasPrefix(clean, "/")
+	}
+	for i := 1; i <= len(clean); i++ {
+		if i < len(clean) && clean[i] != '/' {
+			continue
+		}
+		if ok, err := path.Match(body, clean[:i]); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }

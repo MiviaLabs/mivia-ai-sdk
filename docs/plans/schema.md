@@ -1,7 +1,7 @@
 # Plan: schema
 
-Status: planned, authorized. The user authorized option A of the
-third-party dependency decision below: `schema` may import
+Status: shipped in commit 7aea007. The user authorized option A of
+the third-party dependency decision below: `schema` may import
 `github.com/santhosh-tekuri/jsonschema/v6`. This plan builds a new
 leaf-shaped package, `schema`, alongside `channel`, `contextbudget`,
 `discovery`, `durablefence`, `envelope`, `events`, `hooks`, `provider`,

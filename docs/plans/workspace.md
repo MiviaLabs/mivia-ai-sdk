@@ -555,3 +555,53 @@ New file `workspace/workspace_test/workspace_bench_test.go`:
   `validateLimit` helper, so no comment states the limit rule alone.
   `effectiveLimit` calls `validateLimit` before it maps a passing
   value onto the value the read uses.
+
+## Test gap: sibling-prefix escape
+
+The separator term in `withinRoot` (`workspace/confine.go:40`) is what
+stops a sibling-prefix escape. A root of `/tmp/x/root` must not admit
+`/tmp/x/root-evil/secret.txt`. Removing that term keeps the whole
+`workspace/workspace_test` suite green, so the mutation survives
+today.
+
+This is a test-only change. No production code changes.
+
+New case in `workspace/workspace_test/workspace_test.go`,
+`TestSiblingPrefixEscape`:
+
+- Create `<tmp>/root` and `<tmp>/root-evil/secret.txt` under one
+  `t.TempDir()`.
+- Open a `Workspace` at `<tmp>/root`.
+- Cover all four methods that call `resolve`: `ReadFile`, `WriteFile`,
+  `List`, and `Stat`. Each takes a relative path resolving into
+  `root-evil`, for example `../root-evil/secret.txt`. Each must return
+  an error matching `errors.Is(err, ErrEscape)`.
+- `WriteFile` takes `(string, []byte, os.FileMode)` today. Pass the
+  mode, or the test does not compile. Drop the mode argument if the
+  signature change planned above lands first.
+- Point `List` at `../root-evil` so it names a real directory. A
+  passing escape check must beat the successful listing.
+- Assert the returned bytes are empty on the `ReadFile` call. A
+  passing error check then cannot hide a leaked read.
+- Assert `root-evil` holds no new file after the `WriteFile` call.
+  `WriteFile` is the highest-severity case: the mutant plants a file
+  in the sibling directory.
+
+The case kills the mutation that drops the separator term from
+`withinRoot`. Without that term the resolved sibling path passes the
+prefix compare, and all four calls succeed.
+
+The case stays valid after the planned `os.Root` change above.
+`os.Root` refuses the same path, and `classify` maps the refusal onto
+`ErrEscape`, so the assertions do not change.
+
+Verification for this case:
+
+- `go test -race ./workspace/...` passes.
+- `make verify` passes. `workspace` holds the 85 coverage floor.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_prose.py`,
+  and `python3 scripts/check_structure.py` pass. Put the directory
+  setup in a helper, so the test function stays under 80 lines.
+- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+  `schema` to `agentloop` stay out of this commit. They belong to the
+  concurrent `agentloop` change and need their own plan review.

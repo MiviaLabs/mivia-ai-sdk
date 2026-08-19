@@ -217,11 +217,15 @@ type spoolToolAll struct {
 // inner: SpoolTool changes only Run's result handling, not inner's
 // declared execution class, result budget, privilege, or schema, and
 // it never fakes a capability inner does not publish.
+// A negative maxBytes clamps to zero.
 func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) tools.Tool {
 	sp := &Spool{
 		store:         store,
 		maxGrantBytes: toolGrantBudget,
 		grants:        make(map[string]grant),
+	}
+	if maxBytes < 0 {
+		maxBytes = 0
 	}
 	base := &spoolTool{name: name, maxBytes: maxBytes, sp: sp, inner: inner}
 

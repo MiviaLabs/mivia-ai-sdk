@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -94,6 +95,90 @@ func TestSpoolToolExactMaxBytesBoundary(t *testing.T) {
 	view, ok := out2.Value.(string)
 	if !ok || view == overBound || !strings.HasPrefix(view, overBound[:10]) {
 		t.Fatalf("Out.Value = %v, want a truncated view one byte over the boundary", out2.Value)
+	}
+}
+
+// TestSpoolToolClampsNegativeMaxBytes checks the constructor clamp: a
+// negative maxBytes behaves exactly as zero. A non-empty result spools
+// and returns the zero-budget view; an empty result passes through
+// with no principal and no grant.
+func TestSpoolToolClampsNegativeMaxBytes(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxBytes int
+	}{
+		{"negative", -1},
+		{"zero", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newFakeStore()
+			full := "hello"
+			wrapped := spool.SpoolTool("t", tt.maxBytes, store, stringTool{name: "inner", result: full})
+			ctx := spool.WithPrincipal(context.Background(), "alice")
+			out, err := wrapped.Run(ctx, tools.InOut{})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			ref := refFor([]byte(full))
+			if want := " [truncated, ref=" + ref + "]"; out.Value != want {
+				t.Errorf("Out.Value = %v, want %q", out.Value, want)
+			}
+			got, err := store.Get(ref)
+			if err != nil || string(got) != full {
+				t.Errorf("store.Get(ref) = %q,%v, want the full inner result", got, err)
+			}
+
+			empty := spool.SpoolTool("t", tt.maxBytes, store, stringTool{name: "inner", result: ""})
+			out2, err := empty.Run(context.Background(), tools.InOut{})
+			if err != nil {
+				t.Fatalf("Run over an empty result: %v", err)
+			}
+			if out2.Value != "" {
+				t.Errorf("Out.Value = %v, want the empty result unchanged", out2.Value)
+			}
+		})
+	}
+}
+
+// TestSpoolToolViewStaysValidUTF8 checks the rune-safe cut: a cut
+// inside a multi-byte rune, and a cut over bytes that are not UTF-8 at
+// all, both return a valid UTF-8 view. Spool.Load's store still holds
+// every original byte.
+func TestSpoolToolViewStaysValidUTF8(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   string
+		maxBytes int
+	}{
+		{"cut inside a rune", strings.Repeat("é", 10), 5},
+		{"binary payload", string([]byte{0xff, 0xfe, 0xff, 0xfe, 0xff, 0xfe, 0xff, 0xfe}), 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newFakeStore()
+			wrapped := spool.SpoolTool("t", tt.maxBytes, store, stringTool{name: "inner", result: tt.result})
+			ctx := spool.WithPrincipal(context.Background(), "alice")
+			out, err := wrapped.Run(ctx, tools.InOut{})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			view, ok := out.Value.(string)
+			if !ok {
+				t.Fatalf("Out.Value = %v, want a view string", out.Value)
+			}
+			if !utf8.ValidString(view) {
+				t.Errorf("view = %q, want valid UTF-8", view)
+			}
+			ref := refFor([]byte(tt.result))
+			if !strings.Contains(view, ref) {
+				t.Errorf("view %q does not name ref %q", view, ref)
+			}
+			got, err := store.Get(ref)
+			if err != nil || string(got) != tt.result {
+				t.Errorf("store.Get(ref) = %q,%v, want the full inner result", got, err)
+			}
+		})
 	}
 }
 

@@ -91,6 +91,21 @@ func shapeCases(t *testing.T) []rejectCase {
 			want: "blank tool name",
 		},
 		{
+			name: "sub with declared tool",
+			doc:  replace(t, `"tool": "grep"}]`, `"tool": "grep", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
+			want: `step "s" sets sub beside tool or internal`,
+		},
+		{
+			name: "sub with undeclared tool",
+			doc:  replace(t, `"tool": "grep"}]`, `"tool": "other", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
+			want: `step "s" sets sub beside tool or internal`,
+		},
+		{
+			name: "sub with internal kind",
+			doc:  replace(t, `"tool": "grep"}]`, `"internal": "flow", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
+			want: `step "s" sets sub beside tool or internal`,
+		},
+		{
 			name: "bad retry delay",
 			doc:  replace(t, `"tool": "grep"`, `"retry": {"max_attempts": 1, "base_delay": "soon", "max_delay": "1ms"}, "tool": "grep"`),
 			want: "base_delay",
@@ -130,7 +145,7 @@ func constructorCases(t *testing.T) []rejectCase {
 		},
 		{
 			name: "nested flow rejection",
-			doc:  replace(t, `"tool": "grep"`, `"tool": "grep", "sub": {"steps": [{"id": ""}]}`),
+			doc:  replace(t, `"tool": "grep"`, `"sub": {"steps": [{"id": ""}]}`),
 			want: "empty step id",
 		},
 	}
@@ -157,5 +172,25 @@ func TestLoadRejects(t *testing.T) {
 				t.Fatalf("err = %v, want it to name %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestLoadSubAloneKeepsChildBindings is the positive control for the
+// sub-beside-a-binding rejection: a step carrying sub alone loads, and
+// its child step's tool binding reaches Definition.Bindings.
+func TestLoadSubAloneKeepsChildBindings(t *testing.T) {
+	doc := replace(t, `"tool": "grep"}]`, `"sub": {"steps": [{"id": "inner", "to": "d", "tool": "grep"}]}}]`)
+	d, err := runconfig.Load([]byte(doc))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(d.Bindings) != 1 {
+		t.Fatalf("bindings = %+v, want one", d.Bindings)
+	}
+	if d.Bindings[0].Step != "inner" || d.Bindings[0].Tool != "grep" {
+		t.Fatalf("binding = %+v, want inner bound to grep", d.Bindings[0])
+	}
+	if d.Plan.Steps()[0].Sub == nil {
+		t.Fatal("sub plan = nil, want the child plan")
 	}
 }

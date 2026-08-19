@@ -22,7 +22,8 @@ var (
 
 // PlanResult is Plan's output: the built request, every elision
 // decision Plan made, and the estimator's total over Request.Messages.
-// EstimatedTokens is always at or under Window.Budget().
+// EstimatedTokens stays at or under Window.Budget() for a deterministic estimator whose empty-list total fits.
+// A larger fixed overhead exceeds it; an estimator that errors on the final call reports zero.
 type PlanResult struct {
 	Request         provider.Request
 	Elisions        []Elision
@@ -62,8 +63,10 @@ func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, er
 // running estimate stays at or under w.Budget(); once the next-oldest
 // message would exceed the budget, a RetentionCompliance payload gets
 // a stub instead, unless the stub itself would exceed the budget, in
-// which case it drops too. EstimatedTokens is always at or under
-// w.Budget(). Plan returns a non-nil error only on a malformed
+// which case it drops too.
+// EstimatedTokens stays at or under w.Budget() for a deterministic estimator whose empty-list total fits.
+// A larger fixed overhead exceeds it; an estimator that errors on the final call reports zero.
+// Plan returns a non-nil error only on a malformed
 // Window, a nil sess, or a payload-resolution failure; it never
 // returns a partial PlanResult.
 func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error) {

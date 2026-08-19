@@ -71,6 +71,60 @@ func TestTraversalEscape(t *testing.T) {
 	}
 }
 
+// siblingFixture builds <tmp>/root and a sibling <tmp>/root-evil
+// holding secret.txt, and returns both directories.
+func siblingFixture(t *testing.T) (root, evil string) {
+	t.Helper()
+	base := t.TempDir()
+	root = filepath.Join(base, "root")
+	evil = filepath.Join(base, "root-evil")
+	for _, dir := range []string{root, evil} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatalf("Mkdir(%q): %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(evil, "secret.txt"), []byte("secret"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	return root, evil
+}
+
+// TestSiblingPrefixEscape checks the separator term in withinRoot: a
+// sibling directory whose name starts with the root's name escapes the
+// root, even though its path carries the root as a string prefix.
+func TestSiblingPrefixEscape(t *testing.T) {
+	root, evil := siblingFixture(t)
+	w, err := workspace.Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	const secret = "../root-evil/secret.txt"
+	got, err := w.ReadFile(secret)
+	if !errors.Is(err, workspace.ErrEscape) {
+		t.Errorf("ReadFile(%q) error = %v, want ErrEscape", secret, err)
+	}
+	if len(got) != 0 {
+		t.Errorf("ReadFile(%q) = %q, want no bytes", secret, got)
+	}
+
+	const planted = "../root-evil/planted.txt"
+	if err := w.WriteFile(planted, []byte("x"), 0o600); !errors.Is(err, workspace.ErrEscape) {
+		t.Errorf("WriteFile(%q) error = %v, want ErrEscape", planted, err)
+	}
+	if _, err := os.Stat(filepath.Join(evil, "planted.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Stat(planted file) error = %v, want ErrNotExist: WriteFile planted a file in the sibling", err)
+	}
+
+	const dir = "../root-evil"
+	if _, err := w.List(dir); !errors.Is(err, workspace.ErrEscape) {
+		t.Errorf("List(%q) error = %v, want ErrEscape", dir, err)
+	}
+	if _, err := w.Stat(secret); !errors.Is(err, workspace.ErrEscape) {
+		t.Errorf("Stat(%q) error = %v, want ErrEscape", secret, err)
+	}
+}
+
 func TestSymlinkEscapeFinalComponent(t *testing.T) {
 	dir := t.TempDir()
 	outside := t.TempDir()

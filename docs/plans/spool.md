@@ -247,10 +247,12 @@ var (
   large-output tool inside an `agentrun` step, confirming the spooled
   view carries a ref that a follow-up `Spool.Load` call resolves.
 
-## Planned addition, landing with `agentloop`: schema forwarding
+## Schema forwarding
 
-Status: planned. `tools.SchemaTool` does not exist yet; it lands in
-the `agentloop` change. See `docs/plans/agentloop.md`.
+Status: shipped. `tools.SchemaTool` landed in commit 16a7478.
+`spool/tool.go` forwards it, and
+`spool/spool_test/tool_parity_test.go` covers it. See
+`docs/plans/agentloop.md`.
 
 `SpoolTool` strips a capability silently when its combinatorial
 switch misses an optional interface. A schema-less wrapper tool is
@@ -258,12 +260,129 @@ skipped by `agentloop.Definitions`, so the model never sees the tool.
 That failure is silent unless `Definitions` fails closed, which the
 `agentloop` plan now requires.
 
-When `tools.SchemaTool` lands, `spool` adopts it in the same change:
+`spool` adopted `tools.SchemaTool` in the same change:
 
-- Add a `schemaCap` forwarding struct, `ParameterSchema` and
-  `DecodeArguments`, beside the existing three caps.
-- Extend the variant switch from eight to sixteen cases.
-- `spool/spool_test/tool_parity_test.go` (already shipped) enumerates
-  every subset of the known optional interfaces. Extend its probe
-  list with `tools.SchemaTool` in the same change. A missed variant
-  then fails the parity test, not a live run.
+- A `schemaCap` forwarding struct carries `ParameterSchema` and
+  `DecodeArguments`, beside the other three caps.
+- The variant switch covers sixteen cases.
+- `spool/spool_test/tool_parity_test.go` enumerates every subset of
+  the known optional interfaces, including `tools.SchemaTool`. A
+  missed variant fails the parity test, not a live run.
+
+## Correctness fix: view budget and rune-safe cut
+
+Two defects, one root each.
+
+Defect one: a panic. `SpoolTool` validates nothing, so a caller may
+pass a negative `maxBytes`. The predicate at `spool/tool.go:38`,
+`!ok || len(s) <= t.maxBytes`, is then false for every string result,
+including an empty one. `Run` spools and reaches `data[:maxBytes]` in
+`buildView`. The runtime panics with a slice-bounds error. No recover
+exists in `tools` or in `agentloop`, so one tool result stops the
+process.
+
+Defect two: invalid UTF-8. `buildView` in `spool/spool.go` cuts
+`data[:maxBytes]` with no rune alignment. The cut may split a
+multi-byte rune, and the broken bytes reach the model transcript.
+`agentloop/wire.go` already fixed this class with `validPrefix` and
+`strings.ToValidUTF8`.
+
+### Decision on the panic fix
+
+Two options existed.
+
+- Option A, chosen: clamp a negative `maxBytes` to zero in
+  `SpoolTool`, at construction.
+- Option B, rejected: change `SpoolTool` to return
+  `(tools.Tool, error)`.
+
+Option A is chosen because it is one line and keeps `api/spool.txt`
+unchanged. Option B breaks every caller of `SpoolTool` for a
+programming error with one sane answer: with no byte budget, every
+non-empty result spools.
+
+The clamp belongs at the constructor, not in `buildView`. `buildView`
+is a distant helper, and a clamp there leaves `spoolTool.maxBytes`
+holding the nonsense value. The predicate at `spool/tool.go:38` then
+still misbehaves: with `maxBytes` of -1 an empty result spools, and
+with `maxBytes` of 0 the same empty result passes through. The
+constructor clamp fixes the predicate and the cut together, and it
+puts the invariant at the boundary, as the AGENTS.md Validate rule
+requires.
+
+### The change
+
+In `spool/tool.go`, in `SpoolTool`:
+
+- Add `if maxBytes < 0 { maxBytes = 0 }` before
+  `base := &spoolTool{...}` at `spool/tool.go:225`.
+- In `SpoolTool`'s doc comment, state that a negative `maxBytes`
+  clamps to zero. Do not describe the resulting view text in the
+  comment. The test pins that shape.
+
+In `spool/spool.go`, in `buildView`:
+
+- Cut with a rune-safe prefix. Call `bytes.ToValidUTF8` on the cut
+  prefix with an empty replacement, matching `agentloop/wire.go`.
+  `buildView` receives `[]byte`, so `bytes` is the matching package.
+- No new package and no copied type. `bytes` is standard library,
+  called directly here.
+- Add one clause to `buildView`'s doc comment: the empty replacement
+  drops every invalid byte in the prefix, not the trailing partial
+  rune alone. `Spool` stores arbitrary bytes, so a binary payload's
+  view may collapse to little more than the marker. `Spool.Load`
+  still returns the stored bytes unchanged.
+
+Note the exact view text for a zero budget. `buildView` produces
+`" [truncated, ref=X]"`, with a leading space, for a non-empty
+payload. This is the current format string's output, and this change
+does not alter it.
+
+No exported symbol changes. `api/spool.txt` stays as locked. The
+`spool` row in `policy/layers.json` stays `["tools"]`.
+
+### Tests
+
+In `spool/spool_test/spool_tool_test.go`:
+
+- `SpoolTool` with `maxBytes` of -1 and a non-empty string result.
+  `Run` returns no panic and no error. The view names a ref that
+  `Spool.Load` resolves to the full result. The view equals the exact
+  text `buildView` produces for a zero budget, asserted literally.
+  This case kills the mutation that removes the clamp: without the
+  clamp the test panics.
+- `SpoolTool` with `maxBytes` of -1 and an empty string result. The
+  result passes through unchanged, with no principal in `ctx` and no
+  `ErrNoPrincipal`. This case is the honest parity pin: without the
+  clamp the empty result spools and fails.
+- `SpoolTool` with `maxBytes` of 0, run over both the non-empty and
+  the empty result. Assertions match the two cases above, proving the
+  clamped value and the zero value behave the same.
+- `SpoolTool` with a caller-chosen `maxBytes` landing inside a
+  multi-byte rune of the inner result. Assert `utf8.ValidString` on
+  the returned view. Assert `Spool.Load` on the named ref returns the
+  inner result's full bytes. This case kills the mutation that
+  restores the raw `data[:maxBytes]` cut. Test rune safety here, not
+  through `Spool.Spool`, because `Spool.Spool` would force the test
+  to hardcode the unexported view budget.
+- `SpoolTool` with a binary inner result whose bytes are not valid
+  UTF-8, and a `maxBytes` under its length. Assert the view is valid
+  UTF-8, and assert `Spool.Load` round-trips the original bytes. This
+  pins the documented trade of the empty replacement.
+
+In `spool/spool_test/spool_test.go`:
+
+- Keep the `Spool.Spool` path to the existing oversize assertion: the
+  view is shorter than the data and `Load` returns the full bytes. Do
+  not add a rune-boundary case here.
+
+### Verification
+
+- `make verify` passes. `spool` holds the 85 coverage floor.
+- `go test -race ./spool/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  and `python3 scripts/check_prose.py` pass.
+- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+  `schema` to `agentloop` stay out of this commit. They belong to the
+  concurrent `agentloop` change and need their own plan review.

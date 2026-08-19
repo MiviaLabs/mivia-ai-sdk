@@ -93,11 +93,12 @@ type Definition struct {
 }
 
 // Load resolves one JSON document into a Definition. It rejects
-// malformed JSON, a non-object root, a step with both bindings or an
-// empty ID, an undeclared external tool, a blank or duplicate tool
-// name, an unknown internal kind, an unknown when value, and any
-// rejection from machine.New or flow.New. It wraps every failure in
-// ErrBadDocument. The loader never reads the environment.
+// malformed JSON, a non-object root, a step with both bindings, a step
+// that sets sub beside tool or internal, an empty step ID, an
+// undeclared external tool, a blank or duplicate tool name, an unknown
+// internal kind, an unknown when value, and any rejection from
+// machine.New or flow.New. It wraps every failure in ErrBadDocument.
+// The loader never reads the environment.
 func Load(data []byte) (*Definition, error) {
 	var doc wireDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
@@ -196,6 +197,9 @@ func buildStep(w *wireStep, declared map[string]bool) (flow.Step, []Binding, err
 	}
 	if w.Tool != "" && w.Internal != "" {
 		return flow.Step{}, nil, fmt.Errorf("%w: step %q sets both tool and internal", ErrBadDocument, w.ID)
+	}
+	if w.Sub != nil && (w.Tool != "" || w.Internal != "") {
+		return flow.Step{}, nil, fmt.Errorf("%w: step %q sets sub beside tool or internal", ErrBadDocument, w.ID)
 	}
 	step := flow.Step{ID: w.ID, Needs: w.Needs, To: w.To, Payload: w.Payload}
 	if w.When != "" {

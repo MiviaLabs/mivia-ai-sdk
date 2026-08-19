@@ -1,6 +1,10 @@
 package contextplan
 
-import "github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+import (
+	"bytes"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+)
 
 // ElisionReason is the closed set of reasons Plan drops or trims a
 // payload.
@@ -41,7 +45,10 @@ const truncationMarker = "...[elided]"
 
 // StubContent truncates content to StubContentBytes, appending
 // truncationMarker inside that cap when truncation occurs. It returns
-// content unchanged when content already fits.
+// content unchanged when content already fits. StubContentBytes is a
+// cap, not a promised length: the cut prefix passes through
+// bytes.ToValidUTF8 with an empty replacement, so every invalid byte
+// drops and the result may be shorter.
 func StubContent(content []byte) []byte {
 	if len(content) <= StubContentBytes {
 		return content
@@ -51,7 +58,7 @@ func StubContent(content []byte) []byte {
 		keep = 0
 	}
 	stub := make([]byte, 0, StubContentBytes)
-	stub = append(stub, content[:keep]...)
+	stub = append(stub, bytes.ToValidUTF8(content[:keep], nil)...)
 	stub = append(stub, truncationMarker...)
 	return stub
 }

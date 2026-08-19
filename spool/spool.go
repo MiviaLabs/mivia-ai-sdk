@@ -4,6 +4,7 @@
 package spool
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -173,10 +174,16 @@ func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error)
 }
 
 // buildView returns data truncated to maxBytes, naming ref, when data
-// is longer than maxBytes; else it returns data unchanged.
+// is longer than maxBytes; else it returns data unchanged. The
+// truncated prefix passes through bytes.ToValidUTF8 with an empty
+// replacement, which drops every invalid byte, not the trailing
+// partial rune alone: a binary payload's view may collapse to little
+// more than the marker, while Spool.Load still returns the stored
+// bytes.
 func buildView(data []byte, maxBytes int, ref string) string {
 	if len(data) <= maxBytes {
 		return string(data)
 	}
-	return fmt.Sprintf("%s [truncated, ref=%s]", string(data[:maxBytes]), ref)
+	prefix := bytes.ToValidUTF8(data[:maxBytes], nil)
+	return fmt.Sprintf("%s [truncated, ref=%s]", string(prefix), ref)
 }

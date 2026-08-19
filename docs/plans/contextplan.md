@@ -126,7 +126,17 @@ the code.
   stub bytes as a string.
 - `type PlanResult struct { Request provider.Request; Elisions []Elision; EstimatedTokens int }`
   — `Plan`'s output. `EstimatedTokens` is the estimator's total over
-  `Request.Messages`, always at or under `Window.Budget()`.
+  `Request.Messages`. Two conditions bound it. The bound holds for a
+  deterministic estimator whose total for an empty message list is at
+  or under the budget. `admit` admits a candidate only when the trial
+  estimate is at or under the budget, and the final estimate re-runs
+  the same estimator over the same accepted list. An estimator
+  charging a fixed per-request overhead above the budget therefore
+  reports a total over `Window.Budget()`, because `Plan` has no
+  message left to drop. A second escape exists: a final estimate that
+  errors is reported as zero, so an erroring estimator reports zero
+  whatever the message list holds. `Plan` never compares its final
+  estimate against the budget.
 - `type Planner struct { ... }` — unexported fields. Built only
   through `NewPlanner`. Holds the payload source, the decode cache,
   and a mutex-guarded metadata cache keyed by `PayloadRef` that
@@ -167,8 +177,9 @@ the code.
   guarantees a stub over a full drop; it never overrides the window
   bound. Every other payload past the budget is fully dropped, no
   message inserted, recorded as `ElisionReasonWindowOverflow` with
-  `Kept == 0`. `EstimatedTokens` in `PlanResult` is always at or under
-  `w.Budget()`, with no exception for retained content. `Plan` returns
+  `EstimatedTokens` in `PlanResult` stays at or under `w.Budget()`
+  under the two conditions stated with `PlanResult`, with no
+  exception for retained content. `Plan` returns
   a non-nil error only on a malformed `Window`, a nil `sess`, or a
   payload-resolution failure from the store or the cache — including
   one encountered only during the retention check of an
@@ -258,7 +269,8 @@ the code.
     report `ElisionReasonWindowOverflow` with `Kept == 0`.
   - Reserves headroom: `EstimatedTokens` never exceeds
     `w.Budget()`, checked against a `Window` with a non-zero
-    `Reserve`.
+    `Reserve`. The case uses a deterministic proportional estimator
+    that returns zero for an empty message list.
   - Stub does not fit: a `Window` whose remaining budget, after the
     newest messages, is smaller than `StubContentBytes`'s estimated
     token cost, and a `RetentionCompliance` payload landing at that
@@ -310,7 +322,9 @@ the code.
   including boundary cases where a stub barely fits or barely does
   not — the planned request's `EstimatedTokens` never exceeds
   `w.Budget()` across every case, with no exception for retained
-  content.
+  content. Every case uses a deterministic proportional estimator
+  that returns zero for an empty message list. That estimator class is
+  the scope of the claim.
 - `plan_integration_test.go` — a full session: seed a
   `*contextstate.MemStore` with payloads across two retention
   classes and a reasoning-kind event, run `Plan` against a small
@@ -334,3 +348,102 @@ the code.
   including the reasoning-fold additions to `provider`.
 - `python3 scripts/check_plan.py` and `python3 scripts/check_deps.py`
   pass with this plan and the new `policy/layers.json` row in place.
+
+## Correctness fix: rune-safe stub and the budget claim
+
+Two defects, one code change and one doc change.
+
+### Rune-safe stub cut
+
+`StubContent` in `contextplan/elision.go` appends `content[:keep]`
+with no rune alignment. A cut inside a multi-byte rune puts invalid
+UTF-8 into the stub, and the stub reaches the model transcript.
+`agentloop/wire.go` already fixed this class with `strings.ToValidUTF8`.
+
+The change, in `StubContent`:
+
+- Append `bytes.ToValidUTF8(content[:keep], nil)` in place of the raw
+  `content[:keep]`. `bytes` is standard library, called directly. No
+  new package and no copied type.
+- The call drops every invalid byte in the prefix, not the trailing
+  partial rune alone. That matches `agentloop`'s shipped behavior.
+- The result may be shorter than `keep`. `StubContentBytes` stays the
+  cap, not a promised length. State that in the doc comment.
+- The `keep < 0` clamp stays as it is.
+
+No exported symbol changes. `api/contextplan.txt` stays as locked. The
+`contextplan` row in `policy/layers.json` is unchanged.
+
+### The `EstimatedTokens` claim
+
+Three places claim `EstimatedTokens` is always at or under
+`Window.Budget()`. All three are false for two estimator classes.
+
+- `contextplan/planner.go:26`, the `PlanResult` field comment.
+- `contextplan/planner.go:63-64`, inside `Plan`'s doc comment.
+- `docs/packages/contextplan.md:44`, the `Plan` entry.
+
+The bound comes from the per-insertion trial checks in `admit`, at
+`contextplan/planner.go:114` and `contextplan/planner.go:122`. Each
+admits a candidate only when the trial estimate is at or under the
+budget. The final estimate at `contextplan/planner.go:95` re-runs the
+same estimator over the same accepted list. So the bound holds for a
+deterministic estimator whose total for an empty message list is at
+or under the budget. An estimator charging a fixed per-request
+overhead above the budget breaks it, because `Plan` drops every event
+and still reports that overhead. An estimator that errors on the
+final call breaks it the other way: `contextplan/planner.go:96-97`
+sets the total to zero.
+
+The change is documentation only. Behavior stays as it is.
+
+- Reword all three places in the same change, matching the API
+  section of this plan.
+- Keep each code comment to two lines: the condition, then the two
+  escapes named in one clause. The reasoning stays in this plan.
+- Suggested code wording: "EstimatedTokens stays at or under
+  Window.Budget() for a deterministic estimator whose empty-list total
+  fits the budget. An estimator with a larger fixed overhead, or one
+  that errors on the final call, breaks that bound."
+
+### Tests
+
+In `contextplan/contextplan_test/elision_test.go`:
+
+- A `StubContent` case whose cut boundary falls inside a multi-byte
+  rune. Assert `utf8.Valid` on the output, and assert the output ends
+  with the truncation marker. This case kills the mutation that
+  restores the raw `content[:keep]` append.
+- A `StubContent` case whose content is pure ASCII and over the cap.
+  Output length stays exactly `StubContentBytes`, proving the fix
+  changes nothing for aligned content.
+
+In `contextplan/contextplan_test/plan_resolution_test.go`:
+
+- A `Plan` case with a `RetentionCompliance` payload holding
+  multi-byte runes. Assert the inserted stub message's `Content` is
+  valid UTF-8.
+- A `Plan` case with a deterministic estimator charging a fixed
+  per-request overhead above `w.Budget()`. Assert `Plan` returns a nil
+  error, an empty `Request.Messages`, one
+  `ElisionReasonWindowOverflow` entry per source event, and
+  `EstimatedTokens` above `w.Budget()`. This pins the limit the
+  reworded comment documents, instead of documenting it away.
+
+Do not add these cases to `plan_test.go`. That file is 452 lines
+against the 500-line structure limit.
+
+### Verification
+
+- `make verify` passes. `contextplan` holds the 85 coverage floor.
+- `go test -race ./contextplan/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_docs.py` and
+  `python3 scripts/check_structure.py` pass.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  and `python3 scripts/check_prose.py` pass.
+- `docs/packages/contextplan.md` changes in the same commit as the
+  code.
+- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+  `schema` to `agentloop` stay out of this commit. They belong to the
+  concurrent `agentloop` change and need their own plan review.

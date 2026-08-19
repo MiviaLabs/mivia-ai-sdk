@@ -1,7 +1,8 @@
 # Plan: runconfig
 
-Status: phase 69, declarative options loader. Plan only, not scheduled.
-The contract lives in docs/plans/agents/phase69_options_loader.md.
+Status: shipped in commit 9054704. The original contract lives in
+docs/plans/agents/phase69_options_loader.md. The open work is the
+correctness fix at the end of this file.
 
 ## Goal
 
@@ -100,7 +101,10 @@ Step field mapping:
 - `to` maps to `Step.To`. `payload` maps to `Step.Payload`.
 - `retry` maps to a `flow.RetryPolicy`. `loop` maps to a
   `flow.LoopPolicy`.
-- `sub` maps to a nested `flow.Definition`. The loader recurses.
+- `sub` maps to a nested `flow.Definition`. The loader recurses. A
+  step that sets `sub` together with `tool` or `internal` is
+  `ErrBadDocument`. A step carries a child plan or a binding, never
+  both.
 - `panels` maps to `[]flow.Panel`. The loader passes them to `flow.New`.
 - No `route` field. A `Route` is function code. Branch steps stay
   caller-composed.
@@ -212,7 +216,8 @@ following files exist.
   types.
 - `reject_test.go` — table-driven over every `ErrBadDocument` case:
   malformed JSON, both bindings, blank `id`, undeclared tool, unknown
-  kind, unknown `when`, duplicate tool, and constructor rejections.
+  kind, unknown `when`, duplicate tool, `sub` with `tool`, `sub` with
+  `internal`, and constructor rejections.
 - `runner_test.go` — `Runner` returns `ErrUnknownTool` for a missing
   external tool and `ErrUnknownInternal` for a missing `Kind`. A nil
   `Options.Agent` yields `agentrun.ErrNoAgent`. A bad budget forwards
@@ -245,3 +250,57 @@ word `phase`.
 - `python3 scripts/check_plan.py` and `python3 scripts/check_deps.py`
   pass. The gates inspect Go package directories. No code ships here,
   so both pass with the plan and the row alone.
+
+## Correctness fix: `sub` beside a binding
+
+`buildStep` in `runconfig/loader.go` returns from its `Sub` branch
+before the `Tool` and `Internal` branches run. A step that sets both
+`sub` and `tool` loads, and the binding is dropped without a word. An
+undeclared tool name passes too. That contradicts `Load`'s own doc
+comment at `runconfig/loader.go:95-100`, which promises to reject an
+undeclared external tool. The same comment says "a step with both
+bindings". `sub` is a child plan, not a binding, so the comment does
+not cover this case today.
+
+The fix, in `buildStep`, beside the existing tool-plus-internal check:
+
+- Reject a step that sets `Sub` together with `Tool` or `Internal`.
+- Return `ErrBadDocument` wrapped with the step id, in the message
+  form the neighbouring check already uses.
+- Place the new check with the other early field checks, before the
+  `Sub` recursion runs.
+
+Scope of the fix:
+
+- No exported symbol changes. `api/runconfig.txt` stays as locked.
+- No import edge changes. The `runconfig` row in `policy/layers.json`
+  stays `["agentrun", "flow", "machine", "subagent", "tools"]`.
+- `Load`'s doc comment gains the new case in its enumerated rejection
+  list, in the same change. Name it as a step that sets `sub` beside
+  `tool` or `internal`.
+
+Tests, in `runconfig/runconfig_test/reject_test.go`:
+
+- A document whose step sets `sub` and `tool`, with the tool declared.
+  `Load` must return an error matching `ErrBadDocument`, and the
+  message must name the step id.
+- A document whose step sets `sub` and an undeclared `tool`. Same
+  assertion. This case is the one that passed before the fix, so it
+  kills the mutation that deletes the new check.
+- A document whose step sets `sub` and a valid `internal` kind. Same
+  assertion.
+- One positive control: a step with `sub` alone still loads, and its
+  child bindings still reach `Definition.Bindings`.
+
+Verification:
+
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  `python3 scripts/check_prose.py`, and `python3 scripts/check_api.py`
+  pass.
+- `make verify` passes. `runconfig` holds the 85 coverage floor.
+- `go test -race ./runconfig/...` passes.
+- `python3 scripts/check_docs.py` passes over the reworded `Load`
+  comment.
+- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+  `schema` to `agentloop` stay out of this commit. They belong to the
+  concurrent `agentloop` change and need their own plan review.

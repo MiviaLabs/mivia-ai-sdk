@@ -41,7 +41,10 @@ exported surface below mirrors `api/contextplan.txt`.
   under `w.Budget()`; once the next message would exceed the budget, a
   `RetentionCompliance` payload gets a stub instead, unless the stub
   itself would exceed the budget, in which case it drops too.
-  `EstimatedTokens` is always at or under `w.Budget()`. Returns a
+  `EstimatedTokens` stays at or under `w.Budget()` for a deterministic
+  estimator whose empty-list total fits the budget. A larger fixed
+  overhead exceeds it; an estimator that errors on the final call
+  reports zero. Returns a
   non-nil error only on a malformed `Window`, a nil `sess`, or a
   payload-resolution failure.
 - `Window.Validate()` — rejects a non-positive `MaxTokens`, a negative
@@ -63,6 +66,8 @@ exported surface below mirrors `api/contextplan.txt`.
 - `StubContent(content)` — truncates `content` to `StubContentBytes`,
   appending an elision marker inside that cap when it truncates.
   Returns `content` unchanged when it already fits.
+  `StubContentBytes` is a cap, not a promised length: the cut prefix
+  drops every invalid UTF-8 byte, so the result may be shorter.
 
 ## Constants
 

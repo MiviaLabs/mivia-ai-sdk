@@ -35,6 +35,9 @@ minter.
   concatenated chunks, then validates the result.
 - `PayloadRecord` — one payload under its `ContentRef`, with a
   `RetentionClass` and an optional `Data`.
+- `RetentionClass` — labels how long a payload is kept.
+  `RetentionSession` and `RetentionCompliance` ship. Any non-empty
+  class validates, so a caller may define its own.
 - `Reassemble` — concatenates chunks in order under one ref and
   returns the record with `Data` set. It fails closed on a size or
   digest mismatch.
@@ -127,6 +130,9 @@ if err != nil {
     // a negative limit
 }
 req, err := contextstate.NewCommitRequest(session, expected, binding, events, payloads, checkpoint, newBinding, turn)
+if err != nil {
+    // a validation failure
+}
 if err := store.Checkpoint(req); err != nil {
     // conflicts, stale guards, or volume bounds
 }

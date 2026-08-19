@@ -1,11 +1,9 @@
 # Plan: contextstate
 
-Status: plan only, not shipped. One new leaf package plus one
-unification inside `envelope`. It implements
-`docs/plans/agents/phase65_context_state.md` and precedes phase 66,
-which plans a `Session`, and phase 67, which spools elided content.
-The port source is `mivia-agent`'s `internal/contextstate` and
-`internal/contentref`.
+Status: shipped. One new leaf package plus one unification inside
+`envelope`, ported from `mivia-agent`'s `internal/contextstate` and
+`internal/contentref` under the phase 65 contract. Phase 66 plans
+a `Session` on these types; phase 67 spools elided content.
 
 ## Goal
 
@@ -113,10 +111,10 @@ Resolutions of the phase sketch, binding for the builder:
   bare digest the payload checks compare against; the three owner
   strings replace `Principal`; `Size` is the whole-payload byte count.
 - `(ContentRef) Validate` enforces: `IsRef(Ref)`; `Ref` equals
-  `HashPrefix` plus `SHA256`; `SHA256` is 64 lowercase hex characters;
-  `Namespace` and the three owner strings pass the identifier bound;
-  `Size` is not negative. `Namespace` is never compared with any SDK
-  constant.
+  `HashPrefix` plus `SHA256`, which implies `SHA256` is 64 lowercase
+  hex characters; `Namespace` and the three owner strings pass the
+  identifier bound; `Size` is not negative. `Namespace` is never
+  compared with any SDK constant.
 - `func NewContentRef(namespace string, workspaceID string, sessionID
   string, subjectID string, chunks ...[]byte) (ContentRef, error)` —
   mints `Ref`, `SHA256`, and `Size` over the concatenation, fills the

@@ -23,7 +23,7 @@ package contextplan
   func Calibrate(est provider.TokenEstimator, alpha float64) (*Calibrated)
   func Compact(msgs []provider.Message, w Window, e provider.TokenEstimator) (CompactResult, error)
   func IsReasoningEvent(e contextstate.SourceEvent) (bool)
-  func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, error)
+  func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spool.Spool) (*Planner, error)
   func StubContent(content []byte) ([]byte)
   type Calibrated struct {
 }
@@ -48,6 +48,7 @@ package contextplan
   Ref contextstate.ContentRef
   Reason ElisionReason
   Kept int
+  SpoolRef string
 }
   type ElisionReason string
   type PlanResult struct {

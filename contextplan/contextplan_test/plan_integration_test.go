@@ -17,7 +17,7 @@ import (
 func TestPlanIntegrationFullSession(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

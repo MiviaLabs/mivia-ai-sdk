@@ -59,7 +59,8 @@
     "contextplan": [
       "contextstate",
       "provider",
-      "memory"
+      "memory",
+      "spool"
     ],
     "contextstate": [],
     "contextsummary": [

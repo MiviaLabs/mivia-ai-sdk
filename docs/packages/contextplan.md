@@ -10,7 +10,7 @@ exported surface below mirrors `api/contextplan.txt`.
 
 - `Planner` — fits one session's source events into a bounded
   request. Built only through `NewPlanner`. Safe for concurrent use
-  through its two dependencies' own concurrency guarantees.
+  through its three dependencies' own concurrency guarantees.
 - `Window` — the token budget for one planned request. `MaxTokens` is
   the model's context window; `Reserve` is the headroom `Plan` never
   spends. `Compaction` carries the compaction thresholds and retention
@@ -28,7 +28,11 @@ exported surface below mirrors `api/contextplan.txt`.
   `Request.Messages`.
 - `Elision` — one drop or trim decision `Plan` made for one payload.
   `Kept` is the byte length of a stubbed payload; zero means `Plan`
-  inserted no message at all.
+  inserted no message at all. `SpoolRef` is the `spool.Spool.Spool`
+  reference for a successful durable write, set only for
+  `ElisionReasonWindowOverflow` and `ElisionReasonRetentionExpired`
+  when `Planner` carries a non-nil spooler and the write succeeded.
+  Empty in every other case, including a failed write.
 - `ElisionReason` — the closed set of reasons `Plan` drops or trims a
   payload: `ElisionReasonWindowOverflow`, `ElisionReasonRetentionExpired`,
   `ElisionReasonReasoningRedacted`, `ElisionReasonRevoked`.
@@ -41,10 +45,13 @@ exported surface below mirrors `api/contextplan.txt`.
 
 ## Functions and methods
 
-- `NewPlanner(store, cache)` — builds a `Planner` over a
-  `*contextstate.MemStore`, the durable payload source, and a
-  `*memory.Store`, a same-process decode cache. A nil `store` wraps
-  `ErrNilStore`; a nil `cache` wraps `ErrNilCache`.
+- `NewPlanner(store, cache, spooler)` — builds a `Planner` over a
+  `*contextstate.MemStore`, the durable payload source, a
+  `*memory.Store`, a same-process decode cache, and a `*spool.Spool`,
+  an optional durable overflow target. A nil `store` wraps
+  `ErrNilStore`; a nil `cache` wraps `ErrNilCache`. A nil `spooler` is
+  valid: `Plan` never calls `Spool.Spool` and behaves exactly as it
+  does with no spooler wired.
 - `Planner.Plan(ctx, sess, w, e)` — walks `sess.Source` newest to
   oldest. Every event resolves through one `contextstate.MemStore.Get`
   call on every `Plan` call: `resolvePayload` carries no cache-hit
@@ -64,7 +71,10 @@ exported surface below mirrors `api/contextplan.txt`.
   overhead exceeds it; an estimator that errors on the final call
   reports zero. Returns a
   non-nil error only on a malformed `Window`, a nil `sess`, or a
-  payload-resolution failure other than a revocation.
+  payload-resolution failure other than a revocation. A wired `Spool`
+  receives the full payload behind every `ElisionReasonWindowOverflow`
+  and `ElisionReasonRetentionExpired` entry, keyed to
+  `record.Ref.SubjectID`, best-effort, never failing `Plan`.
 - `Window.Validate()` — rejects a non-positive `MaxTokens`, a negative
   `Reserve`, a `Reserve` at or above `MaxTokens`, an invalid
   `Compaction`, and a positive `Compaction.TargetTokens` at or above
@@ -184,15 +194,17 @@ Use `errors.Is` to test these.
 - [provider.md](provider.md) — `Plan` builds a `provider.Request`;
   `IsReasoningEvent` compares against `provider.ReasoningEventKind`.
 - [memory.md](memory.md) — `Planner`'s decode cache.
+- [spool.md](spool.md) — `Planner`'s optional durable overflow target
+  for a budget-driven elision.
 - [contextsummary.md](contextsummary.md) — the LLM summarizer whose
   input `Compact`'s `Dropped` list supplies.
 
 ## Usage
 
 ```go
-planner, err := contextplan.NewPlanner(store, cache)
+planner, err := contextplan.NewPlanner(store, cache, spooler)
 if err != nil {
-    // a nil store or cache
+    // a nil store or cache; spooler may be nil
 }
 window := contextplan.Window{MaxTokens: 8000, Reserve: 500}
 result, err := planner.Plan(ctx, session, window, estimator)
@@ -202,5 +214,8 @@ if err != nil {
 for _, e := range result.Elisions {
     // inspect what Plan dropped or stubbed, and why
     _ = e.Reason
+    if e.SpoolRef != "" {
+        // the full payload survives in spooler, retrievable by SubjectID
+    }
 }
 ```

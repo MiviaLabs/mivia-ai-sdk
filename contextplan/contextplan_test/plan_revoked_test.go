@@ -13,7 +13,7 @@ import (
 // ErrPayloadRevoked as a Plan-level failure.
 func TestPlanRevokedMiddleEvent(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestPlanRevokedMiddleEvent(t *testing.T) {
 // cache-hit skip of store.Get.
 func TestPlanRevokeAfterWarmCache(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestPlanRevokeAfterWarmCache(t *testing.T) {
 // retention-stub path before the revoked check.
 func TestPlanRevokedRetentionCompliance(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestPlanRevokedRetentionCompliance(t *testing.T) {
 // revoked check and the reasoning check.
 func TestPlanRevokedReasoningEvent(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestPlanRevokedReasoningEvent(t *testing.T) {
 // Request.Messages ends up empty.
 func TestPlanEveryEventRevoked(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestPlanEveryEventRevoked(t *testing.T) {
 // exactly as before.
 func TestPlanNonRevokedStaysGreen(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

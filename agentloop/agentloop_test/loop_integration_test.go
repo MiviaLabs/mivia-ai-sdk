@@ -64,7 +64,7 @@ func TestLoopIntegrationTrimBindsToContextPlanPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memory.New: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

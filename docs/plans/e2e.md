@@ -63,27 +63,33 @@ func (t *ThreadCapture) Messages() []envelope.Message
 ```
 
 The fault kit is a named capability of the harness. Each decorator
-wraps one seam as an interface and fails its FaultOn-th call with an
-error wrapping `ErrFault`; every other call passes through:
+wraps one seam as an interface. `FaultOn`, `HangOn`, and `PanicOn` are
+three independent, reusable fault modes over the same 1-based call
+counter: the FaultOn-th call errors, wrapping `ErrFault`; the HangOn-th
+call blocks until `ctx` is done, then returns `ctx.Err()`; the
+PanicOn-th call panics with a value wrapping `ErrFault`. Zero disables
+a mode. Every other call passes through unchanged. A scenario opts
+into a hang or a panic the same way it already opts into an error: by
+setting the matching field.
 
 ```go
 // fault.go
 var ErrFault error
 
-type FaultStore struct{ Store ledger.Store; FaultOn int32 }
+type FaultStore struct{ Store ledger.Store; FaultOn, HangOn, PanicOn int32 }
 func (f *FaultStore) Load(...) (ledger.TaskState, bool, error)
 func (f *FaultStore) CompareAndSwap(...) (bool, error)
 func (f *FaultStore) Range(...) error
 
-type FaultNotifier struct{ Notifier channel.Notifier; FaultOn int32 }
+type FaultNotifier struct{ Notifier channel.Notifier; FaultOn, HangOn, PanicOn int32 }
 func (f *FaultNotifier) Notify(...) (channel.Answer, error)
 
-type FaultCompleter struct{ Completer provider.Completer; FaultOn int32 }
+type FaultCompleter struct{ Completer provider.Completer; FaultOn, HangOn, PanicOn int32 }
 func (f *FaultCompleter) Name() string
 func (f *FaultCompleter) Chat(...) (provider.Response, error)
 func (f *FaultCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 
-type FaultWait struct{ Inner agent.AckWait; FaultOn int32 }
+type FaultWait struct{ Inner agent.AckWait; FaultOn, HangOn, PanicOn int32 }
 func (f *FaultWait) Wait(...) (envelope.Ack, error)
 
 type HangCompleter struct{}
@@ -92,8 +98,15 @@ func (h *HangCompleter) Chat(...) (provider.Response, error)
 func (h *HangCompleter) ChatStream(...) (<-chan provider.Chunk, error)
 ```
 
-`HangCompleter` blocks instead of erroring. It models a provider
-that never answers unless the caller cancels.
+`HangCompleter` stays as the unconditional convenience case: it blocks
+on every call, not just its HangOn-th. `FaultCompleter{HangOn: n}` is
+the general form for the other seams and for a provider that must
+answer normally up to call n. Neither replaces the other; both ship.
+
+A panicking call panics with `faultErr(seam)`, the same error value
+`FaultOn` would have returned. A scenario that recovers the panic
+itself asserts `errors.Is` against the recovered value, the same way
+it already asserts a returned error.
 
 The kit raises the seam only where the block already exposes an
 interface. A block behind a concrete type keeps no decorator: memory's
@@ -158,6 +171,20 @@ Each scenario states its wiring, inputs, and asserted outputs.
   answers, with a run context that carries a deadline. Outputs: the
   run returns once the deadline fires, and the error wraps
   `context.DeadlineExceeded`.
+- `faults_panic_test.go` — wires subagent and agentrun with the
+  harness `FaultCompleter{PanicOn: 1}`, on a one-step, non-panel plan
+  so the panicking tool call runs in the same goroutine as the test's
+  own call to `Runner.Run`. Input: a one-step runner whose sole tool
+  panics on its first call. Outputs: `Run` never returns normally; the
+  panic propagates out of `Run` uncaught, and the test's own
+  `recover`, deferred around the `Run` call, observes a value
+  matching `errors.Is(recovered.(error), e2e.ErrFault)`. This pins the
+  documented contract: neither `flow.Run` nor `agentrun.Runner.Run`
+  recovers a panic from a Fire call on the sequential path; a panic is
+  the caller's own fault, and it is the caller's job to recover one if
+  it wants a run's panic reported as a result instead of a crash. See
+  "Disclosed limits" below for the goroutine-concurrency case this
+  scenario deliberately does not cover.
 
 A fallback step stays out of the pipeline scenario by design. In an
 agentrun run the tool chain answers inside the ack, and a rejected
@@ -313,6 +340,28 @@ The four newest blocks compose at the top through these scenarios:
   session totals over one accumulator, and a stop-hook veto fails
   the run after the walk while still reporting the final status.
 
+## Disclosed limits: unrecovered panics inside a goroutine wave
+
+`flow`'s panel wave (`flow/wave.go:50`) and `subagent.RunAll`
+(`subagent/runall.go:37`) each spawn one goroutine per member and join
+on a `sync.WaitGroup`. Neither goroutine carries a deferred `recover`.
+A panic inside a panel member's `Fire`, or inside a spawned subagent's
+`Runner.Run`, is not converted to a joined error the way a returned
+Fire error already is: it terminates the whole process, taking every
+sibling goroutine and the parent test binary down with it. This is a
+confirmed production gap, found by reading both files; it is not
+covered by `faults_panic_test.go`, which deliberately stays on the
+single-goroutine, non-panel path, since a test that actually crashes
+the process asserts nothing and reports as a broken test run rather
+than a clean failure.
+
+Closing this gap needs production code: a `defer recover()` in each
+spawned goroutine that converts a caught panic into an error joined
+with (or returned alongside) a sibling's Fire failure, mirroring the
+existing per-member error path. That change is out of scope for this
+test-only slice; it is flagged here for the plan-reviewer to decide
+whether it becomes its own reviewed change to `flow` and `subagent`.
+
 ## Tests
 
 The scenarios are the tests. They live in `e2e/e2e_test/`, one
@@ -335,7 +384,12 @@ alongside the round-trip precedents in `a2a/mapping_test.go`,
 - `policy/layers.json` gains the `"e2e"` row listed under API.
 - `make api-update` lands `api/e2e.txt` in the same change.
 - `make verify` passes; e2e and the module total hold the 85 floor.
-- `go test -race ./e2e/...` passes.
+- `go test -race ./e2e/...` passes, including `faults_panic_test.go`.
+- `faults_panic_test.go` asserts through a deferred `recover` around
+  its own call to `Run`, never lets a panic escape the test binary,
+  and the module's other suites stay unaffected: no shared state
+  crosses from the panicking goroutine, since it is the same goroutine
+  as the test.
 - Every scenario fails when its wiring breaks. Prove it once per
   drop: plant one wiring fault in a throwaway copy, run the suite,
   name the scenario that caught it.

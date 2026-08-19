@@ -51,12 +51,12 @@ surface below mirrors `api/ledger.txt`.
   cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
 - `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
   task once per key. A need already failed or blocked lands the new
-  record `StatusBlocked`, so a late dependent never claims.
-  task once per key. Returns `false, nil`, not an error, for a
-  duplicate or a post-completion resubmission. On first insert, stamps
-  `CreatedBy`/`CreatedAt` from `actor`/`now`; a rebase over an existing
-  non-terminal record carries them forward unchanged. Every successful
-  write stamps `UpdatedBy`/`UpdatedAt`.
+  record `StatusBlocked`, so a late dependent never claims. It returns
+  `false, nil`, not an error, for a duplicate or a post-completion
+  resubmission. On first insert, it stamps `CreatedBy`/`CreatedAt` from
+  `actor`/`now`; a rebase over an existing non-terminal record carries
+  them forward unchanged. Every successful write stamps `UpdatedBy` and
+  `UpdatedAt`.
 - `Ledger.Claim(ctx, actor, key, owner, lease, now)` — claims a pending
   record, or a claimed record whose lease has expired. Returns
   `ErrEmptyOwner` for a blank `owner`.
@@ -130,6 +130,10 @@ surface below mirrors `api/ledger.txt`.
 - `Claim` and `Takeover` read `LeaseUntil` against the caller-supplied
   `now` as the only staleness signal. `ledger` imports no liveness
   package.
+- Lease expiry alone never fences. `Renew`, `Release`, and `Complete`
+  check only the fence token, so a stale owner nobody has taken over
+  still holds a valid fence. Pinned by
+  `ledger_test/lease_semantics_test.go`.
 - Every mutating method follows the same retry-and-reclassify contract
   on a losing `CompareAndSwap`: it reloads the record and re-evaluates
   its own eligibility rule, retrying while the caller still

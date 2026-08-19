@@ -326,8 +326,12 @@ func (c *stressClock) stamp() int64 {
 }
 
 // runStorm drives goroutines goroutines each issuing opsEach mutations
-// over l against keys, returning every recorded operation.
+// over l against keys, returning every recorded operation. A generous
+// deadline turns a livelock into a fast, non-sentinel error instead of
+// a hung test binary.
 func runStorm(ctx context.Context, l *ledger.Ledger, keys []ledger.IdempotencyKey, goroutines, opsEach int, seed int64) []stressOp {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	clk := &stressClock{base: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC), tick: time.Millisecond}
 	ops := make([]stressOp, goroutines*opsEach)
 	ready := make(chan struct{})

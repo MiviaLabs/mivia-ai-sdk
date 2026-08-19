@@ -89,6 +89,9 @@ func TestMemStoreEvictionUnderConcurrentAdmission(t *testing.T) {
 	if st.Status != ledger.StatusCompleted {
 		t.Fatalf("seed Status = %q, want StatusCompleted preserved across eviction", st.Status)
 	}
+	if st.Owner != "" {
+		t.Fatalf("seed Owner = %q, want empty: the oldest completed key must tombstone under the cap", st.Owner)
+	}
 }
 
 // mustAdmitSeed admits "seed" and returns its key, keeping the test

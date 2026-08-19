@@ -347,8 +347,7 @@ skill whose `Triggers` list contains the query under
 skill is read, not called: it carries no `Run` method. It depends on
 no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
-package plan lives at docs/plans/skills.md; the phase 63 rationale
-stays at docs/plans/agents/phase63_skills.md.
+package plan lives at docs/plans/skills.md.
 
 ## Gate interactions
 

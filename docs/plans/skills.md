@@ -1,8 +1,6 @@
 # Plan: skills
 
-Status: shipped. See docs/plans/agents/phase63_skills.md
-for the full design rationale, including the rejected reuse of
-`trigger.Condition` and `discovery.Card.Match`.
+Status: shipped.
 
 ## Goal
 

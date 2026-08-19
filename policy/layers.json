@@ -97,6 +97,8 @@
     "scheduler": [
       "events"
     ],
+    "skills": [],
+    "schema": [],
     "subagent": [
       "agent",
       "agentrun",

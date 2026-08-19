@@ -21,21 +21,34 @@ func replayKey(m envelope.Message) ledger.IdempotencyKey {
 	return ledger.IdempotencyKey(fmt.Sprintf("%d:%s%s", len(m.ThreadID), m.ThreadID, m.ID))
 }
 
-// isReplay reports whether err is one of the ledger outcomes that
-// mean "this key already has, or is already getting, an admitted
-// outcome": a terminal record, or a live claim held by an in-flight
-// duplicate. ledger.ErrNotClaimed covers the race window between
-// taskrun.Run's own State check and its Claim call: a concurrent
-// duplicate can pass State while the record still reads Pending, then
-// find it already Completed by the time its own Claim runs, which
-// Claim reports through its default terminal-status branch as
-// ErrNotClaimed rather than one of the three taskrun sentinels.
+// replaySentinels lists every taskrun.Run outcome that means "this
+// key already has, or is already getting, an admitted outcome": a
+// terminal record, or a live claim held by an in-flight duplicate.
+// ledger.ErrNotClaimed covers the race window between taskrun.Run's
+// own State check and its Claim call: a concurrent duplicate can pass
+// State while the record still reads Pending, then find it already
+// Completed by the time its own Claim runs, which Claim reports
+// through its default terminal-status branch as ErrNotClaimed rather
+// than one of the three taskrun sentinels. isReplay walks this list
+// instead of a chained boolean expression, so a mutation to one
+// comparison cannot regroup neighboring terms through operator
+// precedence and stay undetected.
+var replaySentinels = []error{
+	taskrun.ErrTaskDone,
+	taskrun.ErrTaskFailed,
+	taskrun.ErrTaskBlocked,
+	ledger.ErrLeaseActive,
+	ledger.ErrNotClaimed,
+}
+
+// isReplay reports whether err matches one of replaySentinels.
 func isReplay(err error) bool {
-	return errors.Is(err, taskrun.ErrTaskDone) ||
-		errors.Is(err, taskrun.ErrTaskFailed) ||
-		errors.Is(err, taskrun.ErrTaskBlocked) ||
-		errors.Is(err, ledger.ErrLeaseActive) ||
-		errors.Is(err, ledger.ErrNotClaimed)
+	for _, sentinel := range replaySentinels {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
 }
 
 // processLine runs the receive ladder over one NDJSON line and

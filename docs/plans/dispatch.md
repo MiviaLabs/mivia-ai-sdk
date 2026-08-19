@@ -660,3 +660,13 @@ the case set grows:
   without opting out of the default ledger, and carries the
   `ReplayLease` p99-sizing warning next to its `Handler` walkthrough.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
+- `scripts/mutation_denylist/dispatch.json` locks a mutation floor of
+  95, from a measured 95.24% (40 killed, 2 survived). Two survivors
+  remain: `decodeErrorLine`'s malformed-JSON branch and
+  `resolveReplayCapacity`'s zero-selects-default branch, both pure
+  unexported logic with no behavior difference `dispatch_test`
+  (the external package `check_mutation.py` runs) can observe through
+  the public API. `MemStore` eviction still enforces idempotency
+  regardless of capacity size, so the two configurations are
+  black-box indistinguishable at reasonable test cost. `make
+  mutation-gate` includes `dispatch` at this floor.

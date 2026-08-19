@@ -127,6 +127,27 @@ func (o Options) Validate() error {
 	return nil
 }
 
+// resolveReplayLease returns configured unchanged when it is
+// positive, and DefaultReplayLease when it is zero. Validate has
+// already rejected a negative or sub-minReplayLease value by the time
+// New calls this.
+func resolveReplayLease(configured time.Duration) time.Duration {
+	if configured == 0 {
+		return DefaultReplayLease
+	}
+	return configured
+}
+
+// resolveReplayCapacity returns configured unchanged when it is
+// positive, and DefaultReplayCapacity when it is zero. Validate has
+// already rejected a negative value by the time New calls this.
+func resolveReplayCapacity(configured int) int {
+	if configured == 0 {
+		return DefaultReplayCapacity
+	}
+	return configured
+}
+
 // New validates opts, builds a Bus when opts.Bus is nil, subscribes a
 // no-op handler for MessageDeliveredEvent and MessageAckedEvent on the
 // resolved bus, and returns the wired Endpoint. The subscription keeps
@@ -152,10 +173,7 @@ func New(opts Options) (*Endpoint, error) {
 	}
 	led := opts.Ledger
 	if led == nil {
-		capacity := opts.ReplayCapacity
-		if capacity == 0 {
-			capacity = DefaultReplayCapacity
-		}
+		capacity := resolveReplayCapacity(opts.ReplayCapacity)
 		store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: capacity})
 		if err != nil {
 			return nil, err
@@ -164,10 +182,6 @@ func New(opts Options) (*Endpoint, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-	lease := opts.ReplayLease
-	if lease == 0 {
-		lease = DefaultReplayLease
 	}
 	return &Endpoint{
 		id:      opts.ID,
@@ -179,7 +193,7 @@ func New(opts Options) (*Endpoint, error) {
 			Ledger: led,
 			Actor:  ledger.Actor(opts.ID),
 			Owner:  ledger.OwnerID(opts.ID),
-			Lease:  lease,
+			Lease:  resolveReplayLease(opts.ReplayLease),
 		},
 	}, nil
 }

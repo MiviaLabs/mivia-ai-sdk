@@ -70,6 +70,11 @@ func TestNewValidation(t *testing.T) {
 			want: dispatch.ErrBadReplayLease,
 		},
 		{
+			name: "replay lease exactly one second is valid",
+			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: time.Second},
+			want: nil,
+		},
+		{
 			name: "negative replay capacity",
 			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayCapacity: -1},
 			want: dispatch.ErrBadReplayLease,

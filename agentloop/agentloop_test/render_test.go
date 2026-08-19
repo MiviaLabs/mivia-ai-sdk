@@ -21,7 +21,7 @@ func renderedContent(t *testing.T, tool tools.Tool) (string, error) {
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{
 		responses: []provider.Response{
-			toolCallResponse(provider.ToolCall{ID: "call-1", Name: tool.Name(), Arguments: []byte("in")}),
+			toolCallResponse(provider.ToolCall{ID: "call-1", Name: tool.Name(), Arguments: []byte("{}")}),
 			{Message: textMessage(provider.RoleAssistant, "done")},
 		},
 	}
@@ -115,7 +115,7 @@ func TestRenderUnrenderableResult(t *testing.T) {
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{
 		responses: []provider.Response{
-			toolCallResponse(provider.ToolCall{ID: "call-1", Name: tool.Name(), Arguments: []byte("in")}),
+			toolCallResponse(provider.ToolCall{ID: "call-1", Name: tool.Name(), Arguments: []byte("{}")}),
 		},
 	}
 	loop, err := agentloop.New(agentloop.Options{
@@ -133,6 +133,58 @@ func TestRenderUnrenderableResult(t *testing.T) {
 	}
 	if len(res.History) != 2 {
 		t.Fatalf("History len = %d, want 2 (user + assistant turn): per hardFail's rule, the completed turn's state must travel", len(res.History))
+	}
+}
+
+// TestRenderErrorReportCarriesToolErrorPrefix proves an
+// ErrorPolicyReport tool failure's Content starts with
+// ToolErrorPrefix, marking it as untrusted in the model-facing
+// transcript.
+func TestRenderErrorReportCarriesToolErrorPrefix(t *testing.T) {
+	tool := &schemaEchoTool{name: "t", schema: []byte(`{}`), result: make(chan int)}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if !strings.HasPrefix(got, agentloop.ToolErrorPrefix) {
+		t.Fatalf("content = %q, want it to start with %q", got, agentloop.ToolErrorPrefix)
+	}
+}
+
+// TestRenderArgumentValidationFailureCarriesToolErrorPrefixAndCorrective
+// proves an argument-validation failure's Content starts with
+// ToolErrorPrefix followed by a schema.Corrective-shaped message, not
+// a raw Go error string.
+func TestRenderArgumentValidationFailureCarriesToolErrorPrefixAndCorrective(t *testing.T) {
+	tool := &schemaEchoTool{name: "t", schema: []byte(`{"type":"object","required":["x"]}`), result: "unused"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{
+		responses: []provider.Response{
+			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "t", Arguments: []byte("{}")}),
+			{Message: textMessage(provider.RoleAssistant, "done")},
+		},
+	}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	var got string
+	for _, m := range res.History {
+		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
+			got = m.Content
+		}
+	}
+	if !strings.HasPrefix(got, agentloop.ToolErrorPrefix) {
+		t.Fatalf("content = %q, want it to start with %q", got, agentloop.ToolErrorPrefix)
+	}
+	corrective := strings.TrimPrefix(got, agentloop.ToolErrorPrefix)
+	if corrective == "" || strings.Contains(corrective, "agentloop:") {
+		t.Fatalf("content = %q, want a bounded schema.Corrective message, not a raw Go error string", got)
 	}
 }
 

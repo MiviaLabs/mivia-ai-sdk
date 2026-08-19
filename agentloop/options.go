@@ -49,6 +49,17 @@ var (
 	// billed tokens exceed a positive MaxTotalTokens after a Completer
 	// call returns.
 	ErrTokenBudgetExceeded = errors.New("agentloop: cumulative tokens exceed MaxTotalTokens")
+	// ErrInvalidSchema is New's error when a SchemaTool's
+	// ParameterSchema() fails schema.Compile. Test with errors.Is.
+	ErrInvalidSchema = errors.New("agentloop: tool parameter schema does not compile")
+	// ErrArgumentValidation is decodeAndRun's error when
+	// call.Arguments fails schema.Compiled.Validate against the called
+	// tool's compiled parameter schema, before DecodeArguments runs.
+	// Wraps the underlying schema error (schema.ErrValidation,
+	// schema.ErrMalformedPayload, or schema.ErrAdmission). Routed
+	// through OnToolError exactly like a DecodeArguments failure. Test
+	// with errors.Is.
+	ErrArgumentValidation = errors.New("agentloop: tool call arguments failed schema validation")
 )
 
 // ErrorPolicy names what Run does with a tool-run error: report it to
@@ -132,7 +143,57 @@ type Options struct {
 	// docs/plans/agentloop.md for its contract with
 	// contextplan.Planner.Plan.
 	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	// Audit receives one AuditRecord per completed Completer turn and
+	// per tool call whose result reaches history. A nil Audit means
+	// Run performs no audit call, at no added cost.
+	Audit AuditFunc
 }
+
+// AuditKind names which of Run's two audit-relevant events an
+// AuditRecord describes.
+type AuditKind string
+
+// The declared AuditKind values.
+const (
+	// AuditKindCompletion is one completed Completer.Chat call.
+	AuditKindCompletion AuditKind = "completion"
+	// AuditKindToolCall is one tool call whose RoleTool result message
+	// reached history.
+	AuditKindToolCall AuditKind = "tool_call"
+)
+
+// AuditRecord is one audit-relevant event from a Run call, passed to
+// Options.Audit. A caller builds and signs its own envelope.Message
+// from the fields it needs; agentloop signs nothing itself.
+type AuditRecord struct {
+	// Iteration is the 1-based Completer-call count this record
+	// belongs to, matching Result.Iterations at the same point.
+	Iteration int
+	// Kind names which event this record describes.
+	Kind AuditKind
+	// Request is the exact provider.Request sent to Completer.Chat
+	// this iteration. Set only when Kind == AuditKindCompletion.
+	Request provider.Request
+	// Response is the provider.Response Completer.Chat returned this
+	// iteration. Set only when Kind == AuditKindCompletion.
+	Response provider.Response
+	// ToolCall is the model-requested call this record describes. Set
+	// only when Kind == AuditKindToolCall.
+	ToolCall provider.ToolCall
+	// ToolResult is the RoleTool message runOneToolCall appended to
+	// history for ToolCall, including any ToolErrorPrefix marker. Set
+	// only when Kind == AuditKindToolCall.
+	ToolResult provider.Message
+	// Err is the tool-run error runOneToolCall reported, or nil on a
+	// successful call. Set only when Kind == AuditKindToolCall.
+	Err error
+}
+
+// AuditFunc receives one AuditRecord per audited event, in the order
+// Run produces them. A non-nil return is a hard failure: Run wraps it
+// with the iteration count and returns it exactly like a Trim error,
+// per the Result-shape rule.
+type AuditFunc func(ctx context.Context, rec AuditRecord) error
 
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, MaxIterations

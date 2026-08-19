@@ -30,7 +30,8 @@
       "hooks",
       "usage",
       "events",
-      "contextbudget"
+      "contextbudget",
+      "schema"
     ],
     "agentrun": [
       "agent",

@@ -14,10 +14,10 @@ or a bound trips. The exported surface below mirrors
 - `Options` — the config struct `New` validates and wires:
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
-  `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`. `Completer`
-  and `Tools` are required; the rest are optional. `Bus` is reserved
-  for the loop's own events, pending a future event vocabulary; `Run`
-  does not yet emit anything through it.
+  `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`.
+  `Completer` and `Tools` are required; the rest are optional. `Bus`
+  is reserved for the loop's own events, pending a future event
+  vocabulary; `Run` does not yet emit anything through it.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
@@ -31,6 +31,17 @@ or a bound trips. The exported surface below mirrors
   error text back as the tool's `RoleTool` result and continues) or
   `ErrorPolicyFail` (turns the error into `Run`'s own hard-fail
   return).
+- `AuditKind` — a string enum naming what an `AuditRecord` describes:
+  `AuditKindCompletion` (one `Completer.Chat` turn) or
+  `AuditKindToolCall` (one tool call whose result reached history).
+- `AuditRecord` — one audited event: `Kind`, `Iteration`, and, set
+  only for the matching `Kind`, `Request`/`Response`
+  (`AuditKindCompletion`) or `ToolCall`/`ToolResult`/`Err`
+  (`AuditKindToolCall`). `Err` carries the tool-run error `Run`
+  reported for that call, or nil on success.
+- `AuditFunc` — `func(ctx, rec AuditRecord) error`, the type of
+  `Options.Audit`. A non-nil return is a hard failure, following the
+  same Result-shape rule as a `Trim` error.
 
 ## Functions and methods
 
@@ -83,6 +94,13 @@ Use `errors.Is` to test these.
   MaxTotalTokens") — `Run`'s error when the run's cumulative billed
   tokens exceed a positive `MaxTotalTokens` after a `Completer` call
   returns.
+- `ErrInvalidSchema` — `New`'s error when a `Scope`-offered
+  `SchemaTool`'s `ParameterSchema()` fails `schema.Compile`, wrapped
+  with the tool name and the underlying `schema` error.
+- `ErrArgumentValidation` — `Run`'s error when a model-chosen call's
+  `Arguments` fail `schema.Compiled.Validate` against the resolved
+  tool's compiled schema, wrapped with the call ID and the underlying
+  `schema` error. Never reaches `DecodeArguments`.
 
 ## Result shape
 
@@ -97,13 +115,47 @@ On every hard-fail error return — a canceled ctx, a `Completer.Chat`
 error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
 `ErrCallsPerTurnExceeded`, a `Trim` error, a post-`Trim`
 `provider.Message.Validate` error, a tool error under
-`ErrorPolicyFail`, or a non-veto `hooks.Fire` error — `Run` also
+`ErrorPolicyFail`, a non-veto `hooks.Fire` error, or a non-nil
+`Options.Audit` return — `Run` also
 returns the partial `Result` alongside the error, not the zero value,
 once at least one iteration has completed. `Final` and `Stop` stay
 the zero value in this case, since the run failed a stop condition
 instead of reaching one. When no iteration has completed yet, the
 rule degrades to the zero-value `Result` on its own, with no special
 case for ctx cancellation or any other cause.
+
+## Argument validation
+
+`New` compiles every `Scope`-offered `SchemaTool`'s
+`ParameterSchema()` once, via `schema.Compile`, and caches the result
+on `Loop`. A model-chosen call's `Arguments` run through
+`schema.Compiled.Validate` against that cached schema before
+`DecodeArguments`, so a payload that fails validation never reaches
+the tool's own decoder. A validation failure wraps
+`ErrArgumentValidation` and renders through `schema.Corrective`
+instead of a raw Go error string, giving the model a bounded,
+schema-derived corrective message.
+
+## Audit
+
+A wired `Options.Audit` receives one `AuditRecord` per audited event,
+in the order `Run` produces them: `AuditKindCompletion` once per
+iteration, right after that iteration's `Completer.Chat` response is
+appended to history and before any of that iteration's bound checks
+run; `AuditKindToolCall` once per tool call whose result reaches
+history. A `PointPreTool` veto and an `ErrorPolicyFail` tool error
+produce no `AuditKindToolCall` record, since neither appends a
+`RoleTool` message to history. `Options.Audit` stays optional and
+`agentloop` stays envelope-agnostic: a caller wanting a signed audit
+trail builds and signs its own `envelope.Message` chain from the
+`AuditRecord` values, the same way `agent.confirmStep` signs steps
+outside the `flow` block it wraps.
+
+## Error marker
+
+Under `ErrorPolicyReport`, a tool-run error's rendered `RoleTool`
+content starts with `ToolErrorPrefix` ("[tool-error] "), marking it as
+untrusted, error-path content rather than a normal tool result.
 
 ## Render path
 

@@ -28,8 +28,8 @@ func TestRunCallsPerTurnExceeded(t *testing.T) {
 			mustAdd(t, reg, tool)
 			completer := &scriptedCompleter{responses: []provider.Response{
 				toolCallResponse(
-					provider.ToolCall{Index: 0, ID: "call-1", Name: "echo"},
-					provider.ToolCall{Index: 1, ID: "call-2", Name: "echo"},
+					provider.ToolCall{Index: 0, ID: "call-1", Name: "echo", Arguments: []byte("{}")},
+					provider.ToolCall{Index: 1, ID: "call-2", Name: "echo", Arguments: []byte("{}")},
 				),
 			}}
 			loop, err := agentloop.New(agentloop.Options{
@@ -70,9 +70,9 @@ func TestRunMaxCallsPerTurnZeroUnbounded(t *testing.T) {
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(
-			provider.ToolCall{Index: 0, ID: "call-1", Name: "echo"},
-			provider.ToolCall{Index: 1, ID: "call-2", Name: "echo"},
-			provider.ToolCall{Index: 2, ID: "call-3", Name: "echo"},
+			provider.ToolCall{Index: 0, ID: "call-1", Name: "echo", Arguments: []byte("{}")},
+			provider.ToolCall{Index: 1, ID: "call-2", Name: "echo", Arguments: []byte("{}")},
+			provider.ToolCall{Index: 2, ID: "call-3", Name: "echo", Arguments: []byte("{}")},
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
@@ -105,7 +105,7 @@ func TestRunMaxIterationsGracefulStop(t *testing.T) {
 	const maxIter = 3
 	var responses []provider.Response
 	for i := 0; i < maxIter+2; i++ {
-		responses = append(responses, toolCallResponse(provider.ToolCall{ID: "call", Name: "echo"}))
+		responses = append(responses, toolCallResponse(provider.ToolCall{ID: "call", Name: "echo", Arguments: []byte("{}")}))
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: maxIter})
@@ -141,12 +141,12 @@ func TestRunMaxTotalTokens(t *testing.T) {
 	mustAdd(t, reg, tool)
 	responses := []provider.Response{
 		func() provider.Response {
-			r := toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"})
+			r := toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})
 			r.Usage = provider.Usage{TotalTokens: 60}
 			return r
 		}(),
 		func() provider.Response {
-			r := toolCallResponse(provider.ToolCall{ID: "call-2", Name: "echo"})
+			r := toolCallResponse(provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")})
 			r.Usage = provider.Usage{TotalTokens: 60}
 			return r
 		}(),
@@ -189,7 +189,7 @@ func TestRunZeroMaxTotalTokensUnbounded(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	mk := func(id string) provider.Response {
-		r := toolCallResponse(provider.ToolCall{ID: id, Name: "echo"})
+		r := toolCallResponse(provider.ToolCall{ID: id, Name: "echo", Arguments: []byte("{}")})
 		r.Usage = provider.Usage{TotalTokens: 1000}
 		return r
 	}
@@ -249,7 +249,7 @@ func TestRunPreToolNonVetoErrorFails(t *testing.T) {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
 	if err != nil {
@@ -304,7 +304,7 @@ func TestRunCtxCanceledAtLaterIteration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	completer := &cancelingCompleter{
 		cancel: cancel,
-		resp:   toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		resp:   toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
 	if err != nil {
@@ -341,8 +341,8 @@ func TestRunCtxCanceledMidTurnStopsRemainingCalls(t *testing.T) {
 	completer := &cancelingCompleter{
 		cancel: cancel,
 		resp: toolCallResponse(
-			provider.ToolCall{Index: 0, ID: "call-1", Name: "first"},
-			provider.ToolCall{Index: 1, ID: "call-2", Name: "second"},
+			provider.ToolCall{Index: 0, ID: "call-1", Name: "first", Arguments: []byte("{}")},
+			provider.ToolCall{Index: 1, ID: "call-2", Name: "second", Arguments: []byte("{}")},
 		),
 	}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
@@ -394,7 +394,7 @@ func TestRunBudgetExceededLaterIteration(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{

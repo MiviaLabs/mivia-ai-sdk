@@ -124,8 +124,8 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(
-			provider.ToolCall{ID: "call-1", Name: "echo"},
-			provider.ToolCall{ID: "call-2", Name: "echo"},
+			provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")},
+			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")},
 		),
 	}}
 	hreg := hooks.New()
@@ -171,7 +171,7 @@ func TestRunOpensTracerSpans(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	tracer := trace.New()
@@ -202,7 +202,7 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})

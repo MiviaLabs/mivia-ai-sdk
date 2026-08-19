@@ -18,7 +18,7 @@ func TestRunTrimErrorLaterIteration(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	calls := 0
@@ -55,7 +55,7 @@ func TestRunTrimInvalidMessageLaterIteration(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	calls := 0

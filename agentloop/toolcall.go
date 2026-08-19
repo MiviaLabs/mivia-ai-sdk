@@ -8,6 +8,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
@@ -27,7 +28,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		if err := ctx.Err(); err != nil {
 			return history, false, err
 		}
-		msg, veto, err := l.runOneToolCall(ctx, call, iteration)
+		msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration)
 		if err != nil {
 			return history, false, err
 		}
@@ -35,17 +36,31 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 			return history, true, nil
 		}
 		history = append(history, msg)
+		if l.audit != nil {
+			if err := l.audit(ctx, AuditRecord{
+				Iteration:  iteration,
+				Kind:       AuditKindToolCall,
+				ToolCall:   call,
+				ToolResult: msg,
+				Err:        reported,
+			}); err != nil {
+				return history, false, fmt.Errorf("agentloop: iteration %d: audit: %w", iteration, err)
+			}
+		}
 	}
 	return history, false, nil
 }
 
 // runOneToolCall fires PointPreTool, decodes and runs one tool call,
 // fires PointPostTool, and renders the result into a RoleTool
-// message. A tool-run error, including a DecodeArguments failure,
-// goes through l.onToolError: ErrorPolicyReport renders the error
-// text as the tool result; ErrorPolicyFail returns the error, wrapped
-// with call.ID and iteration, as Run's own hard failure.
-func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (provider.Message, bool, error) {
+// message. A tool-run error, including a DecodeArguments or
+// schema-validation failure, goes through l.onToolError:
+// ErrorPolicyReport renders the error text, ToolErrorPrefix-marked,
+// as the tool result and returns that error as reported;
+// ErrorPolicyFail returns the error, wrapped with call.ID and
+// iteration, as Run's own hard failure, with reported nil. reported
+// is also nil on a successful call.
+func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (msg provider.Message, veto bool, reported error, err error) {
 	if l.tracer != nil {
 		var span *trace.Span
 		ctx, span = l.tracer.Start(ctx, "agentloop.tool_call")
@@ -53,12 +68,12 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}
 
 	if l.hooksReg != nil {
-		allowed, err := l.fireHook(ctx, hooks.PointPreTool, call)
-		if err != nil {
-			return provider.Message{}, false, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, err)
+		allowed, hookErr := l.fireHook(ctx, hooks.PointPreTool, call)
+		if hookErr != nil {
+			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, hookErr)
 		}
 		if !allowed {
-			return provider.Message{}, true, nil
+			return provider.Message{}, true, nil, nil
 		}
 	}
 
@@ -70,19 +85,32 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 
 	if runErr != nil {
 		if l.onToolError == ErrorPolicyFail {
-			return provider.Message{}, false, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, runErr)
+			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, runErr)
 		}
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: runErr.Error()}, false, nil
+		content := errorReportContent(runErr)
+		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: content}, false, runErr, nil
 	}
 
-	content, err := l.render(t, out)
-	if err != nil {
+	content, renderErr := l.render(t, out)
+	if renderErr != nil {
 		if l.onToolError == ErrorPolicyFail {
-			return provider.Message{}, false, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, err)
+			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, renderErr)
 		}
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: err.Error()}, false, nil
+		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: ToolErrorPrefix + renderErr.Error()}, false, renderErr, nil
 	}
-	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: content}, false, nil
+	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: content}, false, nil, nil
+}
+
+// errorReportContent renders a decodeAndRun error's ErrorPolicyReport
+// content: an ErrArgumentValidation failure renders through
+// schema.Corrective(err), the bounded, schema-derived corrective
+// message; every other error renders its own Error() text. Both cases
+// carry the ToolErrorPrefix marker.
+func errorReportContent(err error) string {
+	if errors.Is(err, ErrArgumentValidation) {
+		return ToolErrorPrefix + schema.Corrective(err)
+	}
+	return ToolErrorPrefix + err.Error()
 }
 
 // fireHook fires point through l.hooksReg and turns a veto,
@@ -99,12 +127,18 @@ func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.To
 	return false, err
 }
 
-// decodeAndRun resolves call.Name, checks l.scope, decodes
-// call.Arguments through the resolved tool's DecodeArguments, and
-// calls RunScoped. It returns an error wrapping tools.ErrUnknownName
-// for an unresolved name and tools.ErrScopeDenied for a name l.scope
-// excludes, both before ever calling DecodeArguments or RunScoped: a
-// scope-denied tool's decoder must never see model-supplied bytes.
+// decodeAndRun resolves call.Name, checks l.scope, validates
+// call.Arguments against l.schemas[call.Name], decodes them through
+// the resolved tool's DecodeArguments, and calls RunScoped. It
+// returns an error wrapping tools.ErrUnknownName for an unresolved
+// name and tools.ErrScopeDenied for a name l.scope excludes, both
+// before ever calling schema.Compiled.Validate, DecodeArguments, or
+// RunScoped: a scope-denied tool's decoder must never see
+// model-supplied bytes. l.schemas[call.Name] is guaranteed to hit
+// once call.Name has passed both the l.scope check and the
+// tools.SchemaTool assertion: those are the same two conditions,
+// applied in either order, that decide defs membership inside
+// Definitions, and l.schemas is keyed by that same defs set.
 func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.Tool, tools.Out, error) {
 	t, ok := l.reg.Get(call.Name)
 	if !ok {
@@ -116,6 +150,9 @@ func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.
 	st, ok := t.(tools.SchemaTool)
 	if !ok {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool %q publishes no schema", call.Name)
+	}
+	if err := l.schemas[call.Name].Validate(call.Arguments); err != nil {
+		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w: %w", call.ID, ErrArgumentValidation, err)
 	}
 	in, err := st.DecodeArguments(call.Arguments)
 	if err != nil {

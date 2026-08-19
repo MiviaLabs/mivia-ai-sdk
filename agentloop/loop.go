@@ -2,11 +2,13 @@ package agentloop
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 	"github.com/MiviaLabs/mivia-ai-sdk/usage"
@@ -52,17 +54,28 @@ type Loop struct {
 	budget          *contextbudget.Limits
 	trim            func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
 	defs            []provider.ToolDefinition
+	schemas         map[string]*schema.Compiled
+	audit           AuditFunc
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
 // and binds the result onto Loop. Run reuses that same
 // []provider.ToolDefinition slice for Request.Tools on every
-// iteration.
+// iteration. New also compiles the parameter schema of every tool in
+// defs, keyed by name, through schema.Compile; a compile failure fails
+// New with ErrInvalidSchema. The compiled set is exactly the
+// Scope-offered set defs already carries, so a malformed schema on a
+// tool outside opts.Scope, or outside opts.Tools entirely, never fails
+// this Loop's New call.
 func New(opts Options) (*Loop, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
 	defs, _, err := Definitions(opts.Tools, opts.Scope)
+	if err != nil {
+		return nil, err
+	}
+	schemas, err := compileSchemas(defs)
 	if err != nil {
 		return nil, err
 	}
@@ -83,5 +96,23 @@ func New(opts Options) (*Loop, error) {
 		budget:          opts.Budget,
 		trim:            opts.Trim,
 		defs:            defs,
+		schemas:         schemas,
+		audit:           opts.Audit,
 	}, nil
+}
+
+// compileSchemas compiles each defs entry's Schema through
+// schema.Compile, keyed by Name. Returns ErrInvalidSchema, wrapped
+// with the tool name and the underlying schema.Compile reason, on the
+// first compile failure.
+func compileSchemas(defs []provider.ToolDefinition) (map[string]*schema.Compiled, error) {
+	schemas := make(map[string]*schema.Compiled, len(defs))
+	for _, def := range defs {
+		compiled, err := schema.Compile(def.Schema)
+		if err != nil {
+			return nil, fmt.Errorf("agentloop: tool %q: %w: %v", def.Name, ErrInvalidSchema, err)
+		}
+		schemas[def.Name] = compiled
+	}
+	return schemas, nil
 }

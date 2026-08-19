@@ -13,6 +13,14 @@ import (
 // t's published tools.ResultBudgetOf bound.
 const truncationMarker = "...[truncated]"
 
+// ToolErrorPrefix marks RoleTool message Content as an untrusted
+// error report. runOneToolCall and decodeAndRun's validation-failure
+// path both prefix error-report Content with it under
+// ErrorPolicyReport, so the model-facing transcript distinguishes a
+// reported failure from a normal tool result without a
+// provider.Message schema change.
+const ToolErrorPrefix = "[tool-error] "
+
 // render turns out into a RoleTool message's Content string, in a
 // fixed order: a string value passes through unchanged; a []byte
 // value that is valid UTF-8 becomes its string form; anything else

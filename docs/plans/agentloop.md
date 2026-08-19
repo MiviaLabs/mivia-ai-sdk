@@ -421,3 +421,446 @@ This plan adds no conformance vector. `agentloop` carries no wire
 format of its own; it composes `provider.Message` and `tools.InOut`,
 both already covered by their own package's tests. No new gate is
 added or weakened.
+
+## Addendum: argument validation, an audit hook, and an untrusted
+error marker
+
+Status: plan, ready for plan review. This addendum covers three
+hardening fixes found in an adversarial review of the shipped
+`agentloop` code. It changes `toolcall.go`, `options.go`, `wire.go`,
+and `run.go`. It adds no new package.
+
+### Addendum goal
+
+Close three gaps: model-supplied tool arguments reach `RunScoped`
+with no schema check; a run produces no audit trail a caller can
+sign; and a reported tool error looks identical to a normal tool
+result in the model-facing transcript.
+
+### Addendum scope
+
+Inside:
+
+- Compiling each `Scope`-offered, schema-bearing tool's
+  `ParameterSchema()` once, at `New`, through the existing `schema`
+  package, and validating every model-supplied `call.Arguments`
+  against its tool's compiled schema before `DecodeArguments` runs.
+- One optional `Options.Audit AuditFunc` hook `Run` calls once per
+  completed Completer turn and once per tool call whose result
+  reaches history, carrying enough structured data for a caller to
+  build and sign its own `envelope.Message` chain outside `agentloop`.
+- One exported constant, `ToolErrorPrefix`, marking error-path
+  `RoleTool` content as untrusted, applied at every `runOneToolCall`
+  and `decodeAndRun` error-report site.
+
+Outside:
+
+- Signing, hashing, or any `envelope`/`identity`/`contextstate`
+  import inside `agentloop`. `agentloop` stays a block; the block
+  never sees a signing identity, matching how `flow` never imports
+  `envelope` and only the composition layer (`agent`, `agentrun`)
+  does. A caller wanting signed audit records builds them from
+  `AuditRecord` values itself, the same way `agent.confirmStep`
+  builds and signs an `envelope.Message` from a `flow.Confirm`
+  payload today.
+- Any change to `tools.SchemaTool`, `tools.DecodeArguments`, or the
+  `schema` package. This addendum is a caller of `schema`, not a
+  change to it.
+- Retrying a tool call after an argument-validation failure.
+  `OnToolError` already decides what happens next; this addendum adds
+  no new retry policy.
+- Redacting or masking tool-call `Arguments` bytes in `AuditRecord`.
+  A caller that needs redaction applies it before signing; `agentloop`
+  passes the bytes it already holds, unchanged.
+- Adding an `Epistemic`-style field to `provider.Message`. See the
+  decision below.
+- Preserving `New`'s current always-succeeds behavior for a registry
+  that carries a latent, never-called, malformed schema. `New` now
+  fails closed with `ErrInvalidSchema` on any `Scope`-offered schema
+  defect. This is deliberate: an existing caller whose registry
+  happens to carry a `SchemaTool` with a previously inert malformed
+  `ParameterSchema()` now sees that defect at construction time,
+  instead of never.
+
+### Fix 7 decision: a text marker, not a `provider.Message` field
+
+Recommendation: keep the `ToolErrorPrefix` text-constant design.
+Reject adding an epistemic field to `provider.Message`. Reasoning
+follows.
+
+Two designs were weighed for distinguishing error-report `RoleTool`
+content from a normal tool result.
+
+- Option A (recommended): a named constant, `ToolErrorPrefix`, that
+  `agentloop` prepends to `Content` under `ErrorPolicyReport`. No
+  change to `provider.Message`.
+- Option B: a new `Epistemic`-shaped field on `provider.Message`
+  itself, mirroring `envelope.Epistemic` and its
+  `EpistemicUntrustedInput` value, set structurally instead of
+  string-sniffed.
+
+`provider`'s own row in `policy/layers.json` is `[]`: `provider`
+imports no internal package today, and `AGENTS.md` states this
+plainly — `provider` is "a leaf package; no internal imports." Adding
+`envelope.Epistemic` to `provider.Message` would import `envelope`
+into `provider`, breaking that documented invariant. `envelope`
+itself imports `contextstate`, so the edge would not stop at one hop.
+
+The blast radius argues the same way. `provider.Message` is
+`usage`, `providerregistry`, `contextplan`, `agentloop`, `memory`,
+`subagent`, and `e2e`'s shared currency; every one of those, plus
+every external `provider.Completer` implementation, would need an
+opinion on a field only `agentloop`'s error-report path populates
+today. A leaf package should not grow a field for one caller's
+concern.
+
+A local, `envelope`-free enum defined inside `provider` avoids the
+import problem but not the blast radius one: it still changes
+`provider.Message`'s shape, still touches `api/provider.txt`, and
+still asks every `Completer` implementation and every `Message`
+consumer to account for a field only one caller sets.
+
+The `ToolErrorPrefix` marker also is not a naked magic string: it is
+a single named constant, defined once, referenced everywhere the code
+builds error-report content. The "no string literals where constants
+exist" rule targets scattered literal duplication of an enum value; a
+one-constant marker checked and rendered in one file does not
+reproduce that problem.
+
+The prefix also serves a real constraint the field design cannot
+remove: the model itself only ever reads `Content` as text. No
+provider wire format carries a side-channel provenance field a model
+can see, so the untrusted signal a model needs has to live in
+`Content` regardless of what `provider.Message` gains. A struct field
+would only help a Go-level consumer, not the model.
+
+For a Go-level consumer that needs a structural signal without
+string-sniffing, this addendum already provides one: `AuditRecord.Err`
+is non-nil exactly when `ToolResult.Content` carries a
+`ToolErrorPrefix`-marked report, and `AuditKind` distinguishes the
+audited event kind. A caller wired through `Options.Audit` never
+parses `Content` to learn a call failed.
+
+No second, independent caller needs an `Epistemic` field on
+`provider.Message` today. Per the Building blocks rule, this addendum
+does not add abstraction without a caller. If a future concrete
+`Completer` or a second consumer needs structural provenance on every
+message, not only agentloop's error reports, that is its own plan
+against `provider`, weighed against `provider`'s leaf-package
+contract at that time.
+
+### Addendum API
+
+New in `agentloop`:
+
+```go
+// ErrInvalidSchema is New's error when a SchemaTool's
+// ParameterSchema() fails schema.Compile. Test with errors.Is.
+var ErrInvalidSchema = errors.New("agentloop: tool parameter schema does not compile")
+
+// ErrArgumentValidation is decodeAndRun's error when call.Arguments
+// fails schema.Compiled.Validate against the called tool's compiled
+// parameter schema, before DecodeArguments runs. Wraps the
+// underlying schema error (schema.ErrValidation,
+// schema.ErrMalformedPayload, or schema.ErrAdmission). Routed through
+// OnToolError exactly like a DecodeArguments failure. Test with
+// errors.Is.
+var ErrArgumentValidation = errors.New("agentloop: tool call arguments failed schema validation")
+
+// ToolErrorPrefix marks RoleTool message Content as an untrusted
+// error report. runOneToolCall and decodeAndRun's validation-failure
+// path both prefix error-report Content with it under
+// ErrorPolicyReport, so the model-facing transcript distinguishes a
+// reported failure from a normal tool result without a
+// provider.Message schema change.
+const ToolErrorPrefix = "[tool-error] "
+
+// AuditKind names which of Run's two audit-relevant events an
+// AuditRecord describes.
+type AuditKind string
+
+const (
+	// AuditKindCompletion is one completed Completer.Chat call.
+	AuditKindCompletion AuditKind = "completion"
+	// AuditKindToolCall is one tool call whose RoleTool result
+	// message reached history.
+	AuditKindToolCall AuditKind = "tool_call"
+)
+
+// AuditRecord is one audit-relevant event from a Run call, passed to
+// Options.Audit. A caller builds and signs its own envelope.Message
+// from the fields it needs; agentloop signs nothing itself.
+type AuditRecord struct {
+	// Iteration is the 1-based Completer-call count this record
+	// belongs to, matching Result.Iterations at the same point.
+	Iteration int
+	// Kind names which event this record describes.
+	Kind AuditKind
+	// Request is the exact provider.Request sent to Completer.Chat
+	// this iteration. Set only when Kind == AuditKindCompletion.
+	Request provider.Request
+	// Response is the provider.Response Completer.Chat returned this
+	// iteration. Set only when Kind == AuditKindCompletion.
+	Response provider.Response
+	// ToolCall is the model-requested call this record describes.
+	// Set only when Kind == AuditKindToolCall.
+	ToolCall provider.ToolCall
+	// ToolResult is the RoleTool message runOneToolCall appended to
+	// history for ToolCall, including any ToolErrorPrefix marker.
+	// Set only when Kind == AuditKindToolCall.
+	ToolResult provider.Message
+	// Err is the tool-run error runOneToolCall reported, or nil on a
+	// successful call. Set only when Kind == AuditKindToolCall.
+	Err error
+}
+
+// AuditFunc receives one AuditRecord per audited event, in the order
+// Run produces them. A non-nil return is a hard failure: Run wraps it
+// with the iteration count and returns it exactly like a Trim error,
+// per the Result-shape rule.
+type AuditFunc func(ctx context.Context, rec AuditRecord) error
+```
+
+Changed in `agentloop`:
+
+- `Options` gains one new field: `Audit AuditFunc`. Optional; a nil
+  `Audit` means Run performs no audit call, at no added cost.
+- `New` compiles the parameter schema of every tool that
+  `Definitions` already put in the offered `defs` slice, keyed by
+  `defs[i].Name`, and stores the result on `Loop` as
+  `schemas map[string]*schema.Compiled`. `New` calls `Definitions`
+  once, exactly as the base plan already does, and reuses that same
+  return value for the compile loop instead of walking `reg.Tools()`
+  again: the compiled-schema set is always exactly the `Scope`-offered
+  set, never wider. A compile failure fails `New` with
+  `ErrInvalidSchema`, wrapped with the tool name and the underlying
+  `schema.ErrCompile`/`schema.ErrAdmission` reason. Scoping the
+  compile loop this way closes the shared-registry blast radius a
+  wider, `Scope`-independent compile would carry: one
+  `*tools.Registry` is shared across every `Loop` built over it, each
+  with its own `Options.Scope`, so a malformed schema on a tool
+  entirely outside one `Loop`'s `Scope` must not fail that `Loop`'s
+  `New` call.
+- `decodeAndRun` already checks `l.scope != nil && !l.scope.Allowed(call.Name, t)`
+  immediately after `reg.Get` resolves `call.Name`, before the
+  `SchemaTool` type assertion, and returns `tools.ErrScopeDenied`,
+  wrapped with `call.ID`, on a denial; this addendum does not move
+  that check. Keeping it ahead of the type assertion, unchanged,
+  matters for this addendum specifically: it rejects a call naming a
+  tool that is both `Scope`-denied and not a `SchemaTool` with
+  `ErrScopeDenied`, not with the generic "publishes no schema" error,
+  since the type assertion never runs for a name the `Scope` check
+  already rejected. `tools.Scope.Allowed` is not nil-safe — calling
+  it on a nil `*tools.Scope` panics, since `Allowed` dereferences its
+  own `deny` field on its first line — so the existing
+  `l.scope != nil` guard stays, exactly as every current call site
+  (`decodeAndRun` and `Definitions`) already requires.
+- After the `Scope` check passes and the `SchemaTool` type assertion
+  succeeds, `decodeAndRun` runs
+  `schema.Compiled.Validate(call.Arguments)` against `call.Name`'s
+  compiled schema, looked up on `Loop`, before `st.DecodeArguments`.
+  A validation failure returns `ErrArgumentValidation`, wrapped with
+  `call.ID` and the underlying `schema` error; it never reaches
+  `DecodeArguments`. `schema.Compiled.Validate` already enforces
+  `schema.MaxPayloadBytes` before it unmarshals `call.Arguments`, so
+  `decodeAndRun` adds no separate byte cap of its own.
+  `l.schemas[call.Name]` is guaranteed to hit whenever control reaches
+  this point: reaching it requires `call.Name` to have passed both
+  the `Scope` check and the `SchemaTool` type assertion, the same two
+  conditions, applied in either order, that decide `defs` membership
+  inside `Definitions`; `l.schemas` is keyed by that same `defs` set.
+  `schema.Compiled.Validate` is also not nil-safe, so a map miss would
+  panic on the lookup's result; the base plan's `New` description
+  above already assumes `tools.Registry` and `tools.Scope` do not
+  mutate mid-run, which rules that miss out, and `decodeAndRun` adds
+  no defensive not-found branch for it.
+- `runOneToolCall`'s two existing error-report branches (a
+  `decodeAndRun` failure and a `render` failure) prefix their
+  `Content` with `ToolErrorPrefix` under `ErrorPolicyReport`. An
+  `ErrArgumentValidation` failure additionally renders through
+  `schema.Corrective(err)` instead of `err.Error()`, so the
+  model-facing text is the bounded, schema-derived corrective message
+  `schema.Corrective` already builds for exactly this purpose, not an
+  internal Go error string.
+- `runOneToolCall`'s unexported signature widens from
+  `(provider.Message, bool, error)` to
+  `(provider.Message, bool, error, error)`: the third return,
+  `reported`, carries the pre-render tool-run error — the same error
+  `decodeAndRun` or `render` produced — on every `ErrorPolicyReport`
+  branch, where the fourth return (`err`, `runOneToolCall`'s own
+  hard-fail signal) stays nil. `reported` is nil on a successful call
+  and on every `ErrorPolicyFail` branch, where `err` instead carries
+  the wrapped failure and `runOneToolCall` returns before building a
+  `RoleTool` message. Today `runOneToolCall` collapses `runErr` into
+  `Content` via `runErr.Error()` and returns a nil own-error under
+  `ErrorPolicyReport`, discarding the typed error before any caller
+  could read it; `reported` is the fix, carrying that same typed
+  error one level up. `runToolCalls` receives `reported` alongside
+  `msg` and `veto` and forwards it, unchanged, to the
+  `AuditKindToolCall` call described below.
+- `runToolCalls` calls `l.audit` once per tool call whose `RoleTool`
+  message reaches history — every call for which `runOneToolCall`
+  returns `veto == false` and a nil own-error — right after appending
+  that call's `msg` onto `history`, with `Kind: AuditKindToolCall`,
+  the call, `msg` as `ToolResult`, and `reported` as `Err`. This is
+  the exact point in the `run` → `runToolCalls` → `runOneToolCall`
+  chain where the audit call for a tool result fires: inside
+  `runToolCalls`'s per-call loop, not in `run` after the whole turn's
+  calls finish. A `PointPreTool` veto produces no history entry and
+  is not audited: `StopHookVeto` ends the run immediately, so there
+  is no tool result to attest to. An `ErrorPolicyFail` tool error is
+  not audited either, since `runOneToolCall` returns a non-nil own
+  `err` and no `msg` on that path, and `runToolCalls` propagates that
+  `err` straight to `run` as a hard failure without appending
+  anything; the wrapped hard-fail error is `Run`'s own audit trail
+  for that case. A non-nil `l.audit` error from an `AuditKindToolCall`
+  call is itself a hard failure: `runToolCalls` returns it to `run`
+  the same way a `runOneToolCall` `err` return already propagates.
+- `run` calls `l.audit` once per iteration, immediately after
+  appending `resp.Message` to `history` and updating `totalUsage` and
+  `Options.Usage`, and strictly before the `MaxTotalTokens` check, the
+  no-tool-calls stop, the `MaxCallsPerTurn` check, and the
+  `runToolCalls` call, with `Kind: AuditKindCompletion`, the exact
+  `provider.Request` built for `Completer.Chat` this iteration, and
+  `resp`. Firing the completion audit call before those three
+  downstream checks is deliberate: `Completer.Chat` already succeeded
+  for this iteration by the time any of them run, so an iteration
+  that goes on to hard-fail on `ErrTokenBudgetExceeded` or
+  `ErrCallsPerTurnExceeded` still emits its `AuditKindCompletion`
+  record before `run` returns the wrapped error. A non-nil `l.audit`
+  error from an `AuditKindCompletion` call is a hard failure: `run`
+  wraps it with the iteration count and returns the partial `Result`,
+  per the existing Result-shape rule, the same as a `Trim` error, and
+  this hard-fail path returns before the `MaxTotalTokens` check would
+  otherwise run.
+
+`AuditKind`, `AuditRecord`, `AuditFunc`, `ErrInvalidSchema`, and
+`ErrArgumentValidation` land in `api/agentloop.txt` via
+`make api-update`, in the same change as the code. `runOneToolCall`'s
+widened signature is unexported and touches no lock file.
+
+### Addendum placement and import policy
+
+No new package. `agentloop`'s `policy/layers.json` row gains one
+entry:
+
+```json
+"agentloop": ["provider", "tools", "trace", "hooks", "usage", "events", "contextbudget", "schema"]
+```
+
+No other row changes. `agentloop` still does not import `envelope`,
+`identity`, or `contextstate`; the audit hook keeps `agentloop`
+envelope-agnostic, matching `flow`'s precedent and the Building
+blocks rule that a block never imports the agent composition layer.
+
+### Addendum tests
+
+Migrating the base plan's existing fixtures: the new
+`schema.Compiled.Validate(call.Arguments)` step runs before
+`DecodeArguments`, so every pre-existing `provider.ToolCall.Arguments`
+fixture in `agentloop_test` that reaches a `Scope`-offered
+`SchemaTool` must carry schema-passing JSON, not the unset or
+non-JSON byte slices the base plan's tests use today
+(`[]byte("in")`, `[]byte("bad")`, `[]byte("query")`,
+`[]byte("url")`, and nil `Arguments`, across `loop_test.go`,
+`loop_bounds_test.go`, `loop_wiring_test.go`,
+`loop_integration_test.go`, `loop_trim_test.go`, and
+`render_test.go`). This addendum moves every such fixture to
+`[]byte("{}")`, which already passes every test tool's permissive
+parameter schema (`loop_bounds_test.go` and `loop_wiring_test.go`
+already use this literal in their newer cases).
+`TestRunTrimErrorLaterIteration` (`loop_trim_test.go:21`) and
+`TestRunTrimInvalidMessageLaterIteration`
+(`loop_trim_test.go:58`) each call a registered, `Scope`-offered
+`schemaEchoTool` through a `provider.ToolCall{...}` literal with an
+implicit-nil `Arguments` field; neither test's assertion depends on
+that call succeeding or on `DecodeArguments` running, so the move to
+`[]byte("{}")` is for suite-wide consistency, not to fix a breaking
+case. `TestRunDecodeArgumentsFailure`
+(`loop_test.go:212-246`) keeps its `DecodeArguments`-failure intent
+by pairing `[]byte("{}")` `Arguments` with the test tool's
+already-supported, unconditional `decodeErr` field
+(`helper_test.go:81-89`), instead of relying on non-parseable bytes:
+the new schema-validation step would otherwise intercept a malformed
+payload before `DecodeArguments` ever ran, changing the failure this
+test exercises from a decode failure to an
+`ErrArgumentValidation` one.
+
+- `argument_validation_test.go` — a tool whose `ParameterSchema()`
+  requires a field; a call missing that field fails with
+  `errors.Is(err, ErrArgumentValidation)` under `ErrorPolicyFail`,
+  and reports a `ToolErrorPrefix`-marked, `schema.Corrective`-shaped
+  message under `ErrorPolicyReport`. A call whose `Arguments` satisfy
+  the schema reaches `DecodeArguments` and runs normally. A tool
+  whose `ParameterSchema()` returns bytes that do not compile fails
+  `New` with `errors.Is(err, ErrInvalidSchema)`, before any `Run`
+  call. A second `Loop`, built with a narrower `Scope` over the same
+  shared `*tools.Registry`, still constructs successfully through
+  `New` even though the wider `Loop`'s excluded tool carries that
+  same malformed schema, proving the compile loop is scoped, not
+  registry-wide. A call naming a tool outside `Scope` but present in
+  the registry fails with `errors.Is(err, tools.ErrScopeDenied)`,
+  before `DecodeArguments` or schema `Validate` ever run, proving
+  `decodeAndRun`'s own `Scope` check is the defense-in-depth gate for
+  a compile loop that no longer covers the full registry. A call with
+  oversized `Arguments`, over `schema.MaxPayloadBytes`, fails
+  `ErrArgumentValidation` wrapping `schema.ErrAdmission`, without
+  ever calling `DecodeArguments`. A race sub-case runs N goroutines
+  calling `Run` concurrently on one shared `*Loop`, each driving a
+  scripted `Completer` through several schema-validated tool calls,
+  under `go test -race`; every call resolves without a panic or a
+  race, confirming the immutable, `New`-time `schemas` cache and
+  `schema.Compiled.Validate`'s own documented concurrent-use safety
+  hold under concurrent `Run` calls, matching
+  `registry_run_scoped_concurrent_test.go`'s precedent for concurrent
+  `tools.Registry` access.
+- `audit_test.go` — a two-iteration, two-tool-call run with
+  `Options.Audit` set records one `AuditKindCompletion` record per
+  iteration and one `AuditKindToolCall` record per tool call, in
+  order, each carrying the same `Request`/`Response`/`ToolCall`/
+  `ToolResult` values the run itself produced. An `AuditKindToolCall`
+  record for a reported `ErrorPolicyReport` `decodeAndRun` failure
+  carries the original, unrendered error in `Err`, not the
+  `ToolErrorPrefix`-marked `Content` string, proving `reported`
+  survives the collapse `runOneToolCall` applies to `Content`. A
+  second case runs `render_test.go`'s existing unrenderable-result
+  tool under `ErrorPolicyReport` and asserts the matching
+  `AuditKindToolCall` record's `Err` wraps `ErrUnrenderableResult`,
+  proving `reported` also carries a `render` failure, not only a
+  `decodeAndRun` failure. A `PointPreTool` veto
+  produces no `AuditKindToolCall` record for the vetoed call. An
+  `ErrorPolicyFail` tool error produces no `AuditKindToolCall` record
+  for the failing call. A scripted `Completer` whose second
+  iteration's response trips `ErrCallsPerTurnExceeded` still yields
+  an `AuditKindCompletion` record for that second iteration before
+  `Run` returns the wrapped error, pinning that a hard-failing
+  iteration's completion is still audited; a paired case does the
+  same for a response that trips `ErrTokenBudgetExceeded`. An `Audit`
+  func returning an error fails the run with the wrapped error,
+  `errors.Is`-checkable back to the `Audit` func's own sentinel, and
+  the returned `Result` carries the accumulated `History`,
+  `Iterations`, and `Usage` at the point of failure, matching every
+  other hard-fail case in this plan. A nil `Options.Audit` runs
+  unchanged from the base plan's existing cases.
+- `render_test.go` gains cases: an `ErrorPolicyReport` tool failure's
+  `Content` starts with `ToolErrorPrefix`, and an argument-validation
+  failure's `Content` starts with `ToolErrorPrefix` followed by a
+  `schema.Corrective`-shaped message, not a raw Go error string.
+
+`tools/tools_test/` is unchanged: this addendum adds no new `tools`
+symbol.
+
+### Addendum verification
+
+`make verify` passes, including the deps gate against the widened
+`agentloop` row and the API gate against the regenerated
+`api/agentloop.txt`.
+
+`go test -race ./agentloop/...` passes.
+
+`make api-update` runs, and the `api/agentloop.txt` diff lands in the
+same change as the code.
+
+This addendum adds no conformance vector. It adds no new gate. The
+coverage floor stays at 85 percent for `agentloop` and the module
+total.

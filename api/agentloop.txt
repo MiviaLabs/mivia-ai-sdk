@@ -1,13 +1,27 @@
 package agentloop
+  const AuditKindCompletion = "completion"
+  const AuditKindToolCall = "tool_call"
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
+  const ToolErrorPrefix = "[tool-error] "
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
   func (o Options) Validate() (error)
   func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)
   func New(opts Options) (*Loop, error)
+  type AuditFunc func(ctx context.Context, rec AuditRecord) error
+  type AuditKind string
+  type AuditRecord struct {
+  Iteration int
+  Kind AuditKind
+  Request provider.Request
+  Response provider.Response
+  ToolCall provider.ToolCall
+  ToolResult provider.Message
+  Err error
+}
   type ErrorPolicy string
   type Loop struct {
 }
@@ -27,6 +41,7 @@ package agentloop
   Bus *events.Bus
   Budget *contextbudget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+  Audit AuditFunc
 }
   type Result struct {
   Final provider.Message
@@ -36,7 +51,9 @@ package agentloop
   Stop StopReason
 }
   type StopReason string
+  var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
+  var ErrInvalidSchema
   var ErrMaxIterations
   var ErrNoCompleter
   var ErrNoSchemas

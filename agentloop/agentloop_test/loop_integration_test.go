@@ -23,8 +23,8 @@ func TestLoopIntegrationTwoToolThreeIteration(t *testing.T) {
 	mustAdd(t, reg, fetch)
 
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "search", Arguments: []byte("query")}),
-		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "fetch", Arguments: []byte("url")}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "search", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "fetch", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final answer")},
 	}}
 

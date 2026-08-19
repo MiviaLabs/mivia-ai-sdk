@@ -64,6 +64,7 @@ flowchart LR
     agentloop --> usage
     agentloop --> events
     agentloop --> contextbudget
+    agentloop --> schema
     usage --> provider
     providerregistry --> provider
     scheduler --> events
@@ -316,10 +317,15 @@ flowchart LR
   model asks for no more tools or a bound trips (`MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `Budget`, or ctx cancellation).
   A wired `Hooks` registry fires `PointPreTool` and `PointPostTool` per
-  tool call and `PointStop` once, on every return path. `agentloop`
-  imports `provider`, `tools`, `trace`, `hooks`, `usage`, `events`, and
-  `contextbudget`; it never imports `subagent`. See
-  [packages/agentloop.md](packages/agentloop.md).
+  tool call and `PointStop` once, on every return path. A model-chosen
+  call's arguments run through a `schema`-compiled validation gate
+  before `DecodeArguments`, and a wired `Options.Audit` receives one
+  `AuditRecord` per completion and per tool call, keeping `agentloop`
+  envelope-agnostic: a caller signs its own audit trail from those
+  records, outside the block, the way `agent.confirmStep` signs `flow`
+  steps. `agentloop` imports `provider`, `tools`, `trace`, `hooks`,
+  `usage`, `events`, `contextbudget`, and `schema`; it never imports
+  `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A
   `Tool` is a named action; a `Registry` resolves one by name and runs

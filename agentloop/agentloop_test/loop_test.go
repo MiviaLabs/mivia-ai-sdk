@@ -46,7 +46,7 @@ func TestRunOneToolCallAppendsRoleToolMessage(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("in")}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
@@ -88,8 +88,8 @@ func TestRunTwoCallsRunInIndexOrder(t *testing.T) {
 	mustAdd(t, reg, second)
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(
-			provider.ToolCall{Index: 1, ID: "call-2", Name: "second", Arguments: []byte("in")},
-			provider.ToolCall{Index: 0, ID: "call-1", Name: "first", Arguments: []byte("in")},
+			provider.ToolCall{Index: 1, ID: "call-2", Name: "second", Arguments: []byte("{}")},
+			provider.ToolCall{Index: 0, ID: "call-1", Name: "first", Arguments: []byte("{}")},
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
@@ -184,7 +184,7 @@ func TestRunPreToolVetoStops(t *testing.T) {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("in")}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
 	if err != nil {
@@ -215,7 +215,7 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 		reg := tools.New()
 		mustAdd(t, reg, tool)
 		completer := &scriptedCompleter{responses: []provider.Response{
-			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("bad")}),
+			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 			{Message: textMessage(provider.RoleAssistant, "final")},
 		}}
 		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
@@ -249,7 +249,7 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 		reg := tools.New()
 		mustAdd(t, reg, tool)
 		completer := &scriptedCompleter{responses: []provider.Response{
-			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("bad")}),
+			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		}}
 		loop, err := agentloop.New(agentloop.Options{
 			Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
@@ -409,7 +409,7 @@ func TestRunCompleterChatErrorLaterIteration(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{
-		responses: []provider.Response{toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo"})},
+		responses: []provider.Response{toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})},
 		errs:      []error{nil, errBoom},
 	}
 	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})

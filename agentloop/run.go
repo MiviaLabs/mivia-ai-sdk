@@ -61,7 +61,8 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 		if l.tracer != nil {
 			iterCtx, span = l.tracer.Start(ctx, "agentloop.iteration")
 		}
-		resp, err := l.completer.Chat(iterCtx, provider.Request{Model: l.model, Messages: history, Tools: l.defs})
+		req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+		resp, err := l.completer.Chat(iterCtx, req)
 		if span != nil {
 			span.End()
 		}
@@ -74,6 +75,12 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 		totalUsage = sumUsage(totalUsage, resp.Usage)
 		if l.usageAcc != nil {
 			_ = l.usageAcc.Record(l.sessionID, resp.Usage)
+		}
+		if l.audit != nil {
+			if err := l.audit(ctx, AuditRecord{Iteration: iterations, Kind: AuditKindCompletion, Request: req, Response: resp}); err != nil {
+				return l.hardFail(history, iterations, totalUsage),
+					fmt.Errorf("agentloop: iteration %d: audit: %w", iterations, err)
+			}
 		}
 		runningTokens += resp.Usage.TotalTokens
 		if l.maxTotalTokens > 0 && runningTokens > l.maxTotalTokens {

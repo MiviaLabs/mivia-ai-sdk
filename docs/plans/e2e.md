@@ -285,6 +285,21 @@ parent's standing already matches the child final, so the re-entry
 fires no transition. The delivery budget case runs three same-final
 repair cycles before its terminal failure.
 
+## Wiring scenarios
+
+The four newest blocks compose at the top through these scenarios:
+
+- `wiring_scenario_test.go` — one traced orchestrator run whose hook
+  observes its step, whose step spawns a traced subagent, whose
+  internal registry tool falls back to a usage-wrapped provider. The
+  span tree nests four levels deep, the hooks fire in order, and the
+  session total answers.
+- `wiring_edge_test.go` — the failure and edge cases: a pre-tool
+  veto kills the run before the spawn, an exhausted registry order
+  surfaces `ErrAllFailed` at the top, two spawns keep isolated
+  session totals over one accumulator, and a stop-hook veto fails
+  the run after the walk while still reporting the final status.
+
 ## Tests
 
 The scenarios are the tests. They live in `e2e/e2e_test/`, one

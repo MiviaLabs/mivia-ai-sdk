@@ -134,7 +134,7 @@ See [AGENTS.md](AGENTS.md) for architecture rules, package isolation policies, a
 
 ## Author & Contributors
 
-- **Maciej (Mac) Lisowski** — *Author / Lead Architect* ([@mac-lisowski](https://github.com/mac-lisowski))
+- **Maciej (Mac) Lisowski** — *Author* ([@mac-lisowski](https://github.com/mac-lisowski))
 
 Contributions are welcome! See [AGENTS.md](AGENTS.md) for contribution rules.
 

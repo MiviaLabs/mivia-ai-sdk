@@ -6,7 +6,7 @@ heartbeat, identity, discovery, a2a, a2aclient, a2aack, dispatch,
 tools, contextbudget, mcp, ledger, durablefence, memory, provider,
 contextplan, channel, trigger, trace, skills, scheduler, agent,
 agentrun, subagent, taskrun, e2e, envfile, secretpath, workspace,
-diff, and spool. Each package
+diff, spool, and contextsummary. Each package
 covers one concern and composes through its exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
@@ -77,6 +77,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, the request and response types, and the reasoning vocabulary.
 - [packages/contextplan.md](packages/contextplan.md) — fits one durable session into a bounded provider request: a token `Window`, per-payload elision decisions, and an EWMA-calibrated token estimator.
+- [packages/contextsummary.md](packages/contextsummary.md) — the LLM summarizer for compaction: one bounded `provider.Completer` call turns dropped messages into one validated, bounded `Summary`, injected as a named user message.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
 - [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.
 - [packages/trace.md](packages/trace.md) — the structured-trace primitive: a `Span` records one named operation, a `Tracer` links spans through `ctx`, and `SpanFrom` reads the current span back.

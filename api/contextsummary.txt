@@ -1,0 +1,25 @@
+package contextsummary
+  const MaxExcerptTotalBytes = 16 * 1024
+  const MaxFieldBytes = 2 * 1024
+  const MaxItems = 32
+  const SummaryMessageName = "context-summary"
+  const SummaryTimeout = 20 * time.Second
+  func (s *Summarizer) Summarize(ctx context.Context, msgs []provider.Message) (Summary, error)
+  func (s Summary) Render() (string)
+  func (s Summary) Validate() (error)
+  func NewSummarizer(c provider.Completer) (*Summarizer, error)
+  func SummaryMessage(s Summary) (provider.Message)
+  func TokenEstimate(n int) (int)
+  type Summarizer struct {
+}
+  type Summary struct {
+  Objective string
+  State string
+  Decisions []string
+  OpenWork []string
+  Risks []string
+}
+  var ErrCallFailed
+  var ErrInvalidReply
+  var ErrNilCompleter
+  var ErrNoMessages

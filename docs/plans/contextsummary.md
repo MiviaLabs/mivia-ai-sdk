@@ -1,6 +1,6 @@
 # Plan: contextsummary
 
-Status: plan, ready for plan review. Ports the summarizer half of
+Status: shipped. Ports the summarizer half of
 `mivia-agent/internal/contextmgr`, simplified to this task's contract.
 Compaction is LLM-only; this package is the only summarizer.
 

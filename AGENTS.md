@@ -62,6 +62,12 @@ Go SDK for building AI agents. Module:
   contextstate.MemStore and a memory.Store; Plan drops or trims
   events to fit Window.Budget, applying StubContent to reasoning
   events first.
+- `contextsummary/` — the LLM summarizer for compaction: Summary with
+  Validate and Render, SummaryMessage, TokenEstimate, Summarizer over
+  a provider.Completer. One call, a 20 second timeout, strict
+  DisallowUnknownFields decoding, no retry. Bounded excerpts feed the
+  prompt, newest first; a summary failure is caller-visible with no
+  structural fallback. Imports provider only.
 - `envfile/` — dotenv loading: Load and LoadBytes parse `KEY=VALUE`
   lines into a map without leaking parsed values into an error. Load
   reads the file and delegates to LoadBytes, so the two share one

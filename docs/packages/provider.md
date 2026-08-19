@@ -11,8 +11,9 @@ below mirrors `api/provider.txt`.
 - `Completer` — the required contract: `Name`, `Chat`, `ChatStream`.
 - `Role` — a message's role. Constants: `RoleSystem`, `RoleUser`,
   `RoleAssistant`, `RoleTool`.
-- `Message` — one turn in a conversation. `Role`, `Content`,
-  `ToolCallID`, `ToolCalls`.
+- `Message` — one turn in a conversation. `Role`, `Content`, `Name`,
+  `ToolCallID`, `ToolCalls`. `Name` is legal only on `RoleUser` and
+  `RoleTool`; an empty `Name` is legal on every role.
 - `ToolDefinition` — one tool a model may call.
 - `ToolCall` — one call the model requests, or one fragment while it
   streams.
@@ -37,6 +38,8 @@ below mirrors `api/provider.txt`.
 - `ReasoningEventKind` — the `contextstate.SourceEvent.Kind` value
   that marks a reasoning trace. The one place the literal appears;
   `contextplan.IsReasoningEvent` compares against this constant.
+- `MaxNameBytes` — 128, the byte bound `Message.Validate` applies to a
+  non-empty `Name`.
 
 ## Reasoning fold
 
@@ -55,7 +58,8 @@ without either importing the other.
   Validates every `req.Messages` entry with `Message.Validate` before
   it dispatches. Selects on `ctx.Done()` while it drains a stream.
 - `Message.Validate()` — enforces the `ToolCallID`/`Role` pairing rule,
-  the closed set of `Role` constants, and the `ToolCalls`/`Role` rule.
+  the closed set of `Role` constants, the `Name` rule, and the
+  `ToolCalls`/`Role` rule.
 - `Chunk.Validate()` — enforces `Err` and `Done == true` are mutually
   exclusive on one `Chunk`.
 
@@ -89,6 +93,19 @@ Use `errors.Is` to test these.
   chunk") — `RunTurn` returns it when a `ChatStream` channel closes
   before any `Chunk` carries `Done == true` or a non-nil `Err`. Pinned
   by `provider/provider_test/runturn_test.go`.
+- `ErrNameUnexpected` ("provider: name unexpected outside RoleUser and
+  RoleTool") — `Message.Validate` returns it when `Name` is non-empty
+  on a message whose `Role` is `RoleSystem` or `RoleAssistant`. Pinned
+  by `provider/provider_test/types_test.go`.
+- `ErrNameInvalid` ("provider: name is invalid or too long") —
+  `Message.Validate` returns it when a non-empty `Name` exceeds
+  `MaxNameBytes`, is not valid UTF-8, or carries a control character.
+  Pinned by `provider/provider_test/types_test.go`.
+- `ErrPromptTooLong` ("provider: prompt exceeds the model context
+  window") — a caller's `Completer` returns or wraps it when the
+  provider rejects an over-long prompt. `provider` ships no
+  implementation itself; `agentloop` tests for it with `errors.Is` on
+  its recovery path.
 
 ## Invariants
 
@@ -96,7 +113,13 @@ Use `errors.Is` to test these.
 below.
 
 - `Message.Validate` checks `Role` legality first: an unknown `Role`
-  always returns `ErrUnknownRole`, regardless of `ToolCallID`.
+  always returns `ErrUnknownRole`, regardless of `Name`, `ToolCallID`,
+  or `ToolCalls`.
+- `Message.Validate` checks the `Name` rule after the `Role` check and
+  before the `ToolCallID` pairing check: a non-empty `Name` outside
+  `RoleUser` and `RoleTool` returns `ErrNameUnexpected`; a non-empty
+  `Name` over `MaxNameBytes`, not valid UTF-8, or carrying a control
+  character returns `ErrNameInvalid`. An empty `Name` is always legal.
 - `Message.Validate` then checks the `ToolCallID` pairing rule only
   for one of the four known roles.
 - `Message.Validate` rejects a non-empty `ToolCalls` on any known role

@@ -1,6 +1,9 @@
 package provider
 
-import "errors"
+import (
+	"errors"
+	"unicode/utf8"
+)
 
 // Sentinel errors for Message.Validate and Chunk.Validate; test with
 // errors.Is.
@@ -25,7 +28,20 @@ var (
 	// or a non-nil Err. RunTurn returns the zero Response alongside
 	// this error; it never returns a partial aggregation.
 	ErrStreamClosedEarly = errors.New("provider: stream closed before a terminal chunk")
+	// ErrNameUnexpected is Validate's error when Name is non-empty on a
+	// Role other than RoleUser or RoleTool.
+	ErrNameUnexpected = errors.New("provider: name unexpected outside RoleUser and RoleTool")
+	// ErrNameInvalid is Validate's error when a non-empty Name exceeds
+	// MaxNameBytes, is not valid UTF-8, or carries a control character.
+	ErrNameInvalid = errors.New("provider: name is invalid or too long")
+	// ErrPromptTooLong marks a provider's rejection of a prompt that
+	// exceeds the model's context window. A Completer returns or wraps
+	// it; provider ships no implementation itself.
+	ErrPromptTooLong = errors.New("provider: prompt exceeds the model context window")
 )
+
+// MaxNameBytes bounds Message.Name when set.
+const MaxNameBytes = 128
 
 // Role names a message's role in a chat turn.
 type Role string
@@ -42,27 +58,37 @@ const (
 // ToolCallID is set only, and always, on a RoleTool message; it names
 // the ToolCall.ID the message answers. ToolCalls is non-empty only on
 // a RoleAssistant message; it holds the calls that assistant turn made.
+// Name is legal only on RoleUser and RoleTool messages; an empty Name
+// is legal on every role. See MaxNameBytes for the bound.
 type Message struct {
 	Role       Role
 	Content    string
+	Name       string
 	ToolCallID string
 	ToolCalls  []ToolCall
 }
 
 // Validate enforces the ToolCallID/Role pairing rule, the closed set
-// of Role constants, and the ToolCalls rule. It checks Role legality
-// first: a Role outside the four constants always returns
-// ErrUnknownRole, regardless of ToolCallID or ToolCalls. Only for one
-// of the four known roles does Validate then check the ToolCallID
-// pairing rule: ErrToolCallIDUnexpected when ToolCallID is non-empty
-// on a non-RoleTool message; ErrToolCallIDRequired when ToolCallID is
-// empty on a RoleTool message. Finally, Validate rejects a non-empty
+// of Role constants, the Name rule, and the ToolCalls rule. It checks
+// Role legality first: a Role outside the four constants always
+// returns ErrUnknownRole, regardless of Name, ToolCallID, or
+// ToolCalls. For one of the four known roles, Validate next checks
+// the Name rule: ErrNameUnexpected when Name is non-empty on a Role
+// other than RoleUser or RoleTool; ErrNameInvalid when a non-empty
+// Name exceeds MaxNameBytes, is not valid UTF-8, or carries a control
+// character. Only then does Validate check the ToolCallID pairing
+// rule: ErrToolCallIDUnexpected when ToolCallID is non-empty on a
+// non-RoleTool message; ErrToolCallIDRequired when ToolCallID is empty
+// on a RoleTool message. Finally, Validate rejects a non-empty
 // ToolCalls on any known Role other than RoleAssistant with
 // ErrToolCallsUnexpected. RunTurn calls Validate on every entry of
 // Request.Messages before it dispatches.
 func (m Message) Validate() error {
 	switch m.Role {
 	case RoleSystem, RoleUser:
+		if err := m.validateName(); err != nil {
+			return err
+		}
 		if m.ToolCallID != "" {
 			return ErrToolCallIDUnexpected
 		}
@@ -70,10 +96,16 @@ func (m Message) Validate() error {
 			return ErrToolCallsUnexpected
 		}
 	case RoleAssistant:
+		if err := m.validateName(); err != nil {
+			return err
+		}
 		if m.ToolCallID != "" {
 			return ErrToolCallIDUnexpected
 		}
 	case RoleTool:
+		if err := m.validateName(); err != nil {
+			return err
+		}
 		if m.ToolCallID == "" {
 			return ErrToolCallIDRequired
 		}
@@ -82,6 +114,27 @@ func (m Message) Validate() error {
 		}
 	default:
 		return ErrUnknownRole
+	}
+	return nil
+}
+
+// validateName applies the Name rule for one known role. A non-empty
+// Name outside RoleUser and RoleTool is ErrNameUnexpected; a malformed
+// Name on any role is ErrNameInvalid.
+func (m Message) validateName() error {
+	if m.Name == "" {
+		return nil
+	}
+	if m.Role != RoleUser && m.Role != RoleTool {
+		return ErrNameUnexpected
+	}
+	if len(m.Name) > MaxNameBytes || !utf8.ValidString(m.Name) {
+		return ErrNameInvalid
+	}
+	for _, r := range m.Name {
+		if r < 0x20 || r == 0x7f {
+			return ErrNameInvalid
+		}
 	}
 	return nil
 }

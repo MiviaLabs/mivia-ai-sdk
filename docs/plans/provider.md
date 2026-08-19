@@ -259,9 +259,9 @@ Test files live in `provider/provider_test/`:
 
 ## Change: message names and the prompt-too-long sentinel
 
-Status: plan, ready for plan review. Two additions: a `Name` field on
-`Message` with validation rules, and one sentinel error for
-prompt-too-long rejections. No other shape changes.
+Status: shipped. Two additions: a `Name` field on `Message` with
+validation rules, and one sentinel error for prompt-too-long
+rejections. No other shape changes.
 
 ### Change goal
 

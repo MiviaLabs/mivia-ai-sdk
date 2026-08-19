@@ -486,3 +486,49 @@ Test: `tools/tools_test/execution_profile_test.go`'s
 `true`-want cases to assert
 `errors.Is(err, tools.ErrInvalidExecutionClass)` instead of a plain
 non-nil check.
+
+### Addition, planned with `agentloop`: `SchemaTool` and `SchemaOf`
+
+Status: planned, not yet built. See `docs/plans/agentloop.md` for the
+full contract; this section is the `tools`-side record of the same
+change, since `agentloop` is the first caller.
+
+`Tool` publishes no parameter schema and decodes no argument bytes. A
+model-driven caller needs both. Add one optional interface, following
+the `ProfiledTool`/`ResultBudgetTool`/`PrivilegedTool` precedent:
+
+```go
+type SchemaTool interface {
+    ParameterSchema() []byte
+    DecodeArguments(raw []byte) (InOut, error)
+}
+
+func SchemaOf(t Tool) ([]byte, bool)
+
+func (r *Registry) Tools() []Tool
+```
+
+`SchemaOf` returns `t.ParameterSchema()` and true when `t` implements
+`SchemaTool`; else `nil, false`, matching `ExecutionProfileOf`'s
+shape. `DecodeArguments` sits on the tool because only the tool
+knows its own input type. `Registry.Tools()` is a new enumeration
+method — a name-sorted snapshot slice — added because `agentloop`'s
+`Definitions` needs to walk every registered tool and call `SchemaOf`
+on each; `Add`, `Get`, `Remove`, `Run`, and `RunScoped` are
+unchanged, and `Tool`, `InOut`, and `Out` are unchanged.
+
+`mcp/tools.go` already defines and locks an exported `SchemaTool`
+interface (`InputSchema() any`), a different shape than this
+`tools.SchemaTool`; phase 70 must rename or remove `mcp.SchemaTool`
+when `mcp` adopts `tools.SchemaTool`, so the collision is a tracked,
+deliberate decision.
+
+Test: `tools/tools_test/schema_test.go` covers `SchemaOf` on a tool
+that implements `SchemaTool`, one that does not, and a typed nil.
+`tools/tools_test/registry_test.go` gains a case for `Tools()`
+returning a name-sorted, non-nil snapshot, including the empty case.
+
+`make api-update` locks `SchemaTool`, `SchemaOf`, and
+`Registry.Tools()` into `api/tools.txt` in the same change as
+`agentloop`'s own code. No
+`policy/layers.json` edit; `tools`'s row stays `[]`.

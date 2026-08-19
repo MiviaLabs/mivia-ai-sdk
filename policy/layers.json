@@ -23,6 +23,15 @@
       "heartbeat",
       "contextbudget"
     ],
+    "agentloop": [
+      "provider",
+      "tools",
+      "trace",
+      "hooks",
+      "usage",
+      "events",
+      "contextbudget"
+    ],
     "agentrun": [
       "agent",
       "channel",

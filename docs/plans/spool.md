@@ -246,3 +246,24 @@ var (
 - One e2e case in `e2e/e2e_test/` wires `SpoolTool` around a
   large-output tool inside an `agentrun` step, confirming the spooled
   view carries a ref that a follow-up `Spool.Load` call resolves.
+
+## Planned addition, landing with `agentloop`: schema forwarding
+
+Status: planned. `tools.SchemaTool` does not exist yet; it lands in
+the `agentloop` change. See `docs/plans/agentloop.md`.
+
+`SpoolTool` strips a capability silently when its combinatorial
+switch misses an optional interface. A schema-less wrapper tool is
+skipped by `agentloop.Definitions`, so the model never sees the tool.
+That failure is silent unless `Definitions` fails closed, which the
+`agentloop` plan now requires.
+
+When `tools.SchemaTool` lands, `spool` adopts it in the same change:
+
+- Add a `schemaCap` forwarding struct, `ParameterSchema` and
+  `DecodeArguments`, beside the existing three caps.
+- Extend the variant switch from eight to sixteen cases.
+- `spool/spool_test/tool_parity_test.go` (already shipped) enumerates
+  every subset of the known optional interfaces. Extend its probe
+  list with `tools.SchemaTool` in the same change. A missed variant
+  then fails the parity test, not a live run.

@@ -18,10 +18,10 @@ references.
 
 ## Package map
 
-The diagram shows the thirty-one packages and the import edges between
+The diagram shows the thirty-two packages and the import edges between
 them. An arrow points from an importer to the package it imports.
 `channel`, `contextbudget`, `discovery`, `durablefence`, `envelope`,
-`events`, `hooks`, `provider`, `tools`, `trace`, and `trigger` are leaves: they import no other
+`events`, `hooks`, `provider`, `skills`, `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module.
 
 ```mermaid
@@ -108,6 +108,7 @@ flowchart LR
     envelope[envelope]
     events[events]
     provider[provider]
+    skills[skills]
     tools[tools]
     trigger[trigger]
     usage[usage]
@@ -413,6 +414,15 @@ flowchart LR
   or a handler error short-circuits the chain and returns to the
   caller. `hooks` imports no other package in this module. See
   [packages/hooks.md](packages/hooks.md).
+- `skills/` — a leaf primitive. It provides `Skill`, `Skill.Validate`,
+  `Registry`, `New`, `Add`, `Get`, `Remove`, `Names`, `Match`, and the
+  sentinels `ErrBlankName`, `ErrBlankInstructions`, `ErrBlankTrigger`,
+  `ErrDuplicateTrigger`, and `ErrDuplicateName`. A `Skill` is read, not
+  called: it carries instructions text, a trigger-phrase list, and the
+  tool names it expects available. `Match` compares a query against
+  every registered skill's `Triggers`, case-insensitively. `skills`
+  imports no other package in this module. See
+  [packages/skills.md](packages/skills.md).
 - `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
   `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
   `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,

@@ -844,3 +844,19 @@ exclude-list entry; the two `check_semgrep_probes.py` new probe pairs
 `docs/architecture.md` does not change: this move adds no
 message-semantics rule and changes no module in the dependency map,
 only which package one existing module lives behind.
+
+## Addendum: a mutation floor at 96
+
+`scripts/mutation_denylist/a2aclient.json` locks a mutation floor of
+96, from a measured 96.43% (27 killed, 1 survived). The survivor sits
+in `grpcTransport.Send`'s `!ok || task == nil` guard against a
+type-asserted-but-typed-nil `*a2acore.Task`. No test seam reaches
+this branch: `newFromTransport` substitutes the `transport` interface
+above `grpcTransport`, not the third-party `a2asdk.Transport` field
+`grpcTransport` wraps, and that field is unexported. Reaching the
+branch would need the real gRPC wire path, through
+`a2aloopback.Loopback`, to return a response the a2a-go SDK's own
+client unmarshals into a typed-nil `*a2acore.Task` inside a non-nil
+`any` -- a case the SDK's own marshaling behavior, not this package's
+code, would have to be made to produce. `make mutation-gate` includes
+`a2aclient` at this floor.

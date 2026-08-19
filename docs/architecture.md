@@ -63,10 +63,12 @@ flowchart LR
     agentrun --> events
     agentrun --> flow
     agentrun --> heartbeat
+    agentrun --> hooks
     agentrun --> identity
     agentrun --> machine
     agentrun --> memory
     agentrun --> tools
+    agentrun --> trace
     taskrun --> ledger
     subagent --> agent
     subagent --> agentrun
@@ -81,10 +83,12 @@ flowchart LR
     subagent --> machine
     subagent --> memory
     subagent --> provider
+    subagent --> providerregistry
     subagent --> room
     subagent --> scheduler
     subagent --> taskrun
     subagent --> tools
+    subagent --> trace
     subagent --> trigger
     e2e --> agent
     e2e --> discovery

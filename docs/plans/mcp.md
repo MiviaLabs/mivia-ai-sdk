@@ -304,15 +304,7 @@ func (c *Client) CallTool(ctx context.Context, name string, args any) (tools.Out
 // must not be nil.
 func (c *Client) CallToolWithProgress(ctx context.Context, name string, args any, onProgress ProgressHandler) (tools.Out, error)
 
-// SchemaTool is an optional interface a tools.Tool returned by
-// ListTools implements. InputSchema returns the tool's input schema
-// exactly as the server published it and the SDK decoded it, a
-// map[string]any in the common case.
-type SchemaTool interface {
-	InputSchema() any
-}
-
-// A mapped tool also implements tools.SchemaTool, so
+// A mapped tool implements tools.SchemaTool, so
 // agentloop.Definitions offers it to the model.
 //
 // ParameterSchema returns the server's input schema in its JSON form.
@@ -413,18 +405,19 @@ Design notes:
   directly, since `Registry.Run`'s `Run(ctx, in) (Out, error)`
   signature has no room for a handler argument, and phase 14 locked
   that signature.
-- `SchemaTool.InputSchema` returns `any`, not `json.RawMessage`. The
-  SDK's own `Tool.InputSchema` field is typed `any` and holds a
-  `map[string]any` on the client side, the SDK's own default JSON
-  marshaling of the server's schema. `SchemaTool` keeps that
-  undecoded form for a caller that wants the schema as a value.
-- A mapped tool also implements `tools.SchemaTool`. The caller this
-  plan once deferred now exists: `agentloop.Definitions` walks
+- A mapped tool implements `tools.SchemaTool`. The caller this plan
+  once deferred now exists: `agentloop.Definitions` walks
   `Registry.Tools` and calls `tools.SchemaOf` on each tool. A tool
   that publishes no `ParameterSchema` is skipped as schemaless, so
-  every MCP tool was silently left out of the offered set. The two
-  interfaces stay side by side because their shapes differ: `any`
-  against `[]byte`.
+  every MCP tool was silently left out of the offered set.
+- This package's own `SchemaTool` interface is deleted, with its
+  `InputSchema` method. It shipped with no caller, on the stated
+  expectation that a `provider.ToolDefinition` builder would want the
+  undecoded `map[string]any` form. That builder arrived as
+  `agentloop.Definitions` and wants `[]byte` instead, so the
+  expectation did not hold. Two schema interfaces on one type invite a
+  caller to assert the wrong one. A caller wanting the decoded form
+  unmarshals `ParameterSchema` bytes.
 - `ListTools` marshals the schema once per tool and stores the bytes.
   `ParameterSchema` has no error return, so the marshal cannot happen
   there. A marshal failure fails `ListTools` instead, so no tool ever

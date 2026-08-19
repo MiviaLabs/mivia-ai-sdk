@@ -392,8 +392,9 @@ flowchart LR
 - `mcp/` — the MCP tool-calling client. It provides `Transport`,
   `NewStdioTransport`, `NewStreamableHTTPTransport`, `ClientInfo`,
   `ProgressHandler`, `ClientOptions`, `Client`, `Connect`, `Close`,
-  `ListTools`, `CallTool`, `CallToolWithProgress`, `SchemaTool`,
-  `ContentBlock`, `CallResult`, `RegisterAll`, and `ErrClosed`.
+  `ListTools`, `CallTool`, `CallToolWithProgress`, `ContentBlock`,
+  `CallResult`, `RegisterAll`, and `ErrClosed`. A mapped tool
+  implements `tools.SchemaTool`, so `agentloop.Definitions` offers it.
   `Connect` opens a session over a local subprocess or a remote
   streamable HTTP endpoint, through the official MCP Go SDK's own
   client; `ListTools` and `CallTool` map the server's tools and

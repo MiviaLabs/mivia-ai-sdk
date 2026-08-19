@@ -91,12 +91,12 @@ func TestListToolsMapsFixtureTools(t *testing.T) {
 	names := map[string]bool{}
 	for _, tool := range got {
 		names[tool.Name()] = true
-		st, ok := tool.(SchemaTool)
+		schema, ok := tools.SchemaOf(tool)
 		if !ok {
-			t.Fatalf("tool %q does not implement SchemaTool", tool.Name())
+			t.Fatalf("tool %q does not implement tools.SchemaTool", tool.Name())
 		}
-		if st.InputSchema() == nil {
-			t.Fatalf("tool %q InputSchema() returned nil", tool.Name())
+		if len(schema) == 0 {
+			t.Fatalf("tool %q ParameterSchema() returned no bytes", tool.Name())
 		}
 	}
 	if !names["echo1"] || !names["echo2"] {

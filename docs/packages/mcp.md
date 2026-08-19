@@ -21,8 +21,6 @@ run. The exported surface below mirrors `api/mcp.txt`.
 - `Client` — one connection to one MCP server. The caller owns it and
   must call `Close`. Safe for concurrent `ListTools`, `CallTool`, and
   `CallToolWithProgress` calls.
-- `SchemaTool` — an optional interface a `tools.Tool` returned by
-  `ListTools` implements, exposing the tool's input schema.
 - `ContentBlock` — one block of a tool call result: `Type`, `Text`,
   `Data`, `MimeType`, and `Raw` for a kind this package does not
   decompose further.
@@ -49,7 +47,7 @@ run. The exported surface below mirrors `api/mcp.txt`.
 - `(*Client) ListTools(ctx) ([]tools.Tool, error)` — calls
   `tools/list`, draining every page, and maps each tool. Each mapped
   `tools.Tool` calls back into the `Client` when run, and implements
-  `SchemaTool`.
+  `tools.SchemaTool`, so `agentloop.Definitions` offers it.
 - `(*Client) CallTool(ctx, name, args) (tools.Out, error)` — calls
   `tools/call` and maps the result into a `tools.Out` wrapping a
   `*CallResult`. Returns a non-nil error only for a transport or

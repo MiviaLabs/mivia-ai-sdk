@@ -10,7 +10,7 @@
 // NewStreamableHTTPTransport; client.go = ClientInfo, ClientOptions,
 // Client, Connect, Close, ErrClosed; progress.go = ProgressHandler and
 // the per-call token correlation; tools.go = ListTools, CallTool,
-// CallToolWithProgress, SchemaTool, RegisterAll; content.go =
+// CallToolWithProgress, RegisterAll; content.go =
 // ContentBlock, CallResult, and the mapping from the SDK's own result
 // type. Contribution rules: ../AGENTS.md.
 package mcp

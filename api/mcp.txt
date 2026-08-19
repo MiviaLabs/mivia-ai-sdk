@@ -4,7 +4,6 @@ package mcp
   func (c *Client) Close() (error)
   func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error)
   func (t *mcpTool) DecodeArguments(raw []byte) (tools.InOut, error)
-  func (t *mcpTool) InputSchema() (any)
   func (t *mcpTool) Name() (string)
   func (t *mcpTool) ParameterSchema() ([]byte)
   func (t *mcpTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
@@ -34,9 +33,6 @@ package mcp
   Raw json.RawMessage
 }
   type ProgressHandler func(ctx context.Context, token any, message string, progress, total float64)
-  type SchemaTool interface {
-	InputSchema() any
-}
   type Transport = mcpsdk.Transport
   var ErrClosed
   var ErrNilProgressHandler

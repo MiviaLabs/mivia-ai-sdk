@@ -10,14 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// SchemaTool is an optional interface a tools.Tool returned by
-// ListTools implements. InputSchema returns the tool's input schema
-// exactly as the server published it and the SDK decoded it, a
-// map[string]any in the common case.
-type SchemaTool interface {
-	InputSchema() any
-}
-
 // mcpTool wraps one MCP tool descriptor and the Client it came from.
 // Run calls back into the Client to run it. schema holds the
 // descriptor's input schema in its JSON form, marshaled once by
@@ -31,7 +23,6 @@ type mcpTool struct {
 
 var (
 	_ tools.Tool       = (*mcpTool)(nil)
-	_ SchemaTool       = (*mcpTool)(nil)
 	_ tools.SchemaTool = (*mcpTool)(nil)
 )
 
@@ -46,15 +37,10 @@ func (t *mcpTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	return t.client.CallTool(ctx, t.descriptor.Name, in.Value)
 }
 
-// InputSchema returns the tool's input schema exactly as the server
-// published it.
-func (t *mcpTool) InputSchema() any {
-	return t.descriptor.InputSchema
-}
-
 // ParameterSchema returns the server's input schema in its JSON form,
 // satisfying tools.SchemaTool so agentloop.Definitions offers this
-// tool to the model. See InputSchema for the undecoded form.
+// tool to the model. A caller wanting the schema as a value decodes
+// these bytes itself.
 func (t *mcpTool) ParameterSchema() []byte {
 	return t.schema
 }
@@ -76,8 +62,8 @@ func (t *mcpTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 // ListTools calls the server's tools/list method, draining every page
 // through the SDK's own pagination, and maps each returned mcpsdk.Tool
 // into a tools.Tool. Each returned tools.Tool calls back into c
-// through CallTool when run, and implements both SchemaTool and
-// tools.SchemaTool. A schema that fails to marshal fails the call.
+// through CallTool when run, and implements tools.SchemaTool. A
+// schema that fails to marshal fails the call.
 func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error) {
 	if c.isClosed() {
 		return nil, ErrClosed

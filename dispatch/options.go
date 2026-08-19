@@ -31,7 +31,16 @@ type Options struct {
 	// Bus receives MessageDeliveredEvent and MessageAckedEvent. Built
 	// and subscribed when nil.
 	Bus *events.Bus
+	// MaxBodyBytes caps one request body. Zero resolves to
+	// DefaultMaxBodyBytes; a negative value fails Validate. A body
+	// past the cap answers 400 with ErrBadRequest.
+	MaxBodyBytes int64
 }
+
+// DefaultMaxBodyBytes caps one NDJSON request body when
+// Options.MaxBodyBytes is zero. It bounds the memory one request can
+// commit before any line runs the receive ladder.
+const DefaultMaxBodyBytes int64 = 1 << 20
 
 // Sentinel errors for New and Endpoint.Handler; test with errors.Is.
 var (
@@ -40,10 +49,11 @@ var (
 	ErrNoResolve  = errors.New("dispatch: resolve func is required")
 	ErrBadMethod  = errors.New("dispatch: POST required")
 	ErrBadRequest = errors.New("dispatch: request body read failed")
+	ErrBadMaxBody = errors.New("dispatch: max body bytes must not be negative")
 )
 
-// Validate checks ID, Room, and Resolve, in that order, and returns
-// the first sentinel that fails.
+// Validate checks ID, Room, Resolve, and MaxBodyBytes, in that order,
+// and returns the first sentinel that fails.
 func (o Options) Validate() error {
 	if strings.TrimSpace(o.ID) == "" {
 		return ErrNoID
@@ -53,6 +63,9 @@ func (o Options) Validate() error {
 	}
 	if o.Resolve == nil {
 		return ErrNoResolve
+	}
+	if o.MaxBodyBytes < 0 {
+		return ErrBadMaxBody
 	}
 	return nil
 }
@@ -76,10 +89,15 @@ func New(opts Options) (*Endpoint, error) {
 			return nil, err
 		}
 	}
+	maxBody := opts.MaxBodyBytes
+	if maxBody == 0 {
+		maxBody = DefaultMaxBodyBytes
+	}
 	return &Endpoint{
 		id:      opts.ID,
 		room:    opts.Room,
 		resolve: opts.Resolve,
 		bus:     bus,
+		maxBody: maxBody,
 	}, nil
 }

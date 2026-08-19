@@ -48,7 +48,8 @@ const (
 // Sub is non-nil, Run ignores To and runs the child workflow to
 // completion. A step with no Needs is a root. When sets the admission
 // rule this step's needs must satisfy; the zero value is
-// AdmissionOnFinished. Route makes this step a branch step: after it
+// AdmissionOnSucceeded, so a skipped need skips this step. Route
+// makes this step a branch step: after it
 // fires, Run calls Route to pick which of this step's direct
 // dependents the run keeps. Retry bounds and paces repeated Fire
 // attempts; a nil Retry keeps the single-attempt behavior. New rejects

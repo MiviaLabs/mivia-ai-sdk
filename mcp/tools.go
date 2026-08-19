@@ -1,7 +1,9 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -17,15 +19,20 @@ type SchemaTool interface {
 }
 
 // mcpTool wraps one MCP tool descriptor and the Client it came from.
-// Run calls back into the Client to run it.
+// Run calls back into the Client to run it. schema holds the
+// descriptor's input schema in its JSON form, marshaled once by
+// ListTools, since tools.SchemaTool.ParameterSchema has no error
+// return.
 type mcpTool struct {
 	client     *Client
 	descriptor *mcpsdk.Tool
+	schema     []byte
 }
 
 var (
-	_ tools.Tool = (*mcpTool)(nil)
-	_ SchemaTool = (*mcpTool)(nil)
+	_ tools.Tool       = (*mcpTool)(nil)
+	_ SchemaTool       = (*mcpTool)(nil)
+	_ tools.SchemaTool = (*mcpTool)(nil)
 )
 
 // Name returns the tool's registration name.
@@ -45,10 +52,32 @@ func (t *mcpTool) InputSchema() any {
 	return t.descriptor.InputSchema
 }
 
+// ParameterSchema returns the server's input schema in its JSON form,
+// satisfying tools.SchemaTool so agentloop.Definitions offers this
+// tool to the model. See InputSchema for the undecoded form.
+func (t *mcpTool) ParameterSchema() []byte {
+	return t.schema
+}
+
+// DecodeArguments turns model-supplied argument bytes into the
+// arguments value CallTool sends. Blank raw decodes to a nil value,
+// which sends no arguments. A malformed payload fails.
+func (t *mcpTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return tools.InOut{}, nil
+	}
+	var args map[string]any
+	if err := unmarshalArguments(raw, &args); err != nil {
+		return tools.InOut{}, fmt.Errorf("mcp: tool %s arguments: %w", t.descriptor.Name, err)
+	}
+	return tools.InOut{Value: args}, nil
+}
+
 // ListTools calls the server's tools/list method, draining every page
 // through the SDK's own pagination, and maps each returned mcpsdk.Tool
 // into a tools.Tool. Each returned tools.Tool calls back into c
-// through CallTool when run, and implements SchemaTool.
+// through CallTool when run, and implements both SchemaTool and
+// tools.SchemaTool. A schema that fails to marshal fails the call.
 func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error) {
 	if c.isClosed() {
 		return nil, ErrClosed
@@ -58,7 +87,11 @@ func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error) {
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, &mcpTool{client: c, descriptor: t})
+		schema, err := marshalSchema(t.InputSchema)
+		if err != nil {
+			return nil, fmt.Errorf("mcp: tool %s schema: %w", t.Name, err)
+		}
+		out = append(out, &mcpTool{client: c, descriptor: t, schema: schema})
 	}
 	return out, nil
 }

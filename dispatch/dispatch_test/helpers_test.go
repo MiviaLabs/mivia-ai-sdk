@@ -100,6 +100,16 @@ func signIn(t testing.TB, key ed25519.PrivateKey, roomID, id, payload string) en
 	return m
 }
 
+// encodeLine encodes m into its one-line wire form.
+func encodeLine(t testing.TB, m envelope.Message) []byte {
+	t.Helper()
+	data, err := m.Encode()
+	if err != nil {
+		t.Fatalf("Encode() error: %v", err)
+	}
+	return data
+}
+
 // resolveAlways returns a Resolve func that always answers h.
 func resolveAlways(h dispatch.Handler) func(context.Context, envelope.Message) (dispatch.Handler, error) {
 	return func(context.Context, envelope.Message) (dispatch.Handler, error) {

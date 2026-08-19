@@ -1,4 +1,5 @@
 package dispatch
+  const DefaultMaxBodyBytes = 1 << 20
   func (e *Endpoint) Handler() (http.Handler)
   func (o Options) Validate() (error)
   func New(opts Options) (*Endpoint, error)
@@ -13,11 +14,13 @@ package dispatch
   Room *room.Room
   Resolve func(ctx context.Context, m envelope.Message) (Handler, error)
   Bus *events.Bus
+  MaxBodyBytes int64
 }
   type SendResult struct {
   Ack envelope.Ack
   Err error
 }
+  var ErrBadMaxBody
   var ErrBadMethod
   var ErrBadRequest
   var ErrNoID

@@ -282,7 +282,8 @@ func (c *Client) Close() error
 // ListTools calls the server's tools/list method, draining every page
 // through the SDK's own pagination, and maps each returned mcpsdk.Tool
 // into a tools.Tool. Each returned tools.Tool calls back into c
-// through CallTool when run, and implements SchemaTool.
+// through CallTool when run, and implements both SchemaTool and
+// tools.SchemaTool. A schema that fails to marshal fails the call.
 func (c *Client) ListTools(ctx context.Context) ([]tools.Tool, error)
 
 // CallTool invokes name through the wrapped session's CallTool,
@@ -310,6 +311,13 @@ func (c *Client) CallToolWithProgress(ctx context.Context, name string, args any
 type SchemaTool interface {
 	InputSchema() any
 }
+
+// A mapped tool also implements tools.SchemaTool, so
+// agentloop.Definitions offers it to the model.
+//
+// ParameterSchema returns the server's input schema in its JSON form.
+// DecodeArguments turns model-supplied argument bytes into the
+// arguments value CallTool sends; blank raw sends no arguments.
 
 // ContentBlock is one block of an MCP tool call result. Type names
 // the block's kind: "text", "image", "audio", "resource_link",
@@ -408,13 +416,24 @@ Design notes:
 - `SchemaTool.InputSchema` returns `any`, not `json.RawMessage`. The
   SDK's own `Tool.InputSchema` field is typed `any` and holds a
   `map[string]any` on the client side, the SDK's own default JSON
-  marshaling of the server's schema. Converting that to raw bytes
-  would need a `json.Marshal` call this package has no other reason
-  to make. `SchemaTool` earns its place through a future caller, such
-  as a `provider.ToolDefinition` builder (`docs/plans/provider.md`),
-  that does the raw-byte conversion itself, following the
-  optional-interface pattern `tools.ProfiledTool`,
-  `tools.ResultBudgetTool`, and `tools.PrivilegedTool` already set.
+  marshaling of the server's schema. `SchemaTool` keeps that
+  undecoded form for a caller that wants the schema as a value.
+- A mapped tool also implements `tools.SchemaTool`. The caller this
+  plan once deferred now exists: `agentloop.Definitions` walks
+  `Registry.Tools` and calls `tools.SchemaOf` on each tool. A tool
+  that publishes no `ParameterSchema` is skipped as schemaless, so
+  every MCP tool was silently left out of the offered set. The two
+  interfaces stay side by side because their shapes differ: `any`
+  against `[]byte`.
+- `ListTools` marshals the schema once per tool and stores the bytes.
+  `ParameterSchema` has no error return, so the marshal cannot happen
+  there. A marshal failure fails `ListTools` instead, so no tool ever
+  publishes a nil schema while claiming to have one.
+- `DecodeArguments` decodes into `map[string]any`, not
+  `json.RawMessage`. `CallTool` passes the value to
+  `mcpsdk.CallToolParams.Arguments`, which marshals it again, so raw
+  bytes would encode twice. Blank input decodes to a nil value, which
+  sends no arguments.
 - `ContentBlock.Raw` is filled by calling the SDK's own
   `Content.MarshalJSON` method on a block this package's `Type` switch
   does not otherwise decompose, for example `EmbeddedResource` or

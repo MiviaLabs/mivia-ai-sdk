@@ -28,7 +28,8 @@ Inside:
   process.
 - Request-level failures answer with HTTP status codes, not stream
   lines: a non-POST method answers 405 with `ErrBadMethod`; an
-  unreadable body answers 400 with `ErrBadRequest`.
+  unreadable body answers 400 with `ErrBadRequest`. A body past
+  `Options.MaxBodyBytes` answers 400 the same way.
 - `Send`: one HTTP POST, the request body NDJSON of encoded signed
   messages, the response body parsed into `[]envelope.Ack` and error
   lines.
@@ -84,11 +85,21 @@ var (
 	ErrNoResolve  = errors.New("dispatch: resolve func is required")
 	ErrBadMethod  = errors.New("dispatch: POST required")
 	ErrBadRequest = errors.New("dispatch: request body read failed")
+	ErrBadMaxBody = errors.New("dispatch: max body bytes must not be negative")
 )
+
+// DefaultMaxBodyBytes caps one NDJSON request body when
+// Options.MaxBodyBytes is zero.
+const DefaultMaxBodyBytes int64 = 1 << 20
 ```
 
 ## Validation
 
+- `New` rejects a negative `MaxBodyBytes`. A zero value resolves to
+  `DefaultMaxBodyBytes`, so the endpoint is never unbounded. The
+  handler wraps the request body in `http.MaxBytesReader` before
+  `io.ReadAll`. Without the cap one request can commit unbounded
+  memory before any line runs the ladder.
 - `New` rejects a blank `ID`, a nil `Room`, and a nil `Resolve`, in
   that order, before any wiring.
 - `New` subscribes no-op handlers to the agent event names on the

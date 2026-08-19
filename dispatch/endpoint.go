@@ -18,11 +18,13 @@ type Endpoint struct {
 	room    *room.Room
 	resolve func(ctx context.Context, m envelope.Message) (Handler, error)
 	bus     *events.Bus
+	maxBody int64
 }
 
 // Handler serves POST requests with NDJSON bodies. A non-POST method
 // answers 405 with ErrBadMethod. An unreadable body answers 400 with
-// ErrBadRequest. Each request line runs the receive ladder and
+// ErrBadRequest, as does a body past Options.MaxBodyBytes. Each
+// request line runs the receive ladder and
 // contributes one reply line, an ack or a JSON error object; the
 // stream stays open across a per-line failure.
 func (e *Endpoint) Handler() http.Handler {
@@ -35,7 +37,7 @@ func (e *Endpoint) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrBadMethod.Error(), http.StatusMethodNotAllowed)
 		return
 	}
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, e.maxBody))
 	if err != nil {
 		http.Error(w, ErrBadRequest.Error(), http.StatusBadRequest)
 		return

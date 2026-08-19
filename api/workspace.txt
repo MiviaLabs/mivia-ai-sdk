@@ -1,0 +1,10 @@
+package workspace
+  func (w *Workspace) List(path string) ([]os.DirEntry, error)
+  func (w *Workspace) ReadFile(path string) ([]byte, error)
+  func (w *Workspace) Root() (string)
+  func (w *Workspace) Stat(path string) (os.FileInfo, error)
+  func (w *Workspace) WriteFile(path string, data []byte, perm os.FileMode) (error)
+  func Open(root string) (*Workspace, error)
+  type Workspace struct {
+}
+  var ErrEscape

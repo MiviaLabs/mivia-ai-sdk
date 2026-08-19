@@ -1,0 +1,2 @@
+package envfile
+  func Load(path string) (map[string]string, error)

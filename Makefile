@@ -13,6 +13,7 @@ verify-fast:
 	python3 scripts/check_structure.py
 	python3 scripts/check_deps.py
 	python3 scripts/check_plan.py
+	python3 scripts/check_orphan_packages.py
 	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
 	python3 scripts/check_gomod.py
@@ -52,6 +53,7 @@ verify: verify-fast verify-ledger-sqlite
 	awk -v floor="$(COVERAGE_FLOOR)" '/^mode:/{next} {file=$$1; sub(/:[0-9].*$$/,"",file); sub(/\/[^\/]+$$/,"",file); tot[file]+=$$(NF-1); if ($$NF==0) unc[file]+=$$(NF-1)} END {ts=0; u=0; bad=0; for (p in tot) {ts+=tot[p]; u+=unc[p]; pct=100*(tot[p]-unc[p])/tot[p]; if (pct<floor) {printf "coverage %.1f%% for %s below the %d%% floor\n", pct, p, floor; bad=1}} t=100*(ts-u)/ts; if (t<floor) {printf "coverage %.1f%% below the %d%% floor\n", t, floor; bad=1} exit bad}' cover.out; \
 	python3 scripts/check_semgrep_probes.py
 	python3 scripts/check_mutation.py --probe
+	python3 scripts/check_orphan_packages.py --probe
 
 bench:
 	go test -run=NONE -bench=. -benchmem ./...

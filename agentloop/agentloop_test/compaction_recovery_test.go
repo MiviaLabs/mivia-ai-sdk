@@ -138,6 +138,19 @@ func TestRunRecoveryRetriesOnceWithNotice(t *testing.T) {
 	if got := summaryNamed(retried); got != 1 {
 		t.Fatalf("retried request summary count = %d, want 1", got)
 	}
+	afterSummary := false
+	for i, m := range retried {
+		if m.Name != contextsummary.SummaryMessageName {
+			continue
+		}
+		if i+1 >= len(retried) || retried[i+1].Content != agentloop.CompactionNotice {
+			t.Fatalf("notice does not sit directly after the summary: %+v", retried)
+		}
+		afterSummary = true
+	}
+	if !afterSummary {
+		t.Fatalf("retried request carries no summary to anchor the notice: %+v", retried)
+	}
 	if est := contentBytes(retried); est > 4000/4 {
 		t.Fatalf("retried request estimated at %d bytes, want at most the recovery target %d", est, 4000/4)
 	}

@@ -42,6 +42,105 @@ Outside:
 - Any agent or loop wiring. The caller renders `CoreFrame` into its own
   system prompt; no block here consumes it.
 
+## Correctness fix: normalize Scope before every map key and hash use
+
+Status: planned, not yet built.
+
+### Fix goal
+
+Save with a padded `Scope` must be findable by `Search`, `Count`, and
+`CoreEntries` under the trimmed spelling, and the reverse. Today
+`Entry.Validate` checks `strings.TrimSpace(e.Scope) == ""` but never
+trims `e.Scope` itself. `Store.Save` (`longtermmemory/store.go`) then
+uses the raw, untrimmed scope as the `s.scopes` map key and as part of
+the `entryID` hash input. `Search` (`longtermmemory/search.go`) checks
+blankness the same way but indexes `s.scopes[q.Scope]` with the raw
+value. `Store.Count` and `Store.CoreEntries` index `s.scopes[scope]`
+with no trim at all. Two spellings of the same scope
+(`"proj"` and `"proj "`) silently partition into separate, mutually
+invisible buckets. No error, no test catches it.
+
+### Fix scope
+
+Inside:
+
+- One unexported helper, `normalizeScope(scope string) string`, in
+  `longtermmemory/store.go`: returns `strings.TrimSpace(scope)`.
+- `Store.Save` calls `normalizeScope(e.Scope)` once, before
+  `entryID(e)` is computed and before `scope` is used as a map key,
+  and assigns the normalized value back onto the local `e.Scope`
+  before it stores the row and calls `addToScope`. The stored
+  `Entry.Scope`, the returned `Result.Scope`, and the hash input are
+  therefore all the trimmed form, for every entry saved from this
+  point on.
+- `Store.Search` calls `normalizeScope(q.Scope)` and indexes
+  `s.scopes` with the normalized value, not `q.Scope`.
+- `Store.Count` and `Store.CoreEntries` call `normalizeScope(scope)`
+  on their `scope` parameter before every use of it, including the
+  `s.scopes[scope]` lookup.
+- `Store.PromoteToCore` and `Store.Delete` need no change: both key
+  off `id`, not `Scope`, and once `Save` stores a normalized
+  `Entry.Scope`, `Delete`'s use of `r.entry.Scope` to call
+  `removeFromScope` already carries the normalized value.
+- `Entry.Validate` keeps its value receiver and its existing blank
+  check unchanged. `Validate` cannot mutate the caller's struct, and
+  the fix does not need it to: normalization lives once, in `Store`,
+  applied after `Validate` passes and before any map key or hash use.
+  A caller that calls `Validate` directly, off `Store`, still sees the
+  original, unnormalized `Scope` back; that is unaffected by this fix,
+  since no other package reads `Entry.Scope` as a key today.
+
+Outside:
+
+- No change to `Entry`'s field set, `Query`'s field set, or any
+  exported signature. `api/longtermmemory.txt` is unaffected: this is
+  a behavior fix inside already-locked signatures.
+- No change to `entryID`'s hash algorithm beyond the value it now
+  receives. A pre-existing stored id computed from an unnormalized
+  scope keeps its old id; this fix changes behavior for saves made
+  after it lands, not a migration of existing rows. This package is
+  in-memory only, so no stored state survives a process restart
+  anyway.
+
+### Fix API
+
+No exported surface change. `api/longtermmemory.txt` stays as locked.
+
+### Fix tests
+
+In `longtermmemory/longtermmemory_test/store_test.go` or a sibling
+under the 500-line limit:
+
+- Save with a padded scope (`"proj "`), then `Search` with the
+  trimmed scope (`"proj"`): the saved entry is a hit.
+- Save with a trimmed scope (`"proj"`), then `Search` with a padded
+  scope (`" proj"`): the saved entry is a hit. The reverse direction.
+- The same round trip for `Count`: a save under a padded scope, then
+  `Count` under the trimmed scope, reports `1`.
+- The same round trip for `CoreEntries`: a save and `PromoteToCore`
+  under a padded scope, then `CoreEntries` under the trimmed scope,
+  returns the entry.
+- Two saves whose `Scope` differ only by surrounding whitespace
+  produce the same `entryID`: the second `Save` call returns the
+  first call's id, proving idempotent dedupe now sees them as one
+  scope.
+- `Result.Scope` and the stored `Entry.Scope`, read back through
+  `Search`, carry the trimmed form, not the padded input.
+
+### Fix verification
+
+- `make verify` passes; `longtermmemory` holds the 85 coverage floor.
+- `go test -race ./longtermmemory/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change; this
+  package stays a leaf.
+- No `docs/packages/longtermmemory.md` change: the fix touches no
+  exported behavior contract stated there beyond the map-key rule
+  already implied by "one caller-chosen key," so no wording there
+  claims the pre-fix behavior. Confirm this at review time; add a
+  one-line normalization note there if the reviewer disagrees.
+
 ## API
 
 The surface below is the lock target. It lands in

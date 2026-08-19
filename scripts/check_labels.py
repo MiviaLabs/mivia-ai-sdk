@@ -17,10 +17,12 @@ def walk(root: Path):
     """Yield every file below root, sorted, skipping .git and semgrep."""
     for child in sorted(root.iterdir()):
         if child.is_dir():
-            if child.name in (".git", "semgrep"):
+            if child.name in (".git", "semgrep", "__pycache__"):
                 continue
             yield from walk(child)
         else:
+            if child.suffix == ".pyc":
+                continue
             yield child
 
 

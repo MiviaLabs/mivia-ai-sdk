@@ -1,0 +1,70 @@
+{
+  "comment": "Packages with zero internal, non-test callers, declared on purpose. check_orphan_packages.py fails on any orphan package missing here, or on a stale entry: one whose package no longer exists, or one that has gained a real caller. permanent=false means an internal caller is expected later, named in target. permanent=true means this package is a composition root or a test-only fixture, consumed only by application code outside this module or only from another package's _test directory, and target names that consumer.",
+  "packages": {
+    "envfile": {
+      "reason": "Dotenv parser leaf. No package reads its output yet.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "longtermmemory": {
+      "reason": "Ported from mivia-agent as a leaf package. No package wires it into a running agent yet.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "mcp": {
+      "reason": "MCP client leaf. Docs/plans/mcp.md ships it ahead of a caller by design, matching the tools and ledger precedent.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "skills": {
+      "reason": "Skill registry leaf, shipped ahead of the subagent wiring that will expose it as an internal tool.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "spool": {
+      "reason": "Truncation-spool leaf plus its tools.Tool wrapper, shipped ahead of a caller.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "agentloop": {
+      "reason": "Model tool-calling loop, shipped as a composition package with no internal caller yet.",
+      "target": "not yet planned",
+      "permanent": false
+    },
+    "subagent": {
+      "reason": "Blocks-as-tools composition package. docs/plans/runconfig.md and policy/layers.json both describe a runconfig import of subagent; runconfig's code does not import it yet.",
+      "target": "runconfig",
+      "permanent": false
+    },
+    "a2aack": {
+      "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. An external application wires it to a flow.Step, not another SDK package.",
+      "target": "external application code (outside this module)",
+      "permanent": true
+    },
+    "a2aloopback": {
+      "reason": "Test-only fixture. AGENTS.md's a2aclient entry calls it 'the loopback test fixture,' imported only from a2aclient and a2aack _test subdirectories, which this scan excludes.",
+      "target": "a2aclient and a2aack _test subdirectories only",
+      "permanent": true
+    },
+    "dispatch": {
+      "reason": "NDJSON envelope HTTP endpoint. An external application's server wiring calls Endpoint.Handler, not another SDK package.",
+      "target": "external application code (outside this module)",
+      "permanent": true
+    },
+    "durablefence": {
+      "reason": "Test-only conformance kit. AGENTS.md states it is imported only from another package's _test subdirectory.",
+      "target": "ledger/ledger_test and other packages' _test subdirectories only",
+      "permanent": true
+    },
+    "e2e": {
+      "reason": "End-to-end scenario harness. Its own e2e_test subdirectory is the only intended caller, by design.",
+      "target": "e2e/e2e_test scenarios only",
+      "permanent": true
+    },
+    "runconfig": {
+      "reason": "JSON-config composition layer over agentrun. A deployment's own main package loads a runner definition; no SDK package composes runconfig further.",
+      "target": "external application code (outside this module)",
+      "permanent": true
+    }
+  }
+}

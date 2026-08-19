@@ -93,14 +93,7 @@ func (l *Loop) checkCompactedBudget(rebuilt []provider.Message, w contextplan.Wi
 func recoveryWindow(w contextplan.Window) contextplan.Window {
 	rw := w
 	rw.Compaction.TriggerPercent = 1
-	target := w.Budget() / 4
-	if target > RecoveryTargetTokens {
-		target = RecoveryTargetTokens
-	}
-	if target < 1 {
-		target = 1
-	}
-	rw.Compaction.TargetTokens = target
+	rw.Compaction.TargetTokens = max(1, min(RecoveryTargetTokens, w.Budget()/4))
 	return rw
 }
 
@@ -137,10 +130,12 @@ func splitSummary(msgs []provider.Message) (*provider.Message, []provider.Messag
 }
 
 // injectAfterSystem inserts msg directly after the leading system
-// message, or at index zero when none leads.
+// message, or at index zero when none leads. msgs is never empty:
+// Compact always keeps the mandatory retention set, which holds at
+// least the user objective.
 func injectAfterSystem(msgs []provider.Message, msg provider.Message) []provider.Message {
 	out := make([]provider.Message, 0, len(msgs)+1)
-	if len(msgs) > 0 && msgs[0].Role == provider.RoleSystem {
+	if msgs[0].Role == provider.RoleSystem {
 		out = append(out, msgs[0], msg)
 		return append(out, msgs[1:]...)
 	}

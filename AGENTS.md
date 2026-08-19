@@ -364,6 +364,8 @@ else.
 - Simplicity over complexity. Prefer the smallest change that works.
   Three files beat a framework. Reject planner output that adds
   abstraction without a caller. No speculative generality.
+  `scripts/check_orphan_packages.py` enforces the no-caller rule
+  mechanically against `policy/pending_wiring.json`.
 - Drive the loop below and consolidate the reports. The user gets one
   answer, not four.
 
@@ -479,6 +481,9 @@ follow reliably. Each has a gate behind it.
 - Do not land a package without `docs/plans/<pkg>.md` following
   `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
   Gate: `scripts/check_plan.py`.
+- Do not leave a package with zero internal callers undeclared. List
+  it in `policy/pending_wiring.json` with a reason and a target. Gate:
+  `scripts/check_orphan_packages.py`.
 - Do not let coverage fall below 85%. The total and every package each
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.

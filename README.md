@@ -395,6 +395,13 @@ It never runs the full suite twice.
 Contribution rules (comment style, layout, limits, no dependencies)
 live in [AGENTS.md](AGENTS.md).
 
+## Author & Contributors
+
+- **Maciej (Mac) Lisowski** — *Author / Lead Architect* ([@mac-lisowski](https://github.com/mac-lisowski))
+
+Contributions are welcome! See [AGENTS.md](AGENTS.md) for contribution rules.
+
 ## License
 
 [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
+

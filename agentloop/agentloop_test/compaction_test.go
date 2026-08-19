@@ -234,6 +234,29 @@ func completerRequests(s *scriptedCompleter) (int, []provider.Request) {
 	return s.calls, append([]provider.Request(nil), s.reqs...)
 }
 
+func TestRunAtExactTriggerCompacts(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("x", 38)},
+		{Role: provider.RoleUser, Content: "y"},
+	}
+	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	loop, f := newPlanningFixture(t, w, []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}, nil)
+	if _, err := loop.Run(context.Background(), msgs); err != nil {
+		t.Fatalf("Run() = %v, want nil", err)
+	}
+	sumCalls, _ := f.summary.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: an estimate at the trigger compacts", sumCalls)
+	}
+	_, reqs := completerRequests(f.completer)
+	if strings.Contains(reqs[0].Messages[len(reqs[0].Messages)-1].Content, strings.Repeat("x", 38)) {
+		t.Fatal("dropped message still in the sent history at the exact trigger")
+	}
+}
+
 func TestRunOverTriggerCompactsThroughSummarizer(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},

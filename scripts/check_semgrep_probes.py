@@ -238,6 +238,21 @@ def main() -> int:
             'package schema\n\nimport jsonschema "github.com/santhosh-tekuri/jsonschema/v6"\n\nvar _ = jsonschema.NewCompiler()\n'
         )
 
+        # Post-write basename-collision check. The six scoped-rule
+        # blocks above hold no pre-write registry of their basenames,
+        # so this walks what was actually written to tmp and fails
+        # loudly on a duplicate before Semgrep runs, not after a
+        # confusing count mismatch.
+        by_basename: dict[str, list[Path]] = {}
+        for f in tmp.rglob("*.go"):
+            by_basename.setdefault(f.name, []).append(f)
+        collisions = {name: paths for name, paths in by_basename.items() if len(paths) > 1}
+        if collisions:
+            details = "; ".join(
+                f"{name}: {[str(p) for p in paths]}" for name, paths in collisions.items()
+            )
+            raise AssertionError(f"probe fixture basename collision: {details}")
+
         data = scan(tmp)
         if data.get("errors"):
             print("semgrep probe scan errors:", data["errors"])

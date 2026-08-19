@@ -82,7 +82,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 					fmt.Errorf("agentloop: iteration %d: audit: %w", iterations, err)
 			}
 		}
-		runningTokens += resp.Usage.TotalTokens
+		runningTokens += billedTokens(resp.Usage)
 		if l.maxTotalTokens > 0 && runningTokens > l.maxTotalTokens {
 			return l.hardFail(history, iterations, totalUsage),
 				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrTokenBudgetExceeded)
@@ -118,6 +118,19 @@ func (l *Loop) hardFail(history []provider.Message, iterations int, totalUsage p
 		return Result{}
 	}
 	return Result{History: history, Iterations: iterations, Usage: totalUsage}
+}
+
+// billedTokens returns the larger, more trustworthy reading of one
+// response's token cost: the reported TotalTokens, or the sum of
+// PromptTokens and CompletionTokens, whichever is greater. provider.Usage
+// enforces no relationship between its fields, so a Completer that leaves
+// TotalTokens at zero must not silently bypass MaxTotalTokens.
+func billedTokens(u provider.Usage) int {
+	sum := u.PromptTokens + u.CompletionTokens
+	if u.TotalTokens > sum {
+		return u.TotalTokens
+	}
+	return sum
 }
 
 // sumUsage adds b's four fields onto a and returns the sum.

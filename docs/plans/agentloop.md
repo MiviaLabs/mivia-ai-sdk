@@ -198,13 +198,20 @@ size; none of the three bounds tokens actually billed across the
 run. `Run` keeps its own running token total, seeded at zero and
 independent of `Options.Usage` (which is optional, keyed by
 `SessionID`, and persists across runs). After each `Completer` call
-returns, `Run` adds `resp.Usage.TotalTokens` to that running total,
-then checks it against `MaxTotalTokens`. A total over the cap fails
-the run with `ErrTokenBudgetExceeded`, wrapped with the iteration
-count; the response that tripped the cap is still appended to
-history and still recorded onto `Options.Usage`, so a caller with a
-`Usage` accumulator sees the exact spend that ended the run, not an
-undercount. A zero `MaxTotalTokens` means unbounded.
+returns, `Run` adds
+`max(resp.Usage.TotalTokens, resp.Usage.PromptTokens + resp.Usage.CompletionTokens)`
+to that running total, then checks it against `MaxTotalTokens`. See
+the addendum below for why the running total does not trust
+`TotalTokens` alone. A total over the cap fails the run with
+`ErrTokenBudgetExceeded`, wrapped with the iteration count; the
+response that tripped the cap is still appended to history and still
+recorded onto `Options.Usage`, so a caller with a `Usage` accumulator
+sees the response that tripped the cap. `Options.Usage` recording
+itself still sums the `Completer`'s raw reported `TotalTokens`, not
+the corrected `max()` figure, and carries its own, separate
+under-reporting gap for a `Completer` that leaves `TotalTokens` at
+zero; see the addendum's Outside bullet on `usage.Accumulator`. A
+zero `MaxTotalTokens` means unbounded.
 
 Hitting `MaxIterations` is not an error: `Run` returns
 `Result{Stop: StopMaxIterations}, nil`, a normal, graceful stop,
@@ -864,3 +871,200 @@ same change as the code.
 This addendum adds no conformance vector. It adds no new gate. The
 coverage floor stays at 85 percent for `agentloop` and the module
 total.
+
+## Addendum: a trustworthy MaxTotalTokens cap
+
+Status: plan, ready for plan review. This addendum fixes a correctness
+bug in `run.go`'s `MaxTotalTokens` enforcement. It changes `run.go`
+only. It adds no new package and no new exported symbol.
+
+### Addendum goal
+
+Stop a `Completer` that under-reports `provider.Usage.TotalTokens`
+from silently bypassing `Options.MaxTotalTokens`.
+
+### Addendum bug
+
+`run` enforces `MaxTotalTokens` with one line:
+
+```go
+runningTokens += resp.Usage.TotalTokens
+if l.maxTotalTokens > 0 && runningTokens > l.maxTotalTokens {
+    return l.hardFail(history, iterations, totalUsage),
+        fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrTokenBudgetExceeded)
+}
+```
+
+`provider.Usage` documents `TotalTokens` and `CachedTokens` but states
+no relationship between the four fields, and `provider.Usage` has no
+`Validate` method to enforce one. Nothing requires a `Completer` to
+fill `TotalTokens`. A `Completer` that fills only `PromptTokens` and
+`CompletionTokens`, and leaves `TotalTokens` at its zero value, drives
+`runningTokens` to stay at zero every iteration. The cap never trips,
+however many iterations run and however many tokens the run actually
+bills.
+
+No shipped code in this repository fills `Usage` this way today: every
+`provider.Usage{...}` literal in the tree, test or production, either
+sets `TotalTokens` consistent with `PromptTokens + CompletionTokens`
+or sets `TotalTokens` alone. But `agentloop` accepts any caller-built
+`provider.Completer`, and the SDK ships no concrete client; the gap is
+a latent trust-boundary defect in the primitive, not a defect in a
+fixture.
+
+### Addendum decision: max(), not Validate, not a doc-only fix
+
+Three options were weighed.
+
+- Option A (recommended): `run` computes each response's billed
+  tokens as `max(resp.Usage.TotalTokens, resp.Usage.PromptTokens +
+  resp.Usage.CompletionTokens)` and sums that onto `runningTokens`,
+  instead of summing `resp.Usage.TotalTokens` alone.
+- Option B: give `provider.Usage` a `Validate` method that rejects a
+  `TotalTokens` inconsistent with `PromptTokens + CompletionTokens`,
+  and have `run` fail the turn when `resp.Usage.Validate()` errors.
+- Option C: document the trust boundary in `Options.MaxTotalTokens`'s
+  doc comment and change no code.
+
+Option C is rejected. AGENTS.md states invariants live in `Validate`
+methods, not comments alone; a documented limit that a caller can
+silently violate is exactly the gap that rule exists to close, and
+`MaxTotalTokens` is a stated safety cap, not an advisory setting.
+
+Option B is rejected for `provider.Usage` specifically, though the
+general rule is sound elsewhere. `provider.Usage`'s own doc comment
+says `CachedTokens` "counts prompt tokens served from a
+provider-side cache" — a subset of `PromptTokens`, not an addend — so
+`TotalTokens == PromptTokens + CompletionTokens` is the only
+relationship the documented field semantics support; `CachedTokens`
+does not enter the equation for or against it. Given that, a
+`Validate` check against exactly that equality would reject a
+`Completer` that reports `TotalTokens` correctly but leaves
+`CompletionTokens` at zero mid-stream, or any other partial-fill
+shape a real vendor response might carry before a turn finishes. This
+SDK ships no concrete `Completer`, so no real vendor payload shape is
+available to confirm the equality always holds; asserting it as a hard
+`Validate` rule risks failing a legitimate, merely partial, `Usage`
+value the same way the bug under-counts one. A `Validate` method
+belongs on `provider.Usage` when a real shape needs one; this addendum
+does not add a speculative rule with no confirmed vendor case behind
+it, per the Building blocks rule against abstraction without a caller.
+
+Option A is recommended because it never rejects a well-formed
+`Usage` value and never depends on an equality that might not hold for
+every vendor. `max` degrades to today's exact behavior whenever
+`TotalTokens` is already filled correctly or is the larger of the two
+readings; it only changes the outcome when `TotalTokens` under-reports
+relative to the field sum, which is exactly the bypass this addendum
+closes. It touches one enforcement site and adds no new type, no new
+`Validate` method, and no new exported symbol.
+
+### Addendum scope
+
+Inside:
+
+- `run.go`: replace the `runningTokens += resp.Usage.TotalTokens` line
+  with a call to a new unexported helper, `billedTokens(u
+  provider.Usage) int`, returning
+  `max(u.TotalTokens, u.PromptTokens+u.CompletionTokens)`.
+- The `MaxTotalTokens` doc comment in `options.go` and this plan's
+  existing "A positive `MaxTotalTokens` caps..." paragraph, updated to
+  state the `max()` accounting instead of "adds
+  `resp.Usage.TotalTokens`".
+
+Outside:
+
+- `sumUsage` and `totalUsage`, `Result.Usage`, and
+  `Options.Usage`/`usage.Accumulator` recording. Those three continue
+  to record the raw `resp.Usage` a `Completer` reports, unchanged: they
+  are a caller-facing report of what the `Completer` said, not a
+  safety cap, and correcting a `Completer`'s own under-reporting there
+  would silently rewrite data the caller may need to reconcile against
+  a vendor invoice. Only the cap-enforcement running total changes.
+- `provider.Usage` and `provider/types.go`. This addendum adds no
+  `Validate` method there; see the addendum decision above. No
+  `docs/plans/provider.md` change.
+- `usage.Accumulator.Record` in `usage/accumulator.go`. It sums
+  `TotalTokens` the same trust-assuming way `run.go` did, so
+  `Accumulator.Total` under-reports for the same
+  `TotalTokens`-left-zero `Completer` shape. This is a real, smaller
+  gap in a different package, not fixed in this change. It needs its
+  own plan review against `docs/plans/usage.md`, since `usage.Record`
+  is a reporting primitive, not a safety cap, and the correct fix
+  there — reporting the caller's raw numbers, or reporting a corrected
+  `max()` total, or adding a `PartialUsage`-style flag — is its own
+  design decision, not a mechanical copy of this addendum's fix.
+- Every other `.TotalTokens` read in the tree
+  (`contextplan/calibrated.go`'s `Observe` doc comment, and every
+  `usage_test`/`agentloop_test` fixture) carries no enforcement
+  decision of its own; none is in scope.
+
+### Addendum API
+
+No exported symbol changes. `billedTokens` is unexported. No
+`api/agentloop.txt` or `api/provider.txt` diff, and no `make
+api-update` run for this addendum.
+
+### Addendum tests
+
+The four cases below, and `TestRunMaxTotalTokens` moved verbatim from
+`loop_bounds_test.go`, live in a new sibling file,
+`agentloop/agentloop_test/loop_bounds_tokens_test.go`. Adding them to
+`loop_bounds_test.go` in place pushed it past the 500-line structure
+gate; splitting by concern into a new file keeps every file under the
+limit without raising it.
+
+- `TestRunMaxTotalTokensUnderReportedTotal` (the reproduction): two
+  scripted `provider.Response` values, each built with the existing
+  `toolCallResponse` helper (so each response carries a `ToolCall` and
+  the loop reaches a second `Completer.Chat` call, not
+  `StopNoToolCalls` after iteration one), each with `Usage:
+  provider.Usage{PromptTokens: 30, CompletionTokens: 30}` and
+  `TotalTokens` left at its zero value, run against
+  `MaxTotalTokens: 100`, mirroring `TestRunMaxTotalTokens`
+  (moved to `loop_bounds_tokens_test.go`) in every field except the
+  `Usage` shape. `billedTokens` per response is
+  `max(0, 30+30) = 60`: `60` alone does not trip the `100` cap, so the
+  first iteration completes normally, but `60 + 60 = 120` trips it on
+  the second iteration, the same `res.Iterations == 2` shape
+  `TestRunMaxTotalTokens` already asserts. Before this fix,
+  `runningTokens` sums `TotalTokens` alone and stays `0` after both
+  responses, so the run never returns `ErrTokenBudgetExceeded` and
+  this case fails; asserting `errors.Is(err, ErrTokenBudgetExceeded)`
+  and `res.Iterations == 2` is the reproduction, and it kills the
+  mutation that reverts `billedTokens` back to summing
+  `resp.Usage.TotalTokens` alone.
+- The same scripted shape (`toolCallResponse`, `PromptTokens: 30,
+  CompletionTokens: 30`, `TotalTokens: 0`, two responses) with
+  `MaxTotalTokens: 0` (unbounded) runs to its normal stop, unaffected,
+  proving the fix adds no cap where none is configured.
+- `TestRunMaxTotalTokens`, moved to `loop_bounds_tokens_test.go`, is
+  itself unchanged: its `Usage: provider.Usage{TotalTokens: 60}` fixture
+  already sets `TotalTokens` with no `PromptTokens`/`CompletionTokens`
+  set, so `billedTokens` reads `max(60, 0) = 60` per response, the
+  same `60` the pre-fix code read, and the case still trips on the
+  same second iteration with the same `120` total, proving `max()`
+  does not change behavior for this well-formed, `TotalTokens`-only
+  `Usage` shape.
+- `TestRunMaxTotalTokensSurchargedTotal`: one scripted `Completer`
+  response, built with `toolCallResponse`, whose `Usage` sets
+  `PromptTokens: 20, CompletionTokens: 20, TotalTokens: 50` — a
+  provider that bills a surcharge outside the two counted fields —
+  run against `MaxTotalTokens: 40`. `billedTokens` reads
+  `max(50, 40) = 50`, over the `40` cap on the first response alone,
+  proving `max()` picks the larger, `TotalTokens` reading in the
+  surcharge direction too, not only the under-reporting one.
+
+### Addendum verification
+
+`make verify` passes: gofmt, vet, the race detector, the coverage
+floor at 85 percent for `agentloop` and the module total, the doc
+gate, the structure gate, the plan gate, the deps gate (unchanged
+`policy/layers.json`), the Semgrep scan, and the probe suite.
+
+`go test -race ./agentloop/...` passes, including the new
+reproduction case failing on the pre-fix code and passing after.
+
+This addendum adds no conformance vector, no new gate, and no
+`policy/layers.json` change. It runs no `make api-update`, since it
+adds no exported symbol.

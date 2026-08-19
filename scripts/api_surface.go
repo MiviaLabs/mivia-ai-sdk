@@ -224,19 +224,29 @@ func funcLine(fset *token.FileSet, d *ast.FuncDecl) string {
 	if !d.Name.IsExported() {
 		return ""
 	}
-	recv := ""
+	var b strings.Builder
+	b.Grow(128)
+	b.WriteString("func ")
 	if d.Recv != nil {
-		recv = "(" + fieldList(fset, d.Recv) + ") "
+		b.WriteString("(")
+		b.WriteString(fieldList(fset, d.Recv))
+		b.WriteString(") ")
 	}
-	sig := "func " + recv + d.Name.Name
+	b.WriteString(d.Name.Name)
 	if d.Type.TypeParams != nil {
-		sig += "[" + fieldList(fset, d.Type.TypeParams) + "]"
+		b.WriteString("[")
+		b.WriteString(fieldList(fset, d.Type.TypeParams))
+		b.WriteString("]")
 	}
-	sig += "(" + fieldList(fset, d.Type.Params) + ")"
+	b.WriteString("(")
+	b.WriteString(fieldList(fset, d.Type.Params))
+	b.WriteString(")")
 	if d.Type.Results != nil {
-		sig += " (" + fieldList(fset, d.Type.Results) + ")"
+		b.WriteString(" (")
+		b.WriteString(fieldList(fset, d.Type.Results))
+		b.WriteString(")")
 	}
-	return sig
+	return b.String()
 }
 
 // fieldList renders a parameter/result/receiver list.

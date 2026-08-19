@@ -1,0 +1,42 @@
+package contextplan
+  const DefaultSmoothingFactor = 0.3
+  const ElisionReasonReasoningRedacted = "reasoning_redacted"
+  const ElisionReasonRetentionExpired = "retention_expired"
+  const ElisionReasonWindowOverflow = "window_overflow"
+  const MaxCorrectionFactor = 2.0
+  const MinCorrectionFactor = 0.5
+  const StubContentBytes = 256
+  func (c *Calibrated) EstimateTokens(req provider.Request) (int, error)
+  func (c *Calibrated) Observe(actual int)
+  func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)
+  func (w Window) Budget() (int)
+  func (w Window) Validate() (error)
+  func Calibrate(est provider.TokenEstimator, alpha float64) (*Calibrated)
+  func IsReasoningEvent(e contextstate.SourceEvent) (bool)
+  func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, error)
+  func StubContent(content []byte) ([]byte)
+  type Calibrated struct {
+}
+  type Elision struct {
+  Ref contextstate.ContentRef
+  Reason ElisionReason
+  Kept int
+}
+  type ElisionReason string
+  type PlanResult struct {
+  Request provider.Request
+  Elisions []Elision
+  EstimatedTokens int
+}
+  type Planner struct {
+}
+  type Window struct {
+  MaxTokens int
+  Reserve int
+}
+  var ErrMaxTokensNotPositive
+  var ErrNilCache
+  var ErrNilSession
+  var ErrNilStore
+  var ErrReserveNegative
+  var ErrReserveTooLarge

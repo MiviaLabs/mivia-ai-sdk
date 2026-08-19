@@ -40,6 +40,11 @@
     ],
     "channel": [],
     "contextbudget": [],
+    "contextplan": [
+      "contextstate",
+      "provider",
+      "memory"
+    ],
     "contextstate": [],
     "diff": [],
     "discovery": [],

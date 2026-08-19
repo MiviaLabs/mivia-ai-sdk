@@ -1,10 +1,16 @@
 package provider
+  const ReasoningEffortHigh = "high"
+  const ReasoningEffortLow = "low"
+  const ReasoningEffortMedium = "medium"
+  const ReasoningEffortNone = "none"
+  const ReasoningEventKind = "reasoning"
   const RoleAssistant = "assistant"
   const RoleSystem = "system"
   const RoleTool = "tool"
   const RoleUser = "user"
   func (c Chunk) Validate() (error)
   func (m Message) Validate() (error)
+  func RedactBlock(b ReasoningBlock) (ReasoningBlock)
   func RunTurn(ctx context.Context, c Completer, req Request) (Response, error)
   type Chunk struct {
   Delta string
@@ -28,6 +34,11 @@ package provider
   ToolCallID string
   ToolCalls []ToolCall
 }
+  type ReasoningBlock struct {
+  Content string
+  Redacted bool
+}
+  type ReasoningEffort string
   type ReasoningPolicy interface {
 	ReasoningEffort() string
 }

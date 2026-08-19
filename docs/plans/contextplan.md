@@ -23,10 +23,12 @@ Inside:
   only.
 - `Planner`, built over a `*contextstate.MemStore` (the durable
   payload source) and a `*memory.Store` (a content-addressed decode
-  cache, so a repeated `Plan` call in one session does not re-fetch
-  and re-decode a payload it already resolved). `Plan` is the
-  planner's one method: a session and a window budget in; a
-  `provider.Request` and every elision decision out.
+  cache that `Plan` populates on a successful resolve; the
+  Correctness fix section below removes its role in skipping a
+  `store.Get` call, so it no longer changes what a repeated `Plan`
+  call observes). `Plan` is the planner's one method: a session and a
+  window budget in; a `provider.Request` and every elision decision
+  out.
 - Elision policy: newest-first inclusion, oldest-first drop, once the
   window budget is spent. A payload's `contextstate.RetentionClass`
   can protect it from an otherwise-due drop; `Plan` honors it before
@@ -138,27 +140,29 @@ the code.
   whatever the message list holds. `Plan` never compares its final
   estimate against the budget.
 - `type Planner struct { ... }` — unexported fields. Built only
-  through `NewPlanner`. Holds the payload source, the decode cache,
-  and a mutex-guarded metadata cache keyed by `PayloadRef` that
-  stores each resolved record's `Retention` and `ContentRef`; safe
-  for concurrent use, since `Plan` holds no other mutable state of
-  its own between calls other than `Calibrated`, which the caller
-  owns separately.
+  through `NewPlanner`. Holds the payload source and the decode cache.
+  The Correctness fix section below removes the mutex-guarded metadata
+  map this struct once carried: `resolvePayload` no longer reads a
+  cached map, or the decode cache, to skip a `store.Get` call, so
+  neither cache can serve a stale `Retention` or `Revoked` value. Safe
+  for concurrent use, since `Plan` holds no other mutable state of its
+  own between calls other than `Calibrated`, which the caller owns
+  separately.
 - `func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, error)`
   — a nil `store` or nil `cache` is an error.
 - `func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)`
   — walks `sess.Source` newest to oldest. For every event, `Plan`
-  resolves the full `contextstate.PayloadRecord` from the decode
-  cache and the metadata cache together on a full hit, or through
-  `store.Get` once on either miss, before it decides anything:
-  `Retention` lives on the record, not on `SourceEvent`, so
+  resolves the full `contextstate.PayloadRecord` through one
+  `store.Get` call before it decides anything — see the Correctness
+  fix section below for why this reads through the store instead of
+  from a cache: `Retention` lives on the record, not on `SourceEvent`, so
   a resolve happens even for a payload `Plan` ends up fully dropping,
   or for a reasoning event whose content never reaches
   `Request.Messages`. Every `Elision.Ref` is this resolved record's
   `contextstate.ContentRef`, so a reasoning-redacted entry carries the
   same fully populated `ContentRef` as any other elision. Resolve
   happens before the `IsReasoningEvent` check, so `IsReasoningEvent`
-  events also hit the cache and the store; this is the accepted cost
+  events also hit the store; this is the accepted cost
   of a typed `ContentRef` on every `Elision`, over the alternative of
   a partial ref built from `SourceEvent.PayloadRef` alone.
   `IsReasoningEvent` events never enter `Request.Messages`, in either
@@ -181,7 +185,7 @@ the code.
   under the two conditions stated with `PlanResult`, with no
   exception for retained content. `Plan` returns
   a non-nil error only on a malformed `Window`, a nil `sess`, or a
-  payload-resolution failure from the store or the cache — including
+  payload-resolution failure from the store — including
   one encountered only during the retention check of an
   otherwise-fully-droppable payload, or one on a reasoning event; it
   never returns a partial `PlanResult`.
@@ -251,7 +255,9 @@ the code.
   `Reserve > MaxTokens`, and one valid case. `Window.Budget` for a
   valid and an invalid window.
 - `plan_test.go` — `Planner.Plan` unit cases, one payload store and
-  cache built per case:
+  cache built per case. The Correctness fix section below replaces
+  this file's cache-hit-skips-store assumption; see that section for
+  the two existing cases it requires the builder to delete or rewrite:
   - Fits whole: every source event's payload fits the budget; result
     carries every message, zero `Elisions`.
   - Elides oldest first: a session over budget; the oldest events'
@@ -447,3 +453,159 @@ against the 500-line structure limit.
 - `docs/plans/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
+
+## Correctness fix: skip a revoked payload instead of failing Plan
+
+`docs/plans/contextstate.md` gives `contextstate.MemStore` a `Revoke`
+method, a `Status` audit accessor, and makes `Get` deny a revoked
+record's `Data`, wrapping the new `contextstate.ErrPayloadRevoked` and
+returning the zero value like every other `Get` error. `Plan` calls
+`Get` through `resolvePayload` for every source event. Without this
+change, `Plan` treats that new error like any other resolution failure
+and returns a non-nil error for the whole call, so one revoked payload
+anywhere in a session blocks every other event from planning. This
+change makes `Plan` treat a revoked payload as a fourth elision reason
+instead: the composition layer's own decision, on top of the storage
+layer's fail-closed `Get`.
+
+This change also removes `resolvePayload`'s cache-hit fast path. The
+existing `meta` map and the `*memory.Store` decode cache let a repeat
+resolve skip `store.Get` entirely once a ref had resolved once. A
+`Revoke` issued after that first resolve was invisible to a `Planner`
+that had already cached the ref: the cached `Revoked == false` metadata
+never refreshed, so every later `Plan` call on that `Planner` kept
+serving the revoked content from cache, forever, for the life of the
+process. A storage-layer fail-closed `Get` protects nothing if its one
+caller never calls it again. `resolvePayload` now resolves every event
+through `store.Get` on every call; caching a resolve result to skip a
+future revocation check is out of scope for this phase.
+
+### API addition
+
+One addition to `api/contextplan.txt`, landed through `make
+api-update`:
+
+- `const ElisionReasonRevoked ElisionReason = "revoked"` — marks a
+  payload `Plan` excluded because `contextstate.MemStore.Get` denied it
+  as revoked. This reason is security-relevant, unlike
+  `ElisionReasonWindowOverflow` and `ElisionReasonRetentionExpired`:
+  those two are budget economics a caller may reasonably ignore, but a
+  caller that skips `ElisionReasonRevoked` gets a `Request` silently
+  missing content its own store denied, with no other signal. `Kept`
+  is always `0`: a revoked payload never gets a stub, even under
+  `RetentionCompliance`, since `Get` denies `Data` before `Plan`'s
+  retention check ever runs. `Elision.Ref` is still the record's
+  `contextstate.ContentRef`, resolved through `Status` alongside the
+  `Get` denial, so a caller can audit which ref was revoked without
+  seeing its content.
+
+### `Plan`'s new behavior
+
+`(Planner) Plan` and `resolvePayload` in `contextplan/planner.go`
+change together:
+
+- `resolvePayload` drops its cache-hit fast path. Every call now
+  resolves `event.PayloadRef` through one `store.Get` call; the `meta`
+  map and the `*memory.Store` decode cache are no longer read to skip
+  that call, so a `Revoke` issued between two `Plan` calls is visible
+  on the very next call. `NewPlanner`'s signature and the `cache`
+  parameter stay as locked; `cache.Put` still runs on a successful
+  resolve, preserving today's write-side population, even though this
+  path no longer relies on it to skip a `Get`. This is a deliberate
+  cost: one store round trip per event per `Plan` call, in exchange
+  for a revocation check that is never stale.
+- On `contextstate.ErrPayloadRevoked` from `store.Get`, `resolvePayload`
+  makes one more call, `store.Status(ref)`, to recover the denied
+  record's metadata (`Ref`, `Retention`, `Data == nil`) for the
+  `Elision` this produces. A `Status` failure (an unknown ref, which
+  should not happen for a ref `Get` just found revoked, but is handled
+  rather than assumed) propagates as a `Plan`-level error, the same as
+  any other resolution failure. On success, `resolvePayload` returns
+  the `Status` record and the original `ErrPayloadRevoked`.
+- `Plan`'s per-event loop checks `resolvePayload`'s error with
+  `errors.Is` against `contextstate.ErrPayloadRevoked` before treating
+  any other error as fatal. On a match, `Plan` appends
+  `Elision{Ref: record.Ref, Reason: ElisionReasonRevoked}` and
+  continues to the next event; no message enters `Request.Messages`.
+  Every other resolution error still fails `Plan` outright, unchanged.
+  A revoked reasoning event takes the revoked branch too, before the
+  `IsReasoningEvent` check runs; it never reaches
+  `ElisionReasonReasoningRedacted`, since `Get` denied its `Data`
+  first and `Plan` has nothing left to redact.
+- `PlanResult.Request` stays a valid `provider.Request`: skipping a
+  revoked event's message is exactly the existing drop path window
+  overflow already takes, just gated on a different signal. No new
+  validity condition on `Request`.
+
+### Tests
+
+In `contextplan/contextplan_test/plan_test.go` or a same-package
+sibling under the 500-line limit:
+
+- Delete or rewrite, in the same commit as this change,
+  `TestPlanResolutionCacheHitSkipsStore` and
+  `TestPlanResolutionMetaSurvivesCacheEviction` in
+  `contextplan/contextplan_test/plan_resolution_test.go`. Both pin the
+  cache-hit fast path this change removes:
+  `TestPlanResolutionCacheHitSkipsStore` asserts a second `Plan` call
+  must not see a `Put` that overwrote the store between calls, which
+  is now false, since every call re-reads the store;
+  `TestPlanResolutionMetaSurvivesCacheEviction` exercises meta-cache
+  survival past a decode-cache eviction, a behavior that no longer
+  exists once `resolvePayload` stops reading the meta map to decide
+  whether to skip `store.Get`. Left in place, both fail against this
+  change's own correct behavior. A builder that keeps either test
+  unchanged has not finished this change.
+- A session where one middle event's payload is revoked in the
+  backing `*contextstate.MemStore` before `Plan` runs. Asserts: that
+  event's ref appears in `Elisions` with `ElisionReasonRevoked` and
+  `Kept == 0`; every other event's message is present in
+  `Request.Messages`; `Plan` returns a `nil` error. Kills a mutation
+  that propagates `ErrPayloadRevoked` as a `Plan`-level failure.
+- Revoke after a warm cache, on one `*Planner`: run `Plan` once while
+  the payload is not revoked, asserting its message is present and no
+  `Elisions` entry names it. Call `Revoke` on the backing store. Run
+  `Plan` again on the same `*Planner`, same session. Assert the second
+  call's result now carries `ElisionReasonRevoked` for that ref and no
+  longer includes its message. This is the adversarial case the
+  feature exists for; it fails against the shipped cache-hit fast
+  path and must pass against this change. Kills a mutation that
+  reintroduces a cache-hit skip of `store.Get`.
+- A revoked event holding `RetentionCompliance`. Asserts it still gets
+  `ElisionReasonRevoked` with `Kept == 0`, not a stub. Kills a
+  mutation that runs the retention-stub path before the revoked check.
+- A revoked event whose `Kind` is `provider.ReasoningEventKind`.
+  Asserts `ElisionReasonRevoked`, not `ElisionReasonReasoningRedacted`.
+  Kills a mutation that reorders the two checks.
+- A session with every event revoked. Asserts `Plan` returns a `nil`
+  error, an empty `Request.Messages`, and one `ElisionReasonRevoked`
+  entry per event. Kills a mutation that fails `Plan` when
+  `Request.Messages` ends up empty.
+- No test targets a `Status` failure on the revoked branch. This
+  branch is defensive and untestable against `*contextstate.MemStore`
+  today: nothing in the shipped store lets a ref return
+  `ErrPayloadRevoked` from `Get` and then `ErrPayloadNotFound` from
+  `Status`, since `contextstate.md`'s Outside section excludes
+  deletion and `NewPlanner` binds to the concrete `*MemStore` with no
+  seam for a fake. The `Plan`-level error return on this branch stays
+  in the code as a fail-closed guard, not as a covered path.
+- A non-revoked `Plan` case, unchanged from the existing suite, stays
+  green: proves the new branch does not affect the common path.
+
+### Verification
+
+- `make verify` passes; `contextplan` holds the 85 coverage floor.
+- `api/contextplan.txt` lands through `make api-update`, adding only
+  `ElisionReasonRevoked`.
+- `go test -race ./contextplan/... ./contextstate/...` passes.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  and `python3 scripts/check_prose.py` pass. No new import edge; the
+  `contextplan` row in `policy/layers.json` is unchanged.
+- `docs/packages/contextplan.md` gains `ElisionReasonRevoked` in the
+  `ElisionReason` list, states its security-relevance, and states that
+  `resolvePayload` no longer skips `store.Get` on a cache hit, in the
+  same commit as the code.
+- This change lands with or after the `contextstate` change in
+  `docs/plans/contextstate.md`: `MemStore.Revoke`, `MemStore.Status`,
+  and the new `Get` contract must exist before `contextplan` can
+  compile against `contextstate.ErrPayloadRevoked`.

@@ -538,3 +538,177 @@ red run, then writes the code.
 - `go test -race ./contextstate/... ./envelope/... ./memory/...`
   passes, covering the store's concurrent paths and both delegated
   minters.
+
+## Correctness fix: enforce and drive Revoked
+
+`PayloadRecord.Revoked` exists on the wire and in `Validate`'s equality
+checks, but nothing sets it through the store and nothing enforces it.
+`MemStore.Get` returns a revoked record's `Data` exactly like a live
+one. `contextplan.Plan` (see `docs/plans/contextplan.md`) resolves a
+payload through the same `Get` call and has no way to learn a record
+is revoked, so a revoked record's content can still reach a built
+provider request. This closes the gap: a way to revoke a stored
+record, and enforcement at the one read path every caller shares.
+
+This is the storage layer's rule, not the composition layer's. A
+caller other than `contextplan` may call `MemStore.Get` directly in a
+later phase; the layer nearest the data is the one place a fail-closed
+check protects every reader at once. `contextplan.Plan` keeps its own
+decision on top: whether a denied payload becomes an `Elision` or a
+hard `Plan` failure. See `docs/plans/contextplan.md` for that half.
+
+### Scope addition
+
+Inside:
+
+- `(MemStore) Revoke(ref ContentRef) error` — the only way a caller
+  sets `Revoked` on a stored record after `Put` or `Checkpoint`.
+- Enforcement inside `(MemStore) Get`: a revoked record denies its
+  `Data`, returning the zero value like every other `Get` error.
+- `(MemStore) Status(ref ContentRef) (PayloadRecord, error)` — the
+  audit accessor: metadata without content, for any record, revoked
+  or not.
+- A tamper guard inside `(MemStore) Put`: a `Put` under a ref that is
+  already revoked is a no-op.
+- One new sentinel, `ErrPayloadRevoked`.
+
+Outside:
+
+- Un-revoking a record through `Revoke` itself. `Revoke` only ever
+  moves `Revoked` from false to true. `Put`'s no-op guard closes the
+  one other path that could have reversed it; nothing in this phase
+  clears `Revoked` back to false.
+- A revoked record's removal from the store. `Revoke` marks the
+  record; it does not delete the map entry, the session's event list,
+  or any checkpoint that named it. Deletion is a distinct concern this
+  phase does not open.
+
+### API
+
+Three additions to `api/contextstate.txt`, landed together through
+`make api-update`:
+
+- `var ErrPayloadRevoked` — the sentinel `Get` wraps when the caller
+  asks for a revoked record's content. Sits beside `ErrPayloadNotFound`
+  in the sentinels list.
+- `func (m *MemStore) Revoke(ref ContentRef) error` — sets `Revoked` on
+  the stored record under `ref.Ref`. Takes `m.mu`, the same lock every
+  other exported `MemStore` method takes, so `Revoke` serializes
+  against `Get`, `Put`, `Checkpoint`, and `Session`. An unknown ref
+  wraps `ErrPayloadNotFound`, matching `Get`'s contract for the same
+  case. A second `Revoke` call on an already-revoked record is a no-op
+  success: double revocation is not an error, matching the
+  `MemStore.Checkpoint` precedent of idempotent retries under one
+  caller-supplied key.
+- `func (m *MemStore) Status(ref ContentRef) (PayloadRecord, error)` —
+  the audit path. Returns a copy of the stored record with `Data`
+  always cleared, whether or not it is revoked. An unknown ref wraps
+  `ErrPayloadNotFound`. `Status` never wraps `ErrPayloadRevoked`:
+  revocation is reported through the returned record's `Revoked`
+  field, not through an error, because a revoked record is not a
+  failure to answer a metadata question. Takes `m.mu` like every other
+  method.
+
+### `Get`'s contract stays a clean success/failure boundary
+
+`(MemStore) Get(ref ContentRef) (PayloadRecord, error)` keeps its
+signature and keeps the zero-value-on-error convention its callers
+already rely on:
+
+- Unknown ref: unchanged. Returns `PayloadRecord{}` and wraps
+  `ErrPayloadNotFound`.
+- Known, not revoked: unchanged. Returns a full copy, `nil` error.
+- Known, revoked: returns `PayloadRecord{}`, the same zero value as
+  every other `Get` failure, and wraps `ErrPayloadRevoked`. `Data`
+  never leaves the store for a revoked ref through `Get`.
+
+`Get`'s doc comment states this: every error case, including the new
+one, returns the zero value, and a caller may keep the existing
+`if err != nil { return err }` idiom without an added rule to
+remember. `Status` is the one path built for a caller who wants a
+revoked ref's metadata; `Get` never carries that responsibility.
+
+### `Put`'s tamper guard
+
+`Put` validates `record` exactly as it does today, then, under `m.mu`
+and before it writes, checks whether a record already exists under
+`record.Ref.Ref` and is revoked:
+
+- If the stored record is revoked, `Put` returns `nil` and leaves the
+  stored record unchanged: same `Data`, same `Retention`, `Revoked`
+  still `true`. The caller's new record, including any `Revoked` value
+  it supplied, is discarded.
+- Otherwise `Put` behaves exactly as it does today: it stores a copy
+  of the caller's record, whatever `Revoked` value it carries.
+
+This closes the one path back to full access a `Put`-capable caller
+otherwise has: `PayloadRecord.Ref` is a content hash, so a caller that
+still holds the original bytes could, without this guard, restore a
+revoked record by re-`Put`ing the same bytes with `Revoked: false`.
+The guard makes a revocation stick against every write path this
+package exposes, not only against `Get`.
+
+### File layout
+
+No new file. `Revoke`, `Status`, and the `Get`/`Put` changes land in
+`contextstate/store.go`, beside the methods they extend. The sentinel
+lands in `contextstate/contracts.go`, beside `ErrPayloadNotFound`.
+
+### Tests
+
+In `contextstate/contextstate_test/store_test.go`:
+
+- `Get` on a revoked record returns `PayloadRecord{}` and
+  `errors.Is(err, ErrPayloadRevoked)`. Kills a mutation that drops the
+  `Revoked` check, returns the old `Data`, or returns a non-zero
+  record on this error.
+- `Get` on a non-revoked record is unchanged: full `Data`, `nil` error.
+  Kills a mutation that revokes by default or checks the wrong field.
+- `Status` on a revoked record: `Data == nil`, `Revoked == true`, the
+  same `Ref` and `Retention` as `Get` reported before revocation, and
+  `nil` error. Kills a mutation that turns `Status` into a second
+  `Get`, or one that wraps an error for a revoked-but-found ref.
+- `Status` on a non-revoked record: `Data == nil`, `Revoked == false`,
+  `nil` error. Kills a mutation that leaks `Data` through `Status`.
+- `Status` on an unknown ref: wraps `ErrPayloadNotFound`. Kills a
+  mutation that returns a false success for an unstored ref.
+- `Revoke` on a stored record: `Revoked` becomes `true`; a following
+  `Get` observes `ErrPayloadRevoked`, and a following `Status`
+  observes `Revoked == true`. Kills a mutation that no-ops `Revoke`.
+- `Revoke` twice on the same ref: both calls return `nil`; the record
+  stays revoked. Kills a mutation that errors, or un-revokes, on the
+  second call.
+- `Revoke` on an unknown ref: wraps `ErrPayloadNotFound`. Kills a
+  mutation that treats an unknown ref as success or the wrong
+  sentinel.
+- `Put` after `Revoke` under the same `Ref.Ref` is a no-op: the call
+  returns `nil`, and a following `Get`/`Status` still shows the
+  original `Data`, `Retention`, and `Revoked == true`, even when the
+  new `Put` argument carries `Revoked: false` or different, still
+  digest-matching `Data`. Kills a mutation that lets a re-`Put` clear
+  `Revoked` or overwrite a revoked record's fields.
+- `Put` after `Revoke` under a *different* `Ref.Ref` (distinct
+  content) still writes normally. Kills a mutation that makes `Put`'s
+  guard key on the wrong field.
+- Concurrent `Revoke`, `Put`, `Get`, and `Status` on the same ref, and
+  on distinct refs, under `-race`. Kills a lock-scope regression, and
+  a mutation that races the guard check against the write in `Put`.
+
+### Verification
+
+- `make verify` passes, including the coverage floor for
+  `contextstate` and the total.
+- `api/contextstate.txt` lands through `make api-update`, adding
+  `ErrPayloadRevoked`, `Revoke`, and `Status`, and nothing else. No
+  other lock file changes.
+- `python3 scripts/check_plan.py` and `python3 scripts/check_deps.py`
+  pass; this change adds no new import edge.
+- `go test -race ./contextstate/...` passes.
+- `docs/packages/contextstate.md` gains `Revoke`, `Status`, and
+  `ErrPayloadRevoked` in the same commit, and states `Get`'s
+  zero-value-on-error contract and `Put`'s tamper guard explicitly.
+- This change lands before or with the matching `contextplan` change
+  in `docs/plans/contextplan.md`, since `contextplan.Plan` calls
+  `MemStore.Get` and `MemStore.Status` and must handle the new error
+  case in the same change, or `Plan` starts failing on every revoked
+  payload it meets.

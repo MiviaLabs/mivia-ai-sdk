@@ -71,8 +71,25 @@ minter.
 - `MemStore.New(limits)` — builds the store and validates `limits`.
   The zero value is not usable.
 - `MemStore.Put` — validates and stores a copy under `Ref.Ref`.
-  Content-addressed, so a repeat `Put` overwrites in place.
-- `MemStore.Get` — returns a copy; an unknown ref wraps
+  Content-addressed, so a repeat `Put` overwrites in place. A `Put`
+  under a ref already revoked is a no-op: it returns `nil` and leaves
+  the stored record, including `Revoked == true`, untouched. This is a
+  tamper guard: without it, a caller that still holds the original
+  bytes could restore a revoked record with a fresh `Put`.
+- `MemStore.Get` — returns a copy of a live record; `nil` error. Every
+  error case returns the zero `PayloadRecord`: an unknown ref wraps
+  `ErrPayloadNotFound`; a revoked record wraps `ErrPayloadRevoked` and
+  denies `Data`. A caller may keep the `if err != nil { return err }`
+  idiom without an extra rule to remember.
+- `MemStore.Revoke` — sets `Revoked` on the stored record under
+  `ref.Ref`, the only way a caller revokes a record after `Put` or
+  `Checkpoint`. An unknown ref wraps `ErrPayloadNotFound`. A second
+  `Revoke` on an already-revoked record is a no-op success;
+  un-revoking is out of scope.
+- `MemStore.Status` — the audit accessor: returns a copy of the stored
+  record with `Data` always cleared, whether or not it is revoked. It
+  never wraps `ErrPayloadRevoked`; revocation shows through the
+  returned record's `Revoked` field. An unknown ref wraps
   `ErrPayloadNotFound`.
 - `MemStore.Checkpoint` — answers the operation key first. A reused
   `OperationID` with an equal request is a no-op success. A different
@@ -107,7 +124,10 @@ Match these with `errors.Is`.
 - `ErrStaleBinding` — a commit against a moved binding.
 - `ErrCheckpointConflict` — a reused `OperationID` with a different
   request.
-- `ErrPayloadNotFound` — `Get` of an unknown ref.
+- `ErrPayloadNotFound` — `Get`, `Revoke`, or `Status` of an unknown
+  ref.
+- `ErrPayloadRevoked` — `Get` of a revoked record's content. `Status`
+  never wraps this sentinel.
 - `ErrOverLimit` — a commit that breaks an enabled volume bound.
 
 ## Cross-references

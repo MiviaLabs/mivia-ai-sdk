@@ -2,6 +2,7 @@ package contextplan
   const DefaultSmoothingFactor = 0.3
   const ElisionReasonReasoningRedacted = "reasoning_redacted"
   const ElisionReasonRetentionExpired = "retention_expired"
+  const ElisionReasonRevoked = "revoked"
   const ElisionReasonWindowOverflow = "window_overflow"
   const MaxCorrectionFactor = 2.0
   const MinCorrectionFactor = 0.5

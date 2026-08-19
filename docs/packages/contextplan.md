@@ -22,7 +22,10 @@ exported surface below mirrors `api/contextplan.txt`.
   inserted no message at all.
 - `ElisionReason` — the closed set of reasons `Plan` drops or trims a
   payload: `ElisionReasonWindowOverflow`, `ElisionReasonRetentionExpired`,
-  `ElisionReasonReasoningRedacted`.
+  `ElisionReasonReasoningRedacted`, `ElisionReasonRevoked`.
+  `ElisionReasonRevoked` is security-relevant, unlike the two
+  budget-driven reasons beside it: a caller that ignores it gets a
+  `Request` silently missing content its own store denied.
 - `Calibrated` — wraps a `provider.TokenEstimator` with an
   exponentially weighted moving average, corrected after each
   completed turn through `Observe`. Implements `provider.TokenEstimator`.
@@ -34,7 +37,13 @@ exported surface below mirrors `api/contextplan.txt`.
   `*memory.Store`, a same-process decode cache. A nil `store` wraps
   `ErrNilStore`; a nil `cache` wraps `ErrNilCache`.
 - `Planner.Plan(ctx, sess, w, e)` — walks `sess.Source` newest to
-  oldest. A reasoning event, per `IsReasoningEvent`, never enters
+  oldest. Every event resolves through one `contextstate.MemStore.Get`
+  call on every `Plan` call: `resolvePayload` carries no cache-hit
+  fast path, so a `Revoke` issued between two `Plan` calls on the same
+  `Planner` is visible on the very next call. A revoked payload never
+  enters `Request.Messages` and always produces an
+  `ElisionReasonRevoked` entry, checked before the reasoning check. A
+  reasoning event, per `IsReasoningEvent`, never enters
   `Request.Messages` and always produces an
   `ElisionReasonReasoningRedacted` entry. For every other event, `Plan`
   adds the decoded message while the running estimate stays at or
@@ -46,7 +55,7 @@ exported surface below mirrors `api/contextplan.txt`.
   overhead exceeds it; an estimator that errors on the final call
   reports zero. Returns a
   non-nil error only on a malformed `Window`, a nil `sess`, or a
-  payload-resolution failure.
+  payload-resolution failure other than a revocation.
 - `Window.Validate()` — rejects a non-positive `MaxTokens`, a negative
   `Reserve`, and a `Reserve` at or above `MaxTokens`.
 - `Window.Budget()` — returns `MaxTokens - Reserve`.
@@ -93,8 +102,12 @@ Use `errors.Is` to test these.
 ## Invariants
 
 - `Plan` resolves every event's full `contextstate.PayloadRecord`
-  before it decides anything, including a reasoning event and a
-  payload it ends up fully dropping.
+  through the store on every call, before it decides anything,
+  including a reasoning event and a payload it ends up fully
+  dropping. No cache skips this round trip.
+- A revoked payload never enters `Request.Messages`, regardless of
+  budget or retention, and takes the revoked branch before the
+  reasoning check.
 - A reasoning event never enters `Request.Messages`, regardless of
   budget.
 - Only a `RetentionCompliance` payload past budget gets a stub; every

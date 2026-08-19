@@ -53,7 +53,7 @@ func TestStorePutGet(t *testing.T) {
 	}
 	// A repeat Put of the same address overwrites in place.
 	updated := record
-	updated.Revoked = true
+	updated.Retention = contextstate.RetentionCompliance
 	if err := store.Put(updated); err != nil {
 		t.Fatalf("second Put: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestStorePutGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get after overwrite: %v", err)
 	}
-	if !got.Revoked {
+	if got.Retention != contextstate.RetentionCompliance {
 		t.Fatal("repeat Put did not overwrite in place")
 	}
 	unknown := record.Ref

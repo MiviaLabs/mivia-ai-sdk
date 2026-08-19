@@ -16,7 +16,9 @@ package contextstate
   func (m *MemStore) Checkpoint(req CommitRequest) (error)
   func (m *MemStore) Get(ref ContentRef) (PayloadRecord, error)
   func (m *MemStore) Put(record PayloadRecord) (error)
+  func (m *MemStore) Revoke(ref ContentRef) (error)
   func (m *MemStore) Session(id string) (Session, error)
+  func (m *MemStore) Status(ref ContentRef) (PayloadRecord, error)
   func (p PayloadRecord) Validate() (error)
   func (r CommitRequest) Validate() (error)
   func (r ContentRef) Validate() (error)
@@ -121,6 +123,7 @@ package contextstate
   var ErrInvalidRecord
   var ErrOverLimit
   var ErrPayloadNotFound
+  var ErrPayloadRevoked
   var ErrSessionNotFound
   var ErrStaleBinding
   var ErrStaleRevision

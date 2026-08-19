@@ -42,19 +42,25 @@ func New(limits Limits) (*MemStore, error) {
 
 // Put validates record and stores a copy under record.Ref.Ref.
 // Content-addressed, so a repeat Put of equal bytes overwrites in
-// place.
+// place. A Put under a ref already revoked is a no-op: it returns nil
+// and leaves the stored record, including Revoked == true, untouched.
 func (m *MemStore) Put(record PayloadRecord) error {
 	if err := record.Validate(); err != nil {
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if existing, ok := m.payloads[record.Ref.Ref]; ok && existing.Revoked {
+		return nil
+	}
 	m.payloads[record.Ref.Ref] = clonePayload(record)
 	return nil
 }
 
-// Get returns a copy of the record stored under ref.Ref. An unknown
-// ref wraps ErrPayloadNotFound.
+// Get returns a copy of the record stored under ref.Ref. Every error
+// case returns the zero PayloadRecord: an unknown ref wraps
+// ErrPayloadNotFound; a revoked record wraps ErrPayloadRevoked and
+// denies Data. Status is the path for a revoked ref's metadata.
 func (m *MemStore) Get(ref ContentRef) (PayloadRecord, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -62,7 +68,42 @@ func (m *MemStore) Get(ref ContentRef) (PayloadRecord, error) {
 	if !ok {
 		return PayloadRecord{}, fmt.Errorf("%w: %s", ErrPayloadNotFound, ref.Ref)
 	}
+	if stored.Revoked {
+		return PayloadRecord{}, fmt.Errorf("%w: %s", ErrPayloadRevoked, ref.Ref)
+	}
 	return clonePayload(stored), nil
+}
+
+// Revoke sets Revoked on the stored record under ref.Ref, the only way
+// a caller revokes a record after Put or Checkpoint. An unknown ref
+// wraps ErrPayloadNotFound. A second Revoke on an already-revoked
+// record is a no-op success.
+func (m *MemStore) Revoke(ref ContentRef) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stored, ok := m.payloads[ref.Ref]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrPayloadNotFound, ref.Ref)
+	}
+	stored.Revoked = true
+	m.payloads[ref.Ref] = stored
+	return nil
+}
+
+// Status returns a copy of the record stored under ref.Ref with Data
+// always cleared, whether or not it is revoked. It never wraps
+// ErrPayloadRevoked: revocation is reported through the returned
+// record's Revoked field. An unknown ref wraps ErrPayloadNotFound.
+func (m *MemStore) Status(ref ContentRef) (PayloadRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stored, ok := m.payloads[ref.Ref]
+	if !ok {
+		return PayloadRecord{}, fmt.Errorf("%w: %s", ErrPayloadNotFound, ref.Ref)
+	}
+	status := clonePayload(stored)
+	status.Data = nil
+	return status, nil
 }
 
 // Checkpoint applies one commit atomically. A reused OperationID

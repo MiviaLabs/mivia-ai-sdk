@@ -34,6 +34,9 @@ var (
 	ErrCheckpointConflict = errors.New("checkpoint conflict")
 	// ErrPayloadNotFound marks a read of an unknown payload.
 	ErrPayloadNotFound = errors.New("payload not found")
+	// ErrPayloadRevoked marks a Get of a payload MemStore.Revoke marked
+	// revoked. Get denies the content; MemStore.Status still answers.
+	ErrPayloadRevoked = errors.New("payload revoked")
 	// ErrOverLimit marks a commit that breaks a volume bound.
 	ErrOverLimit = errors.New("commit over volume limit")
 )

@@ -3,7 +3,6 @@ package contextplan
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -32,13 +31,11 @@ type PlanResult struct {
 
 // Planner fits one session's source events into a bounded provider
 // request. Built only through NewPlanner. Safe for concurrent use:
-// its two dependencies guard their own state, and meta is guarded by
-// metaMu.
+// its two dependencies guard their own state, and Plan holds no other
+// mutable state of its own between calls.
 type Planner struct {
-	store  *contextstate.MemStore
-	cache  *memory.Store
-	metaMu sync.Mutex
-	meta   map[string]contextstate.PayloadRecord
+	store *contextstate.MemStore
+	cache *memory.Store
 }
 
 // NewPlanner builds a Planner over store, the durable payload source,
@@ -51,24 +48,26 @@ func NewPlanner(store *contextstate.MemStore, cache *memory.Store) (*Planner, er
 	if cache == nil {
 		return nil, ErrNilCache
 	}
-	return &Planner{store: store, cache: cache, meta: make(map[string]contextstate.PayloadRecord)}, nil
+	return &Planner{store: store, cache: cache}, nil
 }
 
 // Plan walks sess.Source newest to oldest. For every event it
-// resolves the full contextstate.PayloadRecord before it decides
-// anything, including a reasoning event's and a payload it ends up
-// fully dropping. A reasoning event never enters Request.Messages and
-// always produces an ElisionReasonReasoningRedacted entry. For every
-// other event, Plan adds the decoded provider.Message while the
-// running estimate stays at or under w.Budget(); once the next-oldest
-// message would exceed the budget, a RetentionCompliance payload gets
-// a stub instead, unless the stub itself would exceed the budget, in
-// which case it drops too.
+// resolves the full contextstate.PayloadRecord through one store.Get
+// call before it decides anything, including a reasoning event's and
+// a payload it ends up fully dropping. A revoked payload never enters
+// Request.Messages and always produces an ElisionReasonRevoked entry,
+// checked before the reasoning check. A reasoning event never enters
+// Request.Messages and always produces an ElisionReasonReasoningRedacted
+// entry. For every other event, Plan adds the decoded provider.Message
+// while the running estimate stays at or under w.Budget(); once the
+// next-oldest message would exceed the budget, a RetentionCompliance
+// payload gets a stub instead, unless the stub itself would exceed the
+// budget, in which case it drops too.
 // EstimatedTokens stays at or under w.Budget() for a deterministic estimator whose empty-list total fits.
 // A larger fixed overhead exceeds it; an estimator that errors on the final call reports zero.
 // Plan returns a non-nil error only on a malformed
-// Window, a nil sess, or a payload-resolution failure; it never
-// returns a partial PlanResult.
+// Window, a nil sess, or a payload-resolution failure other than a
+// revocation; it never returns a partial PlanResult.
 func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error) {
 	if sess == nil {
 		return PlanResult{}, ErrNilSession
@@ -86,6 +85,10 @@ func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window
 		event := sess.Source[i]
 		record, err := p.resolvePayload(event)
 		if err != nil {
+			if errors.Is(err, contextstate.ErrPayloadRevoked) {
+				elisions = append(elisions, Elision{Ref: record.Ref, Reason: ElisionReasonRevoked})
+				continue
+			}
 			return PlanResult{}, err
 		}
 		if IsReasoningEvent(event) {
@@ -141,47 +144,28 @@ func prepend(messages []provider.Message, role string, content []byte) []provide
 	return next
 }
 
-// resolvePayload resolves event's full PayloadRecord. On a cache hit
-// for both the decoded bytes and the retention metadata, it returns
-// without a store round trip. On a miss of either, it resolves
-// through store.Get once and populates both caches for the next
-// call. A resolution failure from either dependency propagates
-// unwrapped.
+// resolvePayload resolves event's full PayloadRecord through one
+// store.Get call, on every call: no cache-hit skip, so a Revoke
+// issued between two Plan calls is visible on the very next call. On
+// success it backfills cache, preserving today's write-side
+// population. On contextstate.ErrPayloadRevoked, it makes one more
+// call, store.Status, to recover the denied record's metadata for the
+// caller's Elision, and returns that record alongside the original
+// error. Any other resolution failure, including one from Status,
+// propagates unwrapped.
 func (p *Planner) resolvePayload(event contextstate.SourceEvent) (contextstate.PayloadRecord, error) {
-	data, dataErr := p.cache.Get(event.PayloadRef)
-	meta, metaOK := p.metaFor(event.PayloadRef)
-	if dataErr == nil && metaOK {
-		meta.Data = data
-		return meta, nil
-	}
-
 	ref := contextstate.ContentRef{Ref: event.PayloadRef}
 	record, err := p.store.Get(ref)
 	if err != nil {
+		if errors.Is(err, contextstate.ErrPayloadRevoked) {
+			status, statusErr := p.store.Status(ref)
+			if statusErr != nil {
+				return contextstate.PayloadRecord{}, statusErr
+			}
+			return status, err
+		}
 		return contextstate.PayloadRecord{}, err
 	}
-	p.putMeta(event.PayloadRef, record)
-	if dataErr != nil {
-		_, _ = p.cache.Put(record.Data)
-	}
+	_, _ = p.cache.Put(record.Data)
 	return record, nil
-}
-
-// metaFor returns the cached retention and content-reference metadata
-// for ref, with Data cleared, and whether it was present.
-func (p *Planner) metaFor(ref string) (contextstate.PayloadRecord, bool) {
-	p.metaMu.Lock()
-	defer p.metaMu.Unlock()
-	meta, ok := p.meta[ref]
-	return meta, ok
-}
-
-// putMeta stores record's retention and content-reference metadata
-// under ref, with Data cleared, for a future resolvePayload call.
-func (p *Planner) putMeta(ref string, record contextstate.PayloadRecord) {
-	meta := record
-	meta.Data = nil
-	p.metaMu.Lock()
-	p.meta[ref] = meta
-	p.metaMu.Unlock()
 }

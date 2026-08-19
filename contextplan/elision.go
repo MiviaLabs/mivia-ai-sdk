@@ -23,6 +23,11 @@ const (
 	// IsReasoningEvent marked its source event; the content never
 	// entered Request.Messages at all.
 	ElisionReasonReasoningRedacted ElisionReason = "reasoning_redacted"
+	// ElisionReasonRevoked marks a payload contextstate.MemStore.Get
+	// denied as revoked. Security-relevant, unlike the two budget-driven
+	// reasons above: a caller that ignores this reason gets a Request
+	// silently missing content its own store denied.
+	ElisionReasonRevoked ElisionReason = "revoked"
 )
 
 // Elision is one drop or trim decision Plan made for one payload. Ref

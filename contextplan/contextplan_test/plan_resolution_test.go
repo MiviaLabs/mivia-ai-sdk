@@ -11,7 +11,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
-	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -41,13 +40,14 @@ func TestPlanResolutionCacheHitStoreMiss(t *testing.T) {
 	}
 }
 
-// TestPlanResolutionCacheHitSkipsStore pins that a full cache hit
-// (both the decoded bytes and the retention metadata) never
-// round-trips through the store: after one Plan call resolves and
-// caches an event, overwriting the store's record under the same ref
-// must not change a second Plan call's outcome, since the second
-// call reads the cached metadata instead of the mutated store entry.
-func TestPlanResolutionCacheHitSkipsStore(t *testing.T) {
+// TestPlanResolutionSecondCallReflectsStoreMutation pins the current
+// design: resolvePayload drops its cache-hit fast path, so every Plan
+// call re-reads the store. A store-side mutation issued between two
+// Plan calls on the same Planner is visible on the very next call.
+// This replaces the removed TestPlanResolutionCacheHitSkipsStore,
+// whose assertion (a second call must not see an intervening Put)
+// pinned the fast path this change deletes and is now false.
+func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
 	planner, err := contextplan.NewPlanner(store, cache)
 	if err != nil {
@@ -77,9 +77,9 @@ func TestPlanResolutionCacheHitSkipsStore(t *testing.T) {
 	}
 
 	// Overwrite the stored record under the same ref with
-	// RetentionSession. A resolve that still hits the store would
-	// see this and stop protecting the payload with a stub once it
-	// no longer fits; a resolve served from the meta cache would not.
+	// RetentionSession. Every Plan call re-reads the store, so the
+	// second call must see this and stop protecting the payload with
+	// a stub once it no longer fits.
 	if err := store.Put(contextstate.PayloadRecord{Ref: ref, Retention: contextstate.RetentionSession, Data: data}); err != nil {
 		t.Fatalf("overwrite Put: %v", err)
 	}
@@ -92,73 +92,8 @@ func TestPlanResolutionCacheHitSkipsStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Plan: %v", err)
 	}
-	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextplan.ElisionReasonRetentionExpired {
-		t.Fatalf("second Elisions = %+v, want one RetentionExpired stub: the cached RetentionCompliance metadata must still protect it", second.Elisions)
-	}
-}
-
-// TestPlanResolutionMetaSurvivesCacheEviction pins that a meta-cache
-// hit on a ref whose decode-cache entry was evicted for budget still
-// resolves correctly: resolvePayload falls through to store.Get on
-// the decode-cache miss, and re-backfills the decode cache, rather
-// than returning a record built from a stale or missing Data.
-func TestPlanResolutionMetaSurvivesCacheEviction(t *testing.T) {
-	store := newStore(t)
-	// A budget that holds both payloads together but not one after
-	// the other, so putting the second payload evicts the first's
-	// decode-cache entry while its meta-cache entry (unbounded, keyed
-	// separately) survives.
-	cache, err := memory.New(40)
-	if err != nil {
-		t.Fatalf("memory.New: %v", err)
-	}
-	planner, err := contextplan.NewPlanner(store, cache)
-	if err != nil {
-		t.Fatalf("NewPlanner: %v", err)
-	}
-
-	dataA := []byte("payload-a-content")
-	refA := putPayload(t, store, "sess-a", contextstate.RetentionSession, dataA)
-	sessA := &contextstate.Session{Source: []contextstate.SourceEvent{
-		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refA, len(dataA)),
-	}}
-	est := byteEstimator{}
-	win := contextplan.Window{MaxTokens: 100}
-
-	first, err := planner.Plan(context.Background(), sessA, win, est)
-	if err != nil {
-		t.Fatalf("first Plan (A): %v", err)
-	}
-	if len(first.Request.Messages) != 1 || first.Request.Messages[0].Content != string(dataA) {
-		t.Fatalf("first Plan (A) Messages = %+v, want one message with content %q", first.Request.Messages, dataA)
-	}
-
-	// Resolve a second, larger payload: dataA's decode-cache entry
-	// evicts under the 20-byte budget, but refA's meta stays cached.
-	dataB := []byte("payload-b-content-longer-than-budget")
-	refB := putPayload(t, store, "sess-b", contextstate.RetentionSession, dataB)
-	sessB := &contextstate.Session{Source: []contextstate.SourceEvent{
-		sourceEvent("sess-b", 1, "message", string(provider.RoleUser), refB, len(dataB)),
-	}}
-	if _, err := planner.Plan(context.Background(), sessB, win, est); err != nil {
-		t.Fatalf("second Plan (B): %v", err)
-	}
-	if _, err := cache.Get(refA.Ref); !errors.Is(err, memory.ErrUnknownRef) {
-		t.Fatalf("cache.Get(refA) err = %v, want ErrUnknownRef: the eviction this test relies on did not happen", err)
-	}
-
-	// Resolving A again must still return A's real content: a meta
-	// hit with a decode-cache miss must fall through to store.Get,
-	// not return a record with stale or missing Data.
-	third, err := planner.Plan(context.Background(), sessA, win, est)
-	if err != nil {
-		t.Fatalf("third Plan (A again): %v", err)
-	}
-	if len(third.Request.Messages) != 1 || third.Request.Messages[0].Content != string(dataA) {
-		t.Fatalf("third Plan (A again) Messages = %+v, want one message with content %q", third.Request.Messages, dataA)
-	}
-	if _, err := cache.Get(refA.Ref); err != nil {
-		t.Fatalf("cache.Get(refA) after third Plan: %v, want the decode cache re-backfilled", err)
+	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextplan.ElisionReasonWindowOverflow || second.Elisions[0].Kept != 0 {
+		t.Fatalf("second Elisions = %+v, want one WindowOverflow full drop: the mutated RetentionSession record no longer earns a stub", second.Elisions)
 	}
 }
 

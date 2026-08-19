@@ -349,6 +349,14 @@ no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
 package plan lives at docs/plans/skills.md.
 
+Phase 74 is plan-only and not scheduled. It is the mutation kit's
+second rollout step: seven new per-package floors (`workspace`,
+`subagent`, `agentloop`, `mcp`, `dispatch`, `a2aclient`, `schema`),
+a re-measured `ledger` floor, and a new `make mutation-gate` target
+that runs every floored package's sweep on demand. It depends on the
+shipped phase 54 kit and adds no new package. See
+docs/plans/agents/phase74_mutation_coverage_rollout.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

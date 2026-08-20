@@ -129,6 +129,7 @@
     ],
     "runconfig": [
       "agentrun",
+      "contextbudget",
       "flow",
       "machine",
       "subagent",

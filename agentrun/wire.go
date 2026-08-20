@@ -92,10 +92,14 @@ func (r *Runner) Bus() *events.Bus {
 // NewAck. A suffixed message ID, which agent.Run mints for a step
 // confirmed twice, resolves the plain tool name, so a looped child
 // step runs its tool every iteration, and its artifact lands under
-// the bare step ID with the latest result. A tool result that is
-// not a string fails with ErrResultNotText naming the tool. A tool
-// error wrapping agent.ErrEscalated, when Ask is set, routes to one
-// Ask round trip.
+// the bare step ID with the latest result. When the resolved tool
+// implements tools.SchemaTool, chain decodes the step's payload bytes
+// through DecodeArguments before the tool runs; every other tool
+// keeps the plain-string payload unchanged. A decode failure fails
+// the step, wrapping ErrArgumentDecode. A tool result that is not a
+// string fails with ErrResultNotText naming the tool. A tool error
+// wrapping agent.ErrEscalated, when Ask is set, routes to one Ask
+// round trip.
 func (r *Runner) chain() agent.AckWait {
 	return func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		if r.tracer != nil {
@@ -110,7 +114,17 @@ func (r *Runner) chain() agent.AckWait {
 				return envelope.Ack{}, fmt.Errorf("agentrun: step %q: pre-tool hook: %w", msg.ID, err)
 			}
 		}
-		out, err := r.tools.RunScoped(ctx, name, tools.InOut{Value: msg.Payload}, r.scope)
+		in := tools.InOut{Value: msg.Payload}
+		if t, ok := r.tools.Get(name); ok {
+			if st, ok := t.(tools.SchemaTool); ok {
+				decoded, derr := st.DecodeArguments([]byte(msg.Payload))
+				if derr != nil {
+					return envelope.Ack{}, fmt.Errorf("agentrun: step %q: %w: %w", msg.ID, ErrArgumentDecode, derr)
+				}
+				in = decoded
+			}
+		}
+		out, err := r.tools.RunScoped(ctx, name, in, r.scope)
 		if err != nil {
 			if r.ask != nil && errors.Is(err, agent.ErrEscalated) {
 				return r.askRoundTrip(ctx, msg)

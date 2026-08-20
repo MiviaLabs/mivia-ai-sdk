@@ -82,10 +82,12 @@ opens a `FileTools` owns the matching `Close`.
   `tools.PrivilegedTool`, so `tools.Scope.Allowed` denies it unless a
   caller's `Allowlist` names it.
 - `WorkspaceListTool(name, ft)` — lists one directory, relative to
-  `ft`'s bound root, as `[]WorkspaceEntry`. A blank path lists the
+  `ft`'s bound root. Result is a JSON-encoded string of
+  `[]WorkspaceEntry`, not the raw typed struct. A blank path lists the
   root. Not privileged.
 - `WorkspaceStatTool(name, ft)` — stats one path, relative to `ft`'s
-  bound root, as one `WorkspaceFileInfo`. Not privileged.
+  bound root. Result is a JSON-encoded string of one
+  `WorkspaceFileInfo`, not the raw typed struct. Not privileged.
 - `DiffTool(name, ft, maxLines)` — diffs the on-disk content at a
   path, read through `ft`'s bound workspace, against proposed content,
   through `diff.Unified`. A not-yet-existing path diffs against empty

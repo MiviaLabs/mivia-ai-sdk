@@ -59,7 +59,9 @@ func (t *workspaceStatTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Class: tools.ExecutionClassRead}
 }
 
-// Run stats args.Path, relative to t.ft's bound root.
+// Run stats args.Path, relative to t.ft's bound root. The result is
+// a JSON-encoded string of WorkspaceFileInfo, so agentrun's chain
+// accepts it as a tool result.
 func (t *workspaceStatTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceStatArgs)
 	if !ok {
@@ -69,10 +71,14 @@ func (t *workspaceStatTool) Run(ctx context.Context, in tools.InOut) (tools.Out,
 	if err != nil {
 		return tools.Out{}, err
 	}
-	return tools.Out{Value: WorkspaceFileInfo{
+	encoded, err := encodeToolResult(WorkspaceFileInfo{
 		Name:    info.Name(),
 		Size:    info.Size(),
 		IsDir:   info.IsDir(),
 		ModTime: info.ModTime(),
-	}}, nil
+	})
+	if err != nil {
+		return tools.Out{}, err
+	}
+	return tools.Out{Value: encoded}, nil
 }

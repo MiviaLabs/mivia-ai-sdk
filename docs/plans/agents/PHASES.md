@@ -424,11 +424,16 @@ opens. It adds no new package. Its addendum lives in
 docs/plans/subagent.md's "File tools addendum"; no standalone phase
 71 plan file remains.
 
-Phase 72 is plan-only and not scheduled. It adds `Kind` bindings for
-`runconfig` over the five file tools' post-phase-71 signature. It
+Phase 72 (`runconfig` blocks) has shipped. It adds six `Kind`
+constants (`WorkspaceReadKind`, `WorkspaceWriteKind`,
+`WorkspaceListKind`, `WorkspaceStatKind`, `DiffKind`, `AsToolKind`)
+binding a JSON document's step to a `subagent` file tool, a diff
+tool, or a nested subagent runner. It adds a `budget` field to the
+JSON `options` section, mapping to `agentrun.Options.Budget`. It
 depends on the shipped `subagent`, `workspace`, `diff`, and
-`contextbudget` packages, and on the shipped phase 71. See
-docs/plans/agents/phase72_runconfig_blocks.md.
+`contextbudget` packages, and on the shipped phase 71. It adds no
+new package and one `policy/layers.json` edge (`runconfig` to
+`contextbudget`). See docs/plans/agents/phase72_runconfig_blocks.md.
 
 Phase 73 (`contextplan` spools its own overflow) has shipped. It
 wires `contextplan.Planner` to `spool.Spool`: `NewPlanner` gains a
@@ -459,6 +464,28 @@ inside `scripts/check_semgrep_probes.py`, so two scoped-rule probes
 sharing one fixture basename fail loudly instead of silently
 overwriting each other's expected entry. It adds no new package. No
 standalone phase 75 plan file remains.
+
+Phase 76 (agentrun schema-tool argument decode) has shipped. It fixed
+a confirmed gap `agentrun.Runner.chain` left open: a resolved tool
+implementing `tools.SchemaTool` never got its `DecodeArguments`
+called, so the five `subagent` file tools phase 72 bound to a `Kind`
+could not drive a real end-to-end `Runner.Run`. It also fixed
+`runconfig`'s `stepTool` wrapper, which dropped `tools.ProfiledTool`,
+`tools.ResultBudgetTool`, and `tools.PrivilegedTool` from every
+wrapped tool, following `spool/tool.go`'s capability-composition
+pattern. It added no new package and no new `policy/layers.json`
+edge. See docs/plans/agents/phase76_agentrun_schema_tool_decode.md.
+
+Phase 77 (workspace list and stat tools return a JSON string result)
+has shipped. It fixed a confirmed gap phase 76's addendum left open:
+`subagent.WorkspaceListTool.Run` and `subagent.WorkspaceStatTool.Run`
+returned a typed struct in `tools.Out.Value`, not a string, so
+`agentrun`'s `chain` failed both `runconfig.WorkspaceListKind` and
+`runconfig.WorkspaceStatKind` with `ErrResultNotText` on every real
+`Runner.Run`. It changed both tools to return a JSON-encoded string,
+matching every other `subagent` tool's result convention. It added no
+new package and no new `policy/layers.json` edge. See
+docs/plans/agents/phase77_workspace_list_stat_json_result.md.
 
 ## Gate interactions
 

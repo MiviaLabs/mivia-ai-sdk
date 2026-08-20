@@ -19,15 +19,19 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-three packages and the import edges
+The diagram shows the forty-five packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
-`durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
+imports. `channel`, `contextbudget`, `contextstate`, `diff`,
+`discovery`, `durablefence`, `envfile`, `events`, `hooks`,
+`longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
 `contextplan` imports `contextstate`, `provider`, `memory`, and
 `spool`. `spool` imports `tools` alone. `a2aloopback` imports `a2a` and
 `envelope`, the same two internal packages `a2aclient` imports.
+`workspace` imports `secretpath` alone. `runconfig` imports
+`agentrun`, `contextbudget`, `flow`, `machine`, `subagent`, and
+`tools`.
 
 ```mermaid
 flowchart LR
@@ -115,6 +119,16 @@ flowchart LR
     subagent --> tools
     subagent --> trace
     subagent --> trigger
+    subagent --> diff
+    subagent --> secretpath
+    subagent --> workspace
+    workspace --> secretpath
+    runconfig --> agentrun
+    runconfig --> contextbudget
+    runconfig --> flow
+    runconfig --> machine
+    runconfig --> subagent
+    runconfig --> tools
     e2e --> agent
     e2e --> channel
     e2e --> discovery
@@ -136,6 +150,8 @@ flowchart LR
     tools[tools]
     trigger[trigger]
     usage[usage]
+    envfile[envfile]
+    longtermmemory[longtermmemory]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and

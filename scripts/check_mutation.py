@@ -21,6 +21,7 @@ from mutation_process_probe import (
     probe_group_interrupt,
     probe_group_outcomes,
 )
+from mutation_target_probe import probe_internal_test_target
 from mutation_tokenize import MutationError, sites_for_file, sites_from_tokens
 
 # Python's default SIGTERM handling kills the process without running
@@ -124,13 +125,18 @@ def collect_sites(pkg: str, denylist_dir: Path = DENYLIST_DIR) -> list:
     return sites
 
 
-def test_target(pkg_dir: Path, pkg: str) -> str:
-    """test_target picks the external test directory when it exists,
-    mirroring the Makefile verify coverage block's own choice."""
+def test_targets(pkg_dir: Path, pkg: str) -> list[str]:
+    """test_targets lists the go test paths for pkg: the package
+    directory first, then its external test directory when that
+    directory exists and holds a .go file. Both paths go to one `go
+    test` run, which fails when either package fails. The package
+    directory is never checked for a test file: `go test` on a
+    directory with none exits 0."""
+    targets = [f"./{pkg}"]
     ext = pkg_dir / f"{pkg}_test"
     if ext.is_dir() and any(ext.glob("*.go")):
-        return f"./{pkg}/{pkg}_test"
-    return f"./{pkg}"
+        targets.append(f"./{pkg}/{pkg}_test")
+    return targets
 
 
 def classify(build_ok: bool, test_outcome: str) -> str:
@@ -143,21 +149,22 @@ def classify(build_ok: bool, test_outcome: str) -> str:
     return SURVIVED
 
 
-def run_mutant(site, original: bytes, pkg: str, pkg_dir: str) -> str:
+def run_mutant(site, original: bytes, pkg: str, pkg_dir: str, root: Path = ROOT) -> str:
     """run_mutant applies one mutation, builds, tests, and restores the
-    original bytes no matter how the run ends."""
+    original bytes no matter how the run ends. root sets the working
+    directory for go; only the probe passes a value other than ROOT."""
     text = original.decode("utf-8")
     mutated = text[: site.start] + site.new + text[site.end :]
     site.path.write_text(mutated)
     try:
         build = subprocess.run(
-            ["go", "build", f"./{pkg}"], cwd=ROOT, capture_output=True, text=True
+            ["go", "build", f"./{pkg}"], cwd=root, capture_output=True, text=True
         )
         if build.returncode != 0:
             print(f"discarded (build failed): {site.path.name}:{site.start} {site.kind}")
             return classify(False, "pass")
-        target = test_target(Path(pkg_dir), pkg)
-        outcome = run_test_group(["go", "test", target], ROOT, TEST_TIMEOUT_SECONDS)
+        targets = test_targets(Path(pkg_dir), pkg)
+        outcome = run_test_group(["go", "test", *targets], root, TEST_TIMEOUT_SECONDS)
         return classify(True, outcome)
     finally:
         site.path.write_bytes(original)
@@ -334,23 +341,12 @@ def _probe_classify() -> list[str]:
     return problems
 
 
-def _probe_test_target(tmp_path: Path) -> list[str]:
-    """Check: test-directory selection picks a package's own
-    <pkg>_test directory when present, else the package itself."""
-    problems = []
-    with_ext = tmp_path / "withext"
-    (with_ext / "withext_test").mkdir(parents=True)
-    (with_ext / "withext_test" / "case_test.go").write_text("package withext_test\n")
-    got = test_target(with_ext, "withext")
-    if got != "./withext/withext_test":
-        problems.append(f"test_target: want external dir, got {got}")
-
-    without_ext = tmp_path / "noext"
-    without_ext.mkdir()
-    got = test_target(without_ext, "noext")
-    if got != "./noext":
-        problems.append(f"test_target: want package dir, got {got}")
-    return problems
+def _probe_internal_test_target(tmp_path: Path) -> list[str]:
+    """Checks: a mutant that only a package's own internal test kills is
+    scored killed; target selection lists both paths, package directory
+    first; a timed-out two-target run leaves no live process. See
+    scripts/mutation_target_probe.py."""
+    return probe_internal_test_target(tmp_path, sys.modules[__name__])
 
 
 def _probe_floor(tmp_path: Path) -> list[str]:
@@ -394,7 +390,7 @@ def run_probe() -> bool:
         problems += _probe_denylist(pkg_dir)
         problems += _probe_not_guard(pkg_dir)
         problems += _probe_classify()
-        problems += _probe_test_target(tmp_path)
+        problems += _probe_internal_test_target(tmp_path)
         problems += _probe_floor(tmp_path)
         problems += _probe_process_group(tmp_path)
 

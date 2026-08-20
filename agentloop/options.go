@@ -92,6 +92,9 @@ var (
 	// ErrTrimExcluded is Options.Validate's error when both Window and
 	// Trim are set. Test with errors.Is.
 	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
+	// ErrConcludeMargin is Validate's error when ConcludeMargin is
+	// negative. Test with errors.Is.
+	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -101,6 +104,9 @@ const RecoveryTargetTokens = 16384
 // CompactionNotice is the user-role message content Run appends after
 // a recovery compaction, so the model sees that compaction occurred.
 const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
+
+// DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
+const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
 
 // ErrorPolicy names what Run does with a tool-run error: report it to
 // the model as a tool result, or end the run.
@@ -131,6 +137,10 @@ const (
 	// StopHookVeto is Run's stop reason when a PointPreTool handler
 	// vetoes a tool call. The tool does not run.
 	StopHookVeto StopReason = "hook_veto"
+	// StopConcluded is Run's stop reason when the model returns no tool
+	// call on an iteration ConcludeMargin nudged. Graceful, same
+	// Result-shape rule as StopNoToolCalls.
+	StopConcluded StopReason = "concluded"
 )
 
 // Options declares the blocks one New call wires into a Loop.
@@ -197,6 +207,26 @@ type Options struct {
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated
+	// ConcludeMargin nudges the model to produce a final answer as
+	// MaxIterations approaches, appending ConcludeNotice once, instead of
+	// hard-stopping at MaxIterations with no notice. Zero disables
+	// nudging. Run appends the notice before the Completer call at
+	// 1-based iteration k the first time MaxIterations-k < ConcludeMargin
+	// holds; k ranges from 1 to MaxIterations, so a positive ConcludeMargin
+	// greater than or equal to MaxIterations fires the nudge on Run's
+	// first iteration. See docs/plans/agents/phase79_graceful_conclude.md
+	// for the worked table.
+	ConcludeMargin int
+	// ConcludeNotice is the RoleUser content Run appends once nudging
+	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
+	// DefaultConcludeNotice. Run appends the notice at the tail of
+	// history, as the last message in the nudged iteration's
+	// Request.Messages, not spliced near the system message the way
+	// CompactionNotice is. A tail append puts the "final answer now"
+	// instruction directly before the model's next response. The append
+	// runs after this iteration's Trim, Budget, and Window steps,
+	// immediately before the Completer call.
+	ConcludeNotice string
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -249,8 +279,9 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // failure: Completer required, Tools required, MaxIterations
 // positive, Usage requires a non-blank SessionID, a non-nil Budget
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
-// negative, and a non-nil Window passes Window.Validate, requires
-// Summarizer, requires Calibrated, and excludes Trim.
+// negative, a non-nil Window passes Window.Validate, requires
+// Summarizer, requires Calibrated, and excludes Trim, and
+// ConcludeMargin is not negative.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -285,6 +316,9 @@ func (o Options) Validate() error {
 		if o.Trim != nil {
 			return ErrTrimExcluded
 		}
+	}
+	if o.ConcludeMargin < 0 {
+		return ErrConcludeMargin
 	}
 	return nil
 }

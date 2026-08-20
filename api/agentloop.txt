@@ -2,9 +2,11 @@ package agentloop
   const AuditKindCompletion = "completion"
   const AuditKindToolCall = "tool_call"
   const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
+  const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
   const RecoveryTargetTokens = 16384
+  const StopConcluded = "concluded"
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
@@ -47,6 +49,8 @@ package agentloop
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer
   Calibrated *contextplan.Calibrated
+  ConcludeMargin int
+  ConcludeNotice string
 }
   type Result struct {
   Final provider.Message
@@ -59,6 +63,7 @@ package agentloop
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
+  var ErrConcludeMargin
   var ErrEstimatorRequired
   var ErrInvalidSchema
   var ErrMaxIterations

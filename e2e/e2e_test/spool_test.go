@@ -41,7 +41,14 @@ func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
 
 	full := strings.Repeat("log-line\n", 500)
 	inner := largeOutputTool{toolName: "tail", result: full}
-	wrapped := spool.SpoolTool("tail", 64, store, inner)
+	sp, err := spool.NewSpool(store, 1<<20)
+	if err != nil {
+		t.Fatalf("spool.NewSpool: %v", err)
+	}
+	wrapped, err := spool.SpoolTool("tail", 64, sp, inner)
+	if err != nil {
+		t.Fatalf("spool.SpoolTool: %v", err)
+	}
 
 	plan, err := flow.New([]flow.Step{
 		{ID: "tail", To: "tailed", Payload: "go"},
@@ -83,17 +90,13 @@ func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
 		t.Fatalf("view len = %d, want shorter than the full result len %d", len(view), len(full))
 	}
 
-	sp, err := spool.NewSpool(store, 1<<20)
-	if err != nil {
-		t.Fatalf("spool.NewSpool: %v", err)
+	const refMarker = "ref="
+	idx := strings.Index(view, refMarker)
+	if idx < 0 {
+		t.Fatalf("view %q does not carry a ref marker", view)
 	}
-	_, ref, err := sp.Spool(runCtx, "tailer", []byte(full))
-	if err != nil {
-		t.Fatalf("sp.Spool: %v", err)
-	}
-	if !strings.Contains(view, ref) {
-		t.Fatalf("view %q does not name ref %q", view, ref)
-	}
+	ref := strings.TrimSuffix(view[idx+len(refMarker):], "]")
+
 	got, err := sp.Load(runCtx, "tailer", ref)
 	if err != nil || string(got) != full {
 		t.Fatalf("sp.Load = %q,%v, want the full tool result", got, err)

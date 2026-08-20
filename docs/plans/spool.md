@@ -533,3 +533,249 @@ In `spool/spool_test/`:
   import edge exists.
 - `docs/packages/spool.md` gains the tool and the expiry surface in
   the same change as the code.
+
+## Change: document the SpoolTool and ReadOutputTool pairing
+
+Status: superseded. The section below stayed accurate about the
+orphan-package check and the no-in-repo-caller fact. It is wrong
+about the fix. Do not follow its "docs-only" conclusion. See "Change:
+SpoolTool takes an existing Spool" below for the corrected plan.
+
+`SpoolTool` has zero in-repo callers today; `spool` is not an orphan
+package, since `contextplan` already imports it. Both facts still
+hold and stayed true during investigation for the corrected change
+below.
+
+The prior conclusion claimed a caller could construct a working
+`ReadOutputTool` paired against the same `*Spool` a `SpoolTool` call
+uses, and that only the docs needed the pairing spelled out. That
+claim is false. `SpoolTool` built its own unexported `*Spool`
+internally and never returned it, so no caller value existed to pass
+to `ReadOutputTool`. A docs-only change could not produce a working
+example, because the API had no path to the value the example
+needed. The corrected change below changes `SpoolTool`'s signature so
+the pairing becomes possible, then updates the docs to show it.
+
+## Change: SpoolTool takes an existing Spool
+
+Status: shipped.
+
+### Change goal
+
+Let a caller pair one `SpoolTool`-wrapped tool with a
+`ReadOutputTool` reading from the same grants, and let two or more
+`SpoolTool`-wrapped tools share one budget. Today neither is
+possible: `SpoolTool` builds its own internal `*Spool` and never
+exposes it.
+
+### Change scope
+
+Inside:
+
+- `SpoolTool`'s signature changes from `(name string, maxBytes int,
+  store ContentStore, inner tools.Tool) tools.Tool` to `(name string,
+  maxBytes int, sp *Spool, inner tools.Tool) (tools.Tool, error)`.
+  The caller now builds the `*Spool` with the existing, unchanged
+  `NewSpool` and passes it in, the same value it later passes to
+  `ReadOutputTool`.
+- A nil `sp` fails at construction with `ErrNilSpool`, the same
+  sentinel `ReadOutputTool` already wraps for the same condition.
+- Removal of the unexported `toolGrantBudget` constant. `SpoolTool`
+  no longer builds a `*Spool`, so the constant has no reader.
+- Every call site in `spool/spool_test/` and
+  `e2e/e2e_test/spool_test.go` updates to the new signature in the
+  same commit.
+- `docs/packages/spool.md`'s usage example replaces the incomplete
+  pairing with the full one: one `NewSpool` call feeds both
+  `SpoolTool` and `ReadOutputTool`.
+- `docs/plans/subagent.md`'s "Deliberate non-goals" prose quotes the
+  old four-argument call shape (`spool.SpoolTool(name, maxBytes,
+  store, ...)`). Update that line to the new shape in the same
+  commit; a stale signature in a plan is documentation drift.
+
+Outside:
+
+- Any change to `NewSpool`, `Spool.Spool`, `Spool.Load`,
+  `ReadOutputTool`, `SpoolExpiring`, `Expire`, or `GrantExpiry`. Those
+  signatures stay as locked.
+- Any change to `ContentStore`. `NewSpool` still takes a
+  `ContentStore`; only `SpoolTool` stops taking one directly.
+- A default or package-level `*Spool`. The caller always supplies its
+  own, matching `ReadOutputTool`'s existing convention.
+
+### Decision: SpoolTool gains an error return
+
+`SpoolTool` must reject a nil `sp`. A silently accepted nil `*Spool`
+would not panic at construction; it would panic later, inside `Run`,
+the first time an oversized result reaches `t.sp.Spool` with `t.sp`
+nil. That failure lands during a live model turn, far from the
+construction call that caused it.
+
+The prior correctness-fix section in this file chose a different
+answer for a negative `maxBytes`: clamp to zero instead of adding an
+error return, because zero is a sane default for a missing byte
+budget. A nil `*Spool` has no sane default. `SpoolTool` cannot spool
+without a store to spool into, so there is no clamp that preserves
+correct behavior the way clamping `maxBytes` does.
+
+The "keep every caller unchanged" reason that favored the clamp for
+`maxBytes` does not apply here. Swapping `store ContentStore` for `sp
+*Spool` already breaks every call site's signature. Adding a second
+return value costs each call site one more token, a check of the
+error or an assignment to `_`. It does not add a second, independent
+breaking change beyond the one already required.
+
+`SpoolTool` therefore matches `ReadOutputTool`'s own convention:
+`(tools.Tool, error)`, wrapping `ErrNilSpool` for a nil `sp`. This
+keeps the failure at construction, in the caller's own error-handling
+path, instead of at a later `Run` call the caller may not control.
+
+### Change API
+
+`api/spool.txt` changes in the same commit as the code, through
+`make api-update`:
+
+```go
+// SpoolTool wraps inner so any string result longer than maxBytes
+// spools to sp under the ctx principal (see WithPrincipal) instead
+// of returning in full. The wrapped tool's Out.Value becomes the
+// truncated view string; the reference is appended to the view text.
+// A result that is not a string, or one at or under maxBytes, passes
+// through unchanged. A call with no principal in ctx returns
+// ErrNoPrincipal. A nil sp wraps ErrNilSpool. A negative maxBytes
+// clamps to zero.
+// The returned tools.Tool implements tools.ProfiledTool,
+// tools.ResultBudgetTool, tools.PrivilegedTool, and tools.SchemaTool
+// only when inner itself does, forwarding each call straight to
+// inner.
+// Two or more SpoolTool calls sharing one sp share its grant budget
+// and its Load-time principal checks. A caller pairs a SpoolTool
+// call with a ReadOutputTool call by passing the same sp to both.
+func SpoolTool(name string, maxBytes int, sp *Spool, inner tools.Tool) (tools.Tool, error)
+```
+
+`toolGrantBudget` is removed from `spool/tool.go`. It was already
+unexported and never appeared in `api/spool.txt`, so its removal
+needs no lock update beyond the `SpoolTool` line above.
+
+### Change tests
+
+In `spool/spool_test/`:
+
+- Update every existing `SpoolTool` call site
+  (`spool_tool_test.go`, `tool_parity_test.go`) to the new signature:
+  build one `*Spool` with `NewSpool`, pass it to `SpoolTool`, and
+  check the new error return. Each site's existing assertions stay,
+  proving the behavior did not change under the new signature.
+  `NewSpool`'s `maxGrantBytes` at each migrated site must stay an
+  independent, generous value, decoupled from that site's `maxBytes`
+  view-truncation threshold, sized to the largest content the site
+  spools. This mirrors the role the removed `toolGrantBudget`
+  constant played. A site must never pass its `maxBytes` value as
+  `maxGrantBytes`: several existing tests spool content far larger
+  than their tiny `maxBytes` values (for example,
+  `spool_tool_test.go:51-52` spools 1000 bytes with `maxBytes` of 10;
+  `tool_parity_test.go` uses `maxBytes` of 8), and reusing `maxBytes`
+  as the grant budget would fail those spools with `ErrGrantTooLarge`
+  instead of producing a view.
+- `SpoolTool` with a nil `sp` fails with `ErrNilSpool`, and returns a
+  nil `tools.Tool`.
+- New: two `SpoolTool`-wrapped tools share one `*Spool`. Wrap two
+  different inner tools, each returning an oversized string, against
+  the same `sp`. Spool both past the point where their combined size
+  would overflow a budget smaller than their sum. Assert the older
+  grant evicts, the same way one `*Spool`'s own eviction test already
+  proves for direct `Spool.Spool` calls. This shows the two wrapped
+  tools observe one shared budget, not two independent ones.
+- New: a full round trip. Build one `sp` with `NewSpool`. Wrap a tool
+  with `SpoolTool` against `sp`; run it with an oversized result and
+  capture the returned view's ref. Build a `ReadOutputTool` against
+  the same `sp`; call it with that ref and assert the pages it
+  returns reconstruct the original oversized string. This is the
+  pairing the bug made impossible to test; it must now pass.
+
+In `e2e/e2e_test/spool_test.go`:
+
+- Update the existing call site to the new signature, with the same
+  independent, generous `maxGrantBytes` rule as above: the ~4500-byte
+  content it spools against a `maxBytes` of 64 needs a
+  `maxGrantBytes` sized to the content, not to 64.
+
+### Change verification
+
+- `make verify` passes; `spool` holds the 85 coverage floor.
+- `go test -race ./spool/...` passes, including the new shared-budget
+  and round-trip cases.
+- `api/spool.txt` changes: `SpoolTool`'s line changes signature and
+  return type as shown above; no other line changes. Land the diff
+  through `make api-update` in the same commit as the code.
+- `policy/layers.json`: no change. The `spool` row stays `["tools"]`;
+  this change alters a signature inside `spool`, not its imports.
+- `python3 scripts/check_plan.py`, `check_deps.py`, `check_prose.py`,
+  and `check_labels.py` pass.
+- `docs/packages/spool.md`'s usage example and function-list entry
+  for `SpoolTool` update in the same commit; see "Change docs" below.
+- `docs/plans/subagent.md`'s stale four-argument `SpoolTool` mention
+  updates in the same commit.
+
+### Change docs
+
+`docs/packages/spool.md`'s function list entry for `SpoolTool`
+changes from:
+
+```
+- `SpoolTool(name, maxBytes, store, inner)` — wraps `inner` so a
+  string result over `maxBytes` spools to `store` under the `ctx`
+  principal instead of returning in full.
+```
+
+to:
+
+```
+- `SpoolTool(name, maxBytes, sp, inner)` — wraps `inner` so a string
+  result over `maxBytes` spools through `sp` under the `ctx`
+  principal instead of returning in full. A nil `sp` wraps
+  `ErrNilSpool`. Two SpoolTool calls sharing one `sp` share its grant
+  budget.
+```
+
+The "Usage" example's `SpoolTool` line and the paragraph around it
+change from the single unpaired call to the full pairing:
+
+```go
+store, _ := memory.New(1 << 20)
+sp, err := spool.NewSpool(store, 1<<20)
+if err != nil {
+    // maxGrantBytes was zero or negative
+}
+
+wrapped, err := spool.SpoolTool("big-tool", 4096, sp, myTool)
+if err != nil {
+    // sp was nil
+}
+
+readBack, err := spool.ReadOutputTool(sp, 2048)
+if err != nil {
+    // sp was nil, or maxPageBytes was non-positive
+}
+
+registry := tools.New()
+registry.Add(wrapped)
+registry.Add(readBack)
+
+ctx := spool.WithPrincipal(context.Background(), "agent-a")
+out, err := wrapped.Run(ctx, in)
+// out.Value truncates and appends a ref when myTool's result exceeds
+// 4096 bytes. A model reads that ref from the text and calls
+// read_spooled_output with it to page the full body back.
+
+argsJSON := []byte(`{"ref":"the-ref-from-out.Value"}`)
+args, _ := readBack.(tools.SchemaTool).DecodeArguments(argsJSON)
+page, err := readBack.Run(ctx, args)
+// page returns one bounded page of the body wrapped spooled
+```
+
+The example drops the standalone `sp.Spool`/`sp.Load` walkthrough
+lines that duplicated `Spool`'s own doc comment. The paired
+`SpoolTool`/`ReadOutputTool` walkthrough now covers the same `sp`
+value end to end, matching what a tool-registry caller needs.

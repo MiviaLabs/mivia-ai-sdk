@@ -2,15 +2,10 @@ package spool
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
-
-// toolGrantBudget bounds the internal Spool a SpoolTool wrapper
-// builds to hold its own oversized results. It is a fixed, generous
-// budget; a caller who needs a tighter or shared budget spools
-// through a Spool value of its own instead of SpoolTool.
-const toolGrantBudget = 64 * 1024 * 1024
 
 // spoolTool wraps inner, spooling an oversized string result to store
 // under the ctx principal. It never declares tools.ProfiledTool,
@@ -217,12 +212,13 @@ type spoolToolAll struct {
 // inner: SpoolTool changes only Run's result handling, not inner's
 // declared execution class, result budget, privilege, or schema, and
 // it never fakes a capability inner does not publish.
-// A negative maxBytes clamps to zero.
-func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) tools.Tool {
-	sp := &Spool{
-		store:         store,
-		maxGrantBytes: toolGrantBudget,
-		grants:        make(map[string]grant),
+// A nil sp wraps ErrNilSpool. A negative maxBytes clamps to zero.
+// Two or more SpoolTool calls sharing one sp share its grant budget
+// and its Load-time principal checks. A caller pairs a SpoolTool call
+// with a ReadOutputTool call by passing the same sp to both.
+func SpoolTool(name string, maxBytes int, sp *Spool, inner tools.Tool) (tools.Tool, error) {
+	if sp == nil {
+		return nil, fmt.Errorf("%w", ErrNilSpool)
 	}
 	if maxBytes < 0 {
 		maxBytes = 0
@@ -234,7 +230,7 @@ func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) 
 	_, privileged := inner.(tools.PrivilegedTool)
 	_, schemaed := inner.(tools.SchemaTool)
 
-	return buildSpoolTool(base, inner, profiled, budgeted, privileged, schemaed)
+	return buildSpoolTool(base, inner, profiled, budgeted, privileged, schemaed), nil
 }
 
 // buildSpoolTool composes the spoolTool variant matching exactly the

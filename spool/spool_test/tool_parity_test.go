@@ -184,7 +184,14 @@ func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
 		if !ok {
 			t.Fatalf("subset %04b: innerFor built a tool without SchemaTool, want the schema bit set", mask)
 		}
-		wrapped := spool.SpoolTool("wrapped", 8, newFakeStore(), inner)
+		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		if err != nil {
+			t.Fatalf("NewSpool: %v", err)
+		}
+		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		if err != nil {
+			t.Fatalf("SpoolTool: %v", err)
+		}
 		wrappedSchema, ok := wrapped.(tools.SchemaTool)
 		if !ok {
 			t.Fatalf("subset %04b: wrapper does not implement SchemaTool, want it to", mask)
@@ -211,7 +218,14 @@ func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
 func TestSpoolToolInterfaceParity(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
 		inner := innerFor(mask)
-		wrapped := spool.SpoolTool("wrapped", 8, newFakeStore(), inner)
+		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		if err != nil {
+			t.Fatalf("NewSpool: %v", err)
+		}
+		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		if err != nil {
+			t.Fatalf("SpoolTool: %v", err)
+		}
 		for _, p := range probes {
 			want := p.satisfy(inner)
 			if got := p.satisfy(wrapped); got != want {
@@ -225,7 +239,14 @@ func TestSpoolToolInterfaceParity(t *testing.T) {
 // still runs through the wrapper, so the parity fixtures stay honest.
 func TestSpoolToolParityRunThroughCaps(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
-		wrapped := spool.SpoolTool("wrapped", 8, newFakeStore(), innerFor(mask))
+		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		if err != nil {
+			t.Fatalf("NewSpool: %v", err)
+		}
+		wrapped, err := spool.SpoolTool("wrapped", 8, sp, innerFor(mask))
+		if err != nil {
+			t.Fatalf("SpoolTool: %v", err)
+		}
 		out, err := wrapped.Run(context.Background(), tools.InOut{})
 		if err != nil {
 			t.Fatalf("subset %04b: Run: %v", mask, err)

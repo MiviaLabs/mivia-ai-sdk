@@ -3,6 +3,7 @@ package schema_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,5 +303,101 @@ func TestCompileShallowRefChainAdmits(t *testing.T) {
 	}`
 	if _, err := schema.Compile([]byte(doc)); err != nil {
 		t.Fatalf("Compile with a shallow ref chain: %v", err)
+	}
+}
+
+// nestedDefaultSchema builds a schema whose "default" value nests
+// levels containers, each an object when object is true and a JSON
+// array otherwise. The document's own object adds one more level, so
+// the scanned depth is levels+1. Each fixture therefore drives one
+// branch of the depth scan on its own.
+func nestedDefaultSchema(levels int, object bool) []byte {
+	inner := `1`
+	for i := 0; i < levels; i++ {
+		if object {
+			inner = `{"a":` + inner + `}`
+		} else {
+			inner = `[` + inner + `]`
+		}
+	}
+	return []byte(`{"type":"object","default":` + inner + `}`)
+}
+
+// TestCompileContainerDepthBoundary pins both branches of the depth
+// scan at both sides of MaxSchemaDepth. A depth count that is off by
+// one in either direction fails one of the four cases.
+func TestCompileContainerDepthBoundary(t *testing.T) {
+	cases := []struct {
+		name       string
+		levels     int
+		object     bool
+		wantReject bool
+		wantDepth  bool
+	}{
+		{
+			name:   "nested objects at MaxSchemaDepth admit",
+			levels: schema.MaxSchemaDepth - 1,
+			object: true,
+		},
+		{
+			name:       "nested objects one level over MaxSchemaDepth reject",
+			levels:     schema.MaxSchemaDepth,
+			object:     true,
+			wantReject: true,
+			wantDepth:  true,
+		},
+		{
+			name:   "nested arrays at MaxSchemaDepth admit",
+			levels: schema.MaxSchemaDepth - 1,
+		},
+		{
+			name:       "nested arrays one level over MaxSchemaDepth reject",
+			levels:     schema.MaxSchemaDepth,
+			wantReject: true,
+			wantDepth:  true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := schema.Compile(nestedDefaultSchema(tc.levels, tc.object))
+			if !tc.wantReject {
+				if err != nil {
+					t.Fatalf("Compile at MaxSchemaDepth: %v", err)
+				}
+				if c == nil {
+					t.Fatal("Compile returned a nil *Compiled on success")
+				}
+				return
+			}
+			if !errors.Is(err, schema.ErrAdmission) {
+				t.Fatalf("Compile over MaxSchemaDepth: got %v, want ErrAdmission", err)
+			}
+			wantText := fmt.Sprintf("nests %d levels deep", tc.levels+1)
+			if tc.wantDepth && !strings.Contains(err.Error(), wantText) {
+				t.Fatalf("Compile over MaxSchemaDepth: got %v, want the message to report %q",
+					err, wantText)
+			}
+		})
+	}
+}
+
+// TestCompileEmptyRefAdmits pins the admission scan's handling of an
+// empty $ref value. An empty $ref names no target outside the
+// document, so the scan passes it through to the compiler, and the
+// scan must not index the empty string.
+func TestCompileEmptyRefAdmits(t *testing.T) {
+	c, err := schema.Compile([]byte(`{"type":"string","$defs":{"x":{"$ref":""}}}`))
+	if err != nil {
+		t.Fatalf("Compile with an empty $ref: %v", err)
+	}
+	if c == nil {
+		t.Fatal("Compile returned a nil *Compiled on success")
+	}
+	if err := c.Validate([]byte(`"ok"`)); err != nil {
+		t.Fatalf("Validate a matching payload: %v", err)
+	}
+	if err := c.Validate([]byte(`123`)); !errors.Is(err, schema.ErrValidation) {
+		t.Fatalf("Validate a mismatching payload: got %v, want ErrValidation", err)
 	}
 }

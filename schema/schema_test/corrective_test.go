@@ -155,3 +155,96 @@ func TestCorrectiveFalseSchemaNamesGenericSchemaKeyword(t *testing.T) {
 		t.Fatalf("Corrective(err) = %q, want it to fall back to the generic schema keyword", corrective)
 	}
 }
+
+// missingRequiredPrefix is the fixed text describeFailure puts before
+// a missing property name, and missingRequiredSuffix the text after
+// it, for a required failure at the document root.
+const (
+	missingRequiredPrefix = "missing required "
+	missingRequiredSuffix = " at /"
+)
+
+// missingRequiredMessage renders the untruncated corrective message a
+// root-level "required" failure on property name produces.
+func missingRequiredMessage(name string) string {
+	return missingRequiredPrefix + name + missingRequiredSuffix
+}
+
+// correctiveForMissing compiles a schema requiring name, validates an
+// empty object against it, and returns the corrective message.
+func correctiveForMissing(t *testing.T, name string) string {
+	t.Helper()
+	c := compileFixture(t, `{"type": "object", "required": ["`+name+`"]}`)
+	err := c.Validate([]byte(`{}`))
+	if !errors.Is(err, schema.ErrValidation) {
+		t.Fatalf("Validate against a required property: got %v, want ErrValidation", err)
+	}
+	return schema.Corrective(err)
+}
+
+// TestCorrectiveTruncationBoundaries pins the exact bytes Corrective
+// keeps at the MaxCorrectiveBytes boundary. Each case fixes where the
+// cap falls inside the rendered message: on the last byte of the whole
+// message, on an ASCII byte, and inside a three-byte rune. The wanted
+// value is computed from the fixture, not from Corrective, so a
+// truncation that keeps too few or too many bytes fails.
+func TestCorrectiveTruncationBoundaries(t *testing.T) {
+	// asciiFill pads a property name past the cap. The cap then falls
+	// inside the padding, not at the end of the message.
+	const asciiFill = 100
+	capBytes := schema.MaxCorrectiveBytes
+	overhead := len(missingRequiredPrefix) + len(missingRequiredSuffix)
+
+	cases := []struct {
+		name     string
+		property string
+		wantLen  int
+	}{
+		{
+			// The message is exactly MaxCorrectiveBytes, so truncation
+			// keeps every byte.
+			name:     "message at the cap stays whole",
+			property: strings.Repeat("a", capBytes-overhead),
+			wantLen:  capBytes,
+		},
+		{
+			// The cap falls on an ASCII byte, so truncation keeps the
+			// full capBytes prefix and trims nothing further.
+			name:     "cut on an ASCII byte keeps the full cap",
+			property: strings.Repeat("a", capBytes-overhead+asciiFill),
+			wantLen:  capBytes,
+		},
+		{
+			// The cap falls after the first two bytes of a three-byte
+			// rune, so truncation drops both partial bytes.
+			name: "cut inside a three-byte rune drops every partial byte",
+			property: strings.Repeat("a", capBytes-len(missingRequiredPrefix)-2) +
+				"€" + strings.Repeat("a", asciiFill),
+			wantLen: capBytes - 2,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			full := missingRequiredMessage(tc.property)
+			want := full[:tc.wantLen]
+			got := correctiveForMissing(t, tc.property)
+			if got != want {
+				t.Fatalf("Corrective(err) is %d bytes, want %d bytes; got %q, want %q",
+					len(got), len(want), tail(got), tail(want))
+			}
+			if !utf8.ValidString(got) {
+				t.Fatalf("Corrective(err) split a UTF-8 rune: %q", tail(got))
+			}
+		})
+	}
+}
+
+// tail returns the last 16 bytes of s, for readable failure output.
+func tail(s string) string {
+	const window = 16
+	if len(s) <= window {
+		return s
+	}
+	return s[len(s)-window:]
+}

@@ -1,6 +1,6 @@
 # Phase 75: mutation kit hardening
 
-Status: gap 1 shipped; gaps 2 and 3 open. This phase closes the three gaps that
+Status: gap 1 shipped; gap 2 shipped; gap 3 open. This phase closes the three gaps that
 `docs/plans/agents/phase74_mutation_coverage_rollout.md` recorded and
 deferred. Phase 74 shipped as commit `24a1938`. Its "Tool gap" and
 "Verify wiring" sections are the source for all three gaps below.
@@ -29,7 +29,8 @@ Inside:
 Outside:
 
 - Closing any survivor the wider operator set reveals. A survivor is
-  follow-up work with its own plan.
+  follow-up work with its own plan. One exception applies: the user
+  directed the `schema` survivor work that "Gap 2 result" records.
 - New floors for packages that hold no denylist file today. Phase 74
   lists them as future work; that list does not change here.
 - Any change to `make verify` or `make verify-fast`. The `--probe` step
@@ -378,18 +379,128 @@ result table, so every drop stays auditable.
 
 | Package | Old floor | Measured rate | Margin | New floor | Delta |
 | --- | --- | --- | --- | --- | --- |
-| workspace | 96 | | -1 | | |
-| subagent | 94 | | -1 | | |
-| agentloop | 98 | | -1 | | |
-| dispatch | 95 | | -1 | | |
-| a2aclient | 96 | | -1 | | |
-| schema | 83 | | -1 | | |
-| ledger | 91 | | -1 | | |
-| contextstate | 100 | | -1 | | |
-| envelope | 95 | | 0 | | |
-| machine | 100 | | 0 | | |
+| workspace | 96 | 96.92 | -1 | 95 | -1 |
+| subagent | 94 | 95.31 | -1 | 94 | 0 |
+| agentloop | 98 | 91.20 | -1 | 90 | -8 |
+| dispatch | 95 | 95.35 | -1 | 94 | -1 |
+| a2aclient | 96 | 96.67 | -1 | 95 | -1 |
+| schema | 83 | 86.21 | -1 | 85 | +2 |
+| ledger | 91 | 91.43 | -1 | 90 | -1 |
+| contextstate | 100 | 99.37 | -1 | 98 | -2 |
+| envelope | 95 | 92.11 | 0 | 92 | -3 |
+| machine | 100 | 100.00 | 0 | 100 | 0 |
 | mcp | 100 | not swept | none | 100 | 0 |
 | secretpath | 100 | not swept | none | 100 | 0 |
+
+### Gap 2 result
+
+Part A shipped. `OPERATOR_MUTATIONS` holds the four new entries, and the
+`wanted` map holds the same four token texts. The measured site counts
+match the table above exactly: 828 sites across the twelve packages, of
+which 43 are `>`, 5 are `>=`, 39 are `+`, and 10 are `-`.
+
+Part B first stopped on the bounded-drop rule. `schema` measured 72.41
+against a stored floor of 83. The gap was 10.59 points, which is outside
+the 10-point bound, so the builder locked no floor for any package.
+
+All ten sweeps ran clean. `git status --short` showed no mutated source
+file after any sweep, and `pgrep` found no orphan test binary. Total
+wall time was about 29 minutes, with `ledger` at 24 of those minutes.
+No package neared its wall-clock bound.
+
+Part C closed the stop. The user reviewed the `schema` survivor list and
+directed one exception to the "do not fix a survivor inside this phase"
+rule: close the `schema` survivors with tests, then re-sweep `schema`
+and lock all ten floors together. The exception covers `schema` only.
+The other nine survivor lists stay open follow-up work.
+
+The builder added tests to `schema/schema_test` and changed no
+production code. Four of the eight survivors died. The other four are
+equivalent mutants; the survivor table below records the reasoning for
+each. The re-sweep measured 86.21, which is above the stored floor of
+83, so the bounded-drop rule no longer applies to any package.
+
+The ten floors then locked at the rates in the result table above. The
+nine rates other than `schema` are the part B measurements; no package
+was swept twice. `mcp.json` and `secretpath.json` stay byte-identical.
+
+### Gap 2 survivors
+
+`schema` held 8 survivors over 29 build-clean mutants, with 6
+discarded. Four of the eight are new-operator sites. Part C killed four
+and classified four as equivalent. The re-sweep confirms the same four
+survivors and no other.
+
+| File | Offset | Swap | Part C outcome |
+| --- | --- | --- | --- |
+| corrective.go | 3060 | `<=` to `<` | equivalent, see below |
+| corrective.go | 3119 | `>` to `>=` | equivalent, see below |
+| corrective.go | 3194 | `&&` to `\|\|` | killed |
+| corrective.go | 3232 | dropped `continue` | killed |
+| schema.go | 5271 | `>` to `>=` | equivalent, see below |
+| schema.go | 5401 | `>` to `>=` | equivalent, see below |
+| schema.go | 5443 | `+` to `-` | killed |
+| schema.go | 5974 | `>` to `>=` | killed |
+
+The four kills come from three tests.
+`TestCorrectiveTruncationBoundaries` fixes where `MaxCorrectiveBytes`
+falls inside a rendered message, and asserts the exact kept bytes.
+`TestCompileContainerDepthBoundary` drives both branches of the depth
+scan at each side of `MaxSchemaDepth`; its nested-array cases reach the
+array branch's own depth arithmetic, which the earlier fixtures never
+did. `TestCompileEmptyRefAdmits` pins an empty `$ref` value, which the
+mutated length guard indexes out of range.
+
+The four equivalent mutants split into two kinds.
+
+- `schema.go` at 5271 and 5401 are `if d > max { max = d }`. The mutant
+  runs the assignment when `d` equals `max`, which writes the value
+  already there. No input can distinguish the two forms.
+- `corrective.go` at 3060 and 3119 differ from the original only on an
+  input `truncateRunes` never receives. Site 3060 needs a message of
+  exactly `MaxCorrectiveBytes` bytes ending in invalid UTF-8. Site 3119
+  needs the trim loop to empty its buffer. Every corrective message is
+  valid UTF-8 and starts with an ASCII byte, so neither input exists.
+  `truncateRunes` is unexported, and the kit runs `schema_test` alone,
+  so no test can reach the helper directly.
+
+Part C found no defect in `schema`'s production code. Every mutant that
+died, died against the behaviour the current code already had.
+
+`agentloop` holds 11 survivors, the largest count after `schema`.
+
+| File | Offset | Swap |
+| --- | --- | --- |
+| compaction.go | 3300 | `>` to `>=` |
+| compaction.go | 5292 | `+` to `-` |
+| compaction.go | 5900 | `+` to `-` |
+| run.go | 3048 | `>` to `>=` |
+| run.go | 6455 | `>` to `>=` |
+| run.go | 6676 | `+` to `-` |
+| run.go | 6733 | `+` to `-` |
+| run.go | 6789 | `+` to `-` |
+| run.go | 6841 | `+` to `-` |
+| toolcall.go | 1031 | `<` to `<=` |
+| wire.go | 1389 | `>` to `>=` |
+
+`envelope` holds 6 survivors: `message.go` at 6623 (`<` to `<=`), 6643,
+7249, and 7280 (each `>` to `>=`), plus `sign.go` at 1223 and 1511
+(each `||` to `&&`).
+
+`ledger` holds 12 survivors: `claim.go` at 2349, 5027, and 7197 (each
+`!=` to `==`), `complete.go` at 6301 (`<` to `<=`), `ledger.go` at 4103
+(`!=` to `==`), 5909 (dropped `continue`), and 6984 (`||` to `&&`),
+`store.go` at 5137, 5155, 5413, and 5441 (each `||` to `&&`), and
+`store.go` at 6169 (dropped `continue`).
+
+The remaining swept packages hold few survivors. `workspace` holds 2:
+`confine.go` at 1695 (`==` to `!=`) and 1741 (`&&` to `||`).
+`subagent` holds 3: `astool.go` at 3049 (`&&` to `||`),
+`heartbeattool.go` at 1347 and `roomtool.go` at 2081 (each `!=` to
+`==`). `dispatch` holds 2: `options.go` at 5750 (`==` to `!=`) and
+`wire.go` at 660 (`!=` to `==`). `a2aclient` holds 1: `grpc.go` at 2345
+(`||` to `&&`). `contextstate` holds 1: `checkpoint.go` at 960 (`-` to
+`+`). `machine` holds none.
 
 ## Gap 3: no scheduled mutation-gate run
 
@@ -491,7 +602,9 @@ Data changes: ten `scripts/mutation_denylist/*.json` files get a new
 - Gap 3 is proven before the merge by a YAML syntax check and a local
   `make mutation-gate` pass. The first `workflow_dispatch` run happens
   after the merge to `main`, and the builder records it here.
-- No new Go test file. This phase changes tooling and JSON data only.
+- Gap 2 part C adds Go test cases to `schema/schema_test` under the
+  user-directed exception recorded in "Gap 2 result". No other package
+  gains a test, and no production Go file changes.
 
 ## Verification
 

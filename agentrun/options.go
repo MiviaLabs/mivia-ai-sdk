@@ -34,6 +34,10 @@ var (
 	// DecodeArguments rejects the step's payload bytes. Test with
 	// errors.Is.
 	ErrArgumentDecode = errors.New("agentrun: tool arguments failed to decode")
+	// ErrArtifactsInconsistent is Validate's error when an Artifacts
+	// value's current values and run history disagree. Test with
+	// errors.Is.
+	ErrArtifactsInconsistent = errors.New("agentrun: artifacts state is inconsistent")
 )
 
 // Options declares the blocks one New call wires into a Runner. The

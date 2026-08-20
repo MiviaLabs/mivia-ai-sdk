@@ -68,11 +68,11 @@ enforce this:
   argument. This signals intent to a reader; it does not stop a
   production file from compiling `new(testing.T)`, since that only
   misbehaves at runtime.
-- `scripts/check_deps.py` scans only direct, non-test `.go` files
-  inside each top-level package directory. It never scans a nested
+- `scripts/check_deps.py` reads each package's resolved non-test
+  imports at any depth. It never scans a nested
   `<pkg>_test` directory as a separate package, so no package's
-  `policy/layers.json` row lists `durablefence`. A production
-  top-level `.go` file that imports `durablefence` fails that scan. A
+  `policy/layers.json` row lists `durablefence`. A production `.go`
+  file that imports `durablefence` fails that gate. A
   production import placed inside a nested `_test` subdirectory has no
   automatic gate; catching it is human review's job.
 

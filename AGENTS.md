@@ -159,10 +159,13 @@ follow reliably. Each has a gate behind it.
 
 - Do not add or change an exported symbol without a deliberate lock
   update: `make api-update`, then commit the `api/` diff in the same
-  change. Gate: `scripts/check_api.py`.
+  change. The lock path mirrors the package path: a package at
+  `foo/bar/` locks at `api/foo/bar.txt`. Gate: `scripts/check_api.py`.
 - Do not import another package of this module unless
   `policy/layers.json` allows the edge. A new package must declare its
-  allowed imports there first. Gate: `scripts/check_deps.py`.
+  allowed imports there first. A key and a value use the package path
+  relative to the module root, at any depth. Gate:
+  `scripts/check_deps.py`.
 - Do not copy an exported type into another package to reuse it. Import
   the source package; the import policy already allows the edge. A
   copied type forks on the next change. Gate: review catches the copy.
@@ -171,9 +174,11 @@ follow reliably. Each has a gate behind it.
   import cannot compile. Gate: `scripts/check_deps.py`.
 - Do not land a package without `docs/plans/<pkg>.md` following
   `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
-  Gate: `scripts/check_plan.py`.
+  The plan path mirrors the package path: a package at `foo/bar/`
+  plans at `docs/plans/foo/bar.md`. Gate: `scripts/check_plan.py`.
 - Do not leave a package with zero internal callers undeclared. List
-  it in `policy/pending_wiring.json` with a reason and a target. Gate:
+  it in `policy/pending_wiring.json` with a reason and a target. A
+  caller at any depth counts as a real caller. Gate:
   `scripts/check_orphan_packages.py`.
 - Do not let coverage fall below 85%. The total and every package each
   need the floor. Gate: `make verify` coverage block. Assertion-free
@@ -201,7 +206,14 @@ the staged snapshot.
 Semgrep probe suite. The probes prove every Semgrep rule fires on a
 violation and stays silent on clean code. The coverage block asserts
 the profile lists every package and that the total and each package
-reach 85.
+reach 85. `verify` also runs the gates' own probe suites:
+`check_deps.py --probe`, `check_plan.py --probe`, `check_api.py
+--probe`, `check_orphan_packages.py --probe`, `check_mutation.py
+--probe`, and `check_test_tampering.py --probe`.
+
+`scripts/go_packages.py` is the one package enumerator behind the
+deps, plan, orphan, and API gates. It wraps `go list -json`, so a
+package at any depth is visible.
 
 The hook guard and the pre-commit hook are best-effort against
 careless agents. They are not a security boundary. GitHub Actions CI

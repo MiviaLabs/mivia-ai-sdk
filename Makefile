@@ -55,6 +55,9 @@ verify: verify-fast verify-ledger-sqlite
 	python3 scripts/check_semgrep_probes.py
 	python3 scripts/check_mutation.py --probe
 	python3 scripts/check_orphan_packages.py --probe
+	python3 scripts/check_deps.py --probe
+	python3 scripts/check_plan.py --probe
+	python3 scripts/check_api.py --probe
 	python3 scripts/check_test_tampering.py --probe
 
 bench:
@@ -96,9 +99,29 @@ verify-ledger-sqlite:
 	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./e2e/...; \
 	go tool cover -func=cover_ledger_sqlite.out | awk -v floor="$(COVERAGE_FLOOR)" '/^total:/{pct=$$3; sub(/%/,"",pct); if (pct+0<floor) {printf "ledger (tag ledger_sqlite) coverage %.1f%% below the %d%% floor\n", pct, floor; exit 1}}'
 
+# api-update rewrites every lock under api/ from the tool output. The
+# lock path mirrors the package path, so a nested package writes a
+# nested lock. A shell loop replaces the former awk one-liner: awk
+# cannot create the parent directory and aborts the whole stream on the
+# first nested package. The loop truncates a lock on its `package `
+# header and appends every following line, so a flat lock stays
+# byte-identical. A stale lock stays on disk; check_api.py reports it.
 api-update:
-	@mkdir -p api
-	go run scripts/api_surface.go | awk '/^package /{name=$$2} name{print > ("api/" name ".txt")}'
+	@set -e; \
+	tmp="$$(mktemp)"; trap 'rm -f "$$tmp"' EXIT; \
+	go run scripts/api_surface.go > "$$tmp"; \
+	mkdir -p api; \
+	out=""; \
+	while IFS= read -r line; do \
+		case "$$line" in \
+		"package "*) \
+			out="api/$${line#package }.txt"; \
+			mkdir -p "$$(dirname "$$out")"; \
+			: > "$$out"; \
+			;; \
+		esac; \
+		if [ -n "$$out" ]; then printf '%s\n' "$$line" >> "$$out"; fi; \
+	done < "$$tmp"
 
 install-hooks:
 	git config core.hooksPath .githooks

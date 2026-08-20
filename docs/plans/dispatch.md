@@ -556,22 +556,11 @@ that latency is future work once real handler-latency data exists.
 
 #### Bounded memory
 
-`ledger.MemStore`, when built with `MemStoreOptions.MaxEntries`
-positive, tombstones the oldest terminal record's `Task` and `Needs`
-fields once the live count exceeds the cap
-(`ledger/store.go:44-77`), but idempotency still holds across
-eviction: `Admit` still rejects re-admission of a tombstoned key
-(`ledger/store.go`, `MemStoreOptions.MaxEntries` doc comment). A
-record only tombstones once it reaches a terminal status
-(`StatusCompleted`, `StatusFailed`, or `StatusBlocked`); wrapping
-`NewAck` inside `work`, so every successful line completes the
-ledger record, is what makes eviction reachable at all for the
-default, caller-supplied-nothing path. The resolved `ReplayCapacity`
-(`DefaultReplayCapacity`, 100000, when `Options.ReplayCapacity` is
-zero) bounds the endpoint's own default `MemStore` build. A
-caller-supplied `*ledger.Ledger` is not bounded by this constant; the
-caller owns its `Store`'s capacity, including an unbounded one if it
-chooses.
+The paragraph that stood here was disproved. It claimed that
+`ledger.MemStore` tombstones a terminal record under
+`MemStoreOptions.MaxEntries`, and that idempotency holds across
+eviction. The tombstone freed no map entry, so the cap bounded nothing.
+"Bounded replay window" below carries the corrected contract.
 
 #### policy/layers.json
 
@@ -670,3 +659,138 @@ the case set grows:
   regardless of capacity size, so the two configurations are
   black-box indistinguishable at reasonable test cost. `make
   mutation-gate` includes `dispatch` at this floor.
+
+### Bounded replay window
+
+Status: planned. This section corrects a confirmed false claim about
+`ReplayCapacity` and records the new replay semantics.
+
+#### The defect this depends on
+
+`ledger.MemStore` never deleted an evicted record, so
+`Options.ReplayCapacity` bounded no memory. `dispatch.Endpoint` is an
+HTTP surface and `dispatch/ladder.go:20-22` mints one replay key per
+`(ThreadID, ID)` pair, so a remote caller grew the map without a
+bound. An aborted request left a `StatusClaimed` record that no
+eviction path could ever reach. The fix lives in `ledger`. See
+`docs/plans/ledger.md`, "Bounded MemStore with lease reclamation".
+
+#### No production change in dispatch
+
+`New` already builds `ledger.NewMemStoreWithOptions` with
+`MaxEntries` set from the resolved capacity. `MemStoreOptions.Now`
+defaults to `time.Now`, which is the right clock for an endpoint. So
+`dispatch` needs doc corrections and tests only.
+
+#### The corrected contract
+
+Replay protection is now a bounded window, not a permanent guarantee.
+
+- A key evicted under `ReplayCapacity` is processed again if it
+  arrives later. The endpoint answers a fresh ack, not `ErrReplay`.
+- `ReplayCapacity` bounds the records that hold no live claim. It does
+  not bound the records that do. A record claimed by an in-flight
+  `Handle` call is never evicted.
+- An aborted or panicking request leaves a claimed record. That record
+  becomes evictable one `ReplayLease` after its claim, and eviction
+  deletes it on a later write. It no longer pins memory forever.
+- A pending record can be evicted between `Admit` and `Claim` under
+  cap pressure. `taskrun.Run` then returns `ledger.ErrNoKey`, which
+  `isReplay` does not match, so the line answers an error, not a
+  replay.
+- An expired claim can be evicted while its own handler still runs.
+  `taskrun.Run`'s `Complete` then returns `ledger.ErrNoKey` after the
+  work already succeeded. `isReplay` does not match `ledger.ErrNoKey`
+  (`dispatch/ladder.go:36-42`), so `processLine` falls to
+  `encodeErrorLine`, discards a correctly computed ack, and returns a
+  raw internal ledger error string to a remote client. Treat that line
+  shape as a known limit of a cap sized below handler latency. Sizing
+  `ReplayLease` above handler p99 latency, which this plan already
+  requires, keeps the window shut.
+
+Memory has two terms, and one mitigation does not cover both.
+
+The live-handler term is bounded by in-flight request count. A
+concurrency cap at the reverse proxy bounds it.
+
+The aborted term is not. An aborted request is no longer in flight, yet
+it holds its record for a full `ReplayLease`, 30 seconds by default
+(`dispatch/options.go:68`). Its size is roughly the abort rate times
+`ReplayLease`, which is orders of magnitude above the concurrency cap
+when round-trip time is short. Bounding it needs a request-RATE limit,
+not a concurrency limit. State both mitigations, and do not offer the
+concurrency cap alone.
+
+#### Doc sites corrected
+
+- `dispatch/options.go:51`, the `ReplayCapacity` doc comment. State
+  the bounded window and the live-claim exemption.
+- `dispatch/options.go`, the `DefaultReplayCapacity` doc comment. Same
+  rule, same words.
+- `docs/packages/dispatch.md:73-78`, "Replay protection". Replace the
+  permanent-protection wording with the bounded window, and add the
+  aborted-request behavior.
+- `docs/examples/dispatch.md`, the paragraph on `ReplayCapacity`. Add
+  one sentence naming the bounded window.
+
+#### Tests
+
+New file `dispatch/dispatch_test/replay_window_test.go`. Each test
+builds its own `*ledger.Ledger` over a capped `ledger.MemStore` and
+passes it in `Options.Ledger`, so the test can read the store through
+`Ledger.Snapshot`. The endpoint's own default ledger is unexported and
+unreadable.
+
+- `TestReplayCapacityBoundsRecordCount` — build a ledger over a
+  `MemStore` with `MaxEntries: 2`. Post eight distinct signed messages
+  over one `httptest` server. Assert every reply is a confirmed ack,
+  then assert `Snapshot` holds at most two records. FAILS TODAY: the
+  snapshot holds eight.
+- `TestEvictedKeyIsProcessedAgain` — `MaxEntries: 1`. Post message `x`
+  and assert a confirmed ack. Post four other messages to evict `x`.
+  Post `x` again and assert a confirmed ack, and that the handler
+  counter reads two for `x`. This pins the bounded window as
+  deliberate. FAILS TODAY: the second post of `x` answers `ErrReplay`.
+- `TestAbortedRequestReleasesItsRecord` — `MaxEntries: 2` and a
+  mutex-guarded test clock passed as `MemStoreOptions.Now`. Use a
+  handler that blocks until the client cancels its request context.
+  Post one message with a context the test cancels, so the record
+  stays `StatusClaimed`. Advance the clock past `ReplayLease`. Post
+  three more messages. Assert `Snapshot` holds at most two records.
+  This is the end-to-end proof of the reported defect. FAILS TODAY:
+  the abandoned record is never reclaimed and the count grows.
+
+  Seed the test clock at `time.Now()` and only ever advance it. Two
+  clocks are in play and they must not disagree. `Endpoint` builds its
+  `taskrun.Options` internally and `dispatch.Options` exposes no `Now`
+  field (`dispatch/options.go:25-57`), so `Claim` stamps `LeaseUntil`
+  from the wall clock. `MemStoreOptions.Now` is the only clock the test
+  controls. A test clock seeded anywhere before `time.Now()` makes
+  every wall-clock `LeaseUntil` read as live forever, and nothing is
+  ever reclaimed. Do not seed it from `fixedNow` or from a zero
+  `time.Time`.
+
+Every test above runs under `go test -race ./dispatch/...`.
+
+#### Verification
+
+- No `dispatch` production code changes, so `make api-update` produces
+  no `api/dispatch.txt` diff.
+- `policy/layers.json` is unchanged. The row
+  `"dispatch": ["agent", "envelope", "events", "ledger", "room", "taskrun"]`
+  already allows every import the new tests need.
+- `make verify` passes; `dispatch` and the module total hold the 85
+  coverage floor.
+- `go test -race ./dispatch/...` passes.
+- `make mutation PKG=dispatch` holds the floor of 95. The floor entry
+  in `scripts/mutation_denylist/dispatch.json` stays at 95. Never lower
+  the floor. `resolveReplayCapacity`'s survivor stays a survivor: all
+  three tests above pass their own `Options.Ledger`, and
+  `ReplayCapacity` is ignored when `Ledger` is set
+  (`dispatch/options.go:53-56`). So `resolveReplayCapacity` runs only
+  on the nil-`Ledger` path, whose store stays unexported and
+  unreadable.
+- `python3 scripts/check_prose.py`, `check_labels.py`,
+  `check_plan.py`, and `check_deps.py` pass.
+- This work lands as its own commit, after the `ledger` commit and the
+  `taskrun` doc commit.

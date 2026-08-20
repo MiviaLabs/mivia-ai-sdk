@@ -83,6 +83,29 @@ nil, sized by `Options.ReplayCapacity` (`DefaultReplayCapacity`,
 `Ledger` is not bounded by `ReplayCapacity`; the caller owns its
 `Store`'s capacity.
 
+Replay protection is a bounded window, not a permanent guarantee. A
+key evicted under `ReplayCapacity` is processed again if it arrives
+later, and the endpoint answers a fresh ack. `ReplayCapacity` bounds
+the records that hold no live claim; a record claimed by an in-flight
+`Handle` call is never evicted. Pinned by
+`dispatch_test/replay_window_test.go`.
+
+An aborted or panicking request leaves a claimed record behind. That
+record becomes evictable one `ReplayLease` after its claim, and a
+later write deletes it, so it no longer pins memory forever. The
+live-handler term is bounded by a concurrency cap at the reverse
+proxy. The aborted term is not: its size is the abort rate times
+`ReplayLease`, so bounding it needs a request-rate limit.
+
+Two line shapes follow from the cap. A pending record evicted between
+`Admit` and `Claim` makes `taskrun.Run` return `ledger.ErrNoKey`,
+which `isReplay` does not match, so the line answers an error, not a
+replay. An expired claim evicted while its own handler still runs
+makes `Complete` return `ledger.ErrNoKey` after the work succeeded,
+so the line discards a correct ack and returns a raw ledger error
+string. Both are known limits of a lease sized below handler latency.
+Sizing `ReplayLease` above handler p99 latency keeps the window shut.
+
 `Options.ReplayLease` bounds one line's claim (`DefaultReplayLease`,
 30 seconds, when zero). Size it above `Handler.Handle`'s expected p99
 latency, not as a crash-detection timeout: `taskrun.Run` claims once

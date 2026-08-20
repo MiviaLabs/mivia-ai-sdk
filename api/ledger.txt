@@ -45,6 +45,7 @@ package ledger
 }
   type MemStoreOptions struct {
   MaxEntries int
+  Now func() time.Time
 }
   type OwnerID string
   type SQLiteStore struct {

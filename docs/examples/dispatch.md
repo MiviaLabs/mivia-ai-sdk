@@ -112,7 +112,9 @@ ack.
 `Options.Ledger` defaults to a bounded in-memory ledger when left
 nil, so `endpoint` above already rejects a replayed message. Tune the
 default ledger's memory footprint without opting out of the
-convenience by setting `ReplayCapacity`:
+convenience by setting `ReplayCapacity`. The cap makes replay
+protection a bounded window: a key evicted under the cap is processed
+again if it arrives later.
 
 ```go
 endpoint, err := dispatch.New(dispatch.Options{

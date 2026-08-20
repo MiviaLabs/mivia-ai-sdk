@@ -19,6 +19,33 @@ const fixedLease = time.Hour
 // so a test opts into asserting a specific Actor only where it cares.
 const testActor ledger.Actor = "test-actor"
 
+// cappedStore builds a MemStore capped at maxEntries with its clock
+// pinned to fixedNow, so a fixedLease claim reads as live. Every
+// capped-store test in this package builds through this helper: a
+// store left on time.Now reads every fixedNow lease as long expired,
+// which drops live-lease protection with no visible failure.
+func cappedStore(t *testing.T, maxEntries int) *ledger.MemStore {
+	t.Helper()
+	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{
+		MaxEntries: maxEntries,
+		Now:        func() time.Time { return fixedNow },
+	})
+	if err != nil {
+		t.Fatalf("NewMemStoreWithOptions(%d): %v", maxEntries, err)
+	}
+	return store
+}
+
+// mustSnapshot takes a Snapshot and fails the test on any error.
+func mustSnapshot(t *testing.T, l *ledger.Ledger, ctx context.Context) ledger.Snapshot {
+	t.Helper()
+	snap, err := l.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	return snap
+}
+
 // mustAdmit admits key at seq and fails the test on any error or a
 // rejected admission.
 func mustAdmit(t *testing.T, l *ledger.Ledger, ctx context.Context, key ledger.IdempotencyKey, seq ledger.Sequence, needs ...ledger.IdempotencyKey) {

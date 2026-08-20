@@ -1,7 +1,9 @@
 # Package reference: ledger
 
 The ledger package is the durable-task-admission block. A task
-submitted under an idempotency key admits exactly once. Ownership
+submitted under an idempotency key admits exactly once. A bounded
+`Store` makes that a window, not a guarantee: a deleted key admits
+again. Ownership
 moves between processes through a time-boxed lease with a monotonic
 fence. A failed task marks its dependents blocked. The exported
 surface below mirrors `api/ledger.txt`.
@@ -25,12 +27,16 @@ surface below mirrors `api/ledger.txt`.
 - `Store` — the pluggable record backend: `Load`, `CompareAndSwap`,
   `Range`.
 - `MemStore` — the shipped mutex-guarded `Store`.
-- `MemStoreOptions` — optional cap for `MemStore`. Field `MaxEntries`
-  int; zero means unbounded, positive bounds live entries, negative is
-  rejected. A tombstone clears `Needs`, so `Claim`'s ancestor walk
-  cannot read through a tombstoned record to its own ancestors. A
-  caller who needs the transitive check to hold across eviction leaves
-  `MaxEntries` at zero.
+- `MemStoreOptions` — optional cap and clock for `MemStore`. Field
+  `MaxEntries` int; zero means unbounded, positive deletes records
+  over the cap, negative is rejected. Field `Now func() time.Time`;
+  nil resolves to `time.Now`. Eviction reads `Now` to decide whether a
+  record's lease is live. A deleted key reports found false, so
+  idempotency holds for a window, not forever, and a deleted failed
+  need blocks nothing. `MaxEntries` bounds the records that hold no
+  live lease; the records that hold one grow with caller concurrency.
+  A caller who needs permanent idempotency, or the transitive check
+  across eviction, leaves `MaxEntries` at zero.
 - `SQLiteStore` — a `Store` backed by a local `modernc.org/sqlite`
   database file (or `":memory:"`). Behind the `ledger_sqlite` build
   tag; see "SQLiteStore" below.
@@ -51,7 +57,12 @@ surface below mirrors `api/ledger.txt`.
   `NewMemStore()`. A nil `bus` disables events.
 - `NewMemStore()` — builds an empty, unbounded `MemStore`.
 - `NewMemStoreWithOptions(opts)` — builds a `MemStore` honoring the
-  cap. Returns `ErrInvalidMaxEntries` for a negative `MaxEntries`.
+  cap and the clock. Returns `ErrInvalidMaxEntries` for a negative
+  `MaxEntries`. A nil `opts.Now` resolves to `time.Now`. Under a
+  positive `MaxEntries` the store deletes the oldest record with no
+  live lease once the entry count exceeds the cap. `Claim`, `Renew`,
+  `Release`, `Takeover`, and `Complete` therefore return `ErrNoKey`
+  for a key whose record was deleted.
 - `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
   task once per key. A need already failed or blocked lands the new
   record `StatusBlocked`, so a late dependent never claims. After the
@@ -151,14 +162,20 @@ surface below mirrors `api/ledger.txt`.
   higher sequence; it never rebases a terminal record.
 - A rebase carries `Fence` forward unchanged, so the next `Claim`
   returns a token strictly above a dispossessed owner's token. Pinned
-  by `ledger_test/fence_monotonic_test.go`.
+  by `ledger_test/fence_monotonic_test.go`. Deletion keeps the same
+  guarantee through a store-wide fence floor: eviction raises the
+  floor to the deleted record's `Fence`, and a re-admitted record
+  starts at or above the floor. Pinned by
+  `ledger_test/eviction_semantics_test.go`.
 - `Claim` and `Takeover` read `LeaseUntil` against the caller-supplied
   `now` as the only staleness signal. `ledger` imports no liveness
   package.
 - Lease expiry alone never fences. `Renew`, `Release`, and `Complete`
   check only the fence token, so a stale owner nobody has taken over
   still holds a valid fence. Pinned by
-  `ledger_test/lease_semantics_test.go`.
+  `ledger_test/lease_semantics_test.go`. Under a bounded `Store` that
+  owner's record can be deleted instead, and the three calls then
+  return `ErrNoKey`.
 - `Admit` re-reads its needs after its own insert and blocks the
   record through `blockOne` when a need failed in between. Pinned by
   `ledger_test/admit_complete_race_test.go`.

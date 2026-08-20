@@ -52,6 +52,12 @@ var (
 // work. A Claim blocked by a live lease returns an error satisfying
 // errors.Is(err, ledger.ErrLeaseActive). A Complete failure joins the
 // returned error; the work result still leads.
+//
+// A bounded Store adds one more outcome: it can delete the record
+// between Admit and Claim, or after the lease expired while work
+// still runs, so Run returns an error satisfying errors.Is(err,
+// ledger.ErrNoKey). Do not merge that sentinel with taskrun.ErrNoKey,
+// which means an empty Task.Key and is a caller error.
 func Run(ctx context.Context, opts Options, t Task, work func(context.Context) error) error {
 	if opts.Ledger == nil {
 		return ErrNoLedger

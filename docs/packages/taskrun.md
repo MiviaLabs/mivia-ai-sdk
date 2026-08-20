@@ -51,6 +51,12 @@ The package declares eight sentinels. Each is an `errors.New` value.
 - `ErrTaskBlocked` ("taskrun: task blocked on a failed dependency") —
   `Run` returns it when the key is recorded `StatusBlocked` on a
   failed dependency. Pinned by `taskrun/taskrun_test/blocked_test.go`.
+- `ledger.ErrNoKey` ("ledger: key has no record") — `Run` returns it
+  when a bounded `Store` deleted the record. The deletion happens
+  between `Admit` and `Claim`, or after the lease expired while work
+  still runs. See `docs/packages/ledger.md`, `MemStoreOptions`. This
+  sentinel is not `taskrun.ErrNoKey`: that one means an empty
+  `Task.Key`, a caller error. Do not merge the two.
 
 ## Run order
 

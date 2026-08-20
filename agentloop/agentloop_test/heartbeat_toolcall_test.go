@@ -97,6 +97,42 @@ func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 	}
 }
 
+// TestRunOneToolCallHookErrorEventOrder proves a non-veto PointPreTool
+// hook error still produces EventToolCallStart immediately followed
+// by EventToolCallEnd, with no EventToolCallHeartbeat in between and
+// no heartbeat ticker started, matching the veto path's bracket.
+func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	hreg := hooks.New()
+	if err := hreg.Add(hooks.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+		return false, errBoom
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	bus := events.New()
+	rec := &eventRecorder{}
+	subscribeEvents(t, bus, rec.handle, agentloop.EventToolCallStart, agentloop.EventToolCallEnd, agentloop.EventToolCallHeartbeat)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); !errors.Is(err, errBoom) {
+		t.Fatalf("Run() error = %v, want errBoom", err)
+	}
+	got := rec.names()
+	want := []events.Name{agentloop.EventToolCallStart, agentloop.EventToolCallEnd}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("event sequence = %v, want %v", got, want)
+	}
+}
+
 // TestRunOneToolCallHeartbeatPositivePath proves a non-vetoed tool
 // call that blocks past two heartbeat intervals emits, in order,
 // EventToolCallStart, at least two EventToolCallHeartbeat, then
@@ -136,6 +172,37 @@ func TestRunOneToolCallHeartbeatPositivePath(t *testing.T) {
 
 	got := drainAllBuffered(ch)
 	assertToolCallHeartbeatSequence(t, got)
+	wantData := "iteration 1: tool call call-1 (slow)"
+	for _, e := range got {
+		if e.Data != wantData {
+			t.Fatalf("event %s Data = %q, want %q", e.Name, e.Data, wantData)
+		}
+	}
+}
+
+// TestRunHeartbeatGoroutineLeakAfterMultipleTicks proves the
+// completion-heartbeat and tool-call-heartbeat ticker goroutines do
+// not leak when stop() is called after the ticker has already fired
+// more than once, complementing
+// TestRunHeartbeatGoroutineLeakOnCtxCancel (stop before any tick) and
+// TestRunHeartbeatGoroutineLeakNoTick (stop before the first tick).
+func TestRunHeartbeatGoroutineLeakAfterMultipleTicks(t *testing.T) {
+	tool := &slowTool{name: "slow", delay: heartbeatTestBlock, result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	bus := events.New()
+	completer := &slowCompleter{delay: heartbeatTestBlock, resp: toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")})}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	before := countNumGoroutine(t)
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	assertNoGoroutineLeak(t, before)
 }
 
 // drainAllBuffered reads every event currently buffered on ch without

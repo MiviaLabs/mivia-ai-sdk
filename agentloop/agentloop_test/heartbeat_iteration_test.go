@@ -66,6 +66,26 @@ func TestRunIterationStartEndOrder(t *testing.T) {
 			t.Fatalf("event sequence = %v, want %v", got, want)
 		}
 	}
+
+	// Data content: iteration 1's bracket and tool-call bracket must
+	// name iteration 1 and call-1/echo; iteration 2's bracket must
+	// name iteration 2. A label that dropped the iteration number or
+	// the call ID/name would still pass the Name-only sequence check
+	// above, so this pins the content too.
+	evts := rec.events()
+	wantData := []string{
+		"iteration 1",
+		"iteration 1: tool call call-1 (echo)",
+		"iteration 1: tool call call-1 (echo)",
+		"iteration 1",
+		"iteration 2",
+		"iteration 2",
+	}
+	for i, w := range wantData {
+		if evts[i].Data != w {
+			t.Fatalf("event[%d] Data = %q, want %q", i, evts[i].Data, w)
+		}
+	}
 }
 
 // hardFailBuild constructs one hard-fail scenario's Loop, ctx, and
@@ -193,6 +213,29 @@ func buildHardFailToolCallError(t *testing.T, bus *events.Bus) (*agentloop.Loop,
 	return loop, context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}
 }
 
+// buildHardFailCallsPerTurnExceeded triggers ErrCallsPerTurnExceeded
+// by requesting more tool calls in one turn than MaxCallsPerTurn
+// allows.
+func buildHardFailCallsPerTurnExceeded(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")},
+			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")},
+		),
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		MaxCallsPerTurn: 1,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	return loop, context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}
+}
+
 // TestRunIterationEndHardFailPaths is table-driven over every hard-
 // fail cause runIteration can exit through: each case must emit
 // exactly one EventIterationEnd, matching the deferred-emission
@@ -209,6 +252,7 @@ func TestRunIterationEndHardFailPaths(t *testing.T) {
 		{"audit error", buildHardFailAuditError},
 		{"token-budget-exceeded error", buildHardFailTokenBudgetExceeded},
 		{"tool-call error", buildHardFailToolCallError},
+		{"calls-per-turn-exceeded error", buildHardFailCallsPerTurnExceeded},
 	}
 
 	for _, c := range cases {

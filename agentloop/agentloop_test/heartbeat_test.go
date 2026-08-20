@@ -153,6 +153,14 @@ func (r *eventRecorder) names() []events.Name {
 	return names
 }
 
+// events returns a copy of every Event recorded so far, in arrival
+// order, so a test can inspect Data content as well as Name.
+func (r *eventRecorder) events() []events.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]events.Event(nil), r.got...)
+}
+
 // countNumGoroutine settles briefly and reports runtime.NumGoroutine,
 // giving a just-stopped goroutine time to unwind.
 func countNumGoroutine(t *testing.T) int {
@@ -258,17 +266,24 @@ func TestRunHeartbeatEmitSwallowsNoSubscriberError(t *testing.T) {
 
 // TestRunHeartbeatRace runs the completion heartbeat concurrently with
 // the main loop's own state changes and must pass under go test
-// -race.
+// -race. It also asserts both heartbeat kinds actually fired at least
+// once: a race-clean but silent implementation must still fail this
+// test.
 func TestRunHeartbeatRace(t *testing.T) {
 	tool := &slowTool{name: "slow", delay: heartbeatTestBlock, result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	bus := events.New()
-	var received int
+	var completionBeats, toolBeats int
 	var mu sync.Mutex
 	countBeat := func(ctx context.Context, e events.Event) error {
 		mu.Lock()
-		received++
+		switch e.Name {
+		case agentloop.EventCompletionHeartbeat:
+			completionBeats++
+		case agentloop.EventToolCallHeartbeat:
+			toolBeats++
+		}
 		mu.Unlock()
 		return nil
 	}
@@ -282,5 +297,13 @@ func TestRunHeartbeatRace(t *testing.T) {
 	}
 	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if completionBeats == 0 {
+		t.Fatalf("completionBeats = 0, want > 0 (Completer call should tick at least once)")
+	}
+	if toolBeats == 0 {
+		t.Fatalf("toolBeats = 0, want > 0 (tool call should tick at least once)")
 	}
 }

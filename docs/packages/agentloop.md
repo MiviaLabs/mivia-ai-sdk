@@ -18,8 +18,11 @@ or a bound trips. The exported surface below mirrors
   `Window`, `Summarizer`, `Calibrated`, `HeartbeatInterval`.
   `Completer` and `Tools` are required; the rest are optional. `Bus`
   receives `Run`'s iteration, completion-heartbeat, and tool-call
-  events. `HeartbeatInterval` requires a non-nil `Bus`; `Run` emits
-  nothing through a nil `Bus` otherwise.
+  events, gated on a positive `HeartbeatInterval`: a zero
+  `HeartbeatInterval` emits nothing, even through a non-nil `Bus`.
+  `HeartbeatInterval` requires a non-nil `Bus` in turn; `Options.
+  Validate` rejects the opposite pairing with `ErrHeartbeatRequiresBus`.
+  See "Events" below.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
@@ -121,6 +124,9 @@ Use `errors.Is` to test these.
 - `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
   exclusive") — `Options.Validate` returns it when both `Window` and
   `Trim` are set.
+- `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
+  non-nil Bus") — `Options.Validate` returns it when
+  `HeartbeatInterval` is positive and `Bus` is nil.
 
 ## Context planning and prompt-too-long recovery
 
@@ -206,6 +212,35 @@ trail builds and signs its own `envelope.Message` chain from the
 `AuditRecord` values, the same way `agent.confirmStep` signs steps
 outside the `flow` block it wraps.
 
+## Events
+
+A positive `Options.HeartbeatInterval` paired with a non-nil
+`Options.Bus` makes `Run` emit progress events on `Bus`. Either one
+alone emits nothing: a zero `HeartbeatInterval` disables every event
+below, even with `Bus` set, and `Options.Validate` rejects a positive
+`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`.
+
+`Run` emits six `events.Name` constants, each carrying a
+human-readable label in `Event.Data`:
+
+- `EventIterationStart` — fires once at the start of every iteration.
+- `EventCompletionHeartbeat` — fires every `HeartbeatInterval` while
+  one `Completer` call is in flight.
+- `EventToolCallStart` — fires once at the start of every tool call,
+  before the `PointPreTool` hook fires.
+- `EventToolCallHeartbeat` — fires every `HeartbeatInterval` while one
+  tool call is in flight. Never fires for a `PointPreTool`-vetoed
+  call, since a vetoed call never reaches the blocking work a
+  heartbeat reports progress on.
+- `EventToolCallEnd` — fires once at the end of every tool call,
+  including a `PointPreTool` veto or hook-error return.
+- `EventIterationEnd` — fires once at the end of every iteration,
+  covering every exit path: a graceful stop or a hard-fail error.
+
+`Run` swallows every `Bus.Emit` error, including "no subscriber for
+name", matching the `PointStop`-fire swallow precedent elsewhere in
+`Run`.
+
 ## Error marker
 
 Under `ErrorPolicyReport`, a tool-run error's rendered `RoleTool`
@@ -275,6 +310,8 @@ trimming without `agentloop` importing `contextplan` itself. See
   `PointStop` fire the same way `agentrun.Runner.Run` fires them.
 - [trace.md](trace.md) — a wired `Tracer` opens one span per
   iteration and one per tool call.
+- [events.md](events.md) — `Bus.Subscribe` and `Bus.Emit` back the
+  progress events. See "Events" above.
 - [contextbudget.md](contextbudget.md) — a wired `Budget` caps one
   `Completer` call's message history.
 

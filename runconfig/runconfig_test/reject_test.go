@@ -110,10 +110,24 @@ func shapeCases(t *testing.T) []rejectCase {
 			doc:  replace(t, `"tool": "grep"}]`, `"internal": "flow", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
 			want: `step "s" sets sub beside tool or internal`,
 		},
+	}
+}
+
+// retryDelayCases lists the retry-delay ErrBadDocument cases: an
+// invalid base_delay and an invalid max_delay, each naming its own
+// field so neither rejection can pass for the other's reason.
+func retryDelayCases(t *testing.T) []rejectCase {
+	t.Helper()
+	return []rejectCase{
 		{
-			name: "bad retry delay",
+			name: "bad retry base delay",
 			doc:  replace(t, `"tool": "grep"`, `"retry": {"max_attempts": 1, "base_delay": "soon", "max_delay": "1ms"}, "tool": "grep"`),
 			want: "base_delay",
+		},
+		{
+			name: "bad retry max delay",
+			doc:  replace(t, `"tool": "grep"`, `"retry": {"max_attempts": 1, "base_delay": "1ms", "max_delay": "later"}, "tool": "grep"`),
+			want: "max_delay",
 		},
 	}
 }
@@ -159,7 +173,8 @@ func constructorCases(t *testing.T) []rejectCase {
 // rejectCases lists every ErrBadDocument shape.
 func rejectCases(t *testing.T) []rejectCase {
 	t.Helper()
-	return append(shapeCases(t), constructorCases(t)...)
+	cases := append(shapeCases(t), retryDelayCases(t)...)
+	return append(cases, constructorCases(t)...)
 }
 
 // TestLoadRejects checks every ErrBadDocument shape.

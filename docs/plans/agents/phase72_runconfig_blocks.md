@@ -425,7 +425,7 @@ already cover.
   import edges, so the new `runconfig/` bullet follows that same
   one-clause shape.
 
-## Addendum: the five file/diff Kinds now drive through Runner.Run (phase 76)
+## Addendum: schema-decode fix for the five file/diff Kinds (phase 76)
 
 This phase shipped `agentrun/wire.go`'s `chain` always passing a raw
 string payload to a resolved tool, with no check for
@@ -434,8 +434,15 @@ string payload to a resolved tool, with no check for
 `WorkspaceStatKind`, `DiffKind`) each require a typed args struct only
 their own `DecodeArguments` produces, so a step bound to one of them
 failed unconditionally through a real `Runner.Run`, a gap this plan's
-own tests worked around instead of closing. Phase 76 closed the gap:
-`chain` now decodes a `tools.SchemaTool` tool's payload before it
-calls the tool. This plan's own design and prose above stay unchanged;
+own tests worked around instead of closing. Phase 76 closed the
+decode half of the gap: `chain` now decodes a `tools.SchemaTool`
+tool's payload before it calls the tool. Decode success does not by
+itself complete the run: `chain` also requires the tool's result to
+be a string. `WorkspaceReadKind`, `WorkspaceWriteKind`, and
+`DiffKind` return a string and are confirmed end to end.
+`WorkspaceListKind` and `WorkspaceStatKind` bind tools whose `Run`
+returns a struct, not a string, so they are expected to still fail a
+real `Runner.Run`, with `agentrun.ErrResultNotText`, pending a
+follow-up fix. This plan's own design and prose above stay unchanged;
 see `docs/plans/agents/phase76_agentrun_schema_tool_decode.md` for the
 fix.

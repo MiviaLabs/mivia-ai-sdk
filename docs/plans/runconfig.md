@@ -319,13 +319,25 @@ Verification:
 
 ## Addendum: schema-decode and capability forwarding (phase 76)
 
-Phase 76 closed a gap phase 72 left open: the five file/diff internal
-Kinds (`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
-`WorkspaceStatKind`, `DiffKind`) now drive through a real
-`agentrun.Runner.Run`, not only through a direct `DecodeArguments`-
-then-`Run` call. `agentrun`'s `chain` decodes a step's payload through
-`tools.SchemaTool.DecodeArguments` before it calls the tool, when the
-resolved tool implements `tools.SchemaTool`.
+Phase 76 closed the argument-decode gap phase 72 left open. `agentrun`'s
+`chain` decodes a step's payload through `tools.SchemaTool.DecodeArguments`
+before it calls the tool, when the resolved tool implements
+`tools.SchemaTool`, instead of always passing the raw string. This
+fixes argument decode for all five file/diff internal Kinds
+(`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
+`WorkspaceStatKind`, `DiffKind`).
+
+Decode success alone does not prove a Kind completes a real
+`agentrun.Runner.Run`: `chain` also requires the tool's result,
+`tools.Out.Value`, to be a `string`, or the step fails with
+`ErrResultNotText`. `WorkspaceReadKind`, `WorkspaceWriteKind`, and
+`DiffKind` return a string and are confirmed, by real end-to-end
+tests, to complete through `Runner.Run`. `WorkspaceListKind` and
+`WorkspaceStatKind` bind tools whose `Run` returns a struct
+(`[]subagent.WorkspaceEntry` and `subagent.WorkspaceFileInfo`), not a
+string; no test drives either through a real `Runner.Run`, and the
+result-type mismatch means they are expected to fail with
+`ErrResultNotText` until a follow-up phase resolves it.
 
 `runconfig/runner.go`'s `stepTool` wrapper, the type
 `Definition.Runner` puts around every resolved internal-Kind tool,

@@ -104,6 +104,91 @@ func TestChainDecodeFailureWrapsErrArgumentDecode(t *testing.T) {
 	}
 }
 
+// countingSchemaTool implements tools.SchemaTool and records each
+// decoded schemaArgs.Path it receives, in call order. It fails the
+// call when its input is not the decoded schemaArgs, matching
+// schemaStubTool's own contract.
+type countingSchemaTool struct {
+	name string
+	got  *[]string
+}
+
+// Name returns the tool's registry name.
+func (t countingSchemaTool) Name() string { return t.name }
+
+// ParameterSchema returns a placeholder schema.
+func (t countingSchemaTool) ParameterSchema() []byte { return []byte(`{"type":"object"}`) }
+
+// DecodeArguments parses raw as JSON into schemaArgs.
+func (t countingSchemaTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	var a schemaArgs
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return tools.InOut{}, err
+	}
+	return tools.InOut{Value: a}, nil
+}
+
+// Run records the decoded path and fails loudly on an undecoded input.
+func (t countingSchemaTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	a, ok := in.Value.(schemaArgs)
+	if !ok {
+		return tools.Out{}, errors.New("countingSchemaTool: input is not decoded schemaArgs")
+	}
+	*t.got = append(*t.got, a.Path)
+	return tools.Out{Value: "read:" + a.Path}, nil
+}
+
+// TestChainDecodesSchemaToolPayloadEveryLoopIteration proves chain
+// resolves the SchemaTool lookup by the tool's plain registry name,
+// not the raw, "#N"-suffixed message ID a repeated step's later
+// iterations carry. toolNameFor already strips the suffix for
+// RunScoped; a chain that instead looked the SchemaTool up by the raw
+// message ID would find nothing in the registry past the first
+// iteration and silently skip the decode, which this test would catch
+// through countingSchemaTool's undecoded-input failure.
+func TestChainDecodesSchemaToolPayloadEveryLoopIteration(t *testing.T) {
+	ctx := context.Background()
+	child, err := flow.New([]flow.Step{
+		{ID: "work", To: "done", Payload: `{"path":"notes.txt"}`},
+	}, nil)
+	if err != nil {
+		t.Fatalf("flow.New child: %v", err)
+	}
+	twice := func(ctx context.Context) (bool, error) {
+		st, _ := flow.LoopStateFrom(ctx)
+		return st.Iteration == 0, nil
+	}
+	plan := mustFlow(t, []flow.Step{
+		{ID: "looper", Payload: "p", Sub: child, Loop: &flow.LoopPolicy{Guard: twice}},
+	}, nil)
+	m := mustMachine(t, "start", machine.Transition{From: "start", To: "done", Trigger: "t1"})
+
+	var got []string
+	reg := tools.New()
+	addTools(t, reg, countingSchemaTool{name: "work", got: &got}, echoTool{name: "looper"})
+	artifacts := &agentrun.Artifacts{}
+	runner, err := agentrun.New(agentrun.Options{
+		Agent: mustAgent(t, plan), Machine: m, Tools: reg, Artifacts: artifacts,
+	})
+	if err != nil {
+		t.Fatalf("agentrun.New: %v", err)
+	}
+
+	status, _, err := runner.Run(ctx, "thread-schema-decode-loop", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != "done" {
+		t.Fatalf("status = %q, want done", status)
+	}
+	if len(got) != 2 || got[0] != "notes.txt" || got[1] != "notes.txt" {
+		t.Fatalf("decoded paths = %+v, want two decoded runs", got)
+	}
+	if v, ok := artifacts.Get("work"); !ok || v != "read:notes.txt" {
+		t.Fatalf("artifact = %q, ok = %v, want read:notes.txt", v, ok)
+	}
+}
+
 // TestChainLeavesNonSchemaToolPayloadUnchanged confirms a non-
 // tools.SchemaTool tool still receives the plain string payload
 // unchanged; the new decode branch never fires for it.

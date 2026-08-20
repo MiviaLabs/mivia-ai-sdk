@@ -165,6 +165,66 @@ func TestRunMaxTotalTokensSurchargedTotal(t *testing.T) {
 	}
 }
 
+// TestRunMaxTotalTokensAtCapPasses pins run.go's MaxTotalTokens
+// boundary from the passing side: two responses whose Usage.TotalTokens
+// sum to exactly MaxTotalTokens must not trip ErrTokenBudgetExceeded.
+func TestRunMaxTotalTokensAtCapPasses(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	responses := []provider.Response{
+		func() provider.Response {
+			r := toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})
+			r.Usage = provider.Usage{TotalTokens: 50}
+			return r
+		}(),
+		{Message: textMessage(provider.RoleAssistant, "done"), Usage: provider.Usage{TotalTokens: 50}},
+	}
+	completer := &scriptedCompleter{responses: responses}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil at the exact cap boundary", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
+	}
+}
+
+// TestRunMaxTotalTokensOneOverCapFails pairs
+// TestRunMaxTotalTokensAtCapPasses from the failing side: the same
+// cap, with the first response's TotalTokens one token higher, sums to
+// MaxTotalTokens+1 and trips ErrTokenBudgetExceeded.
+func TestRunMaxTotalTokensOneOverCapFails(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	responses := []provider.Response{
+		func() provider.Response {
+			r := toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})
+			r.Usage = provider.Usage{TotalTokens: 51}
+			return r
+		}(),
+		{Message: textMessage(provider.RoleAssistant, "done"), Usage: provider.Usage{TotalTokens: 50}},
+	}
+	completer := &scriptedCompleter{responses: responses}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, agentloop.ErrTokenBudgetExceeded) {
+		t.Fatalf("Run() error = %v, want ErrTokenBudgetExceeded one token over the cap", err)
+	}
+}
+
 // TestRunZeroMaxTotalTokensUnbounded proves a zero MaxTotalTokens with
 // the same scripted responses runs to StopMaxIterations unaffected.
 func TestRunZeroMaxTotalTokensUnbounded(t *testing.T) {

@@ -23,6 +23,10 @@ OPERATOR_MUTATIONS = {
     "<=": "<",
     "&&": "||",
     "||": "&&",
+    ">": ">=",
+    ">=": ">",
+    "+": "-",
+    "-": "+",
 }
 
 # TOKENIZER_SRC is a standalone go/scanner program written to a temp
@@ -48,6 +52,7 @@ type site struct {
 var wanted = map[string]bool{
 	"==": true, "!=": true, "<": true, "<=": true,
 	"&&": true, "||": true, "!": true, "continue": true,
+	">": true, ">=": true, "+": true, "-": true,
 }
 
 func main() {

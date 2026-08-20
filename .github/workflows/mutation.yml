@@ -1,0 +1,23 @@
+name: Mutation gate
+
+# Weekly sweep of the mutation-testing floors. No push or pull_request
+# trigger: the sweep takes up to three hours, too long for either event.
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Weekly, Monday 03:00 UTC.
+  workflow_dispatch:
+
+jobs:
+  mutation-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run mutation gate
+        run: make mutation-gate

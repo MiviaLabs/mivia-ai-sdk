@@ -15,6 +15,12 @@ import sys
 import tempfile
 from pathlib import Path
 
+from mutation_process import run_test_group
+from mutation_process_probe import (
+    probe_group_idempotence,
+    probe_group_interrupt,
+    probe_group_outcomes,
+)
 from mutation_tokenize import MutationError, sites_for_file, sites_from_tokens
 
 # Python's default SIGTERM handling kills the process without running
@@ -151,17 +157,7 @@ def run_mutant(site, original: bytes, pkg: str, pkg_dir: str) -> str:
             print(f"discarded (build failed): {site.path.name}:{site.start} {site.kind}")
             return classify(False, "pass")
         target = test_target(Path(pkg_dir), pkg)
-        try:
-            test = subprocess.run(
-                ["go", "test", target],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                timeout=TEST_TIMEOUT_SECONDS,
-            )
-            outcome = "pass" if test.returncode == 0 else "fail"
-        except subprocess.TimeoutExpired:
-            outcome = "timeout"
+        outcome = run_test_group(["go", "test", target], ROOT, TEST_TIMEOUT_SECONDS)
         return classify(True, outcome)
     finally:
         site.path.write_bytes(original)
@@ -179,7 +175,7 @@ def sweep(pkg: str, sample: int = None, denylist_dir: Path = DENYLIST_DIR) -> di
     originals: dict[Path, bytes] = {}
     killed = survived = discarded = 0
     try:
-        for site in sites:
+        for index, site in enumerate(sites, start=1):
             if site.path not in originals:
                 originals[site.path] = site.path.read_bytes()
             outcome = run_mutant(site, originals[site.path], pkg, str(pkg_dir))
@@ -193,6 +189,11 @@ def sweep(pkg: str, sample: int = None, denylist_dir: Path = DENYLIST_DIR) -> di
                 )
             else:
                 discarded += 1
+            print(
+                f"[{index}/{len(sites)}] {site.path.name}:{site.start} {outcome}",
+                file=sys.stderr,
+                flush=True,
+            )
     finally:
         for path, original in originals.items():
             path.write_bytes(original)
@@ -369,6 +370,16 @@ def _probe_floor(tmp_path: Path) -> list[str]:
     return problems
 
 
+def _probe_process_group(tmp_path: Path) -> list[str]:
+    """Checks: the process group is killed on the timeout path, the
+    success path, and the interrupt path; kill_group is idempotent."""
+    return (
+        probe_group_outcomes(tmp_path)
+        + probe_group_interrupt(tmp_path)
+        + probe_group_idempotence(tmp_path)
+    )
+
+
 def run_probe() -> bool:
     """run_probe exercises the kit's own invariants against planted
     fixtures, following the check_semgrep_probes.py convention: no
@@ -385,6 +396,7 @@ def run_probe() -> bool:
         problems += _probe_classify()
         problems += _probe_test_target(tmp_path)
         problems += _probe_floor(tmp_path)
+        problems += _probe_process_group(tmp_path)
 
     if problems:
         print("\n".join(problems))

@@ -378,3 +378,67 @@ func TestRunRetentionOverflowFailsBeforeRequest(t *testing.T) {
 		t.Fatalf("summarizer calls = %d, want 0: the failure must come from Compact's own mandatory-overflow check, before any summarization", sumCalls)
 	}
 }
+
+// TestCheckCompactedBudgetAtBudgetPasses pins compaction.go's
+// checkCompactedBudget boundary from the passing side: a summarized
+// rebuild that re-estimates to exactly w.Budget() must not fail. The
+// fixed system message (1 byte) plus the fixed summaryScript reply's
+// 81-byte rendered form plus one user byte total 83, matching
+// MaxTokens 83 with Reserve 0 exactly.
+func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("d", 30)},
+		{Role: provider.RoleUser, Content: "u"},
+	}
+	w := contextplan.Window{
+		MaxTokens: 83,
+		Compaction: contextplan.Compaction{
+			TriggerPercent: 1,
+			TargetTokens:   1,
+		},
+	}
+	loop, f := newPlanningFixture(t, w, []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}, nil)
+	res, err := loop.Run(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Run() = %v, want nil at the exact budget boundary", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
+	}
+	if got := f.completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: the at-budget rebuild reaches Chat", got)
+	}
+}
+
+// TestCheckCompactedBudgetOverBudgetFails pairs
+// TestCheckCompactedBudgetAtBudgetPasses from the failing side: the
+// same window, with the user message one byte longer, pushes the
+// rebuilt re-estimate to Budget()+1 and fails closed.
+func TestCheckCompactedBudgetOverBudgetFails(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleAssistant, Content: strings.Repeat("d", 30)},
+		{Role: provider.RoleUser, Content: "uu"},
+	}
+	w := contextplan.Window{
+		MaxTokens: 83,
+		Compaction: contextplan.Compaction{
+			TriggerPercent: 1,
+			TargetTokens:   1,
+		},
+	}
+	loop, f := newPlanningFixture(t, w, nil, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
+	}
+	if got := f.completer.callCount(); got != 0 {
+		t.Fatalf("completer calls = %d, want 0: the over-budget rebuild never reaches Chat", got)
+	}
+}

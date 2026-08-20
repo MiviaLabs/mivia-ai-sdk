@@ -282,6 +282,48 @@ func TestRenderTruncatesOverBudget(t *testing.T) {
 	}
 }
 
+// TestRenderExactBudgetNoTruncation pins wire.go's truncation
+// boundary from the passing side: a result whose length equals the
+// published budget exactly must pass through untouched.
+func TestRenderExactBudgetNoTruncation(t *testing.T) {
+	tool := &budgetedSchemaTool{
+		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 20)},
+		maxBytes:       20,
+	}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if got != strings.Repeat("x", 20) {
+		t.Fatalf("content = %q, want the untruncated 20-byte result", got)
+	}
+	if strings.Contains(got, "truncated") {
+		t.Fatalf("content = %q, want no truncation marker at the exact budget", got)
+	}
+}
+
+// TestRenderOneByteOverBudgetTruncates pairs
+// TestRenderExactBudgetNoTruncation from the failing side: a result
+// one byte longer than the same budget must truncate and append
+// truncationMarker. The budget (20) exceeds the marker's own length
+// (15), so the marker fits.
+func TestRenderOneByteOverBudgetTruncates(t *testing.T) {
+	tool := &budgetedSchemaTool{
+		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 21)},
+		maxBytes:       20,
+	}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if !strings.HasSuffix(got, "...[truncated]") {
+		t.Fatalf("content = %q, want it to end with the truncation marker", got)
+	}
+	if len(got) > 20 {
+		t.Fatalf("content len = %d, want at most 20 (the published budget)", len(got))
+	}
+}
+
 // TestRenderTruncationStaysValidUTF8 proves a budget that lands
 // mid-rune drops the incomplete trailing bytes instead of emitting
 // invalid UTF-8 to the model.

@@ -16,10 +16,10 @@ or a bound trips. The exported surface below mirrors
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
   `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
-  `ConcludeNotice`. `Completer` and `Tools` are required; the rest are
-  optional. `Bus` is reserved for the loop's own events, pending a
-  future event vocabulary; `Run` does not yet emit anything through
-  it.
+  `ConcludeNotice`, `TurnResultBudget`. `Completer` and `Tools` are
+  required; the rest are optional. `Bus` is reserved for the loop's
+  own events, pending a future event vocabulary; `Run` does not yet
+  emit anything through it.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
@@ -124,6 +124,8 @@ Use `errors.Is` to test these.
 - `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
   negative") — `Options.Validate` returns it for a negative
   `ConcludeMargin`.
+- `ErrTurnResultBudget` — `Options.Validate` returns it for a negative
+  `TurnResultBudget`.
 
 ## Context planning and prompt-too-long recovery
 
@@ -268,6 +270,30 @@ own length keeps zero content bytes and returns the marker alone. A
 bound shorter than the marker hard-cuts the content to `bound` bytes
 with no marker, since the marker itself would not fit.
 
+## Turn result budget
+
+A positive `Options.TurnResultBudget` caps the summed byte size of one
+turn's rendered tool results, across every call in that turn. It
+shapes each call's content after that call's own `tools.ResultBudgetOf`
+bound already applied, not instead of it.
+
+`runToolCalls` runs calls in `ToolCall.Index` order and tracks a
+running byte total for the turn, reset to zero at the start of each
+turn. A call's content stays whole only when the running total plus
+its byte length does not exceed `TurnResultBudget`; otherwise the
+content is replaced with `BatchTruncationNotice`
+("[batch-truncated] Turn tool-result budget exhausted; this result
+was omitted."), and the running total does not grow for that call. A
+zero `TurnResultBudget` skips the check entirely and every call's
+content passes through whole.
+
+Shaping applies to every appended `RoleTool` message's content,
+including an `ErrorPolicyReport` error report marked with
+`ToolErrorPrefix`. `AuditRecord.Err` always carries the call's true
+outcome, independent of whether `ToolResult.Content` was replaced by
+shaping. A `PointPreTool` veto stops the turn before shaping considers
+any later call, unchanged from a run with `TurnResultBudget` at zero.
+
 ## Invariants
 
 - `New` calls `Definitions` once; a tool registered after `New` but
@@ -285,7 +311,7 @@ with no marker, since the marker itself would not fit.
   arguments is a tool-run error and goes through the same
   `OnToolError` policy as a failed `Run`.
 - A zero `MaxCallsPerTurn` means unbounded. A zero `MaxTotalTokens`
-  means unbounded.
+  means unbounded. A zero `TurnResultBudget` means unbounded.
 - A nil `Options.Trim` passes history through unchanged and skips
   `provider.Message.Validate` on it.
 

@@ -106,5 +106,7 @@ throwaway module with `GOPROXY=off` and `GOFLAGS=-mod=mod`.
 - `python3 scripts/check_gomod.py --probe`
 - `make verify`
 
-TT11 fires: the change edits `scripts/` and `AGENTS.md` together. That
-firing is legitimate and needs a human decision at commit time.
+TT11 stays silent: the change edits `scripts/` and `AGENTS.md`
+together, and `AGENTS.md` is a doc companion under the TT11
+doc-companion exemption. See `docs/plans/test-tampering.md`'s "TT11
+doc-companion probes" addendum.

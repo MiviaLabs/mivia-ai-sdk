@@ -79,5 +79,8 @@ Probes only, added to the existing `check_mutation.py --probe` suite.
 - `make mutation-gate` lists the same packages as before the change.
 
 TT12 and TT13 must stay silent. No denylist file and no stored floor
-changes. TT11 fires if the change edits `docs/` beside `scripts/`.
-That firing needs a human decision at commit time.
+changes. TT11 stays silent too: this plan's own doc
+(`docs/plans/mutation-nested-packages.md`) is a doc companion under
+the TT11 doc-companion exemption, so pairing it with `scripts/` and
+`Makefile` alone does not fire. See `docs/plans/test-tampering.md`'s
+"TT11 doc-companion probes" addendum.

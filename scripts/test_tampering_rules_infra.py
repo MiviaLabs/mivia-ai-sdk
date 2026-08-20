@@ -10,19 +10,39 @@ from test_tampering_rules import Finding
 _GATE_INFRA_PREFIXES = ("scripts/", ".githooks/", "policy/", "semgrep/", ".github/workflows/")
 
 
+# _is_gate_infra/_is_doc_companion: user-approved narrowing of TT11
+# (docs/plans/test-tampering.md, "TT11 doc companions"). AGENTS.md's own
+# enforcement ladder mandates a doc update land in the same commit as
+# several gate-infra changes, which used to trip TT11 on every such
+# commit. This closes that one laundering path: a gate-infra change
+# paired only with doc companions (AGENTS.md, docs/plans/*.md,
+# docs/packages/*.md) stays silent. Any real code file in the diff,
+# doc companion or not riding along, still fires TT11.
+_DOC_COMPANION_DIR_PREFIXES = ("docs/plans/", "docs/packages/")
+
+
 def _is_gate_infra(path: str) -> bool:
     if path == "Makefile":
         return True
     return bool(path) and any(path.startswith(p) for p in _GATE_INFRA_PREFIXES)
 
 
+def _is_doc_companion(path: str) -> bool:
+    if path == "AGENTS.md":
+        return True
+    return bool(path) and path.endswith(".md") and any(path.startswith(p) for p in _DOC_COMPANION_DIR_PREFIXES)
+
+
 def check_self_reference_guard(diffs: list) -> list:
     """TT11: any gate-infra change present in the same diff as a change
-    to any other file at all. Fires even when nothing else does."""
+    to any other, non-doc-companion file. Fires even when nothing else
+    does, but stays silent when the only other files are doc
+    companions (see _is_doc_companion)."""
     paths = [d.path for d in diffs]
     infra = [p for p in paths if _is_gate_infra(p)]
     other = [p for p in paths if not _is_gate_infra(p)]
-    if infra and other:
+    non_doc_other = [p for p in other if not _is_doc_companion(p)]
+    if infra and non_doc_other:
         return [Finding("TT11", infra[0], 1, "gate-infra change paired with a non-infra file change")]
     return []
 

@@ -488,30 +488,43 @@ matching every other `subagent` tool's result convention. It added no
 new package and no new `policy/layers.json` edge. No standalone
 phase 77 plan file remains.
 
-Phases 78, 80, 82, and 84 are plan-only and not scheduled. Phases 79,
+Phases 78, 82, and 84 are plan-only and not scheduled. Phases 79, 80,
 81, and 83 have shipped; their design rationale is folded into
-`docs/plans/agentloop.md`'s "graceful work-limit conclude",
-"duplicate-call dedup within a turn", and "heartbeat and progress
-events" addenda, and no standalone phase 79, phase 81, or phase 83
-plan file remains. A gap analysis compared `agentloop` against
-`internal/agent.Loop`, a production caller in a separate, external
-repository (`mivia-agent`), and found seven capabilities that caller
-needs and `agentloop` lacks. Each gap is its own phase: steering and
-interruption (78), graceful work-limit conclude (79, shipped),
-per-batch tool-result size shaping (80), duplicate-call dedup within a
-turn (81, shipped), prompt-injection-safe hook and steer framing (82),
-heartbeat and progress events (83, shipped; see below), and
-partial-recovery streaming (84). These phases are queued behind, not
-part of, the dependency-ordered list above; they close a separate
-capability gap, not a step in the existing numbered initiative. Phase
-84 depends on phase 78; no other phase in this group depends on
-another. Phase 82 is partly blocked on a `hooks.Handler` signature
-change and phase 84 is blocked on a `provider` package decision, each
-flagged in its own file. Each remaining phase needs its own plan
-review before a builder starts it. See
-docs/plans/agents/phase78_steering_and_interruption.md,
-phase80_batch_result_shaping.md, phase82_injection_safe_framing.md,
-and phase84_partial_recovery_streaming.md.
+`docs/plans/agentloop.md`'s "graceful work-limit conclude", "per-batch
+tool-result size shaping", "duplicate-call dedup within a turn", and
+"heartbeat and progress events" addenda, and no standalone phase 79,
+phase 80, phase 81, or phase 83 plan file remains. A gap analysis
+compared `agentloop` against `internal/agent.Loop`, a production
+caller in a separate, external repository (`mivia-agent`), and found
+seven capabilities that caller needs and `agentloop` lacks. Each gap
+is its own phase: steering and interruption (78), graceful work-limit
+conclude (79, shipped), per-batch tool-result size shaping (80,
+shipped), duplicate-call dedup within a turn (81, shipped),
+prompt-injection-safe hook and steer framing (82), heartbeat and
+progress events (83, shipped; see below), and partial-recovery
+streaming (84). These phases are queued behind, not part of, the
+dependency-ordered list above; they close a separate capability gap,
+not a step in the existing numbered initiative. Phase 84 depends on
+phase 78; no other phase in this group depends on another. Phase 82
+is partly blocked on a `hooks.Handler` signature change and phase 84
+is blocked on a `provider` package decision, each flagged in its own
+file. Each remaining phase needs its own plan review before a builder
+starts it. See docs/plans/agents/phase78_steering_and_interruption.md,
+phase82_injection_safe_framing.md, and
+phase84_partial_recovery_streaming.md.
+
+Phase 80 (`agentloop` per-batch tool-result size shaping) has shipped.
+It adds `Options.TurnResultBudget`, capping the summed byte size of
+one turn's rendered tool results, across every call in that turn,
+after each call's own `tools.ResultBudgetOf` bound already applied. A
+positive `TurnResultBudget` replaces an over-budget call's content
+with the new `BatchTruncationNotice` constant, in `ToolCall.Index`
+order; a zero `TurnResultBudget` stays uncapped. `Options.Validate`
+rejects a negative `TurnResultBudget` as `ErrTurnResultBudget`. It
+adds no new package and no new `policy/layers.json` edge. Its
+contract folded into docs/plans/agentloop.md's "Addendum: per-batch
+tool-result size shaping" section; no standalone phase 80 plan file
+remains.
 
 Phase 83 (`agentloop` heartbeat and progress events) has shipped. It
 adds `Options.HeartbeatInterval` and six `events.Name` constants:

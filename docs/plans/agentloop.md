@@ -2161,3 +2161,130 @@ for the full field list, the failure mode, and the gating rule.
 `api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
 `policy/layers.json` change: `events` was already an allowed import.
 
+## Addendum: per-batch tool-result size shaping
+
+Status: shipped. This addendum was phase 80
+(`docs/plans/agents/PHASES.md`); no standalone phase 80 plan file
+remains. It adds `Options.TurnResultBudget` and shapes each turn's
+tool results as a set, after each call's own per-call bound already
+applied. It changes `options.go`, `wire.go`, and `toolcall.go`. It
+adds no new package and no new `policy/layers.json` edge.
+
+### Addendum goal
+
+Cap one turn's tool results as a set, by summed byte size, instead of
+capping only one call's result at a time. `tools.ResultBudgetOf`
+already caps one call's own rendered content; nothing capped the
+combined size of several results returned in the same turn.
+
+### Addendum scope
+
+Inside:
+
+- One new `Options` field, `TurnResultBudget int`.
+- Shaping every call's already-rendered content, in `ToolCall.Index`
+  order, against a running total for the turn, after each call's own
+  `tools.ResultBudgetOf` bound already applied.
+- One new exported constant, `BatchTruncationNotice`, marking a
+  batch-truncated result, distinct from `wire.go`'s existing
+  per-call `truncationMarker`.
+- `Options.Validate` gains one rule: a negative `TurnResultBudget`
+  fails with a new sentinel, `ErrTurnResultBudget`.
+
+Outside:
+
+- Any change to `tools.ResultBudgetOf`, `tools.ResultBudgetTool`, or
+  any other `tools` symbol. This shapes already-rendered `string`
+  content inside `agentloop`; it adds no new `tools` API.
+- Skipping or refusing to run a call because the turn's budget is
+  already exhausted. Every call in the turn still runs, and every
+  call's hooks still fire, unchanged; only the rendered content that
+  reaches history is shaped.
+- Redistributing budget by call importance or size. The policy is
+  first-come: earlier calls, in `Index` order, keep their content
+  whole while budget remains; once the running total exhausts the
+  budget, each later call's content is replaced with a fixed notice.
+
+### Addendum API
+
+```go
+// TurnResultBudget caps the summed byte size of one turn's rendered
+// tool results, across every call in that turn, before they append to
+// history. Zero means uncapped: the budget comparison and any shaping
+// are skipped entirely, and every call's content passes through
+// whole. Distinct from a Tool's own tools.ResultBudgetOf bound, which
+// caps one call's content alone; TurnResultBudget shapes the batch as
+// a set, after each call's own bound already applied, in
+// ToolCall.Index order. Hard cap when positive: a call's content
+// stays whole only when the running total plus that content's byte
+// length does not exceed TurnResultBudget; otherwise the content is
+// replaced with BatchTruncationNotice and the running total does not
+// grow for it. The running total never exceeds TurnResultBudget.
+// Applies to every appended RoleTool content, including a reported
+// tool-run error under ErrorPolicyReport.
+TurnResultBudget int
+```
+
+```go
+// BatchTruncationNotice replaces a tool result's content when
+// TurnResultBudget is exhausted before that call's turn in Index
+// order.
+const BatchTruncationNotice = "[batch-truncated] Turn tool-result budget exhausted; this result was omitted."
+```
+
+```go
+// ErrTurnResultBudget is Validate's error when TurnResultBudget is
+// negative. Test with errors.Is.
+var ErrTurnResultBudget = errors.New("agentloop: TurnResultBudget must not be negative")
+```
+
+`runToolCalls` (`toolcall.go`) tracks the running total as a local
+`int`, reset to zero once per call, at the start of each turn's
+batch. The shaping step runs after `runOneToolCall` returns and
+before both the `history` append and the audit call, so
+`AuditRecord.Err` always reports the true per-call outcome,
+independent of the shaping applied to `AuditRecord.ToolResult`.
+`runToolCalls`'s sort switched from `sort.Slice` to `sort.SliceStable`
+in the same change, so a duplicate `Index` value's tie-order, now
+externally observable through which call's content survives, stays
+deterministic.
+
+See [packages/agentloop.md](packages/agentloop.md)'s "Turn result
+budget" section for the full field description and failure mode.
+
+### Addendum tests
+
+- `Options.Validate`: a negative `TurnResultBudget` fails with
+  `errors.Is(err, ErrTurnResultBudget)`. Zero and positive values
+  pass.
+- A turn with two tool calls, a `TurnResultBudget` sized to fit the
+  first call's content but not both, keeps the first call's content
+  whole and replaces the second call's content with
+  `BatchTruncationNotice`.
+- The same setup with `TurnResultBudget` zero appends both calls'
+  content whole, unchanged from the base plan.
+- A turn where the first call's own `tools.ResultBudgetOf` bound
+  already truncates it proves the two truncation layers apply in the
+  documented order: the per-call bound first, the batch bound second.
+- An exact-boundary case (running total plus one call's content
+  length equal to `TurnResultBudget`) keeps that call's content
+  whole, pinning the `<=` comparison against an off-by-one.
+- A reported tool-run error under `ErrorPolicyReport` counts toward
+  the running total exactly like a successful result, and gets
+  replaced with `BatchTruncationNotice` when the batch budget is
+  exhausted, while `AuditRecord.Err` still carries the true error.
+- `Options.Audit`'s `AuditKindToolCall` record for a batch-truncated
+  call carries the shaped `BatchTruncationNotice` content in
+  `ToolResult`, with `Err` unaffected by the shaping either way.
+- A `PointPreTool` veto partway through a turn stops later calls from
+  running, unchanged from the base plan; the shaping pass only
+  considers the calls that ran before the veto.
+- Duplicate-`Index` calls resolve in input-slice order,
+  deterministically, proving the `sort.SliceStable` switch.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change.
+

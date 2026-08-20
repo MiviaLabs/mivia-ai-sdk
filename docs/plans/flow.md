@@ -961,7 +961,7 @@ row already covers every edge. Run `make verify`,
 
 ## Correctness fix: Checkpoint.Validate never checks sortedness
 
-Status: planned, not yet built.
+Status: shipped in commit e0e10a2.
 
 ### Fix goal
 

@@ -1003,7 +1003,7 @@ Change two only:
 
 ## Correctness fix: Options.Validate admits a whitespace-only Root
 
-Status: planned, not yet built.
+Status: shipped in commit e86dc30.
 
 ### Fix goal
 

@@ -192,7 +192,7 @@ client ships here.
 
 ## Correctness fix: duplicate detection keys on the raw item
 
-Status: planned, not yet built.
+Status: shipped in commit f23b6e9.
 
 ### Fix goal
 

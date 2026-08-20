@@ -352,7 +352,7 @@ remains for this contract.
 
 ## Correctness fix: declaredTools admits a whitespace-only name
 
-Status: planned, not yet built.
+Status: shipped in commit f9b3ace.
 
 ### Fix goal
 

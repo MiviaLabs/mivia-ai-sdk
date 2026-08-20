@@ -1131,7 +1131,7 @@ Companion tests in `agentloop/agentloop_test/`, tracked by
 
 ## Correctness fix: percent bound text says "(0, 100]", code accepts 0
 
-Status: planned, not yet built.
+Status: shipped in commit bce7e76.
 
 ### Fix goal
 

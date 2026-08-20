@@ -82,7 +82,7 @@ func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	_, err = loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrPlanFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrPlanFailed", err)
 	}
@@ -91,6 +91,9 @@ func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
 	}
 	if completer.callCount() != 0 {
 		t.Fatalf("completer calls = %d, want 0: the estimate must fail before any Completer call", completer.callCount())
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the estimate failed", res)
 	}
 }
 

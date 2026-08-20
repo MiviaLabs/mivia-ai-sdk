@@ -2193,3 +2193,240 @@ stays at 85 percent for `agentloop` and the module total. `make
 api-update` runs, and the `api/agentloop.txt` diff lands in the same
 change as the code.
 
+## Addendum: planHistory failure routes through hardFail
+
+Status: shipped. This addendum fixes a Result-shape defect in
+`run.go`. It changes `run.go` and two test files. It adds no new
+file, no new package, and no `policy/layers.json` row.
+
+### Addendum goal
+
+Make the `planHistory` failure return in `run` follow the
+Result-shape rule the base plan and the window-compaction addendum
+both already state: at `iterations == 0`, a hard-fail return carries
+the zero-value `Result`, with no special case.
+
+### Addendum bug
+
+`run`'s `l.window != nil` block, at `run.go:76-82`, calls
+`l.planHistory` and, on error, returns:
+
+```go
+return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+```
+
+Every other hard-fail return in `run` and `runToolStage` calls
+`l.hardFail(history, iterations, totalUsage)` instead of building this
+literal by hand. `hardFail`, at `run.go:252-257`, degrades to
+`Result{}` when `iterations == 0`, matching its own doc comment: "when
+none has [completed], no partial state exists yet, and the rule
+degrades to the zero-value `Result` on its own, with no special case."
+The plan's base Result-shape paragraph states the same rule at
+`docs/plans/agentloop.md:145-149`, and the window-compaction addendum
+folds `ErrPlanFailed` and `ErrCompactionFailed` failures into the same
+closed hard-fail list at `docs/plans/agentloop.md:1512-1516`, "per the
+existing Result-shape rule."
+
+The bespoke literal at `run.go:79` does not call `hardFail`, so at
+`iterations == 0` it returns `Result{History: history}` — `History`
+set to the pre-compaction input messages, a non-nil slice, not the
+documented zero value. `Iterations` and `Usage` already read zero at
+`iterations == 0` regardless, since neither field has accumulated
+anything yet; only `History` diverges from `hardFail`'s output. At
+`iterations >= 1`, the literal and `l.hardFail(history, iterations,
+totalUsage)` build the identical `Result`, so the bug is confined to
+the `iterations == 0` case.
+
+### Addendum scope
+
+Inside:
+
+- Replacing the inline `Result{...}` literal at `run.go`'s
+  `planHistory` failure return with `l.hardFail(history, iterations,
+  totalUsage)`, keeping the same `err` as the second return value.
+- Correcting `TestRunSummarizerFailureFailsBeforeRequest` in
+  `agentloop/agentloop_test/compaction_test.go` to assert the
+  zero-value `Result`, replacing its current wrong assertion.
+- Strengthening `TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed`
+  in `agentloop/agentloop_test/compaction_estimator_test.go` to capture
+  and assert the returned `Result`, instead of discarding it.
+- Adding `TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`
+  to `agentloop/agentloop_test/compaction_reentry_test.go`, proving the
+  other side of the boundary: a `planHistory` failure after at least
+  one completed iteration still carries the partial `History`,
+  `Iterations`, and `Usage`, unaffected by this fix.
+
+Outside:
+
+- Any change to `hardFail` itself. Its behavior is already correct and
+  already documented; this addendum only routes one more call site
+  through it.
+- Any change to `ErrPlanFailed`, `ErrCompactionFailed`, or any other
+  sentinel, wrapping, or error message.
+- Any change to the runToolStage, runChat, or recovery hard-fail
+  paths. Every other hard-fail return in `run.go` already calls
+  `hardFail`; only the `planHistory` site was bespoke.
+- `TestRunRetentionOverflowFailsBeforeRequest`
+  (`compaction_test.go:451-468`) discards its `Result` with `_, err :=
+  loop.Run(...)` and is unaffected either way. This addendum does not
+  touch it; strengthening it is not required to close this gap, since
+  the two tests this addendum does change already cover both the
+  `ErrPlanFailed` and the `ErrCompactionFailed` hard-fail causes at
+  `iterations == 0`.
+
+### Addendum API
+
+No exported symbol changes. `hardFail` is unexported and already
+exists; `Result`'s fields and `Run`'s signature do not change. No
+`api/agentloop.txt` diff and no `make api-update` run.
+
+### Addendum mechanics, exact
+
+In `run.go`, inside the `if l.window != nil { ... }` block, change:
+
+```go
+planned, err := l.planHistory(ctx, history, iterations)
+if err != nil {
+	return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+}
+```
+
+to:
+
+```go
+planned, err := l.planHistory(ctx, history, iterations)
+if err != nil {
+	return l.hardFail(history, iterations, totalUsage), err
+}
+```
+
+One line changes. No other line in `run.go` changes.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/compaction_test.go`:
+
+- `TestRunSummarizerFailureFailsBeforeRequest` (currently at
+  `compaction_test.go:324-346`) keeps its `msgs`, `w`, fixture setup,
+  and its `ErrCompactionFailed`/`contextsummary.ErrCallFailed`/
+  `completer.callCount() == 0` assertions unchanged. Replace only its
+  final assertion:
+
+  ```go
+  if len(res.History) != len(msgs) {
+  	t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+  }
+  ```
+
+  with:
+
+  ```go
+  if !isZeroResult(res) {
+  	t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the summarizer failed", res)
+  }
+  ```
+
+  matching the pattern already proven at
+  `compaction_test.go:446-448`'s `TestRunBudgetTripsAfterCompactionStillOverBudget`.
+
+In `agentloop/agentloop_test/compaction_estimator_test.go`:
+
+- `TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed` (currently
+  at `compaction_estimator_test.go:64-95`) keeps its fixture unchanged.
+  Change its `Run` call from:
+
+  ```go
+  _, err = loop.Run(context.Background(), msgs)
+  ```
+
+  to:
+
+  ```go
+  res, err := loop.Run(context.Background(), msgs)
+  ```
+
+  and add, alongside the existing `ErrPlanFailed`/`estErr`/
+  `callCount() == 0` assertions:
+
+  ```go
+  if !isZeroResult(res) {
+  	t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the estimate failed", res)
+  }
+  ```
+
+In `agentloop/agentloop_test/compaction_reentry_test.go`, add
+`TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`. This
+test proves a `planHistory` failure on the second iteration, after the
+first iteration's compaction and `Completer.Chat` call already
+completed, carries the first iteration's partial state instead of the
+zero value. Fixture, built on
+`TestRunBudgetWindowSecondCompactionAcrossIterations`'s proven
+two-compaction shape (`compaction_reentry_test.go:173-225`), with the
+second compaction's summarizer call failing instead of succeeding:
+
+- `msgs`: the same four messages as
+  `TestRunBudgetWindowSecondCompactionAcrossIterations`: `{RoleSystem,
+  "s"}`, `{RoleUser, strings.Repeat("o", 80)}`, `{RoleAssistant, "a"}`,
+  `{RoleUser, "l"}`.
+- `w := contextplan.Window{MaxTokens: 500, Compaction:
+  contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}`, the
+  same window: `TriggerPercent: 1` trips compaction on every
+  iteration, proven to trigger twice across two iterations in the
+  sibling test.
+- A tool registry with one `schemaEchoTool{name: "search", schema:
+  []byte(`{"type":"object"}`), result: strings.Repeat("z", 80)}`, the
+  same tool that grows the history enough to trip the second
+  iteration's compaction in the sibling test.
+- A new unexported type, `summaryFailsOnSecondCall`, in this file,
+  modeled on `cancelDuringChat`'s shape (`compaction_reentry_test.go:151-162`):
+  a `contextsummary`-compatible `Completer` (`Name`, `Chat`,
+  `ChatStream`) with a mutex-guarded call counter. Its first `Chat`
+  call returns `provider.Response{Message: provider.Message{Role:
+  provider.RoleAssistant, Content: summaryReplyJSON}}` and a nil
+  error, the same success shape as `summaryScript`. Its second and
+  every later `Chat` call returns `provider.Response{}` and a fixed
+  sentinel error, `errors.New("summary boom second")`. `ChatStream`
+  returns an error, unsupported, the same as `summaryScript`.
+- `completer := &scriptedCompleter{responses: []provider.Response{
+  toolCallResponse(provider.ToolCall{ID: "c1", Name: "search",
+  Arguments: []byte("{}")}) with Usage: provider.Usage{TotalTokens:
+  30} set on that response's `Message`-carrying struct}}`. Exactly one
+  scripted response: the run must hard-fail on iteration two, before
+  a second `Completer.Chat` call, so a second scripted response is
+  never consumed.
+- `agentloop.Options{Completer: completer, Tools: reg, MaxIterations:
+  4, Window: &w, Summarizer: <NewSummarizer over
+  summaryFailsOnSecondCall>, Calibrated: contextplan.Calibrate(scaleEstimator{div:
+  1}, 1.0)}`. No `Budget`: irrelevant to this test's boundary.
+- Call `loop.Run(context.Background(), msgs)`.
+- Assert `errors.Is(err, agentloop.ErrCompactionFailed)`.
+- Assert `errors.Is(err, contextsummary.ErrCallFailed)`.
+- Assert `completer.callCount() == 1`: the first iteration's
+  `Completer.Chat` call ran; the second iteration hard-fails inside
+  `planHistory`, before any second `Completer.Chat` call.
+- Assert `res.Iterations == 1`: exactly one iteration completed before
+  the failure.
+- Assert `res.Usage == provider.Usage{TotalTokens: 30}`: the first
+  iteration's usage carries forward, unchanged by the failed second
+  iteration.
+- Assert `res.Final == provider.Message{}` and `res.Stop ==
+  agentloop.StopReason("")`: the run did not reach a stop condition;
+  it failed one, per the Result-shape rule's hard-fail case.
+- Assert `len(res.History) > 0` and `summaryNamed(res.History) == 1`:
+  the first iteration's compaction result, including its injected
+  summary message, survives into the failure `Result`, proving
+  `History` carries the accumulated partial state rather than the
+  zero value `hardFail` would return at `iterations == 0`.
+
+### Addendum verification
+
+`make verify` passes. `go test -race ./agentloop/...` passes,
+including the corrected `TestRunSummarizerFailureFailsBeforeRequest`,
+the strengthened
+`TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed`, and the new
+`TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`. No
+`api/agentloop.txt` diff: no exported symbol changes. No
+`policy/layers.json` change: the fix reuses an existing unexported
+helper and adds no import. The coverage floor stays at 85 percent for
+`agentloop` and the module total.
+

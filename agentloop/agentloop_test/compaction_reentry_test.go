@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -221,5 +222,95 @@ func TestRunBudgetWindowSecondCompactionAcrossIterations(t *testing.T) {
 	_, reqs := completerRequests(completer)
 	if summaryNamed(reqs[1].Messages) != 1 {
 		t.Fatalf("second Chat request must carry exactly one summary message, want the re-folded summary: %+v", reqs[1].Messages)
+	}
+}
+
+// summaryFailsOnSecondCall is a Completer whose first Chat call
+// succeeds with the fixed summary reply and whose second and later
+// calls fail with a fixed sentinel error. It stands in for a
+// Summarizer's completer to trigger a second-iteration planHistory
+// failure after a first-iteration compaction already succeeded.
+type summaryFailsOnSecondCall struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (s *summaryFailsOnSecondCall) Name() string { return "summary-fails-on-second-call" }
+
+func (s *summaryFailsOnSecondCall) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	s.mu.Lock()
+	s.calls++
+	n := s.calls
+	s.mu.Unlock()
+	if n == 1 {
+		return provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: summaryReplyJSON}}, nil
+	}
+	return provider.Response{}, errors.New("summary boom second")
+}
+
+func (s *summaryFailsOnSecondCall) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return nil, errors.New("summaryFailsOnSecondCall: ChatStream not supported")
+}
+
+// TestRunPlanHistoryFailureLaterIterationPreservesPartialResult proves
+// a planHistory failure on the second iteration, after the first
+// iteration's compaction and Completer.Chat call already completed,
+// carries the first iteration's partial state instead of the zero
+// Result hardFail returns at iterations == 0.
+func TestRunPlanHistoryFailureLaterIterationPreservesPartialResult(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 80)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 500, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	reg := tools.New()
+	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`), result: strings.Repeat("z", 80)})
+	summarizer, err := contextsummary.NewSummarizer(&summaryFailsOnSecondCall{})
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	resp := toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")})
+	resp.Usage = provider.Usage{TotalTokens: 30}
+	completer := &scriptedCompleter{responses: []provider.Response{resp}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         reg,
+		MaxIterations: 4,
+		Window:        &w,
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if !errors.Is(err, contextsummary.ErrCallFailed) {
+		t.Fatalf("Run() error = %v, want the contextsummary sentinel wrapped", err)
+	}
+	if got := completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: the second iteration hard-fails before a second Chat call", got)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1: exactly one iteration completed before the failure", res.Iterations)
+	}
+	if res.Usage != (provider.Usage{TotalTokens: 30}) {
+		t.Fatalf("Usage = %+v, want the first iteration's usage carried forward", res.Usage)
+	}
+	if !isZeroMessage(res.Final) {
+		t.Fatalf("Final = %+v, want the zero Message: the run did not reach a stop condition", res.Final)
+	}
+	if res.Stop != agentloop.StopReason("") {
+		t.Fatalf("Stop = %q, want the zero StopReason", res.Stop)
+	}
+	if len(res.History) == 0 {
+		t.Fatal("History = empty, want the first iteration's partial state")
+	}
+	if summaryNamed(res.History) != 1 {
+		t.Fatalf("History summary count = %d, want 1: the first iteration's compaction result survives", summaryNamed(res.History))
 	}
 }

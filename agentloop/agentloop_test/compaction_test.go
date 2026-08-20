@@ -340,8 +340,8 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	if got := f.completer.callCount(); got != 0 {
 		t.Fatalf("completer calls = %d, want 0: nothing is sent on a failed compaction", got)
 	}
-	if len(res.History) != len(msgs) {
-		t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the summarizer failed", res)
 	}
 }
 

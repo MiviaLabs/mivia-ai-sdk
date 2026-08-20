@@ -76,7 +76,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 		if l.window != nil {
 			planned, err := l.planHistory(ctx, history, iterations)
 			if err != nil {
-				return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+				return l.hardFail(history, iterations, totalUsage), err
 			}
 			history = planned
 		}

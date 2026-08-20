@@ -91,8 +91,10 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 	}
 
 	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
-	defer stopHeartbeat()
-	at := l.runChat(ctx, *history, *iterations)
+	at := func() chatAttempt {
+		defer stopHeartbeat()
+		return l.runChat(ctx, *history, *iterations)
+	}()
 	if at.err != nil {
 		if at.fromRecovery {
 			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage}, at.err, true

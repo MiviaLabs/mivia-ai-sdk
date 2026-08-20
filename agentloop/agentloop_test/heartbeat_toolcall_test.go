@@ -307,6 +307,121 @@ func TestRunHeartbeatGoroutineLeakOnToolCallPanic(t *testing.T) {
 	assertNoGoroutineLeak(t, before)
 }
 
+// TestRunCompletionHeartbeatStopsWhenChatReturns proves the
+// completion-heartbeat ticker stops as soon as the Completer call it
+// brackets returns, not when runIteration itself returns. A tool call
+// dispatched from the same iteration blocks four times longer than
+// the Completer call; if the ticker incorrectly kept running past
+// Chat's return (its documented scope, heartbeat.go's
+// EventCompletionHeartbeat comment: "while one Completer call is in
+// flight"), events would keep arriving while the tool call is still
+// in flight.
+func TestRunCompletionHeartbeatStopsWhenChatReturns(t *testing.T) {
+	tool := &slowTool{name: "slow", delay: 4 * heartbeatTestBlock, result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	bus := events.New()
+	ch, handler := eventChan()
+	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
+	completer := &slowCompleter{
+		delay: heartbeatTestBlock,
+		resp:  toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")}),
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+			t.Errorf("Run() error = %v, want nil", err)
+		}
+	}()
+
+	<-time.After(2 * heartbeatTestBlock)
+	afterChat := len(drainAllBuffered(ch))
+	if afterChat == 0 {
+		t.Fatalf("EventCompletionHeartbeat count after Chat returns = 0, want > 0: the ticker never fired, so this test cannot prove it stopped")
+	}
+
+	<-time.After(heartbeatTestBlock)
+	duringTool := len(drainAllBuffered(ch))
+	if duringTool != 0 {
+		t.Fatalf("EventCompletionHeartbeat count while the tool call is still in flight = %d, want 0: the ticker must stop when Chat returns, not when runIteration returns", duringTool)
+	}
+
+	timer := time.NewTimer(heartbeatTestTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		t.Fatalf("timed out after %v waiting for Run to return", heartbeatTestTimeout)
+	}
+}
+
+// TestRunToolCallHeartbeatStopsWhenToolReturns proves the tool-call-
+// heartbeat ticker stops as soon as the tool's Run call it brackets
+// returns, not when runOneToolCall itself returns. A PointPostTool
+// hook wired on the same call blocks four times longer than the tool
+// call; if the ticker incorrectly kept running past decodeAndRun's
+// return (its documented scope, heartbeat.go's EventToolCallHeartbeat
+// comment: "while one tool call is in flight"), events would keep
+// arriving while the PostTool hook is still in flight.
+func TestRunToolCallHeartbeatStopsWhenToolReturns(t *testing.T) {
+	tool := &slowTool{name: "slow", delay: heartbeatTestBlock, result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	hreg := hooks.New()
+	if err := hreg.Add(hooks.PointPostTool, "slow-post", func(ctx context.Context, payload any) (bool, error) {
+		<-time.After(4 * heartbeatTestBlock)
+		return true, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	bus := events.New()
+	ch, handler := eventChan()
+	subscribeEvents(t, bus, handler, agentloop.EventToolCallHeartbeat)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")}),
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 1, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+			t.Errorf("Run() error = %v, want nil", err)
+		}
+	}()
+
+	<-time.After(2 * heartbeatTestBlock)
+	afterTool := len(drainAllBuffered(ch))
+	if afterTool == 0 {
+		t.Fatalf("EventToolCallHeartbeat count after the tool returns = 0, want > 0: the ticker never fired, so this test cannot prove it stopped")
+	}
+
+	<-time.After(heartbeatTestBlock)
+	duringPostHook := len(drainAllBuffered(ch))
+	if duringPostHook != 0 {
+		t.Fatalf("EventToolCallHeartbeat count while PointPostTool is still in flight = %d, want 0: the ticker must stop when the tool returns, not when runOneToolCall returns", duringPostHook)
+	}
+
+	timer := time.NewTimer(heartbeatTestTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		t.Fatalf("timed out after %v waiting for Run to return", heartbeatTestTimeout)
+	}
+}
+
 // drainAllBuffered reads every event currently buffered on ch without
 // blocking, returning them in arrival order.
 func drainAllBuffered(ch <-chan events.Event) []events.Event {

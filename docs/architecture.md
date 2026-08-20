@@ -19,9 +19,9 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-five packages and the import edges
+The diagram shows the forty-four packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextstate`, `diff`,
+imports. `channel`, `contextbudget`, `contextstate`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,
 `longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
@@ -119,9 +119,6 @@ flowchart LR
     subagent --> tools
     subagent --> trace
     subagent --> trigger
-    subagent --> diff
-    subagent --> secretpath
-    subagent --> workspace
     workspace --> secretpath
     runconfig --> agentrun
     runconfig --> contextbudget

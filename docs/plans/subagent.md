@@ -799,6 +799,24 @@ A caller matches the sentinel with `errors.Is` and still reads the
 `envelope` detail. Run `make api-update` and commit the
 `api/subagent.txt` diff in the same change.
 
+## File tools removed
+
+Status: shipped. See `docs/plans/agents/convergence.md`'s "Boundary
+correction" section. The "File tools addendum" above added
+`FileTools`, `OpenFileTools`, `WorkspaceReadTool`, `WorkspaceWriteTool`,
+`WorkspaceListTool`, `WorkspaceStatTool`, `DiffTool`, their argument
+structs, and `ErrDenyRequired` to `subagent`. This toolbox is a
+concrete file-editing product surface: only a coding agent reads,
+writes, lists, stats, and diffs source files. No other agent shape
+this SDK targets — support, research, data-pipeline — needs it. The
+correction removes these symbols, their support files, and the `diff`
+package they depended on. `subagent`'s current scope is the "Scope"
+section above: the eleven block-wrapper tools, `AsTool`, `SendTool`,
+and `InboxTool`. `runconfig`'s matching `Kind` constants
+(`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
+`WorkspaceStatKind`, `DiffKind`) are removed in the same change; see
+`docs/plans/runconfig.md`'s matching addendum.
+
 Update the `Mailbox` and `Deliver` comments to name the enforced
 rule. Update the mailbox entries in `docs/packages/subagent.md` in
 the same change.

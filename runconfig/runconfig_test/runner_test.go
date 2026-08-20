@@ -3,8 +3,6 @@ package runconfig_test
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,7 +14,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
-	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -115,9 +112,6 @@ func TestRunnerResolves(t *testing.T) {
 	})
 }
 
-// TestRunnerResolvesNewKindsStub checks each new Kind resolves its
-// bound step to a stub tool without error, proving the binding, not
-// the underlying tool's own behavior.
 // TestRunnerResolvesDuplicateStepID proves Runner forwards
 // tools.Registry.Add's ErrDuplicateName as ErrBadDocument, naming the
 // colliding step. flow.New enforces unique step IDs within one plan
@@ -154,16 +148,25 @@ func TestRunnerResolvesDuplicateStepID(t *testing.T) {
 	}
 }
 
+// TestRunnerResolvesNewKindsStub checks each new Kind resolves its
+// bound step to a stub tool without error, proving the binding, not
+// the underlying tool's own behavior.
 func TestRunnerResolvesNewKindsStub(t *testing.T) {
 	cases := []struct {
 		name string
 		kind runconfig.Kind
 	}{
-		{"workspaceread", runconfig.WorkspaceReadKind},
-		{"workspacewrite", runconfig.WorkspaceWriteKind},
-		{"workspacelist", runconfig.WorkspaceListKind},
-		{"workspacestat", runconfig.WorkspaceStatKind},
-		{"diff", runconfig.DiffKind},
+		{"flow", runconfig.FlowKind},
+		{"ledger", runconfig.LedgerKind},
+		{"memory", runconfig.MemoryKind},
+		{"room", runconfig.RoomKind},
+		{"scheduler", runconfig.SchedulerKind},
+		{"heartbeat", runconfig.HeartbeatKind},
+		{"discovery", runconfig.DiscoveryKind},
+		{"trigger", runconfig.TriggerKind},
+		{"channel", runconfig.ChannelKind},
+		{"provider", runconfig.ProviderKind},
+		{"providerregistry", runconfig.ProviderRegistryKind},
 		{"astool", runconfig.AsToolKind},
 	}
 	for _, tc := range cases {
@@ -181,192 +184,6 @@ func TestRunnerResolvesNewKindsStub(t *testing.T) {
 				t.Fatal("Runner = nil, want a built Runner")
 			}
 		})
-	}
-}
-
-// workspaceReadStepDoc names one step bound to WorkspaceReadKind, with
-// a payload holding the JSON-string-encoded subagent.WorkspaceReadArgs
-// form.
-const workspaceReadStepDoc = `{
-	"machine": {"initial": "queued", "transitions": [
-		{"from": "queued", "to": "done", "trigger": "run"}
-	]},
-	"plan": {"steps": [{"id": "s1", "to": "done", "internal": "workspaceread",
-		"payload": "{\"path\":\"notes.txt\"}"}]},
-	"tools": []
-}`
-
-// TestRunnerResolvesWorkspaceReadReal proves WorkspaceReadKind composes
-// with the real subagent and workspace types, driven end to end
-// through a real Runner.Run: agentrun's chain decodes the step's
-// JSON-string payload through the tool's own DecodeArguments before
-// it calls Run, so the resolved WorkspaceReadTool reads the seeded
-// file and the run reaches status done.
-func TestRunnerResolvesWorkspaceReadReal(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello workspace"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
-	if err != nil {
-		t.Fatalf("NewMatcher: %v", err)
-	}
-	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: dir, Deny: deny})
-	if err != nil {
-		t.Fatalf("OpenFileTools: %v", err)
-	}
-	defer ft.Close()
-	tool := subagent.WorkspaceReadTool("s1", ft, 65536)
-
-	d := loadDoc(t, workspaceReadStepDoc)
-	blocks := runconfig.NewBlocks()
-	blocks.Set(runconfig.WorkspaceReadKind, tool)
-	d.Blocks = blocks
-	d.Options.Agent = agentOver(t, d)
-	art := &agentrun.Artifacts{}
-	d.Options.Artifacts = art
-
-	runner, err := d.Runner()
-	if err != nil {
-		t.Fatalf("Runner: %v", err)
-	}
-	if runner == nil {
-		t.Fatal("Runner = nil, want a built Runner")
-	}
-
-	status, _, err := runner.Run(context.Background(), "thread-workspaceread", machine.InOut{})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if status != "done" {
-		t.Fatalf("status = %q, want done", status)
-	}
-	artifact, ok := art.Get("s1")
-	if !ok || artifact != "hello workspace" {
-		t.Fatalf("artifact = %q, ok = %v, want the seeded file content", artifact, ok)
-	}
-}
-
-// workspaceWriteStepDoc names one step bound to WorkspaceWriteKind, with
-// a payload holding the JSON-string-encoded subagent.WorkspaceWriteArgs
-// form.
-const workspaceWriteStepDoc = `{
-	"machine": {"initial": "queued", "transitions": [
-		{"from": "queued", "to": "done", "trigger": "run"}
-	]},
-	"plan": {"steps": [{"id": "s1", "to": "done", "internal": "workspacewrite",
-		"payload": "{\"path\":\"out.txt\",\"content\":\"written by runconfig\"}"}]},
-	"tools": []
-}`
-
-// TestRunnerResolvesWorkspaceWriteReal proves WorkspaceWriteKind
-// composes with the real subagent and workspace types, driven end to
-// end through a real Runner.Run. Unlike WorkspaceReadTool, the
-// resolved WorkspaceWriteTool mutates the filesystem: this proves both
-// the schema decode and the on-disk write happen through the real
-// tool, not a stub standing in for it. WorkspaceWriteTool.Run returns
-// the fixed string "ok", so the run also proves the tool's own result
-// stays a string agentrun's chain accepts.
-func TestRunnerResolvesWorkspaceWriteReal(t *testing.T) {
-	dir := t.TempDir()
-	deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
-	if err != nil {
-		t.Fatalf("NewMatcher: %v", err)
-	}
-	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: dir, Deny: deny})
-	if err != nil {
-		t.Fatalf("OpenFileTools: %v", err)
-	}
-	defer ft.Close()
-	tool := subagent.WorkspaceWriteTool("s1", ft)
-
-	d := loadDoc(t, workspaceWriteStepDoc)
-	blocks := runconfig.NewBlocks()
-	blocks.Set(runconfig.WorkspaceWriteKind, tool)
-	d.Blocks = blocks
-	d.Options.Agent = agentOver(t, d)
-	art := &agentrun.Artifacts{}
-	d.Options.Artifacts = art
-
-	runner, err := d.Runner()
-	if err != nil {
-		t.Fatalf("Runner: %v", err)
-	}
-	status, _, err := runner.Run(context.Background(), "thread-workspacewrite", machine.InOut{})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if status != "done" {
-		t.Fatalf("status = %q, want done", status)
-	}
-	artifact, ok := art.Get("s1")
-	if !ok || artifact != "ok" {
-		t.Fatalf("artifact = %q, ok = %v, want the tool's fixed \"ok\" result", artifact, ok)
-	}
-	got, err := os.ReadFile(filepath.Join(dir, "out.txt"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	if string(got) != "written by runconfig" {
-		t.Fatalf("file content = %q, want the decoded payload's content", got)
-	}
-}
-
-// diffStepDoc names one step bound to DiffKind, with a payload holding
-// the JSON-string-encoded subagent.DiffArgs form.
-const diffStepDoc = `{
-	"machine": {"initial": "queued", "transitions": [
-		{"from": "queued", "to": "done", "trigger": "run"}
-	]},
-	"plan": {"steps": [{"id": "s1", "to": "done", "internal": "diff",
-		"payload": "{\"path\":\"notes.txt\",\"content\":\"new content\\n\"}"}]},
-	"tools": []
-}`
-
-// TestRunnerResolvesDiffReal proves DiffKind composes with the real
-// subagent and diff types, driven end to end through a real Runner.Run:
-// the resolved DiffTool reads the seeded on-disk content, diffs it
-// against the decoded payload's proposed content through the real
-// diff.Unified, and the run reaches status done with the rendered
-// unified diff as the step's artifact.
-func TestRunnerResolvesDiffReal(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("old content\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
-	if err != nil {
-		t.Fatalf("NewMatcher: %v", err)
-	}
-	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: dir, Deny: deny})
-	if err != nil {
-		t.Fatalf("OpenFileTools: %v", err)
-	}
-	defer ft.Close()
-	tool := subagent.DiffTool("s1", ft, 100)
-
-	d := loadDoc(t, diffStepDoc)
-	blocks := runconfig.NewBlocks()
-	blocks.Set(runconfig.DiffKind, tool)
-	d.Blocks = blocks
-	d.Options.Agent = agentOver(t, d)
-	art := &agentrun.Artifacts{}
-	d.Options.Artifacts = art
-
-	runner, err := d.Runner()
-	if err != nil {
-		t.Fatalf("Runner: %v", err)
-	}
-	status, _, err := runner.Run(context.Background(), "thread-diff", machine.InOut{})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if status != "done" {
-		t.Fatalf("status = %q, want done", status)
-	}
-	artifact, ok := art.Get("s1")
-	if !ok || !strings.Contains(artifact, "-old content") || !strings.Contains(artifact, "+new content") {
-		t.Fatalf("artifact = %q, ok = %v, want a unified diff of old vs new content", artifact, ok)
 	}
 }
 

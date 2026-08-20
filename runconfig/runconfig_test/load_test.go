@@ -187,11 +187,17 @@ func TestLoadInternalKinds(t *testing.T) {
 		name string
 		kind runconfig.Kind
 	}{
-		{"workspaceread", runconfig.WorkspaceReadKind},
-		{"workspacewrite", runconfig.WorkspaceWriteKind},
-		{"workspacelist", runconfig.WorkspaceListKind},
-		{"workspacestat", runconfig.WorkspaceStatKind},
-		{"diff", runconfig.DiffKind},
+		{"flow", runconfig.FlowKind},
+		{"ledger", runconfig.LedgerKind},
+		{"memory", runconfig.MemoryKind},
+		{"room", runconfig.RoomKind},
+		{"scheduler", runconfig.SchedulerKind},
+		{"heartbeat", runconfig.HeartbeatKind},
+		{"discovery", runconfig.DiscoveryKind},
+		{"trigger", runconfig.TriggerKind},
+		{"channel", runconfig.ChannelKind},
+		{"provider", runconfig.ProviderKind},
+		{"providerregistry", runconfig.ProviderRegistryKind},
 		{"astool", runconfig.AsToolKind},
 	}
 	for _, tc := range cases {

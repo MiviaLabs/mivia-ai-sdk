@@ -1,7 +1,6 @@
 package runconfig
   const AsToolKind = "astool"
   const ChannelKind = "channel"
-  const DiffKind = "diff"
   const DiscoveryKind = "discovery"
   const FlowKind = "flow"
   const HeartbeatKind = "heartbeat"
@@ -12,10 +11,6 @@ package runconfig
   const RoomKind = "room"
   const SchedulerKind = "scheduler"
   const TriggerKind = "trigger"
-  const WorkspaceListKind = "workspacelist"
-  const WorkspaceReadKind = "workspaceread"
-  const WorkspaceStatKind = "workspacestat"
-  const WorkspaceWriteKind = "workspacewrite"
   func (b *Blocks) Set(kind Kind, t tools.Tool)
   func (c stepBudgetCap) MaxResultBytes() (int)
   func (c stepPrivilegedCap) Privileged() (bool)

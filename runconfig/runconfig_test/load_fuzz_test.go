@@ -14,9 +14,8 @@ import (
 func FuzzLoad(f *testing.F) {
 	seeds := []string{
 		oneStepDoc("grep"),
-		internalStepDoc("workspaceread"),
+		internalStepDoc("memory"),
 		goldenDoc,
-		workspaceReadGoldenDoc,
 		baseDoc,
 		`{}`,
 		`[]`,

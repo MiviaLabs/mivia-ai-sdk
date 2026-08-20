@@ -569,3 +569,22 @@ real `Runner.Run`, by
 `TestRunnerResolvesWorkspaceStatReal` in
 `runconfig/runconfig_test/workspace_list_stat_test.go`. No standalone
 phase 77 plan file remains for this contract.
+
+## Addendum: five file-toolbox Kinds removed
+
+Status: shipped. See `docs/plans/agents/convergence.md`'s "Boundary
+correction" section. `subagent`'s file-editing toolbox (`FileTools`,
+`WorkspaceReadTool`, `WorkspaceWriteTool`, `WorkspaceListTool`,
+`WorkspaceStatTool`, `DiffTool`) and the `diff` package left the SDK as
+coding-agent product surface, not a generic building block. The five
+`Kind` constants that routed to that toolbox — `WorkspaceReadKind`,
+`WorkspaceWriteKind`, `WorkspaceListKind`, `WorkspaceStatKind`, and
+`DiffKind` — left with it. `runconfig`'s
+remaining twelve `Kind` constants (`FlowKind`, `LedgerKind`,
+`MemoryKind`, `RoomKind`, `SchedulerKind`, `HeartbeatKind`,
+`DiscoveryKind`, `TriggerKind`, `ChannelKind`, `ProviderKind`,
+`ProviderRegistryKind`, `AsToolKind`) are unaffected. `runconfig`'s
+production code never imported `subagent`'s file tools directly; only
+`runconfig_test`'s fixtures did, and those fixtures now use a minimal
+fake `tools.Tool` per removed `Kind` to prove `Blocks.Set`/dispatch
+alone.

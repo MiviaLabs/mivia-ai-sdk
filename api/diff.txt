@@ -1,3 +1,0 @@
-package diff
-  func Unified(name string, a, b []byte, maxLines int) (string, error)
-  var ErrTooLarge

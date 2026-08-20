@@ -1,7 +1,12 @@
 # Convergence: mivia-agent onto mivia-ai-sdk
 
-Status: program plan, revision five. Every decision is answered. The
+Status: program plan, revision six. Every decision is answered. The
 plan is buildable.
+
+Revision six corrects stage 3 and stage 6's scope. It narrows two
+absorption targets, adds one reversed-direction item, and removes two
+SDK-only packages that were never a convergence target. See "Boundary
+correction (revision six)" below the resolved decisions.
 
 This plan covers two repositories. The SDK is
 `github.com/MiviaLabs/mivia-ai-sdk`. The consumer is
@@ -53,32 +58,69 @@ Measured direct imports of every absorption target:
 | `workflows` | go-toml, x/mod | x/mod yes | no |
 | `hooks` | go-toml | no | not on converging path |
 
-Decision one: the SDK permits `github.com/pelletier/go-toml/v2`,
-`golang.org/x/mod`, and `golang.org/x/sys` as direct imports, scoped
-to named packages. Each absorption still gets its own plan review, per
-the existing rule.
+Decision one, as recorded in revision five: the SDK permits
+`github.com/pelletier/go-toml/v2`, `golang.org/x/mod`, and
+`golang.org/x/sys` as direct imports, scoped to named packages.
+
+Revision six narrows this. "Boundary correction" above walks the
+grep evidence: `x/mod`'s sole caller stays in the consumer's
+`controller`-adjacent verifier and never converges; `go-toml`'s
+callers are all format-parsing loaders that hand a parsed struct to
+an SDK-shaped registry, so under the "SDK accepts parsed Go structs"
+rule the SDK never needs it either. `x/sys` stays granted, rescoped to
+`workspace/` rather than `skills/`, since its one caller is filesystem
+confinement hardening, not skill matching.
+
+Decision one, corrected: the SDK permits `golang.org/x/sys` as a
+direct import, scoped to `workspace/` (or a workspace-adjacent leaf
+decided at absorption time). `github.com/pelletier/go-toml/v2` and
+`golang.org/x/mod` are not granted; no absorption target needs them.
+Each absorption still gets its own plan review, per the existing rule.
 
 The exception list is not one file. Three sites enforce it, and a
-change to one alone creates drift:
+change to one alone creates drift. This corrects revision five's
+mistaken site list: `scripts/check_gomod.py` does not exist, and
+Semgrep holds no per-package scoped rule. The real sites are:
 
 - AGENTS.md holds the prose rule.
-- `scripts/check_gomod.py` holds an allowlist of module paths.
-- `semgrep/sdk-standards.yml` holds a blanket forbid rule plus one
-  scoped rule per excepted package, each with a `pattern-not-regex`.
-- The Semgrep probe suite proves each scoped rule fires on a violation
-  and stays silent on clean code.
+- `policy/thirdparty.json` holds the actual per-package allowlist: a
+  map from package name to its permitted modules and its build tag,
+  if any (for example `"ledger": {"modules":
+  ["modernc.org/sqlite"], "tag": "ledger_sqlite"}`).
+- `scripts/check_thirdparty.py` is the one gate; its own docstring
+  calls it "the one site that owns third-party truth." It runs seven
+  checks: per-package imports against `policy/thirdparty.json`, a
+  residual raw-text scan, policy shape, `go.mod` direct-require
+  equality, the `go.sum` closure lock, `go mod tidy -diff` identity,
+  and a replace/exclude/retract rejection.
+- `semgrep/sdk-standards.yml` holds one rule,
+  `sdk.go.stdlib-only-imports`: a blanket forbid on any third-party
+  import path, with one flat `pattern-not-regex` exemption list
+  covering every currently-allowed module. The exemption is
+  module-level, not per-package; Semgrep cannot tell which SDK package
+  is allowed which module. `policy/thirdparty.json` and
+  `check_thirdparty.py` own that finer-grained rule alone.
 
-So no exception lands ahead of its absorption. Each absorption updates
-all four sites in the same commit that adds the import. That keeps the
-prose and the gates in step.
+So no exception lands ahead of its absorption. Landing a new
+per-package exception needs a `policy/thirdparty.json` row, and, only
+if the module is not yet in any row, a new `pattern-not-regex` line in
+`semgrep/sdk-standards.yml`. Widening an already-exempted module (for
+example `modernc.org/sqlite`) to a new package needs only the
+`policy/thirdparty.json` row; Semgrep needs no change, since its
+exemption already covers the module. Land the policy row, the Semgrep
+line if needed, and the import in the same commit.
 
-The `x/sys` item is not cosmetic. The `skills` hardening the SDK is
-asked to absorb is the `x/sys` code.
-`internal/skills/resource_file_linux.go` implements fail-closed
-resource rebinding with `unix.Dup`, `unix.Fstatat`, `unix.Openat`,
-`unix.AT_SYMLINK_NOFOLLOW`, and `unix.O_NOFOLLOW`. Re-implementing it
-on `syscall` or `os.Root` yields a different guarantee. The decision
-record forbids that.
+The `x/sys` item is not cosmetic. The `skills` hardening the SDK was
+asked to absorb is the `x/sys` code, but "Boundary correction" above
+found its real home is `workspace/`, not `skills/`. Landing it needs a
+new `policy/thirdparty.json` row for `workspace` naming
+`golang.org/x/sys`, and a new `pattern-not-regex` line in
+`semgrep/sdk-standards.yml`, since no current exemption covers that
+module yet. `internal/skills/resource_file_linux.go` implements
+fail-closed resource rebinding with `unix.Dup`, `unix.Fstatat`,
+`unix.Openat`, `unix.AT_SYMLINK_NOFOLLOW`, and `unix.O_NOFOLLOW`.
+Re-implementing it on `syscall` or `os.Root` yields a different
+guarantee. The decision record forbids that.
 
 The `hooks` row is inert. Its TOML use sits in `config.go` and
 `validate.go`. Only the protocol codec converges, and
@@ -100,10 +142,14 @@ The tag stays. Dropping it would weaken a gate, which AGENTS.md
 forbids. Widening the package scope while keeping the tag is a
 recorded exception, not a weakened gate.
 
-The same four-site rule applies. `sdk.go.ledger-scoped-third-party-
-import` is one scoped rule today. Widening to `memory` and the usage
-store needs a scoped rule and a probe for each, landed with the
-absorption.
+The same mechanism applies, corrected as above: `policy/thirdparty.json`
+holds `ledger`'s row for `modernc.org/sqlite` under the
+`ledger_sqlite` tag today. `semgrep/sdk-standards.yml`'s single
+`stdlib-only-imports` rule already exempts `modernc.org/sqlite` at the
+module level. Widening to `memory` and the usage store needs only a
+new `policy/thirdparty.json` row per package, each under the same
+tag; Semgrep needs no change, since its exemption already covers the
+module.
 
 ### The scheduler capability gap
 
@@ -120,6 +166,307 @@ and `Run`, and `Job` is `func(ctx) error`.
 
 So `ports.AutomationSettings` cannot be implemented on SDK types
 today. Stage 5b below waits for the stage 6 scheduler item.
+
+## Boundary correction (revision six)
+
+Revision five's stage 6 list named absorption targets by shared
+package name. Some named pairs share a name and nothing else. One SDK
+package, `subagent/`'s file-editing tool set, and its sole dependency
+`diff/`, were never a consumer duplicate; they are coding-agent
+product surface that should not have entered the SDK. This section
+corrects both errors with evidence, then edits the affected tables.
+
+### `subagent/` and `diff/`: an SDK-only correction, no consumer wait
+
+`subagent/` holds two concerns. `AsTool`, `SendTool`, `InboxTool`, and
+eleven typed tool wrappers (`MemoryTool`, `ChannelTool`,
+`ProviderTool`, `SchedulerTool`, `RoomTool`, `LedgerTool`, `FlowTool`,
+`TriggerTool`, `HeartbeatTool`, `DiscoveryTool`,
+`ProviderRegistryTool`) each expose one SDK block as a tool. That
+concern belongs in the SDK. `subagent/filetoolset.go`,
+`workspacereadtool.go`, `workspacewritetool.go`,
+`workspacelisttool.go`, `workspacestattool.go`, and `difftool.go`
+expose `FileTools`, `WorkspaceReadTool`, `WorkspaceWriteTool`,
+`WorkspaceListTool`, `WorkspaceStatTool`, and `DiffTool`: a concrete
+file-editing toolbox wrapping `workspace.Workspace` and `diff.Unified`.
+
+Apply the AGENTS.md building-block test: would a support agent, a
+research agent, or a data-pipeline agent need a bundled file-diff
+tool? No. Only a coding agent edits source files and previews the
+edit as a diff. This toolbox is `mivia-agent` product surface riding
+inside the SDK.
+
+`diff/` exists to serve exactly one production caller. A repo-wide
+search for `sdk/diff"` finds three matches outside worktree copies:
+`subagent/difftool.go`, `subagent/subagent_test/filetools_test.go`,
+and `diff/diff_test/diff_test.go`. No other package imports it. Its
+sole reason to exist is `subagent/difftool.go`.
+
+Decision: `FileTools`, `WorkspaceReadTool`, `WorkspaceWriteTool`,
+`WorkspaceListTool`, `WorkspaceStatTool`, `DiffTool`, and their
+support files leave `subagent/`. `diff/` deletes as a package. The
+eleven block wrappers plus `AsTool`, `SendTool`, and `InboxTool` stay.
+
+This correction needs no consumer coordination and no rollback
+ordering. The consumer imports zero SDK packages today, so no import
+lands before a deletion; there is nothing to roll back to. The
+consumer already owns a superset replacement: `internal/diff`
+(`Compute`, `Result`, `Op`, `Kind`, `Stats`, `Options`,
+`FormatUnifiedAt`, `TruncateUTF8`, a context deadline) backs
+`internal/tools/write.go` and `internal/tools/edit.go`, the consumer's
+real file-edit tools. No consumer-side construction is needed.
+
+This change can land in `mivia-ai-sdk` alone, ahead of stage 0, in one
+commit. No gate below checks these files, so skipping any leaves it
+silently stale:
+
+- Delete the six symbols and their files.
+- Update `subagent/wire.go` and the tests that reference them.
+- Run `make api-update` to drop them from `api/subagent.txt`; delete
+  `api/diff.txt`.
+- Remove `diff/`'s row and `subagent`'s `diff` entry from
+  `policy/layers.json`.
+- Delete `docs/packages/diff.md` and `docs/plans/diff.md`.
+- Remove `docs/packages/diff.md`'s entry from `docs/README.md`'s
+  package list.
+- Remove `diff` from `docs/architecture.md`'s module list and its
+  leaf-package sentence, and remove the `subagent --> diff` edge from
+  the Mermaid package-map diagram.
+
+None of `check_plan.py`, `check_docs.py`, or `check_orphan_packages.py`
+enforce these four doc sites; treat the list above as mandatory
+regardless. It is not a stage 6 absorption; it has no
+"import first, deletion second" step, because no SDK-to-consumer
+import exists to sequence against.
+
+#### Addendum: `runconfig`'s `Kind` vocabulary shares the same defect
+
+The "no consumer coordination" claim above checked `mivia-agent`
+imports and `diff"` imports. It missed an in-repo consumer:
+`runconfig/blocks.go` locks `WorkspaceReadKind`, `WorkspaceWriteKind`,
+`WorkspaceListKind`, `WorkspaceStatKind`, and `DiffKind` as exported
+`Kind` constants, each existing solely to route a config document's
+tool binding to the file toolbox this correction deletes.
+`runconfig_test` builds fixture tools against the real
+`subagent.WorkspaceReadTool`/`WorkspaceWriteTool`/`WorkspaceListTool`/
+`WorkspaceStatTool`/`DiffTool` to exercise dispatch for exactly these
+five kinds.
+
+The same building-block test applies one level further: a `Kind`
+naming a coding-agent-specific tool that no longer exists in the SDK
+is the same product-surface leak this correction is written to close.
+Decision: delete `WorkspaceReadKind`, `WorkspaceWriteKind`,
+`WorkspaceListKind`, `WorkspaceStatKind`, and `DiffKind` from
+`runconfig.Blocks` and its `internalKinds` set, in the same commit as
+the `subagent`/`diff` deletion above. Rewrite `runconfig_test`'s
+fixtures for those five kinds against a minimal fake `tools.Tool` that
+proves `Blocks.Set`/dispatch, since `runconfig`'s production code
+(`blocks.go`, `loader.go`, `runner.go`, `steptool.go`) never imports
+`subagent` and does not need a real workspace or diff tool to prove
+its own dispatch logic. `runconfig`'s other ten `Kind`s are unaffected
+and keep their existing fixtures. `make api-update` picks up the
+`runconfig` surface change in the same pass as `subagent`'s.
+
+This is still a pure SDK-internal correction. `runconfig` itself has
+no consumer either — its `pending_wiring.json` entry names "external
+application code (outside this module)" as the eventual caller, and
+none exists yet.
+
+### `events/`: the shared name hides two different concerns
+
+SDK `events.Event` is `{Name Name, Data string}`, a generic
+string-payload reaction bus. Inside this module, `agent`, `flow`,
+`ledger`, `dispatch`, `agentrun`, `agentloop`, `scheduler`, `machine`,
+and `heartbeat` all import it; it is core internal wiring, not an
+unused leaf.
+
+The consumer's `internal/events` defines `Kind`, a string enum with
+over thirty constants (`KindAssistant`, `KindWorkflowRunStarted`,
+`KindCacheUsage`, `KindTokenUsage`, `KindPrefixReset`, and more), plus
+`Delivery`, `MetricsAdapter`, `CacheUsageEvent`, `TokenUsageEvent`,
+and `CompactionEvent`, each with its own `Validate`. `internal/agent`,
+`internal/hub`, `internal/chat`, eleven-plus files under
+`internal/cli`, and `internal/workflows/localengine` all import it.
+This is a typed, UI-facing and workflow-facing vocabulary for
+rendering one turn, not a generic bus.
+
+Decision: `events/` and `internal/events` never converge. `events/`
+stays the generic bus. `internal/events` stays the consumer's typed
+projection of agent, workflow, and provider activity onto UI event
+kinds.
+
+`agentloop` needs no new typed surface for this projection.
+`agentloop.Options` already exposes `Audit` (one `AuditRecord` per
+completed `Completer` turn and per tool call) and a positive
+`HeartbeatInterval` paired with a non-nil `Bus` (iteration, tool-call,
+and heartbeat `events.Name` progress events). A consumer-side
+projection can build every `internal/events.Kind` the union defines
+from bus events plus `AuditRecord`: cache and token usage ride on
+`AuditRecord`'s embedded `provider.Response` fields; workflow kinds
+ride on `flow`'s own `events.Name` constants once the flow absorption
+below lands.
+
+### `workspace/`: confinement converges, the namespace registry never does
+
+SDK `workspace/` confines file access with `os.Root`
+(`workspace/confine.go`, `read.go`, `write.go`, `list.go`, `stat.go`):
+`Open`, `OpenWith`, `ReadFile`, `ReadFileLimit`, `WriteFile`, `List`,
+`Stat`, plus a `secretpath` deny matcher. Every access opens through
+one `os.Root` descriptor, confined once, for the life of the
+`Workspace`.
+
+The consumer's `internal/workspace` holds two concerns in one
+package. `root.go` defines `Root`: `Open`, `OpenFullDisk`, `Resolve`,
+`evalExistingPrefix`, `isUnder`. `Resolve` cleans a path, evaluates
+symlinks, and string-prefix-checks it against the root, then returns
+a plain path string; the caller opens that path itself, later, with
+its own call. This is a resolve-then-open pattern, not `workspace/`'s
+open-once-confine-forever pattern, and it carries a TOCTOU window
+between `Resolve` and the caller's own open. `internal/workspace.Root`
+backs `internal/tools`' real file-edit tools directly:
+`write.go`, `edit.go`, `delete.go`, `read.go`, `list_dir.go`, and over
+twenty more callers.
+
+`namespace.go`, in the same package, defines `Namespace = ".mivia"`,
+`SkillsDir`, `SessionsDir`, `WorktreesDir`, `ContextStorePath`, and
+`MemoryDBPath`: mivia's own on-disk layout convention. It has no
+confinement content.
+
+This is the one item in the program where the decision-record
+direction runs in reverse. The decision record says the SDK absorbs
+the consumer's hardened implementation; here the SDK's `os.Root`-based
+confinement already carries the stronger guarantee than the
+consumer's resolve-then-open check. Decision: `internal/workspace`'s
+`Root` converges onto SDK `workspace/`, direction consumer-to-SDK.
+`namespace.go` never converges; it is mivia's own path convention, and
+no second SDK consumer needs it. See the new stage 4 item below.
+
+### Third-party import exceptions narrow
+
+Grep evidence in the consumer, current as of this revision:
+
+- `golang.org/x/mod`'s only caller is
+  `internal/workflows/verifier/sandbox_modules.go`, a Go-module
+  verification sandbox. It sits with `controller`'s product-specific
+  gate logic, which never converges regardless of how the
+  `flow`/`workflows` seam question above resolves. The SDK gains no
+  caller for `x/mod`.
+- `github.com/pelletier/go-toml/v2`'s callers are nine files under
+  `internal/config`, plus `internal/hooks/config.go`,
+  `internal/workflows/delivery/prtitle.go`,
+  `internal/workflows/definition/decode.go`, and
+  `internal/skills/resources.go`. `internal/skills/resources.go`
+  decodes a `resourceManifest` into a `[]ResourceDescriptor` and calls
+  no registry method itself; that decoded list only reaches the
+  registry indirectly, as one field (`Definition.Resources`) of the
+  `Definition` that `internal/skills/loader.go:74` assembles and
+  passes to `Registry.Register` (`internal/skills/skills.go:49`,
+  named `Register`, not `Add`). `loader.go` itself imports no
+  `go-toml`. `internal/workflows/delivery/prtitle.go` decodes
+  `pr-title.toml` into a `PRTitlePolicy` struct and calls its own
+  `Validate`, with no SDK call at all. Most `internal/config` callers
+  build a consumer-internal `Resolved` config and never cross into an
+  SDK call. That most callers never reach the SDK, and that the one
+  that does reach a registry does so only indirectly through a struct
+  field, is a stronger argument against an SDK `go-toml` dependency
+  than a direct "decodes, then registers" claim would be: the SDK's
+  own `skills.Registry.Add` already takes a parsed `skills.Skill`, not
+  TOML text, so `skills/` parses nothing itself either way.
+- `golang.org/x/sys`'s caller is
+  `internal/skills/resource_file_linux.go`'s unexported
+  `openDeclaredResourceFile`, called only from
+  `internal/skills/resources.go`. This is filesystem-confinement
+  hardening (`unix.Openat`, `unix.AT_SYMLINK_NOFOLLOW`), not
+  skill-matching logic. It belongs with the workspace confinement item
+  above, not with the `skills` absorption.
+
+Decision: drop `golang.org/x/mod` and `github.com/pelletier/go-toml/v2`
+from the program's dependency-exception list. Neither remaining
+absorption target needs them under the corrected boundary. Keep
+`golang.org/x/sys` as a granted exception, rescoped to `workspace/`
+(decide the exact package at absorption time), not `skills/`.
+`skills/` absorbs with no third-party import.
+
+This edits the "Third-party imports" table and prose below, and, at
+absorption time, `policy/thirdparty.json`. No absorption code lands in
+this revision; this revision only corrects the plan.
+
+### `flow` versus `internal/workflows`: the seam is not clean
+
+`internal/workflows/localengine` (19 out-edges, per the evidence base)
+holds `Engine.Start`, `admitInvocation`, `launch`, `Wait`, plus
+`engine_admission.go`, `fence.go`, `resume_admission.go`, and
+`engine_resume.go` / `engine_resume_worktree.go`: an admission ladder,
+a fenced lease, and resume-from-log. On name and file list alone this
+matches `flow`'s own admission, lease, and resume concerns.
+
+Reading the code past the file names shows the two packages are not
+separable today. `Engine` (`localengine/engine.go`) holds
+`ctrl *controller.LinearController` as a core field, and
+`Engine.launch` calls
+`controller.RunWithCancelReconciliationRetry(runCtx, ctrl.Run)`
+directly. `engine_resume.go`, named above as a converging file, builds
+and returns a `*controller.LinearController` through
+`controller.NewLinearController`, `controller.Admission`, and
+`controller.StepRuntime`. Twenty-seven files in `localengine` import
+`controller`; zero files in `controller` import `localengine`. The
+admission and resume logic this plan wants to converge is written
+directly against `controller`'s concrete types, not behind an
+abstraction `flow` could absorb in isolation.
+
+One seam already exists, and it is not the one this plan needs.
+`controller.AgentStepRunner` (`agent_step.go`) is an interface one
+step's execution goes through; `controller.CoordinatorRunner` is its
+production implementation. That interface abstracts what one step
+does, not the run-level admission, lease, and resume machinery
+`LinearController` owns. `flow` absorbing that machinery means
+absorbing something `controller`-shaped, not admission and resume in
+isolation.
+
+Decision: the split line is undetermined. Revision five's working
+hypothesis, and revision six's first attempt at naming the seam, both
+assumed a separability the code does not have. Before any `flow`
+absorption plan is written, a design spike must answer one question:
+can `localengine`'s admission, lease, and resume logic be rewritten
+against an abstracted step-runner interface, so `flow` absorbs that
+logic without absorbing `controller`'s step-execution semantics? Until
+that spike answers yes with a named interface, stage 6 keeps `flow`
+and `internal/workflows` as one open item with no committed boundary,
+not two.
+
+### Proposed standing rules
+
+Three rules, drafted here for the orchestrator to apply to AGENTS.md's
+Building blocks section. The planner may not edit AGENTS.md; this text
+is a proposal, not yet in force.
+
+- "Test a candidate package against a non-coding agent: a support
+  agent, a research agent, a data-pipeline agent. If that agent has no
+  plausible use for the package, the package belongs in the consumer,
+  not the SDK. This test is symmetric: a package that claims a
+  plausible non-coding-agent caller must name one. Name an in-tree
+  caller, or a `policy/pending_wiring.json` entry with a real
+  `target`, the way `subagent` itself already names `runconfig` as
+  its target. A bare claim of plausibility, with no named caller and
+  no `pending_wiring.json` entry, does not pass the test either way."
+- "The SDK accepts parsed Go structs. An application parses its own
+  file formats before it calls into the SDK."
+- "Treat a consumer's port or interface layer as the specification of
+  what the SDK must provide. A capability no port needs, and no
+  plausible second consumer needs, stays in the consumer."
+
+This closes a gap this revision's own diff/ evidence exposed. The
+eleven retained `subagent` block-wrapper tools (`RoomTool`,
+`SchedulerTool`, `DiscoveryTool`, `TriggerTool`, `HeartbeatTool`,
+`ProviderRegistryTool`, and the rest) have zero non-test callers
+anywhere in this repo today, the same grep result `diff/` had before
+this plan removed it. The difference is `policy/pending_wiring.json`:
+`subagent` already carries a named `target` (`runconfig`) and a
+`reason`, so its orphan status is declared and tracked, not asserted.
+The standing rule above requires that same declaration from every
+package it keeps on the "plausible non-coding-agent caller" side, not
+grep evidence alone on the "goes" side and assertion alone on the
+"stays" side.
 
 ## Module wiring
 
@@ -336,8 +683,16 @@ So the export set is derived mechanically, never by hand:
 Six absorptions are needed. Each is its own SDK plan with its own plan
 review.
 
-- `skills`. Absorb fail-closed resource rebinding and version-aware
-  selection. Decision one permits its `go-toml` and `x/sys` imports.
+- `skills`. Absorb version-aware selection. No new dependency: the
+  SDK registry already takes parsed `Skill` structs through `Add`, so
+  the TOML loader stays a consumer-owned file. It decodes TOML,
+  assembles a `Definition`, and calls the consumer's own
+  `internal/skills.Registry.Register` today; an absorption maps that
+  call onto SDK `skills.Registry.Add` without moving any TOML parsing
+  into the SDK. Fail-closed resource rebinding
+  (`resource_file_linux.go`) does not absorb here; it moves with the
+  `workspace` confinement item in stage 4, since it is filesystem
+  hardening, not skill matching.
 - `contextplan`. Absorb the pure-function contract and the
   output-reserve rule. Callers pre-subtract the reserve. A naive port
   violates that rule. No new dependency.
@@ -397,6 +752,16 @@ package in the same change. Each is tagged by oracle type.
   backend sits behind the build tag, per decision two.
 - `internal/providerregistry` onto the new SDK catalog package.
   Impure.
+- `internal/workspace`'s `Root` onto SDK `workspace`. Impure; real
+  filesystem calls. Direction runs consumer-to-SDK, the reverse of
+  every other item on this list, because SDK `workspace/`'s
+  `os.Root`-based confinement is already the harder guarantee (see
+  "Boundary correction" above). Wire `internal/tools`' twenty-plus
+  callers onto `workspace.Workspace`, then delete `root.go` and the
+  `longpath*.go` files. `namespace.go` stays in `internal/workspace`,
+  unchanged; it never converges. `resource_file_linux.go`'s
+  fail-closed reopen absorbs into SDK `workspace/` in the same change,
+  carrying the rescoped `x/sys` exception (see decision one, above).
 - The usage path onto SDK `usage`. Impure; durable event store. Its
   sqlite backend sits behind the build tag, per decision two. Resolve
   it together with the stage 0 inverted-edge cut.
@@ -516,7 +881,10 @@ Order by independence:
   retry policy. Its sqlite backend keeps the `ledger_sqlite` tag, per
   decision two. The tag is not dropped.
 - `subagent`. The SDK absorbs the bounded worker pool, dependency
-  readiness, blocked-status propagation, and panic recovery.
+  readiness, blocked-status propagation, and panic recovery. This
+  absorption does not touch `subagent`'s file-editing toolbox; that
+  toolbox and `diff/` already left the SDK in the boundary correction
+  above, ahead of this stage and with no consumer dependency.
 - `provider`. The SDK absorbs the retry transport. That transport
   honors `Retry-After` and classifies non-retryable responses by body,
   not by status alone. Decide per adapter whether the seven concrete
@@ -525,10 +893,22 @@ Order by independence:
   and a cancelled ledger state. Today `api/scheduler.txt` exports
   `Add`, `Remove`, and `Run` only, and `Job` is a bare closure with a
   string identifier. Stage 5b follows this item.
-- `flow` and `workflows`. The largest item. The SDK absorbs the
-  admission compiler, run leases with heartbeat cancellation, resume
-  from the durable attempt log, and bounded panel slots. Decision one
-  permits its `go-toml` and `x/mod` imports.
+- `flow` and `workflows`. The largest item, and the one with no
+  committed boundary yet. `internal/workflows/controller`'s prompt
+  construction, approval and diff gates, human escalation, panel-
+  output synthesis, and git worktree stacking are permanently
+  consumer-only; that part is settled. Whether `flow` can absorb
+  `internal/workflows/localengine`'s admission compiler, leases, and
+  resume-from-log is not settled: `localengine.Engine` holds a
+  concrete `*controller.LinearController` and calls
+  `controller.RunWithCancelReconciliationRetry` directly, so the
+  admission and resume logic is not separable from `controller` today
+  (see "Boundary correction" above). This item's own plan must open
+  with a design spike answering whether an abstracted step-runner
+  interface can free `localengine`'s admission and resume logic from
+  `controller`'s concrete types. No absorption plan may assume the
+  answer is yes. No new dependency either way: `x/mod` and `go-toml`
+  are not granted, per the narrowed decision one.
 
 Verification here is invariant-based. Use the shared fault-ordinal
 package and the race tests.
@@ -569,6 +949,37 @@ Exit criteria:
 - Message routing. The SDK's `envelope` signs and chains messages. The
   consumer's `agentmsg` routes ask and steer traffic inside one run.
   The router is coupled to the coordinator run model.
+- File-editing tools. `diff/` and `subagent`'s file-editing toolbox
+  (`FileTools`, `WorkspaceReadTool`, `WorkspaceWriteTool`,
+  `WorkspaceListTool`, `WorkspaceStatTool`, `DiffTool`) delete from
+  the SDK; they were coding-agent product surface, not a duplicated
+  concern. The consumer's `internal/diff` is a full diff engine
+  backing `internal/tools/write.go` and `edit.go`; it stays
+  consumer-only and gains no SDK counterpart.
+- Typed UI events. SDK `events/` is a generic string-payload bus. The
+  consumer's `internal/events` is a typed union (`Kind`, `Delivery`,
+  `MetricsAdapter`, `CacheUsageEvent`, `TokenUsageEvent`,
+  `CompactionEvent`) that projects agent, workflow, and provider
+  activity for a terminal UI. Build the projection from SDK
+  `events.Name` plus `agentloop.Options.Audit`'s `AuditRecord`; it
+  needs no new SDK surface.
+- The workspace namespace registry. `internal/workspace/namespace.go`
+  (`Namespace`, `SkillsDir`, `SessionsDir`, `WorktreesDir`,
+  `ContextStorePath`, `MemoryDBPath`) encodes mivia's own on-disk
+  layout. No second SDK consumer needs it; only `internal/workspace`'s
+  confinement type (`Root`) converges, onto SDK `workspace/`.
+- `internal/workflows/controller`'s prompt construction, approval and
+  diff gates, human escalation, panel-output synthesis, and git
+  worktree stacking (`linear_prompt.go`, `linear_gates_approval.go`,
+  `linear_diff_gate.go`, `panel_synthesis.go`, `stacking.go`). This is
+  the coding agent's step-execution semantics, not a generic
+  step-graph concern. This never converges. Whether `localengine`'s
+  admission, lease, and resume logic can converge separately from it
+  is undetermined; see the `flow`/`workflows` seam note in stage 6.
+- `internal/workflows/verifier`'s Go-module sandbox
+  (`sandbox_modules.go`), and its `golang.org/x/mod` dependency. It
+  verifies Go module changes for a coding agent; no other agent shape
+  plausibly needs it.
 
 ## Verification limits
 

@@ -6,6 +6,11 @@
       "target": "not yet planned",
       "permanent": false
     },
+    "workspace": {
+      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section.",
+      "target": "not yet planned",
+      "permanent": false
+    },
     "longtermmemory": {
       "reason": "Ported from mivia-agent as a leaf package. No package wires it into a running agent yet.",
       "target": "not yet planned",

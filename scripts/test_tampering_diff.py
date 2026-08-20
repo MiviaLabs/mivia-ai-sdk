@@ -177,10 +177,13 @@ def _split_patch_by_file(patch_text: str) -> dict:
 
 def build_diff(root: Path, diff_args: list) -> list:
     """build_diff resolves one git diff comparison (a range, `--cached`,
-    or two revisions) into the FileDiff model every TT rule reads."""
-    raw = _run_git(["diff", "--raw", "--full-index", *diff_args, "--"], root).stdout
+    or two revisions) into the FileDiff model every TT rule reads.
+    `--no-renames` forces every rename into a plain delete-plus-add
+    pair: a rule that gates on `status == "D"` must see a deletion,
+    not a single `R100` raw line naming two paths on one line."""
+    raw = _run_git(["diff", "--no-renames", "--raw", "--full-index", *diff_args, "--"], root).stdout
     entries = _parse_raw(raw)
-    patch = _run_git(["diff", "--unified=3", *diff_args, "--"], root).stdout
+    patch = _run_git(["diff", "--no-renames", "--unified=3", *diff_args, "--"], root).stdout
     per_file_patch = _split_patch_by_file(patch)
 
     diffs = []

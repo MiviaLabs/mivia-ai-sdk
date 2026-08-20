@@ -203,6 +203,36 @@ def _probe_tt14_checker_deleted(tmp):
     return []
 
 
+def _probe_tt14_hook_renamed_away(tmp):
+    repo = _new_repo(tmp, "tt14_hook_renamed")
+    (repo / ".githooks").mkdir()
+    (repo / ".githooks" / "commit-msg").write_text(_HOOK_LIVE)
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / ".githooks" / "commit-msg").rename(r / ".githooks" / "commit-msg.disabled"),
+    )
+    if not _has(check_self_preservation(diffs), "TT14"):
+        return ["tt14 hook renamed: expected TT14 when git auto-detects the hook's rename as a move"]
+    return []
+
+
+def _probe_tt14_checker_renamed_away(tmp):
+    repo = _new_repo(tmp, "tt14_checker_renamed")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "check_test_tampering.py").write_text("# entrypoint\n" * 5)
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "scripts" / "check_test_tampering.py").rename(
+            r / "scripts" / "check_test_tampering_disabled.py"
+        ),
+    )
+    if not _has(check_self_preservation(diffs), "TT14"):
+        return ["tt14 checker renamed: expected TT14 when git auto-detects the entrypoint's rename as a move"]
+    return []
+
+
 def _probe_tt14_id_vanished(tmp):
     repo = _new_repo(tmp, "tt14_id_vanished")
     (repo / "scripts").mkdir()
@@ -274,6 +304,8 @@ def run_infra_probes(tmp) -> list:
         _probe_tt14_clean_hook_comment_added,
         _probe_tt14_hook_invocation_broken,
         _probe_tt14_checker_deleted,
+        _probe_tt14_hook_renamed_away,
+        _probe_tt14_checker_renamed_away,
         _probe_tt14_id_vanished,
         _probe_tt14_unreachable_code_added,
         _probe_tt14_unreachable_code_removed_clean,

@@ -30,8 +30,8 @@ package in this module. `envelope` imports `contextstate` alone.
 `spool`. `spool` imports `tools` alone. `a2aloopback` imports `a2a` and
 `envelope`, the same two internal packages `a2aclient` imports.
 `workspace` imports `secretpath` alone. `runconfig` imports
-`agentrun`, `contextbudget`, `flow`, `machine`, `subagent`, and
-`tools`.
+`agentrun`, `contextbudget`, `flow`, `machine`, `subagent`, `tools`,
+and `trace`.
 
 ```mermaid
 flowchart LR
@@ -129,6 +129,7 @@ flowchart LR
     runconfig --> machine
     runconfig --> subagent
     runconfig --> tools
+    runconfig --> trace
     e2e --> agent
     e2e --> channel
     e2e --> discovery

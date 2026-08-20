@@ -431,6 +431,130 @@ In `runconfig/runconfig_test/load_test.go`:
 - `python3 scripts/check_docs.py` passes over `declaredTools`'s
   unchanged doc comment.
 
+## Addendum: options.trace flag; hooks stays a caller-set field
+
+Status: planned, not shipped.
+
+### Addendum goal
+
+Let a document turn on run tracing without a code change. `agentrun.Options`
+already carries `Tracer *trace.Tracer` and `Hooks *hooks.Registry`, but
+`wireOptions` in `runconfig/loader.go` maps only `room`, `ask_to`, and
+`budget`. This addendum adds one JSON field, `options.trace`, that
+builds a `*trace.Tracer` through `Load`. It leaves `Hooks` out of the
+JSON grammar and states why.
+
+### Addendum scope
+
+Inside:
+
+- `wireOptions` gains one field: `Trace bool` with JSON tag `trace`.
+- `Load` sets `def.Options.Tracer = trace.New()` when `doc.Options.Trace`
+  is `true`. A `false` or absent `trace` key leaves `Options.Tracer` nil.
+- `runconfig` imports `trace`. `policy/layers.json`'s `runconfig` row
+  gains `"trace"`.
+- `docs/architecture.md:32-34`'s prose list of `runconfig`'s imports
+  gains `trace`. The mermaid diagram near `docs/architecture.md:131`
+  gains one edge, `runconfig --> trace`. Make this update in the same
+  commit as the `policy/layers.json` change.
+- The document mapping table in this plan's API section gains one row
+  for `trace`.
+
+Outside:
+
+- No `HooksKind` or any JSON path that builds a `*hooks.Registry`. See
+  the design note below for why.
+- No `TracerKind`. `runconfig.Kind` names a step's bound `tools.Tool`,
+  resolved per step through `Blocks`. A `Tracer` is not a `tools.Tool`
+  and is not bound to one step; it opens one span per run and one span
+  per gated step's tool call, across the whole `Runner`. Fitting it
+  into the per-step `Kind`/`Blocks` system would misrepresent its
+  scope. `options.trace` matches its Options-level scope instead.
+- No span-shape configuration (sampling, span naming, export sinks).
+  `trace.New()` takes no arguments; a document has nothing else to
+  express.
+
+### Design note: why hooks stays out of the JSON grammar
+
+`hooks.Registry.Add` takes a `Handler`, a Go function value
+(`func(ctx context.Context, payload any) (bool, error)`). A JSON
+document cannot encode a function body. An `options.hooks: true` flag
+could still build an empty `hooks.New()` registry, matching the
+`trace` shape, but an empty registry changes nothing: `Fire` returns
+`nil` at once for a point with zero handlers, so `PointPreTool` never
+vetoes and `PointPostTool` and `PointStop` never observe. A document
+flag that silently produces a no-op registry is worse than no flag: it
+reads as "hooks are on" while nothing fires. `trace.New()` differs
+because a bare `*trace.Tracer` is already complete: `Start` builds and
+retains a real span with no further setup. The registry is not
+complete without a handler.
+
+A caller that needs hooks already has a path with no runconfig change:
+`Definition.Options` is a plain `agentrun.Options` value, so the caller
+sets `def.Options.Hooks = hooks.New()` and calls `Add` in Go code after
+`Load`, the same pattern `Definition.Options.Agent` already uses for
+the caller-set agent. `runconfig` requires no new API for this; the
+field is already exported and already settable.
+
+### Addendum API
+
+The document's `options` section gains one key:
+
+```json
+"options": {
+  "room": "platform-team",
+  "ask_to": "human-1",
+  "budget": {"max_bytes": 200000, "max_events": 500},
+  "trace": true
+}
+```
+
+- `trace` maps to `Options.Tracer`. `true` builds one `*trace.Tracer`
+  through `trace.New()`. `false` or an absent key leaves `Options.Tracer`
+  nil.
+
+No exported Go symbol changes. `wireOptions` is unexported; `Load`'s
+signature, `Definition`'s fields, and every existing exported symbol
+stay as locked. `make api-update` must produce no diff for
+`api/runconfig.txt`.
+
+### Addendum tests
+
+In `runconfig/runconfig_test/load_test.go`:
+
+- A document with `options.trace: true` loads. `Definition.Options.Tracer`
+  is non-nil.
+- A document with `options.trace: false` loads. `Definition.Options.Tracer`
+  is nil.
+- A document with no `trace` key loads. `Definition.Options.Tracer` is
+  nil. This is the existing default-value case; add it as an explicit
+  case so a future change to `wireOptions`'s zero value is caught.
+
+In `runconfig/runconfig_test/load_integration_test.go`:
+
+- Extend the golden document with `options.trace: true`. Build the
+  `Runner` and run it to completion. Assert `Definition.Options.Tracer.Spans()`
+  is non-empty after the run, proving the wired `*trace.Tracer` reaches
+  the live `agentrun.Runner` and records the run's spans, not just a
+  value sitting on `Definition.Options`.
+
+No new test file. `Hooks` gains no test in this addendum; it is
+unchanged code, proven by the existing `agentrun` and `hooks` suites.
+
+### Addendum verification
+
+- `policy/layers.json`'s `runconfig` row gains `"trace"`.
+- `docs/architecture.md:32-34`'s prose list and the mermaid diagram
+  near line 131 both name the new `runconfig --> trace` edge, in the
+  same commit as the `policy/layers.json` change.
+- `python3 scripts/check_deps.py` passes with the new edge declared.
+- `make verify` passes; `runconfig` and the module total hold the 85
+  coverage floor.
+- `go test -race ./runconfig/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/runconfig.txt` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
+  `scripts/check_docs.py` pass.
+
 ## Addendum: WorkspaceListKind and WorkspaceStatKind fix (phase 77)
 
 Status: shipped. Phase 76's addendum above expected `WorkspaceListKind`

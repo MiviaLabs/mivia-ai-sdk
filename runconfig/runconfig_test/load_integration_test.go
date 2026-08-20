@@ -29,7 +29,7 @@ const goldenDoc = `{
 		{"id": "first", "to": "mid", "payload": "seed", "tool": "grep"},
 		{"id": "second", "needs": ["first"], "to": "done", "payload": "p2", "internal": "flow"}
 	]},
-	"options": {"room": "platform-team"},
+	"options": {"room": "platform-team", "trace": true},
 	"tools": ["grep"]
 }`
 
@@ -70,6 +70,12 @@ func TestGoldenDocumentRuns(t *testing.T) {
 	}
 	if status != "done" {
 		t.Fatalf("status = %q, want done", status)
+	}
+	if d.Options.Tracer == nil {
+		t.Fatal("Tracer = nil, want non-nil")
+	}
+	if len(d.Options.Tracer.Spans()) == 0 {
+		t.Fatal("Spans() is empty, want at least one recorded span")
 	}
 }
 

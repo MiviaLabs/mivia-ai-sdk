@@ -66,3 +66,26 @@ gate; never bypass it.
 - Escalate immediately if a gate failure looks like a gate bug (report
   it; do not patch the gate to make it pass).
 - Escalate if the task conflicts with AGENTS.md.
+
+## A gate firing on legitimate work
+
+A gate can fire correctly on a change the plan explicitly requires: a
+test-tampering heuristic cannot always tell a mandated rewrite from
+real tampering, and a gate-infra rule can conflict with a doc-pairing
+rule AGENTS.md itself mandates. This is a third case, distinct from a
+gate bug and a real violation.
+
+- The builder never decides this alone. It stops and reports the
+  exact finding, the file:line the gate cites, and the plan text it
+  believes justifies an override.
+- The orchestrator verifies the builder's claim independently before
+  acting on it: read the cited diff hunk and the plan section it
+  points to, and confirm the plan genuinely mandates the change, not
+  just that the builder says so.
+- Only after that verification does the orchestrator use the
+  documented override trailer (`Allow-Test-Change` or
+  `Allow-Gate-Change`) with a reason that names the specific plan
+  requirement, not a generic excuse. One trailer per finding.
+- An override used to route around a gate the orchestrator has not
+  personally verified is indistinguishable from bypassing the gate.
+  Never authorize one on the builder's word alone.

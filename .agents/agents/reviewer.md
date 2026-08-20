@@ -24,10 +24,18 @@ Review, in order:
    exclusion widened in this diff? Check `scripts/`, `semgrep/`,
    `Makefile`, `.githooks/` line by line.
 4. Doc truth: do the doc comments, README, plan, and
-   docs/architecture.md describe the code as it now is?
+   docs/architecture.md describe the code as it now is? Grep the
+   distinctive term across the whole tree before you claim every
+   stale site is fixed. Reasoning alone has repeatedly missed sites a
+   grep found.
 5. Test adequacy: do the tests fail when the code is broken? Pick one
    invariant and mentally mutate the code; if no test catches it, that
-   is a finding.
+   is a finding. A test that passes is not proof by itself: confirm
+   it reaches the path it claims to cover by tracing its fixture's
+   preconditions, not by reading its name. A concurrency test needs
+   proof both ways, that correct behavior passes and a planted
+   mispairing or race fails, under the same fixture. Name the
+   assertion that discriminates between them.
 
 Verdict format:
 - `SHIP` — no confirmed findings.

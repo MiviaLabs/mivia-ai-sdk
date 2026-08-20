@@ -65,7 +65,10 @@ Cover all of these in the report. Each is a finding source.
   `.githooks/` line by line against the change.
 - **Doc truth** — do the doc comments, README, plan, and
   `docs/architecture.md` describe the code as it now is? A stale
-  claim is a finding.
+  claim is a finding. Do not reason your way to "I found them all."
+  Grep the distinctive term or claim across the whole tree, `.md` and
+  `.go` both. A claim you did not grep for is unverified, not
+  confirmed clean.
 - **Plan drift** — does the change match its plan
   (`docs/plans/<pkg>.md`)? Scope creep is a finding. A dropped Scope
   item is a finding. Every exported symbol must match `api/<pkg>.txt`.
@@ -74,6 +77,16 @@ Cover all of these in the report. Each is a finding source.
   and run the suite. A mutation that survives is a finding; name the
   test that should have caught it. For test-quality depth, use the
   `test-review` skill; this pass covers the basic adequacy check.
+  A passing positive control is not proof by itself. Confirm it
+  reaches the path it claims to cover: trace the fixture's
+  preconditions (load factors, trigger conditions, shared vs.
+  distinct inputs across goroutines) and confirm the code under test
+  actually runs before the assertion fires. A concurrency test needs
+  the same proof twice: that correct behavior passes it, and that a
+  planted mispairing or race genuinely fails it under the same
+  fixture. Name the exact assertion that discriminates; a fixture
+  where every branch produces the same observable result is not a
+  test, however many lines it runs.
 
 ## Finding discipline
 

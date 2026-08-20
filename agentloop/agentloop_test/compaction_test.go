@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -341,6 +342,57 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	}
 	if len(res.History) != len(msgs) {
 		t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+	}
+}
+
+// TestRunBudgetChecksBeforeWindowCompaction proves checkBudget runs on
+// the pre-compaction history, ahead of planHistory: a Budget tight
+// enough to reject the caller's four starting messages fails the run
+// with ErrOverBudget on the very first iteration, even though the
+// configured Window would have compacted that same history down to a
+// size the Budget allows. Neither the summarizer nor the Completer
+// ever runs, proving the rejection happens strictly before window
+// planning, not after a compaction attempt that then re-checks the
+// budget.
+func TestRunBudgetChecksBeforeWindowCompaction(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 100)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	reg := tools.New()
+	sum := &summaryScript{}
+	summarizer, err := contextsummary.NewSummarizer(sum)
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	completer := &scriptedCompleter{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         reg,
+		MaxIterations: 3,
+		Budget:        &contextbudget.Limits{MaxEvents: 3},
+		Window:        &w,
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrOverBudget) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrOverBudget", err)
+	}
+	if completer.callCount() != 0 {
+		t.Fatalf("completer calls = %d, want 0: the budget check must trip before any Completer call", completer.callCount())
+	}
+	if sumCalls, _ := sum.stats(); sumCalls != 0 {
+		t.Fatalf("summarizer calls = %d, want 0: the budget check must trip before window planning ever runs", sumCalls)
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the budget check tripped", res)
 	}
 }
 

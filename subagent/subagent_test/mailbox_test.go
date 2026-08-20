@@ -114,6 +114,63 @@ func TestNewMailboxRejectsBadCapacity(t *testing.T) {
 	}
 }
 
+// TestDeliverRejectsUnsignedMessage proves a message that passes
+// Validate with no signer and no signature never enters the mailbox.
+func TestDeliverRejectsUnsignedMessage(t *testing.T) {
+	box, err := subagent.NewMailbox(4)
+	if err != nil {
+		t.Fatalf("NewMailbox: %v", err)
+	}
+	msg := unsignedMessage("plain")
+	if vErr := msg.Validate(); vErr != nil {
+		t.Fatalf("Validate = %v, want nil for an unsigned message", vErr)
+	}
+	err = box.Deliver(msg)
+	if !errors.Is(err, subagent.ErrUnverified) {
+		t.Fatalf("Deliver unsigned = %v, want ErrUnverified", err)
+	}
+	if got := box.Take(); len(got) != 0 {
+		t.Fatalf("Take = %d msgs, want none", len(got))
+	}
+}
+
+// TestDeliverRejectsTamperedSignature proves a payload change after
+// signing fails verification, even though the hex format stays valid.
+func TestDeliverRejectsTamperedSignature(t *testing.T) {
+	box, err := subagent.NewMailbox(4)
+	if err != nil {
+		t.Fatalf("NewMailbox: %v", err)
+	}
+	msg := signedMessage(t, "original")
+	msg.Payload = "tampered"
+	if vErr := msg.Validate(); vErr != nil {
+		t.Fatalf("Validate = %v, want nil for a tampered message", vErr)
+	}
+	err = box.Deliver(msg)
+	if !errors.Is(err, subagent.ErrUnverified) {
+		t.Fatalf("Deliver tampered = %v, want ErrUnverified", err)
+	}
+	if got := box.Take(); len(got) != 0 {
+		t.Fatalf("Take = %d msgs, want none", len(got))
+	}
+}
+
+// TestDeliverKeepsSignedMessage proves the new check does not reject a
+// correctly signed message.
+func TestDeliverKeepsSignedMessage(t *testing.T) {
+	box, err := subagent.NewMailbox(4)
+	if err != nil {
+		t.Fatalf("NewMailbox: %v", err)
+	}
+	if dErr := box.Deliver(signedMessage(t, "good")); dErr != nil {
+		t.Fatalf("Deliver signed = %v, want nil", dErr)
+	}
+	got := box.Take()
+	if len(got) != 1 || got[0].Payload != "good" {
+		t.Fatalf("Take = %d msgs, want the signed message", len(got))
+	}
+}
+
 // signedMessage builds one valid signed message carrying payload.
 func signedMessage(t *testing.T, payload string) envelope.Message {
 	t.Helper()
@@ -135,7 +192,20 @@ func signedMessage(t *testing.T, payload string) envelope.Message {
 	return signed
 }
 
-// badMessage builds an unsigned message Deliver must reject.
+// badMessage builds a message that fails Validate.
 func badMessage() envelope.Message {
 	return envelope.Message{ID: "bad", ThreadID: "mb"}
+}
+
+// unsignedMessage builds a message that passes Validate but carries no
+// signer and no signature.
+func unsignedMessage(payload string) envelope.Message {
+	return envelope.Message{
+		Version:   envelope.Version,
+		ID:        "u-" + payload,
+		ThreadID:  "mb",
+		Intent:    envelope.IntentRequest,
+		Epistemic: envelope.EpistemicAssumed,
+		Payload:   payload,
+	}
 }

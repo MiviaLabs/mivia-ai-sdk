@@ -23,8 +23,13 @@ var ErrMailboxFull = errors.New("subagent: mailbox is full")
 // positive. Test with errors.Is.
 var ErrInvalidCapacity = errors.New("subagent: mailbox capacity must be positive")
 
+// ErrUnverified reports a Deliver whose message fails envelope
+// signature verification. Test with errors.Is.
+var ErrUnverified = errors.New("subagent: mailbox rejects an unverified message")
+
 // Mailbox holds signed messages for one recipient. It is safe for
-// concurrent use. Deliver validates and appends; Take drains.
+// concurrent use. Deliver validates, verifies the signature, and
+// appends; Take drains.
 type Mailbox struct {
 	mu   sync.Mutex
 	msgs []envelope.Message
@@ -39,10 +44,15 @@ func NewMailbox(capacity int) (*Mailbox, error) {
 	return &Mailbox{cap: capacity}, nil
 }
 
-// Deliver validates msg and appends it, failing when full.
+// Deliver validates msg, verifies its signature, and appends it. An
+// unsigned or tampered message fails with ErrUnverified. A full
+// mailbox fails with ErrMailboxFull.
 func (m *Mailbox) Deliver(msg envelope.Message) error {
 	if err := msg.Validate(); err != nil {
 		return err
+	}
+	if err := msg.VerifySignature(); err != nil {
+		return fmt.Errorf("%w: %v", ErrUnverified, err)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

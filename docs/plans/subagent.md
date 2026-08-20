@@ -727,7 +727,15 @@ Status: shipped. `ErrInvalidCapacity` is declared in
 
 ### Gap fix: Deliver rejects an unsigned message
 
-Status: planned, not yet built. The `Mailbox` doc
+Status: shipped. `Deliver` calls `VerifySignature` and wraps the
+failure in `ErrUnverified`, which `api/subagent.txt` locks.
+`TestDeliverRejectsUnsignedMessage`,
+`TestDeliverRejectsTamperedSignature`, and
+`TestDeliverKeepsSignedMessage` in
+`subagent/subagent_test/mailbox_test.go` cover it. The text below
+records the gap the fix closed.
+
+The `Mailbox` doc
 (`subagent/mailbox.go:26`) says "Mailbox holds signed messages".
 `Deliver` (`subagent/mailbox.go:43`) calls `msg.Validate()` only.
 `Message.validateSignature` (`envelope/message.go:186`) returns nil
@@ -766,11 +774,29 @@ unchanged.
 
 This gap fix adds one exported symbol. `ErrUnverified` reports a
 `Deliver` whose message fails signature verification: no signature,
-or a signature that does not match. `Deliver` returns
-`fmt.Errorf("subagent: %w: %v", ErrUnverified, err)`, so a caller
-matches the sentinel with `errors.Is` and still reads the detail.
-Run `make api-update` and commit the `api/subagent.txt` diff in the
-same change.
+or a signature that does not match.
+
+`envelope` exports no sentinel for this case: `VerifySignature`
+returns a bare `errors.New` (`envelope/sign.go:37`). So the new
+symbol is required and duplicates nothing.
+
+Pin the text and the wrapping. `ErrMailboxFull` and
+`ErrInvalidCapacity` (`subagent/mailbox.go:20,24`) each carry the
+`subagent: ` prefix in their own message. `ErrUnverified` follows that
+house style, and `Deliver` wraps without re-prefixing.
+
+```go
+// ErrUnverified reports a Deliver whose message fails envelope
+// signature verification. Test with errors.Is.
+var ErrUnverified = errors.New("subagent: mailbox rejects an unverified message")
+
+// inside Deliver:
+return fmt.Errorf("%w: %v", ErrUnverified, err)
+```
+
+A caller matches the sentinel with `errors.Is` and still reads the
+`envelope` detail. Run `make api-update` and commit the
+`api/subagent.txt` diff in the same change.
 
 Update the `Mailbox` and `Deliver` comments to name the enforced
 rule. Update the mailbox entries in `docs/packages/subagent.md` in
@@ -800,6 +826,10 @@ that drops the `VerifySignature` call is killed, and the mutation
 floor of 94 holds.
 
 #### Verification for this gap fix
+
+Land this gap fix as its own commit, separate from the `flow` retry
+gap fix in `docs/plans/flow.md`. The two fixes share no file and no
+package. One commit per fix keeps a revert granular.
 
 Run `make verify`, `go test -race ./subagent/...`, and
 `go test ./e2e/...`. `policy/layers.json` is unchanged: the

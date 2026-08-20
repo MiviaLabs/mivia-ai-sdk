@@ -96,6 +96,169 @@ def _probe_tt11_clean_infra_only(tmp):
     return []
 
 
+# --- TT11 doc companions (addendum) --------------------------------------
+
+
+def _probe_tt11_clean_doc_companion_agents_md(tmp):
+    repo = _new_repo(tmp, "tt11_clean_agents_md")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "AGENTS.md").write_text("# Agent Instructions\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "AGENTS.md").write_text("# Agent Instructions\n\nUpdated.\n")
+
+    diffs = diff_after_change(repo, mutate)
+    findings = check_self_reference_guard(diffs)
+    if _has(findings, "TT11"):
+        return [f"tt11 clean doc companion AGENTS.md: unexpected TT11: {findings}"]
+    return []
+
+
+def _probe_tt11_clean_doc_companion_plans(tmp):
+    repo = _new_repo(tmp, "tt11_clean_plans")
+    (repo / "scripts").mkdir()
+    (repo / "docs" / "plans").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "docs" / "plans" / "test-tampering.md").write_text("# Plan\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "docs" / "plans" / "test-tampering.md").write_text("# Plan\n\nUpdated.\n")
+
+    diffs = diff_after_change(repo, mutate)
+    findings = check_self_reference_guard(diffs)
+    if _has(findings, "TT11"):
+        return [f"tt11 clean doc companion docs/plans: unexpected TT11: {findings}"]
+    return []
+
+
+def _probe_tt11_clean_doc_companion_packages(tmp):
+    repo = _new_repo(tmp, "tt11_clean_packages")
+    (repo / "scripts").mkdir()
+    (repo / "docs" / "packages").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "docs" / "packages" / "envelope.md").write_text("# envelope\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "docs" / "packages" / "envelope.md").write_text("# envelope\n\nUpdated.\n")
+
+    diffs = diff_after_change(repo, mutate)
+    findings = check_self_reference_guard(diffs)
+    if _has(findings, "TT11"):
+        return [f"tt11 clean doc companion docs/packages: unexpected TT11: {findings}"]
+    return []
+
+
+def _probe_tt11_violation_ordinary_go_file(tmp):
+    """Gate infra plus one real .go file at an ordinary path, nothing
+    else: TT11 still fires, unchanged from before the addendum."""
+    repo = _new_repo(tmp, "tt11_violation_ordinary_go")
+    (repo / "scripts").mkdir()
+    (repo / "foo").mkdir()
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "foo" / "bar.go").write_text("package foo\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "foo" / "bar.go").write_text("package foo\n\nvar y = 1\n")
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_self_reference_guard(diffs), "TT11"):
+        return ["tt11 violation ordinary go file: expected TT11 for an infra change paired with a real .go file"]
+    return []
+
+
+def _probe_tt11_violation_go_file_in_plans_dir(tmp):
+    """A .go file placed under docs/plans/ forces the .md extension
+    check inside _is_doc_companion, not just the prefix check."""
+    repo = _new_repo(tmp, "tt11_violation_plans_go")
+    (repo / "scripts").mkdir()
+    (repo / "docs" / "plans").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "docs" / "plans" / "malicious.go").write_text("package plans\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "docs" / "plans" / "malicious.go").write_text("package plans\n\nvar y = 1\n")
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_self_reference_guard(diffs), "TT11"):
+        return ["tt11 violation docs/plans/malicious.go: expected TT11, the extension check must reject it"]
+    return []
+
+
+def _probe_tt11_violation_go_file_in_packages_dir(tmp):
+    """Same reasoning as the docs/plans/ case, for docs/packages/."""
+    repo = _new_repo(tmp, "tt11_violation_packages_go")
+    (repo / "scripts").mkdir()
+    (repo / "docs" / "packages").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "docs" / "packages" / "malicious.go").write_text("package packages\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "docs" / "packages" / "malicious.go").write_text("package packages\n\nvar y = 1\n")
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_self_reference_guard(diffs), "TT11"):
+        return ["tt11 violation docs/packages/malicious.go: expected TT11, the extension check must reject it"]
+    return []
+
+
+def _probe_tt11_violation_go_file_with_plans_companion(tmp):
+    """A doc companion riding beside a real .go file must not launder
+    it: TT11 still fires."""
+    repo = _new_repo(tmp, "tt11_violation_go_plus_plans_companion")
+    (repo / "scripts").mkdir()
+    (repo / "foo").mkdir()
+    (repo / "docs" / "plans").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "foo" / "bar.go").write_text("package foo\n")
+    (repo / "docs" / "plans" / "test-tampering.md").write_text("# Plan\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "foo" / "bar.go").write_text("package foo\n\nvar y = 1\n")
+        (r / "docs" / "plans" / "test-tampering.md").write_text("# Plan\n\nUpdated.\n")
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_self_reference_guard(diffs), "TT11"):
+        return ["tt11 violation go file + plans companion: expected TT11, a doc companion must not launder a code change"]
+    return []
+
+
+def _probe_tt11_violation_go_file_with_packages_companion(tmp):
+    """Same reasoning as the plans companion case, for docs/packages/."""
+    repo = _new_repo(tmp, "tt11_violation_go_plus_packages_companion")
+    (repo / "scripts").mkdir()
+    (repo / "foo").mkdir()
+    (repo / "docs" / "packages").mkdir(parents=True)
+    (repo / "scripts" / "check_foo.py").write_text("x = 1\n")
+    (repo / "foo" / "bar.go").write_text("package foo\n")
+    (repo / "docs" / "packages" / "envelope.md").write_text("# envelope\n")
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "scripts" / "check_foo.py").write_text("x = 2\n")
+        (r / "foo" / "bar.go").write_text("package foo\n\nvar y = 1\n")
+        (r / "docs" / "packages" / "envelope.md").write_text("# envelope\n\nUpdated.\n")
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_self_reference_guard(diffs), "TT11"):
+        return ["tt11 violation go file + packages companion: expected TT11, a doc companion must not launder a code change"]
+    return []
+
+
 # --- TT12: a new mutation denylist entry --------------------------------
 
 
@@ -432,6 +595,14 @@ def run_infra_probes(tmp) -> list:
         _probe_tt11_violation,
         _probe_tt11_violation_other_infra_prefixes,
         _probe_tt11_clean_infra_only,
+        _probe_tt11_clean_doc_companion_agents_md,
+        _probe_tt11_clean_doc_companion_plans,
+        _probe_tt11_clean_doc_companion_packages,
+        _probe_tt11_violation_ordinary_go_file,
+        _probe_tt11_violation_go_file_in_plans_dir,
+        _probe_tt11_violation_go_file_in_packages_dir,
+        _probe_tt11_violation_go_file_with_plans_companion,
+        _probe_tt11_violation_go_file_with_packages_companion,
         _probe_tt12_violation,
         _probe_tt12_violation_new_file,
         _probe_tt12_clean_floor_raise,

@@ -73,16 +73,16 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 		}
 		history = trimmed
 
-		if err := l.checkBudget(history, iterations); err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
-		}
-
 		if l.window != nil {
 			planned, err := l.planHistory(ctx, history, iterations)
 			if err != nil {
 				return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
 			}
 			history = planned
+		}
+
+		if err := l.checkBudget(history, iterations); err != nil {
+			return l.hardFail(history, iterations, totalUsage), err
 		}
 
 		at := l.runChat(ctx, history, iterations, steer)

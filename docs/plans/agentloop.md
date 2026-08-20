@@ -178,7 +178,10 @@ through unchanged, and skips this validation step.
 `ErrOverBudget` precedent. Before each `Completer` call, `Run` sums
 the message content bytes and the message count, and calls
 `Budget.Fits`. A failure returns `ErrOverBudget` wrapped with the
-iteration count. A nil `Budget` means uncapped.
+iteration count. A nil `Budget` means uncapped. When `Window` is also
+set, the check runs after window compaction, on the compacted
+history. See the "Budget checks the post-compaction history" addendum
+for the exact order.
 
 A positive `MaxCallsPerTurn` trips when one turn's response requests
 more calls than the bound: that turn fails the run
@@ -1603,6 +1606,250 @@ scripted `Completer` and one scripted `Summarizer` per case:
 - This addendum lands with or after the `contextplan` compaction
   change, the `contextsummary` package, and the `provider`
   `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.
+
+## Addendum: Budget checks the post-compaction history
+
+Status: plan, ready for plan review. This addendum fixes an ordering
+defect in `run.go`'s iteration loop. It changes `run.go` and
+`options.go`. It adds no new file, no new package, and no
+`policy/layers.json` row.
+
+### Addendum goal
+
+Make `Options.Budget` check the history a `Completer.Chat` call will
+actually receive. Today `checkBudget` runs before window compaction,
+so a caller who sets both `Budget` and `Window` can get `ErrOverBudget`
+on a pre-compaction history that `Window` would have compacted well
+under `Budget`. After this addendum, `checkBudget` runs after window
+compaction, on the same history the request carries.
+
+### Addendum bug
+
+`run`'s per-iteration order today is: `ctx.Err`, `MaxIterations`,
+`applyTrim`, `checkBudget`, then, only when `l.window` is non-nil,
+`planHistory`. `checkBudget` sums `history`'s content bytes and
+message count and checks them against `l.budget.Fits`, ahead of any
+compaction. `Options.Validate` does not exclude `Budget` and `Window`
+together, unlike `Trim` and `Window`, which fail `ErrTrimExcluded`
+when combined. A caller who wires both expects `Window` to run first:
+`Budget` bounds raw byte and message-count size, `Window` bounds token
+count through LLM-driven compaction, and compaction predictably
+shrinks both bytes and message count. Checking `Budget` first defeats
+that expectation and fails runs a caller configured `Window` to
+rescue.
+
+### Addendum decision: reorder, do not double-check
+
+Two shapes could fix this. Move `checkBudget` to run after
+`planHistory`, so it checks whatever history the request will carry,
+compacted or not. Or keep the existing pre-compaction check and add a
+second post-compaction check. The second shape adds a call site and a
+comment explaining why two checks exist, for no behavior a single
+post-compaction check does not already give: `contextbudget.Limits`
+has no concept of "pre-compaction" versus "post-compaction" budget, so
+a caller has no way to set different limits for the two checks, and a
+history that would fail before compaction but pass after is exactly
+the case `Window` exists to fix.
+
+A single post-compaction check does drop one thing: an early exit
+before compaction runs, for a pathologically large history that
+`Budget` alone can reject without ever calling the estimator, the
+summarizer, or the compaction sequence. This is not a correctness
+loss. `planHistory`'s own trigger check is cheap, one
+`Calibrated.EstimateTokens` call over the uncompacted history, and
+`Window`'s own `Compact` call fails closed with
+`ErrCompactionFailed`/`contextplan.ErrRetentionOverflow` when even the
+mandatory retention set cannot fit the window. A caller who wants a
+pre-compaction ceiling for cost control, not correctness, can size
+`Budget` for that purpose or add a `Trim` step; `Trim` and `Window`
+stay mutually exclusive, so this addendum does not reopen that
+question.
+
+Move `checkBudget` to run once, after `planHistory`. This is the
+smallest change: a call-site move in `run`, plus doc-comment
+corrections. No new sentinel, no new field, no new exported symbol.
+
+This reorder changes real behavior for one caller shape: a
+`Budget`-and-`Window` caller whose history stays over budget even
+after compaction. Today that caller fails fast with `ErrOverBudget`
+before compaction runs. After this addendum, that caller pays for one
+compaction attempt, including a summarizer call, before the same
+`ErrOverBudget` failure. A caller relying on the pre-compaction fail-
+fast path for cost control sees one extra LLM call before the run
+fails.
+
+### Addendum scope
+
+Inside:
+
+- Reordering `run`'s per-iteration body: `applyTrim`, then, when
+  `l.window` is non-nil, `planHistory`, then `checkBudget`, then
+  `runChat`. When `l.window` is nil, `checkBudget` runs directly after
+  `applyTrim`, exactly where it runs today; a caller who sets `Budget`
+  without `Window` sees no behavior change.
+- Correcting `Options.Budget`'s and `Options.Window`'s doc comments in
+  `options.go` to state the corrected order.
+- Rewriting `TestRunBudgetChecksBeforeWindowCompaction` in
+  `agentloop/agentloop_test/compaction_test.go` to assert the
+  corrected behavior, and adding one sibling test proving `Budget`
+  still trips when the post-compaction history remains over budget.
+
+Outside:
+
+- Any change to `contextbudget.Limits`, `Fits`, or `Validate`. The
+  fix is ordering only; the budget-check math does not change.
+- Any change to `checkCompactedBudget` in `compaction.go`. That
+  function already checks the window's own token budget against the
+  post-compaction history; it is unrelated to `Options.Budget` and
+  `contextbudget.Limits`, and this addendum does not touch it.
+- A second `Budget` check, pre- and post-compaction. Rejected above.
+- Any change to `MaxTotalTokens`, `MaxCallsPerTurn`, or any other
+  `Options` field's check order relative to `checkBudget`.
+
+### Addendum API
+
+No exported symbol changes. `Options.Budget` and `Options.Window` keep
+their field names, types, and positions; only their doc comments
+change text. `ErrOverBudget` keeps its meaning and trigger condition;
+only the history it inspects, when `Window` is set, changes.
+`api/agentloop.txt` locks field signatures, not doc comments (see the
+existing `Budget *contextbudget.Limits` and `Window
+*contextplan.Window` lines), so this addendum needs no
+`api/agentloop.txt` diff and no `make api-update` run.
+
+`Options.Budget`'s doc comment changes from:
+
+```go
+// Budget caps one Completer call's message history by byte count
+// and message count. A nil Budget means uncapped.
+Budget *contextbudget.Limits
+```
+
+to:
+
+```go
+// Budget caps one Completer call's message history by byte count
+// and message count. A nil Budget means uncapped. When Window is
+// also set, Budget checks the history after window compaction runs,
+// so a history Window would compact under Budget never fails here.
+// When Window is nil, Budget checks history exactly as sent.
+Budget *contextbudget.Limits
+```
+
+`Options.Window`'s doc comment changes from:
+
+```go
+// Window plans every iteration against a token budget. A nil Window
+// disables planning; the loop then runs exactly as before. A non-nil
+// Window requires Summarizer and Calibrated, and excludes Trim.
+Window *contextplan.Window
+```
+
+to:
+
+```go
+// Window plans every iteration against a token budget. A nil Window
+// disables planning; the loop then runs exactly as before. A non-nil
+// Window requires Summarizer and Calibrated, and excludes Trim. When
+// Budget is also set, Window's compaction runs before the Budget
+// check, so Budget sees the compacted history, not the raw one.
+Window *contextplan.Window
+```
+
+### Addendum mechanics, exact
+
+In `run.go`'s `run` function, move the `checkBudget` call from
+directly after `applyTrim` to directly after the `l.window != nil`
+block that calls `planHistory`. The moved call keeps its exact
+signature, `l.checkBudget(history, iterations)`, and keeps checking
+whatever `history` currently holds at that point in the loop: the
+trimmed and, when `l.window` is set, compacted history. No change to
+`checkBudget` itself in `compaction.go`'s sibling file or to
+`contextbudget.Limits`. The resulting order in `run`:
+
+1. `ctx.Err()` check.
+2. `MaxIterations` check.
+3. `applyTrim` (when `l.trim` is set).
+4. `planHistory` (when `l.window` is set), which may itself fail with
+   `ErrPlanFailed` or `ErrCompactionFailed` before `checkBudget` ever
+   runs.
+5. `checkBudget` (when `l.budget` is set), against the
+   post-`applyTrim`, post-`planHistory` history.
+6. `runChat`.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/compaction_test.go`:
+
+- Rename `TestRunBudgetChecksBeforeWindowCompaction` to
+  `TestRunBudgetChecksAfterWindowCompaction`. Keep the doc comment
+  above it, rewritten to describe the corrected assertion.
+  `newPlanningFixture` takes no `Budget` parameter (see
+  `compaction_test.go:76-98`). This test builds `agentloop.Options`
+  directly instead, the way the original test did
+  (`compaction_test.go:372-380`), wiring `Window`, `Summarizer`, and
+  `Calibrated` by hand alongside `Budget`. The test scripts one
+  completer response, `{Message: provider.Message{Role:
+  provider.RoleAssistant, Content: "done"}}`. That response lets the
+  run reach `StopNoToolCalls` right after the compacted, under-budget
+  history reaches the completer. Fixture:
+  `msgs` is four messages, in order: `{RoleSystem, "s"}`,
+  `{RoleUser, strings.Repeat("o", 5000)}`, `{RoleAssistant, "a"}`,
+  `{RoleUser, "l"}`. `w := contextplan.Window{MaxTokens: 400,
+  Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens:
+  20}}`, matching `TestRunOverTriggerCompactsThroughSummarizer`'s
+  proven shape so the same mandatory-retention and drop pattern
+  applies: the trigger trips, `Compact` drops only the 5000-byte user
+  message, keeps `system`, `assistant`, and the trailing `user`, and
+  the summarizer injects one `SummaryMessageName` message after the
+  system message. `Options.Budget = &contextbudget.Limits{MaxBytes:
+  200}` (`MaxEvents` left zero, uncapped: message count does not
+  change across compaction in this fixture, so only `MaxBytes`
+  isolates the pre/post difference). Pre-compaction content bytes sum
+  to 5003, over the 200-byte cap; post-compaction content bytes sum to
+  the fixed-size JSON summary reply (see `summaryReplyJSON`, 97 bytes)
+  plus the three one-byte messages, 100 bytes, under the cap. Assert:
+  `loop.Run` returns a nil error. `res.Stop ==
+  agentloop.StopNoToolCalls`. `completer.callCount() == 1`. The
+  summarizer's `stats()` call count is 1. The request the completer
+  received (`f.completer`'s recorded request) does not contain the
+  5000-byte message's content.
+- Add `TestRunBudgetTripsAfterCompactionStillOverBudget`. Same `msgs`
+  and `w` as the renamed test above, so the same compaction pattern
+  applies and the summarizer runs once. `Options.Budget =
+  &contextbudget.Limits{MaxBytes: 50}`: smaller than the 100-byte
+  post-compaction size, so the post-compaction history still exceeds
+  it. Assert: `errors.Is(err, agentloop.ErrOverBudget)`.
+  `completer.callCount() == 0`: the budget check must trip after
+  compaction runs but before any `Completer.Chat` call. The
+  summarizer's `stats()` call count is 1: proving compaction ran, and
+  the trip happens on the compacted history, not a bypass of
+  compaction. `isZeroResult(res)` is true, matching `hardFail`'s
+  zero-iterations rule.
+- No other existing test in this file changes. `TestRunUnderTriggerNoCompaction`,
+  `TestRunAtExactTriggerCompacts`,
+  `TestRunOverTriggerCompactsThroughSummarizer`,
+  `TestRunAtTriggerNothingDroppableSkipsSummarizer`,
+  `TestRunSummarizerFailureFailsBeforeRequest`, and
+  `TestRunRetentionOverflowFailsBeforeRequest` set no `Budget`, so
+  reordering `checkBudget` changes nothing they assert.
+- `TestRunBudgetExceededLaterIteration` in
+  `agentloop/agentloop_test/loop_bounds_test.go` sets `Budget` without
+  `Window`. The reorder is a no-op on that path: `checkBudget` still
+  runs directly after `applyTrim`, since the `l.window != nil` block
+  it now follows never executes. That test needs no change and must
+  keep passing unmodified, pinning that a `Budget`-only caller sees no
+  behavior change.
+
+### Addendum verification
+
+`make verify` passes. `go test -race ./agentloop/...` passes,
+including the rewritten and the added compaction test. No `api/`
+diff: `api/agentloop.txt` locks field signatures, not doc-comment
+text, and this addendum changes no signature. No `policy/layers.json`
+change: this addendum reorders two existing calls in `run.go` and
+adds no import. The coverage floor stays at 85 percent for `agentloop`
+and the module total.
 
 ## Addendum: steering and interruption
 

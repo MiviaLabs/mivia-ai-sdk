@@ -345,19 +345,70 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	}
 }
 
-// TestRunBudgetChecksBeforeWindowCompaction proves checkBudget runs on
-// the pre-compaction history, ahead of planHistory: a Budget tight
-// enough to reject the caller's four starting messages fails the run
-// with ErrOverBudget on the very first iteration, even though the
-// configured Window would have compacted that same history down to a
-// size the Budget allows. Neither the summarizer nor the Completer
-// ever runs, proving the rejection happens strictly before window
-// planning, not after a compaction attempt that then re-checks the
-// budget.
-func TestRunBudgetChecksBeforeWindowCompaction(t *testing.T) {
+// TestRunBudgetChecksAfterWindowCompaction proves checkBudget runs on
+// the post-compaction history, after planHistory: a Budget too tight
+// for the caller's four raw starting messages still succeeds, because
+// the configured Window compacts that history down to a size the
+// Budget allows before checkBudget ever inspects it.
+func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
-		{Role: provider.RoleUser, Content: strings.Repeat("o", 100)},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 5000)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	reg := tools.New()
+	sum := &summaryScript{}
+	summarizer, err := contextsummary.NewSummarizer(sum)
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         reg,
+		MaxIterations: 3,
+		Budget:        &contextbudget.Limits{MaxBytes: 200},
+		Window:        &w,
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := loop.Run(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Run() = %v, want nil: compaction must bring the history under Budget", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
+	}
+	if got := completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1", got)
+	}
+	sumCalls, _ := sum.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: compaction must run before the budget check", sumCalls)
+	}
+	_, reqs := completerRequests(completer)
+	for _, m := range reqs[0].Messages {
+		if strings.Contains(m.Content, strings.Repeat("o", 5000)) {
+			t.Fatalf("dropped message still in the sent history: %+v", m)
+		}
+	}
+}
+
+// TestRunBudgetTripsAfterCompactionStillOverBudget proves compaction is
+// not a bypass: when the post-compaction history still exceeds Budget,
+// checkBudget still trips with ErrOverBudget, after the summarizer ran
+// but before any Completer.Chat call for the turn.
+func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 5000)},
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
@@ -373,7 +424,7 @@ func TestRunBudgetChecksBeforeWindowCompaction(t *testing.T) {
 		Completer:     completer,
 		Tools:         reg,
 		MaxIterations: 3,
-		Budget:        &contextbudget.Limits{MaxEvents: 3},
+		Budget:        &contextbudget.Limits{MaxBytes: 50},
 		Window:        &w,
 		Summarizer:    summarizer,
 		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
@@ -388,8 +439,9 @@ func TestRunBudgetChecksBeforeWindowCompaction(t *testing.T) {
 	if completer.callCount() != 0 {
 		t.Fatalf("completer calls = %d, want 0: the budget check must trip before any Completer call", completer.callCount())
 	}
-	if sumCalls, _ := sum.stats(); sumCalls != 0 {
-		t.Fatalf("summarizer calls = %d, want 0: the budget check must trip before window planning ever runs", sumCalls)
+	sumCalls, _ := sum.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: compaction must run before the budget check trips", sumCalls)
 	}
 	if !isZeroResult(res) {
 		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the budget check tripped", res)

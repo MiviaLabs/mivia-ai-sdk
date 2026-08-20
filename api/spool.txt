@@ -19,7 +19,7 @@ package spool
   func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error)
   func PrincipalFrom(ctx context.Context) (string, bool)
   func ReadOutputTool(sp *Spool, maxPageBytes int) (tools.Tool, error)
-  func SpoolTool(name string, maxBytes int, store ContentStore, inner tools.Tool) (tools.Tool)
+  func SpoolTool(name string, maxBytes int, sp *Spool, inner tools.Tool) (tools.Tool, error)
   func WithPrincipal(ctx context.Context, principal string) (context.Context)
   type ContentStore interface {
 	Put(content []byte) (ref string, err error)

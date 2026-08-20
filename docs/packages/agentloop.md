@@ -16,10 +16,10 @@ or a bound trips. The exported surface below mirrors
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
   `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
-  `ConcludeNotice`. `Completer` and `Tools` are required; the rest are
-  optional. `Bus` is reserved for the loop's own events, pending a
-  future event vocabulary; `Run` does not yet emit anything through
-  it.
+  `ConcludeNotice`, `DedupWithinTurn`. `Completer` and `Tools` are
+  required; the rest are optional. `Bus` is reserved for the loop's
+  own events, pending a future event vocabulary; `Run` does not yet
+  emit anything through it.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
@@ -195,6 +195,32 @@ before the model sees it falls back to `StopNoToolCalls`.
 before a nudged call; no test covers `ConcludeMargin` combined with
 `Window`, and the two have no current caller pairing them.
 
+## Duplicate-call dedup within a turn
+
+`Options.DedupWithinTurn` detects a duplicate `(tool name, canonical
+arguments)` call already served earlier in the same turn, and serves
+`DuplicateCallNotice` instead of running the tool a second time. False,
+the zero value, runs every call, unchanged from the base behavior.
+
+`runToolCalls` starts an empty dedup set on every call, one call per
+turn, so no dedup carries across iterations. Canonicalization decodes
+`call.Arguments` with `json.Decoder.UseNumber()`, so numbers keep
+their source digit string instead of collapsing into `float64`, then
+re-marshals; `encoding/json` sorts object keys on marshal, so two
+calls with the same arguments in a different key order compare equal.
+A canonicalization error (malformed JSON, or a valid JSON value
+followed by trailing bytes) excludes that call from the dedup set: it
+always runs and is never recorded or matched against the set.
+
+The dedup check runs before `PointPreTool` and short-circuits: a call
+identified as a duplicate never reaches `PointPreTool` or
+`PointPostTool`, and the underlying tool never runs for it. The
+synthesized `RoleTool` message for a deduped call carries the
+duplicate call's own `ToolCallID`. Any call that does run, success or
+an `ErrorPolicyReport`-rendered error, seeds the dedup set once its
+`RoleTool` message reaches history, so a later byte-identical retry in
+the same turn is deduped either way.
+
 ## Result shape
 
 On every graceful stop (`StopNoToolCalls`, `StopMaxIterations`,
@@ -237,9 +263,11 @@ in the order `Run` produces them: `AuditKindCompletion` once per
 iteration, right after that iteration's `Completer.Chat` response is
 appended to history and before any of that iteration's bound checks
 run; `AuditKindToolCall` once per tool call whose result reaches
-history. A `PointPreTool` veto and an `ErrorPolicyFail` tool error
-produce no `AuditKindToolCall` record, since neither appends a
-`RoleTool` message to history. `Options.Audit` stays optional and
+history, including a deduped call. A `PointPreTool` veto and an
+`ErrorPolicyFail` tool error produce no `AuditKindToolCall` record,
+since neither appends a `RoleTool` message to history. A deduped
+call's `AuditKindToolCall` record carries a nil `Err`, since a served
+duplicate is not a tool-run error. `Options.Audit` stays optional and
 `agentloop` stays envelope-agnostic: a caller wanting a signed audit
 trail builds and signs its own `envelope.Message` chain from the
 `AuditRecord` values, the same way `agent.confirmStep` signs steps

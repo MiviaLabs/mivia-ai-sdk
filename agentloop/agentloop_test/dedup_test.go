@@ -2,6 +2,7 @@ package agentloop_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -345,6 +346,42 @@ func TestDedupWithinTurnErroredCallSeedsDedupSet(t *testing.T) {
 	}
 	if got := toolResultContent(t, res.History, "call-2"); got != agentloop.DuplicateCallNotice {
 		t.Fatalf("call-2 content = %q, want DuplicateCallNotice", got)
+	}
+}
+
+// TestDedupWithinTurnAuditErrorOnDuplicateFailsRun proves an Audit
+// error on the deduped call's own AuditKindToolCall record fails Run,
+// exactly like an audit error on a normally-run call: the
+// DuplicateCallNotice message reaches history before the audit call,
+// so it survives in the returned partial Result.
+func TestDedupWithinTurnAuditErrorOnDuplicateFailsRun(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte(`{"a":1}`)},
+			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte(`{"a":1}`)},
+		),
+	}}
+	auditFn := func(ctx context.Context, rec agentloop.AuditRecord) error {
+		if rec.Kind == agentloop.AuditKindToolCall && rec.ToolResult.Content == agentloop.DuplicateCallNotice {
+			return errAudit
+		}
+		return nil
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true, Audit: auditFn,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if !errors.Is(err, errAudit) {
+		t.Fatalf("Run() error = %v, want errAudit", err)
+	}
+	if got := toolResultContent(t, res.History, "call-2"); got != agentloop.DuplicateCallNotice {
+		t.Fatalf("call-2 content = %q, want DuplicateCallNotice already in the partial History", got)
 	}
 }
 

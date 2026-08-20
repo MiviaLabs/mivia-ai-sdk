@@ -209,7 +209,7 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	rejection := fmt.Errorf("vendor: %w", provider.ErrPromptTooLong)
 	loop, f := newRecoveryFixture(t, w, 1, []error{rejection}, []provider.Response{provider.Response{}}, nil)
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, provider.ErrPromptTooLong) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrPromptTooLong", err)
 	}
@@ -218,6 +218,12 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry below one percent of the budget", got)
+	}
+	if res.Iterations != 0 {
+		t.Fatalf("Result.Iterations = %d, want 0: the rejection fails the first iteration", res.Iterations)
+	}
+	if len(res.History) != len(msgs) {
+		t.Fatalf("Result.History = %+v, want the pre-recovery history carried on the fromRecovery branch, unlike the base hard-fail rule's zero Result at Iterations 0", res.History)
 	}
 }
 

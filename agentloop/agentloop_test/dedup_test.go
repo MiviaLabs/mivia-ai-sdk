@@ -9,6 +9,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // TestDedupWithinTurnFalseRunsBothCalls proves DedupWithinTurn false
@@ -415,6 +416,49 @@ func TestDedupWithinTurnAuditErrorOnDuplicateFailsRun(t *testing.T) {
 	}
 	if got := toolResultContent(t, res.History, "call-2"); got != agentloop.DuplicateCallNotice {
 		t.Fatalf("call-2 content = %q, want DuplicateCallNotice already in the partial History", got)
+	}
+}
+
+// TestDedupWithinTurnSkippedCallOpensNoToolSpan proves a deduped call
+// never reaches runOneToolCall's tracer.Start call: a wired Tracer
+// opens exactly one "agentloop.tool_call" span for a turn with two
+// identical calls, on the first call only, plus the one
+// "agentloop.iteration" span for the turn itself.
+func TestDedupWithinTurnSkippedCallOpensNoToolSpan(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte(`{"a":1}`)},
+			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte(`{"a":1}`)},
+		),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	tracer := trace.New()
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true, Tracer: tracer,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	var toolSpans, iterationSpans int
+	for _, s := range tracer.Spans() {
+		switch s.Name {
+		case "agentloop.tool_call":
+			toolSpans++
+		case "agentloop.iteration":
+			iterationSpans++
+		}
+	}
+	if toolSpans != 1 {
+		t.Fatalf("tool_call spans = %d, want 1: a deduped call must never open its own span", toolSpans)
+	}
+	if iterationSpans != 2 {
+		t.Fatalf("iteration spans = %d, want 2", iterationSpans)
 	}
 }
 

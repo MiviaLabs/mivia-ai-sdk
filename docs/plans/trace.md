@@ -184,3 +184,35 @@ No new `docs/architecture.md` edit is required. This plan adds no
 message-semantics change and no new module in the message flow. A
 later integration phase that wires `trace` into `flow`, `agent`, or
 `subagent` updates the module map then.
+
+## Addendum: no exporter interface (2026-08-21)
+
+A 2026-08-21 review asked whether `trace` needs a generic
+`Exporter` interface, given `Tracer` exposes only `Start` and
+`Spans()`. This addendum records the review's finding and closes it
+without a code change.
+
+A repo-wide search found no internal package calls `Tracer.Spans()`
+outside test files. `agentrun` and `subagent` hold a `*trace.Tracer`
+and call `Start` and `End` only; neither reads the span tree back.
+Per AGENTS.md's overengineering rule, an interface with zero real
+callers is speculative generality. An `Exporter` interface today
+would add that abstraction with no caller behind it, inside or
+outside this module.
+
+The Scope section above already excludes an exporter on purpose,
+matching how `provider` defines `Completer` with no concrete client:
+a caller maps `Span` fields onto whatever backend they choose.
+`Spans()` already returns every field an exporter needs: `ID`,
+`ParentID`, `Name`, `Start`, `EndTime()`, `Duration()`, and
+`Attributes()`. The gap was not a missing interface. It was a
+missing worked example of the pull pattern `Spans()` already
+supports.
+
+The fix is documentation, not code.
+[docs/packages/trace.md](../packages/trace.md)'s "Exporting spans"
+section now shows the walk-and-map pattern a caller follows. No API
+symbol changes; `api/trace.txt` and `policy/layers.json`'s `trace`
+row (`[]`) stay as they are. A future phase may add an `Exporter`
+interface if a second internal caller (for example, a `dispatch` or
+`workspace` sink) needs one; until then it stays out of scope.

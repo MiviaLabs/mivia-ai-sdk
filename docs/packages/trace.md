@@ -131,3 +131,26 @@ func main() {
 The three `ParentID` checks print `true`. `SpanFrom` reads the child
 back, `SetAttribute` records one pair, and leaf-to-root `End` calls
 leave every duration non-negative.
+
+## Exporting spans
+
+`trace` ships no exporter. `Tracer.Spans()` is the export path: it
+returns every started span in start order after a run ends. A caller
+walks that slice and maps each `Span`'s fields onto whatever backend
+they use, the same way a caller maps a `provider.Completer` response
+onto their own request type.
+
+```go
+for _, s := range tr.Spans() {
+    // Map s.ID, s.ParentID, s.Name, s.Start, s.EndTime(),
+    // s.Duration(), and s.Attributes() onto a backend-specific
+    // record: an OTLP span, a log line, a metrics point.
+    emit(s.Name, s.Start, s.EndTime(), s.Attributes())
+}
+```
+
+This pull pattern needs no exporter interface. `Spans()` already
+gives a caller every field an exporter needs; a caller who wants a
+push model wraps the walk in their own function. `trace` stays a
+leaf package with zero internal imports, so it defines no backend
+type to map onto.

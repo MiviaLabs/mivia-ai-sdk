@@ -466,6 +466,7 @@ flowchart LR
   `ReasoningEventKind`, and the sentinels `ErrToolCallIDUnexpected`,
   `ErrToolCallIDRequired`, `ErrUnknownRole`, `ErrToolCallsUnexpected`,
   `ErrChunkErrDoneConflict`, `ErrStreamClosedEarly`,
+  `ErrNameUnexpected`, `ErrNameInvalid`, `ErrPromptTooLong`,
   `ErrReasoningContentUnexpected`, and `ErrToolChoiceInvalid`.
   `Message` carries `ToolCalls` on an assistant turn and
   `ReasoningContent` on an assistant turn only; `RunTurn` copies

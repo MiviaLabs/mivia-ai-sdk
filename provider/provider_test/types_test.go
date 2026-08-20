@@ -19,6 +19,30 @@ func TestRequestZeroValue(t *testing.T) {
 	if len(req.Messages) != 0 {
 		t.Fatalf("zero Request.Messages len = %d, want 0", len(req.Messages))
 	}
+	if req.Temperature != nil {
+		t.Fatalf("zero Request.Temperature = %v, want nil", req.Temperature)
+	}
+	if req.MaxTokens != nil {
+		t.Fatalf("zero Request.MaxTokens = %v, want nil", req.MaxTokens)
+	}
+	if req.ToolChoice != "" {
+		t.Fatalf("zero Request.ToolChoice = %q, want empty", req.ToolChoice)
+	}
+	if req.Timeout != 0 {
+		t.Fatalf("zero Request.Timeout = %v, want 0", req.Timeout)
+	}
+	if req.SessionID != "" {
+		t.Fatalf("zero Request.SessionID = %q, want empty", req.SessionID)
+	}
+	if req.DisableProviderReplay {
+		t.Fatal("zero Request.DisableProviderReplay = true, want false")
+	}
+	if req.ReasoningEffort != "" {
+		t.Fatalf("zero Request.ReasoningEffort = %q, want empty", req.ReasoningEffort)
+	}
+	if req.ReasoningDialect != "" {
+		t.Fatalf("zero Request.ReasoningDialect = %q, want empty", req.ReasoningDialect)
+	}
 }
 
 func TestResponseZeroValue(t *testing.T) {

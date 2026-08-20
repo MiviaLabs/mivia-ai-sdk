@@ -207,6 +207,85 @@ def package_paths(root: Path, env_extra: dict | None = None) -> list[str]:
     return sorted(packages(root, env_extra))
 
 
+_STDLIB_CACHE: dict[tuple, frozenset] = {}
+
+
+def _stdlib_set(root: Path, env_extra: dict | None) -> frozenset:
+    """_stdlib_set returns the import paths `go list std` reports,
+    cached per environment."""
+    key = tuple(sorted((env_extra or {}).items()))
+    if key in _STDLIB_CACHE:
+        return _STDLIB_CACHE[key]
+    env = dict(os.environ)
+    env.update(env_extra or {})
+    out = subprocess.run(["go", "list", "std"], cwd=root, capture_output=True, text=True, env=env)
+    if out.returncode != 0:
+        print(f"go list std failed:\n{out.stderr}", file=sys.stderr)
+        sys.exit(1)
+    result = frozenset(out.stdout.split())
+    _STDLIB_CACHE[key] = result
+    return result
+
+
+def _own_relative(entry: dict) -> str | None:
+    """_own_relative returns the package path relative to the module
+    root, keeping every package `go list` reports: `_test` directories
+    and `scripts` stay in, unlike `_relative`."""
+    root = entry.get("Root")
+    directory = entry.get("Dir")
+    if not root or not directory:
+        return None
+    rel = os.path.relpath(directory, root).replace(os.sep, "/")
+    if rel == ".":
+        return None
+    return rel
+
+
+def third_party_imports(root: Path, tags: str | None,
+                         env_extra: dict | None = None) -> dict[str, set[str]]:
+    """third_party_imports maps every relative package path to its
+    third-party import paths, for one build configuration. It reads
+    Imports, TestImports, and XTestImports, so a test-only import is
+    seen. It keeps every package, including one with zero third-party
+    imports, so a policy key can be validated against this key set."""
+    stdlib = _stdlib_set(root, env_extra)
+    prefix = MODULE + "/"
+    found: dict[str, set[str]] = {}
+    for entry in _go_list(Path(root), tags, env_extra):
+        rel = _own_relative(entry)
+        if rel is None:
+            continue
+        imports: set[str] = set()
+        for key in ("Imports", "TestImports", "XTestImports"):
+            imports.update(entry.get(key) or [])
+        third_party = set()
+        for imp in imports:
+            if imp == "C" or imp == MODULE or imp.startswith(prefix):
+                continue
+            if imp in stdlib:
+                continue
+            third_party.add(imp)
+        found.setdefault(rel, set()).update(third_party)
+    return found
+
+
+def attributed_go_files(root: Path, tags: str | None,
+                         env_extra: dict | None = None) -> set[Path]:
+    """attributed_go_files returns the resolved absolute paths of every
+    file one `go list` pass claims: GoFiles, CgoFiles, TestGoFiles, and
+    XTestGoFiles. The residual scan subtracts this set from a full
+    tree walk."""
+    out: set[Path] = set()
+    for entry in _go_list(Path(root), tags, env_extra):
+        directory = entry.get("Dir")
+        if not directory:
+            continue
+        for key in ("GoFiles", "CgoFiles", "TestGoFiles", "XTestGoFiles"):
+            for name in entry.get(key) or []:
+                out.add((Path(directory) / name).resolve())
+    return out
+
+
 # --- probes ---------------------------------------------------------
 
 

@@ -28,7 +28,7 @@ Outside this change:
   with flat values, and nested keying needs no edit to reach them.
 - No change to what a gate enforces for an existing flat package.
 - No per-package third-party import rule. See
-  `docs/plans/third-party-per-package.md`.
+  `docs/plans/thirdparty.md`.
 - No `scripts/check_mutation.py` change. See
   `docs/plans/mutation-nested-packages.md`.
 - No change to `semgrep/`, `.githooks/`, or the coverage floor block.

@@ -110,14 +110,10 @@ any stage means stop and escalate to the user.
 - The GitHub remote for this repo must be **private**. Never create a
   public remote or push to one.
 - No third-party dependencies. Standard library only.
-  Exception: `a2aclient` may import `github.com/a2aproject/a2a-go` and
-  `google.golang.org/grpc`; `a2aloopback` may import the same two
-  modules, scoped to its own gRPC test-server fixture; `mcp` may import
-  `github.com/modelcontextprotocol/go-sdk`; `ledger` may import
-  `modernc.org/sqlite`, behind the `ledger_sqlite` build tag only;
-  `schema` may import `github.com/santhosh-tekuri/jsonschema/v6`; no
-  other package may add a third-party import without its own plan
-  review.
+  `policy/thirdparty.json` names the direct exceptions: the packages
+  allowed one, the modules each may import, and the build tag (if
+  any) an exception needs. No other package may add a third-party
+  import without its own plan review and a new row in that file.
 - Comments are a machine-read API surface. Keep them short: one line of
   what, plus invariants and cross-references (`See X`, file names) where
   they exist. No prose paragraphs, no restating the signature.
@@ -166,6 +162,14 @@ follow reliably. Each has a gate behind it.
   allowed imports there first. A key and a value use the package path
   relative to the module root, at any depth. Gate:
   `scripts/check_deps.py`.
+- Do not import a third-party module unless `policy/thirdparty.json`
+  grants the importing package that module. Gate:
+  `scripts/check_thirdparty.py`.
+- Do not change the dependency closure without a deliberate lock
+  update: `make thirdparty-update`, then commit the
+  `policy/thirdparty_closure.txt` diff in the same change. The lock is
+  generated and never hand-edited. Its diff is the review surface for
+  a new indirect module. Gate: `scripts/check_thirdparty.py`.
 - Do not copy an exported type into another package to reuse it. Import
   the source package; the import policy already allows the edge. A
   copied type forks on the next change. Gate: review catches the copy.
@@ -209,11 +213,12 @@ the profile lists every package and that the total and each package
 reach 85. `verify` also runs the gates' own probe suites:
 `check_deps.py --probe`, `check_plan.py --probe`, `check_api.py
 --probe`, `check_orphan_packages.py --probe`, `check_mutation.py
---probe`, and `check_test_tampering.py --probe`.
+--probe`, `check_thirdparty.py --probe`, and
+`check_test_tampering.py --probe`.
 
 `scripts/go_packages.py` is the one package enumerator behind the
-deps, plan, orphan, and API gates. It wraps `go list -json`, so a
-package at any depth is visible.
+deps, plan, orphan, API, and third-party gates. It wraps `go list
+-json`, so a package at any depth is visible.
 
 The hook guard and the pre-commit hook are best-effort against
 careless agents. They are not a security boundary. GitHub Actions CI

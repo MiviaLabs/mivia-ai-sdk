@@ -16,7 +16,7 @@ verify-fast:
 	python3 scripts/check_orphan_packages.py
 	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
-	python3 scripts/check_gomod.py
+	python3 scripts/check_thirdparty.py
 	python3 scripts/check_semgrepignore.py
 		python3 scripts/check_labels.py
 		python3 scripts/check_names.py
@@ -58,6 +58,7 @@ verify: verify-fast verify-ledger-sqlite
 	python3 scripts/check_deps.py --probe
 	python3 scripts/check_plan.py --probe
 	python3 scripts/check_api.py --probe
+	python3 scripts/check_thirdparty.py --probe
 	python3 scripts/check_test_tampering.py --probe
 
 bench:
@@ -122,6 +123,13 @@ api-update:
 		esac; \
 		if [ -n "$$out" ]; then printf '%s\n' "$$line" >> "$$out"; fi; \
 	done < "$$tmp"
+
+# thirdparty-update rewrites policy/thirdparty_closure.txt from the
+# go.sum module set: one module path per line, sorted, newline
+# terminated. It never runs inside verify or verify-fast; commit its
+# diff deliberately, alongside the go.sum change that caused it.
+thirdparty-update:
+	@awk '{print $$1}' go.sum | sort -u > policy/thirdparty_closure.txt
 
 install-hooks:
 	git config core.hooksPath .githooks

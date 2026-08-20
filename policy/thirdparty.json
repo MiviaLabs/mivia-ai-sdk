@@ -1,0 +1,25 @@
+{
+  "comment": "Third-party import exceptions. The SDK is standard library only. A package absent from this table may import no third-party module. See docs/plans/thirdparty.md.",
+  "exceptions": {
+    "a2aclient": {
+      "modules": ["github.com/a2aproject/a2a-go", "google.golang.org/grpc"],
+      "tag": ""
+    },
+    "a2aloopback": {
+      "modules": ["github.com/a2aproject/a2a-go", "google.golang.org/grpc"],
+      "tag": ""
+    },
+    "mcp": {
+      "modules": ["github.com/modelcontextprotocol/go-sdk"],
+      "tag": ""
+    },
+    "ledger": {
+      "modules": ["modernc.org/sqlite"],
+      "tag": "ledger_sqlite"
+    },
+    "schema": {
+      "modules": ["github.com/santhosh-tekuri/jsonschema/v6"],
+      "tag": ""
+    }
+  }
+}

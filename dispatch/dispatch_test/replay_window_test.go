@@ -205,6 +205,18 @@ func TestAbortedRequestReleasesItsRecord(t *testing.T) {
 	if got := recordCount(t, led); got > 2 {
 		t.Fatalf("ledger holds %d records, want at most the cap of 2", got)
 	}
+	// The count alone proves nothing here: three terminal records
+	// can hold the count at the cap while the abandoned claim stays
+	// pinned. Read the surviving statuses.
+	snap, err := led.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	for _, rec := range snap.Tasks {
+		if rec.Status == ledger.StatusClaimed {
+			t.Fatalf("record %+v still claimed, want the abandoned claim reclaimed", rec)
+		}
+	}
 }
 
 // abortRequest posts body and cancels the request once the handler

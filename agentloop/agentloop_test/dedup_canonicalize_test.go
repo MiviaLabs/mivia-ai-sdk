@@ -181,6 +181,8 @@ func TestDedupWithinTurnTrailingDataFailOpen(t *testing.T) {
 	}{
 		{name: "trailing garbage", first: []byte(`{"a":1}garbage`), second: []byte(`{"a":1}garbage`)},
 		{name: "concatenated JSON values", first: []byte(`{"a":1}{"b":2}`), second: []byte(`{"a":1}{"b":2}`)},
+		{name: "trailing closing bracket", first: []byte(`{"a":1}]`), second: []byte(`{"a":1}]`)},
+		{name: "trailing closing brace", first: []byte(`{"a":1}}`), second: []byte(`{"a":1}}`)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

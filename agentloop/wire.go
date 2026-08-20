@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"unicode/utf8"
 
@@ -111,7 +112,7 @@ func canonicalizeArgs(raw json.RawMessage) (string, error) {
 	if err := dec.Decode(&v); err != nil {
 		return "", err
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return "", errTrailingArgsData
 	}
 	b, err := json.Marshal(v)

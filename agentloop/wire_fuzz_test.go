@@ -28,6 +28,8 @@ func FuzzCanonicalizeArgs(f *testing.F) {
 		[]byte(`{not json`),
 		[]byte(`{"a":1}garbage`),
 		[]byte(`{"a":1}{"b":2}`),
+		[]byte(`{"a":1}]`),
+		[]byte(`{"a":1}}`),
 		[]byte(``),
 		[]byte(`null`),
 		[]byte(`[1,2,3]`),

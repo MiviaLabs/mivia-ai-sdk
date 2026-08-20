@@ -15,10 +15,12 @@ import (
 // Claim first calls Store.Load. It returns ErrNoKey when the key has
 // no record, checked before any status precondition and before any
 // CompareAndSwap call: a never-admitted key is never eligible for
-// Claim. It returns ErrLeaseActive when another owner's LeaseUntil is
-// still after now. A record in a terminal or blocked status is also
-// ineligible; Claim reports that with ErrNotClaimed, matching
-// Takeover's vocabulary for a non-claimable status. It returns
+// Claim. It returns ErrLeaseActive when the stored LeaseUntil is still
+// after now, whichever owner holds it; Claim makes no owner
+// comparison, so an owner extends its own lease with Renew. A record
+// in a terminal or blocked status is also ineligible; Claim reports
+// that with ErrNotClaimed, matching Takeover's vocabulary for a
+// non-claimable status. It returns
 // ErrNotClaimed last when a key in the record's transitive Needs
 // closure holds StatusFailed or StatusBlocked, checked after the
 // ErrLeaseActive check and before any CompareAndSwap call. That

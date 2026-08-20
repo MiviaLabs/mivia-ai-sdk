@@ -61,7 +61,10 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 // failure. On first insert, Admit sets CreatedBy and CreatedAt from
 // actor and now; on a rebase over an existing non-terminal record, it
 // carries CreatedBy/CreatedAt forward unchanged. Every successful
-// write sets UpdatedBy to actor and UpdatedAt to now.
+// write sets UpdatedBy to actor and UpdatedAt to now. A rebase carries
+// Fence forward from the stored record unchanged, and clears Owner and
+// LeaseUntil, so the next Claim bumps past a dispossessed owner's
+// token.
 func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq Sequence, task any, now time.Time, needs ...IdempotencyKey) (bool, error) {
 	if key == "" {
 		return false, fmt.Errorf("ledger: idempotency key must not be empty")
@@ -93,6 +96,7 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 			Sequence:  seq,
 			Needs:     needsCopy,
 			Task:      task,
+			Fence:     old.Fence,
 			CreatedBy: createdBy,
 			CreatedAt: createdAt,
 			UpdatedBy: actor,

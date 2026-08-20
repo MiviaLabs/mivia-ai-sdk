@@ -61,7 +61,8 @@ surface below mirrors `api/ledger.txt`.
   resubmission. On first insert, it stamps `CreatedBy`/`CreatedAt` from
   `actor`/`now`; a rebase over an existing non-terminal record carries
   them forward unchanged. Every successful write stamps `UpdatedBy` and
-  `UpdatedAt`.
+  `UpdatedAt`. A rebase carries `Fence` forward from the stored record
+  unchanged, and clears `Owner` and `LeaseUntil`.
 - `Ledger.Claim(ctx, actor, key, owner, lease, now)` — claims a pending
   record, or a claimed record whose lease has expired. Returns
   `ErrEmptyOwner` for a blank `owner`. Returns `ErrNotClaimed` when a
@@ -100,12 +101,18 @@ surface below mirrors `api/ledger.txt`.
 ## Failure modes
 
 - `ErrLeaseActive` ("ledger: lease is still active") — `Claim`
-  returns it when another owner's `LeaseUntil` is still after now.
-  Pinned by `ledger_test/claim_test.go`.
+  returns it when the stored `LeaseUntil` is still after now,
+  whichever owner holds it. `Claim` makes no owner comparison, so an
+  owner extends its own lease with `Renew`.
+  Pinned by `ledger_test/claim_test.go` for a second owner, and by
+  `ledger_test/scenario_test.go` for the same owner.
 - `ErrFenced` ("ledger: fence token is stale") — `Renew`, `Release`,
   and `Complete` return it when the supplied fence token does not
   match the stored one. Pinned by `ledger_test/claim_test.go`,
   `ledger_test/complete_test.go`, and `ledger_test/takeover_test.go`.
+  Between a rebase and the next `Claim`, a dispossessed owner's
+  `Renew`, `Release`, and `Complete` return `ErrNotClaimed`, not
+  `ErrFenced`, because the record is no longer `StatusClaimed`.
 - `ErrNotStale` ("ledger: lease is not stale") — `Takeover` returns
   it when the current lease has not yet expired. Pinned by
   `ledger_test/takeover_test.go`.
@@ -142,6 +149,9 @@ surface below mirrors `api/ledger.txt`.
   or a zero `LeaseUntil`.
 - `Admit` rebases a `StatusPending` or `StatusClaimed` record at a
   higher sequence; it never rebases a terminal record.
+- A rebase carries `Fence` forward unchanged, so the next `Claim`
+  returns a token strictly above a dispossessed owner's token. Pinned
+  by `ledger_test/fence_monotonic_test.go`.
 - `Claim` and `Takeover` read `LeaseUntil` against the caller-supplied
   `now` as the only staleness signal. `ledger` imports no liveness
   package.

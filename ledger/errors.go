@@ -2,8 +2,8 @@ package ledger
 
 import "errors"
 
-// ErrLeaseActive is returned by Claim when another owner's lease has
-// not yet reached its LeaseUntil deadline.
+// ErrLeaseActive is returned by Claim when the stored LeaseUntil is
+// still after now, whichever owner holds the lease.
 var ErrLeaseActive = errors.New("ledger: lease is still active")
 
 // ErrFenced is returned by Renew, Release, or Complete when the

@@ -895,7 +895,10 @@ in the pre-commit hook.
 - `scripts/` — the gates: check_docs, check_structure, check_deps,
   check_plan, check_prose, check_api, check_gomod,
   check_semgrepignore, check_labels, check_names,
-  check_semgrep_probes, check_mutation, and api_surface (Go).
+  check_semgrep_probes, check_mutation, check_orphan_packages,
+  check_test_tampering, and api_surface (Go). `go_packages.py` is the
+  shared package enumerator behind the deps, plan, orphan, and API
+  gates.
 - `semgrep/` — the pattern rules: no panic or exit in packages,
   stdlib-only imports, centralized constants, no hardcoded secrets, no
   suppression markers, no drift markers.
@@ -905,7 +908,10 @@ in the pre-commit hook.
 `make verify-fast` runs gofmt, vet, one test pass, the python gates,
 the semgrep scan, and the suppression-marker scan. `make verify` runs
 everything verify-fast runs, plus the coverage floor, the semgrep
-probe suite, and `check_mutation.py --probe`. `make verify-ledger-sqlite`
+probe suite, and the gates' own probe suites. The probe suites are
+`check_mutation.py --probe`, `check_orphan_packages.py --probe`,
+`check_deps.py --probe`, `check_plan.py --probe`, `check_api.py
+--probe`, and `check_test_tampering.py --probe`. `make verify-ledger-sqlite`
 is a separate, explicit command for `ledger`'s
 `ledger_sqlite`-build-tag-gated `SQLiteStore` code; it runs outside
 `make verify` since the default build never compiles that code, and it
@@ -932,8 +938,8 @@ The architecture enforces these rules:
   edges; `scripts/check_deps.py` enforces them.
 - The API locks. The files in `api/` pin the exported surface;
   `scripts/check_api.py` diffs them.
-- The plans gate. Every top-level package needs a plan;
-  `scripts/check_plan.py` enforces it.
+- The plans gate. Every package needs a plan at
+  `docs/plans/<package path>.md`; `scripts/check_plan.py` enforces it.
 - The writing standard. Sentences stay at or below 25 words;
   `scripts/check_prose.py` scans the whole docs tree.
 - The label ban. Audit-finding labels never appear in comments, docs,

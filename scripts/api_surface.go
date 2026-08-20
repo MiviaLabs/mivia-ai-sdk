@@ -1,21 +1,29 @@
-// Command api_surface prints the exported API surface of every top-level
-// package directory in this module. Output is deterministic; scripts/
-// check_api.py diffs it against the locks in api/. Run `make api-update`
-// to accept a deliberate surface change.
+// Command api_surface prints the exported API surface of every package
+// directory in this module, at any depth. Output is deterministic;
+// scripts/check_api.py diffs it against the locks in api/. Run `make
+// api-update` to accept a deliberate surface change.
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// scriptsDir is the gate-tooling directory, excluded from the surface.
+const scriptsDir = "scripts"
 
 // alwaysBuildTags names every build tag this module gates a file
 // behind, today only ledger_sqlite (ledger/sqlite_store.go). The lock
@@ -23,7 +31,9 @@ import (
 // api/*.txt captures the symbol regardless of tag; only the real
 // `go build` and `go test` invocations honor the tag and keep the
 // dependency out of the default binary. Extend this list when a
-// future package adds its own gated file.
+// future package adds its own gated file. Keep it equal to BUILD_TAGS
+// in scripts/go_packages.py, whose constraint scan fails on a file
+// behind any other constraint.
 var alwaysBuildTags = []string{"ledger_sqlite"}
 
 func main() {
@@ -39,37 +49,87 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Println("package " + filepath.Base(dir))
+		fmt.Println("package " + dir)
 		for _, line := range lines {
 			fmt.Println("  " + line)
 		}
 	}
 }
 
-// packageDirs lists top-level directories that hold non-test Go files.
+// goPackage is the subset of `go list -json` output this tool reads.
+type goPackage struct {
+	Dir  string
+	Root string
+}
+
+// packageDirs lists every package directory of this module, relative to
+// the module root and at any depth. It unions a default-tag `go list`
+// run with a run over alwaysBuildTags, so a fully tag-gated package
+// still reaches the lock. go list drops `_`- and `.`-prefixed segments
+// and testdata; excluded drops the rest.
 func packageDirs() ([]string, error) {
-	entries, err := os.ReadDir(".")
-	if err != nil {
-		return nil, err
-	}
-	var dirs []string
-	for _, e := range entries {
-		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || e.Name() == "scripts" {
-			continue
-		}
-		files, err := filepath.Glob(filepath.Join(e.Name(), "*.go"))
+	seen := make(map[string]bool)
+	for _, tags := range []string{"", strings.Join(alwaysBuildTags, ",")} {
+		pkgs, err := goList(tags)
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range files {
-			if !strings.HasSuffix(f, "_test.go") {
-				dirs = append(dirs, e.Name())
-				break
+		for _, p := range pkgs {
+			rel, err := filepath.Rel(p.Root, p.Dir)
+			if err != nil {
+				return nil, err
 			}
+			rel = filepath.ToSlash(rel)
+			if excluded(rel) {
+				continue
+			}
+			seen[rel] = true
 		}
+	}
+	dirs := make([]string, 0, len(seen))
+	for dir := range seen {
+		dirs = append(dirs, dir)
 	}
 	sort.Strings(dirs)
 	return dirs, nil
+}
+
+// excluded reports whether the exclusion set drops a package path: the
+// module root, the scripts tree, or an external test package.
+func excluded(rel string) bool {
+	if rel == "." || rel == scriptsDir || strings.HasPrefix(rel, scriptsDir+"/") {
+		return true
+	}
+	return strings.HasSuffix(rel, "_test")
+}
+
+// goList runs `go list -json ./...` for one tag configuration. It
+// returns an error carrying the go stderr when the run fails; a
+// toolchain failure is never an empty package set.
+func goList(tags string) ([]goPackage, error) {
+	args := []string{"list", "-json"}
+	if tags != "" {
+		args = append(args, "-tags", tags)
+	}
+	args = append(args, "./...")
+	cmd := exec.Command("go", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("go %s: %v\n%s", strings.Join(args, " "), err, stderr.String())
+	}
+	dec := json.NewDecoder(&stdout)
+	var pkgs []goPackage
+	for {
+		var p goPackage
+		if err := dec.Decode(&p); errors.Is(err, io.EOF) {
+			return pkgs, nil
+		} else if err != nil {
+			return nil, err
+		}
+		pkgs = append(pkgs, p)
+	}
 }
 
 // surface returns the sorted exported-symbol blocks of the package in

@@ -15,18 +15,19 @@ or a bound trips. The exported surface below mirrors
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
-  `Window`, `Summarizer`, `Calibrated`. `Completer` and `Tools` are
-  required; the rest are optional. `Bus` is reserved for the loop's
-  own events, pending a future event vocabulary; `Run` does not yet
-  emit anything through it.
+  `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
+  `ConcludeNotice`. `Completer` and `Tools` are required; the rest are
+  optional. `Bus` is reserved for the loop's own events, pending a
+  future event vocabulary; `Run` does not yet emit anything through
+  it.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
   return.
 - `StopReason` — a string enum naming why `Run` stopped gracefully:
-  `StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto`. No
-  `StopToolError` constant exists: a tool error under
-  `ErrorPolicyFail` is a hard failure, not a graceful stop.
+  `StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto`,
+  `StopConcluded`. No `StopToolError` constant exists: a tool error
+  under `ErrorPolicyFail` is a hard failure, not a graceful stop.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
   tool-run error: `ErrorPolicyReport` (the zero value; sends the
   error text back as the tool's `RoleTool` result and continues) or
@@ -120,6 +121,9 @@ Use `errors.Is` to test these.
 - `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
   exclusive") — `Options.Validate` returns it when both `Window` and
   `Trim` are set.
+- `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
+  negative") — `Options.Validate` returns it for a negative
+  `ConcludeMargin`.
 
 ## Context planning and prompt-too-long recovery
 
@@ -156,10 +160,46 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
+## Graceful conclude near MaxIterations
+
+A positive `Options.ConcludeMargin` nudges the model toward a final
+answer as `MaxIterations` approaches, instead of hard-stopping with
+whatever partial state the transcript holds. Zero disables nudging.
+
+Number each `Completer` call with a 1-based index `k`, from 1 to
+`MaxIterations`. `Run` appends `ConcludeNotice` to history once,
+immediately before the call at the first `k` for which
+`MaxIterations - k < ConcludeMargin` holds. A `ConcludeMargin` at or
+above `MaxIterations` satisfies this at `k = 1`, so the nudge fires on
+`Run`'s first iteration. An empty `ConcludeNotice` uses
+`DefaultConcludeNotice`.
+
+The append lands at the tail of history, as the last message in the
+nudged iteration's `Request.Messages`, after that iteration's `Trim`,
+`Budget`, and `Window` steps — not spliced near the system message the
+way `CompactionNotice` is. `Run` stops at `StopConcluded`, not
+`StopNoToolCalls`, when the model returns no tool call on an iteration
+whose actual sent request still carried the notice. A model that keeps
+requesting tool calls through the nudge is not blocked; `Run` still
+ends at `StopMaxIterations`, unchanged, if the limit is hit.
+
+`StopConcluded` never fires from notice text that reached history some
+other way — a caller re-feeding a prior `Run` call's leftover
+`History`, or coincidental content matching `ConcludeNotice`. The
+check requires both that this run's own `ConcludeMargin` logic queued
+the notice and that the notice still sits in the request the model
+actually answered; a `Trim` or `Window` step that strips the notice
+before the model sees it falls back to `StopNoToolCalls`.
+
+`Options.Window` may also drop, reorder, or summarize away the notice
+before a nudged call; no test covers `ConcludeMargin` combined with
+`Window`, and the two have no current caller pairing them.
+
 ## Result shape
 
 On every graceful stop (`StopNoToolCalls`, `StopMaxIterations`,
-`StopHookVeto`), `Run` returns a fully populated `Result` and a nil
+`StopHookVeto`, `StopConcluded`), `Run` returns a fully populated
+`Result` and a nil
 error: `History` carries every message appended so far, `Iterations`
 carries the completed iteration count, and `Usage` carries the tokens
 summed so far. `Final` carries the last message appended, or the zero

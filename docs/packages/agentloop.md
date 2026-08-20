@@ -19,14 +19,20 @@ or a bound trips. The exported surface below mirrors
   required; the rest are optional. `Bus` is reserved for the loop's
   own events, pending a future event vocabulary; `Run` does not yet
   emit anything through it.
-- `Result` — one `Run` call's outcome: `Final`, `History`,
-  `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
-  each field behaves on a graceful stop versus a hard-fail error
-  return.
-- `StopReason` — a string enum naming why `Run` stopped gracefully:
-  `StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto`. No
-  `StopToolError` constant exists: a tool error under
-  `ErrorPolicyFail` is a hard failure, not a graceful stop.
+- `Result` — one `Run` or `RunSteerable` call's outcome: `Final`,
+  `History`, `Iterations`, `Usage`, `Stop`. See "Result shape" below
+  for how each field behaves on a graceful stop versus a hard-fail
+  error return.
+- `StopReason` — a string enum naming why `Run` or `RunSteerable`
+  stopped gracefully: `StopNoToolCalls`, `StopMaxIterations`,
+  `StopHookVeto`, `StopSteered`. No `StopToolError` constant exists: a
+  tool error under `ErrorPolicyFail` is a hard failure, not a graceful
+  stop.
+- `Steer` — a caller-held handle that requests a soft-cancel of one
+  `RunSteerable` call's in-flight `Completer.Chat` call. Create one
+  with `NewSteer` and call `Trigger` from another goroutine. One
+  `Steer` must not be passed to two concurrent `RunSteerable` calls.
+  See "Steering and interruption" below.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
   tool-run error: `ErrorPolicyReport` (the zero value; sends the
   error text back as the tool's `RoleTool` result and continues) or
@@ -53,6 +59,17 @@ or a bound trips. The exported surface below mirrors
 - `(*Loop) Run(ctx, msgs)` — calls `Registry.RunScoped`, never
   `Registry.Run`, so a model-chosen call always passes through the
   `Loop`'s `Scope`. Returns the final `Result` and the first error.
+  Equivalent to `RunSteerable(ctx, msgs, nil)`.
+- `(*Loop) RunSteerable(ctx, msgs, steer)` — `Run` with one addition:
+  a non-nil `steer` lets the caller request a soft-cancel of the
+  current iteration's in-flight `Completer.Chat` call from another
+  goroutine, through `steer.Trigger`. See "Steering and interruption"
+  below.
+- `NewSteer()` — returns a ready `Steer`, unbound to any `RunSteerable`
+  call until passed to one.
+- `(*Steer) Trigger()` — requests the soft-cancel `Steer` is bound to
+  for its current `RunSteerable` call, if any. Safe to call from
+  another goroutine, any number of times.
 - `Options.Validate()` — checks `Completer` and `Tools` are set,
   `MaxIterations` is positive, `Usage` requires a non-blank
   `SessionID`, a non-nil `Budget` passes `contextbudget.Limits.
@@ -120,6 +137,10 @@ Use `errors.Is` to test these.
 - `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
   exclusive") — `Options.Validate` returns it when both `Window` and
   `Trim` are set.
+- `ErrToolNotOffered` ("agentloop: tool call names a tool not offered
+  when New ran") — `decodeAndRun`'s error when a model-chosen call
+  names a tool `Definitions` did not offer, instead of a nil-pointer
+  panic on a tool registered after `New` ran.
 
 ## Context planning and prompt-too-long recovery
 
@@ -159,11 +180,12 @@ path exists anywhere in `Run`.
 ## Result shape
 
 On every graceful stop (`StopNoToolCalls`, `StopMaxIterations`,
-`StopHookVeto`), `Run` returns a fully populated `Result` and a nil
-error: `History` carries every message appended so far, `Iterations`
-carries the completed iteration count, and `Usage` carries the tokens
-summed so far. `Final` carries the last message appended, or the zero
-value when the stop happened before a new response arrived.
+`StopHookVeto`, `StopSteered`), `Run` or `RunSteerable` returns a
+fully populated `Result` and a nil error: `History` carries every
+message appended so far, `Iterations` carries the completed iteration
+count, and `Usage` carries the tokens summed so far. `Final` carries
+the last message appended, or the zero value when the stop happened
+before a new response arrived.
 
 On every hard-fail error return — a canceled ctx, a `Completer.Chat`
 error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
@@ -177,6 +199,36 @@ the zero value in this case, since the run failed a stop condition
 instead of reaching one. When no iteration has completed yet, the
 rule degrades to the zero-value `Result` on its own, with no special
 case for ctx cancellation or any other cause.
+
+## Steering and interruption
+
+`RunSteerable` lets a caller request a soft-cancel of the current
+iteration's in-flight `Completer.Chat` call without a hard `ctx`
+cancellation. A hard `ctx` cancellation still ends the run at its
+hard-fail path, unchanged from `Run`. A triggered `Steer` ends the run
+gracefully instead, at the next iteration boundary, with `Stop ==
+StopSteered` and `Final` at the zero value, following the same
+Result-shape rule as every other pre-response graceful stop.
+
+`Trigger` fired mid-tool-call-batch has no effect on calls already
+dispatched in that batch; it takes effect at the start of the next
+iteration's `Completer.Chat` call instead. A `Trigger` call fired
+during a prompt-too-long recovery retry has no effect until the
+following iteration boundary, for the same reason: the retry call runs
+on the plain outer `ctx`, not on a steer-derived context. Interrupting
+a running tool call is out of scope: today's tool calls run
+sequentially, strictly after the iteration's `Completer` call returns,
+so no tool call is ever in flight when a steer request can fire.
+
+`Steer` is a per-`RunSteerable`-call value, not a per-`Loop` value.
+`RunSteerable` resets it at the call's own start, so a `Trigger` call
+before `RunSteerable` starts, or left over from a prior call on a
+reused `Steer`, is a no-op. One `Steer` must not be passed to two
+concurrent `RunSteerable` calls: both calls would arm and disarm the
+same triggered flag, and one caller's `Trigger` could stop the other
+caller's unrelated run. See
+[../plans/agentloop.md](../plans/agentloop.md)'s "Addendum: steering
+and interruption" for the full mechanics.
 
 ## Argument validation
 

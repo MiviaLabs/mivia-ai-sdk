@@ -1853,7 +1853,22 @@ role.
 
 Tests live in a new file, `agentloop/agentloop_test/steer_test.go`,
 because they exercise a new type and a new entry point, not an
-existing suite's concern.
+existing suite's concern. A test-review and logic-review pass after
+the initial build split the suite across three files, once
+`steer_test.go` and its fixtures pushed past the 500-line structure
+gate: `steer_test.go` keeps the core cases below; the shared scripted
+`Completer`s, tools, and the `newSteerLoop` helper moved to
+`agentloop/agentloop_test/steer_fixtures_test.go`; the two
+prompt-too-long recovery-boundary cases moved to
+`agentloop/agentloop_test/steer_recovery_test.go`. That pass also
+added two cases beyond the list below:
+`TestSteerTriggeredButErrNotCanceled`, in `steer_test.go`, proves
+`isSteerStop` still hard-fails a triggered `Steer` whose `Completer`
+error does not wrap `context.Canceled`; and
+`TestSteerTriggeredDuringFailingRecoveryRetry`, in
+`steer_recovery_test.go`, proves the `fromRecovery` guard stops a
+triggered `Steer` from masking a failing prompt-too-long recovery
+retry as `StopSteered`.
 
 - `TestSteerTriggerMidCompleter`: a scripted `Completer` whose `Chat`
   blocks on its own `ctx.Done()` before returning. A second goroutine

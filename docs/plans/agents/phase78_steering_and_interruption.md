@@ -1,6 +1,10 @@
 # Phase 78: steering and interruption
 
-Status: plan, not scheduled.
+Status: shipped. The canonical contract for the shipped code is
+docs/plans/agentloop.md's "Addendum: steering and interruption",
+which ported and revised this brief after a hostile plan review. This
+file stays as the origin brief the addendum's API section corrects
+against.
 
 ## Why this plan exists
 

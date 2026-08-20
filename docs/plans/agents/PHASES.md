@@ -488,25 +488,42 @@ matching every other `subagent` tool's result convention. It added no
 new package and no new `policy/layers.json` edge. No standalone
 phase 77 plan file remains.
 
-Phases 78 through 84 are plan-only and not scheduled. A gap analysis
-compared `agentloop` against `internal/agent.Loop`, a production
-caller in a separate, external repository (`mivia-agent`), and found
-seven capabilities that caller needs and `agentloop` lacks. Each gap
-is its own phase: steering and interruption (78), graceful work-limit
+Phases 78 through 84 close a separate capability gap, not a step in
+the existing numbered initiative above. A gap analysis compared
+`agentloop` against `internal/agent.Loop`, a production caller in a
+separate, external repository (`mivia-agent`), and found seven
+capabilities that caller needs and `agentloop` lacks. Each gap is its
+own phase: steering and interruption (78), graceful work-limit
 conclude (79), per-batch tool-result size shaping (80), duplicate-call
 dedup within a turn (81), prompt-injection-safe hook and steer framing
 (82), heartbeat and progress events (83), and partial-recovery
-streaming (84). These phases are queued behind, not part of, the
-dependency-ordered list above; they close a separate capability gap,
-not a step in the existing numbered initiative. Phase 84 depends on
-phase 78; no other phase in this group depends on another. Phase 82 is
-partly blocked on a `hooks.Handler` signature change and phase 84 is
-blocked on a `provider` package decision, each flagged in its own
-file. Each phase needs its own plan review before a builder starts it.
-See docs/plans/agents/phase78_steering_and_interruption.md,
-phase79_graceful_conclude.md, phase80_batch_result_shaping.md,
-phase81_duplicate_call_dedup.md, phase82_injection_safe_framing.md,
-phase83_heartbeat_events.md, and phase84_partial_recovery_streaming.md.
+streaming (84).
+
+Phase 78 (steering and interruption) has shipped. It adds one new
+type, `Steer`, and one new method, `RunSteerable`, alongside the
+existing `Run`; `Run(ctx, msgs)` stays `RunSteerable(ctx, msgs, nil)`.
+A caller-held `Steer`'s `Trigger` requests a soft-cancel of the
+current iteration's in-flight `Completer.Chat` call from another
+goroutine; the run stops gracefully at the next iteration boundary
+with the new `StopSteered` reason, instead of the hard-fail path a
+`ctx` cancellation takes. It adds no new package and no new
+`policy/layers.json` edge. Its contract folded into
+docs/plans/agentloop.md's "Addendum: steering and interruption"
+section; docs/plans/agents/phase78_steering_and_interruption.md stays
+as the origin brief the addendum corrects one Result-shape statement
+against.
+
+Phases 79 through 84 are plan-only and not scheduled. These phases
+are queued behind, not part of, the dependency-ordered list above.
+Phase 84 depended on phase 78, which has since shipped, so phase 84 is
+no longer blocked on that dependency; it stays blocked on its own
+`provider` package decision. No other phase in this group depends on
+another. Phase 82 is partly blocked on a `hooks.Handler` signature
+change, flagged in its own file. Each phase needs its own plan review
+before a builder starts it. See phase79_graceful_conclude.md,
+phase80_batch_result_shaping.md, phase81_duplicate_call_dedup.md,
+phase82_injection_safe_framing.md, phase83_heartbeat_events.md, and
+phase84_partial_recovery_streaming.md.
 
 ## Gate interactions
 

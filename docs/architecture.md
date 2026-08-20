@@ -360,7 +360,11 @@ flowchart LR
   `Calibrated.Observe` after every turn keeps the estimate honest. A
   `provider.ErrPromptTooLong` rejection recovers once through a
   one-percent trigger, a bounded target, one `CompactionNotice`, and
-  exactly one retry. `agentloop` imports `provider`, `tools`,
+  exactly one retry. `RunSteerable` adds a caller-triggered soft-cancel
+  of the current iteration's in-flight `Completer.Chat` call, through a
+  `Steer` handle's `Trigger`, ending gracefully at the next iteration
+  boundary with `StopSteered`; `Run` stays `RunSteerable(ctx, msgs,
+  nil)`. `agentloop` imports `provider`, `tools`,
   `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
   `contextplan`, and `contextsummary`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).

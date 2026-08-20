@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -108,6 +109,33 @@ func (g *gateTool) callCount() int {
 	return len(g.calls)
 }
 
+// errVendorReset is a sentinel a Completer implementation might return
+// on its own, unrelated to any context cancellation: it never wraps
+// context.Canceled.
+var errVendorReset = errors.New("vendor: connection reset")
+
+// nonCancelOnDoneCompleter blocks like blockingCompleter until ctx is
+// done, then returns errVendorReset instead of ctx.Err(): it models a
+// Completer whose Chat implementation, when interrupted, reports its
+// own transport error rather than propagating context.Canceled. entered
+// is closed the moment the blocking call starts.
+type nonCancelOnDoneCompleter struct {
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (c *nonCancelOnDoneCompleter) Name() string { return "non-cancel-on-done" }
+
+func (c *nonCancelOnDoneCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	c.once.Do(func() { close(c.entered) })
+	<-ctx.Done()
+	return provider.Response{}, errVendorReset
+}
+
+func (c *nonCancelOnDoneCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return nil, errors.New("nonCancelOnDoneCompleter: ChatStream not supported")
+}
+
 // recoveryBlockCompleter rejects call 0 with provider.ErrPromptTooLong,
 // blocks on call 1 (the recovery retry) until release is closed, then
 // answers with recovered, and blocks on ctx.Done() from call 2 on.
@@ -141,4 +169,45 @@ func (c *recoveryBlockCompleter) Chat(ctx context.Context, req provider.Request)
 
 func (c *recoveryBlockCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	return nil, errors.New("recoveryBlockCompleter: ChatStream not supported")
+}
+
+// errRecoveryVendorReset is a sentinel a real vendor client might wrap
+// context.Canceled with for its own unrelated reason (a defensive
+// HTTP-client cancel unrelated to the caller's ctx or a Steer).
+var errRecoveryVendorReset = errors.New("recovery vendor reset")
+
+// recoveryFailCompleter rejects call 0 with provider.ErrPromptTooLong,
+// blocks on call 1 (the recovery retry) until release is closed, then
+// fails that retry with an error wrapping context.Canceled — proving a
+// canceled-looking recovery-retry failure is never misclassified as a
+// steer stop, since isSteerStop must short-circuit on fromRecovery.
+type recoveryFailCompleter struct {
+	mu      sync.Mutex
+	calls   int
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (c *recoveryFailCompleter) Name() string { return "recovery-fail" }
+
+func (c *recoveryFailCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	c.mu.Lock()
+	idx := c.calls
+	c.calls++
+	c.mu.Unlock()
+	switch idx {
+	case 0:
+		return provider.Response{}, provider.ErrPromptTooLong
+	case 1:
+		close(c.entered)
+		<-c.release
+		return provider.Response{}, fmt.Errorf("%w: %w", errRecoveryVendorReset, context.Canceled)
+	default:
+		<-ctx.Done()
+		return provider.Response{}, ctx.Err()
+	}
+}
+
+func (c *recoveryFailCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return nil, errors.New("recoveryFailCompleter: ChatStream not supported")
 }

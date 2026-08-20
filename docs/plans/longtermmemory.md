@@ -617,3 +617,170 @@ so no behavior changes today.
 - No conformance vector: this package carries no wire format.
 - Do not add an `Allow-Test-Change` trailer. No shipped assertion
   changes in this commit.
+
+## Addendum: a both-core near-duplicate pair must never merge
+
+Status: planned, not yet built.
+
+### Problem
+
+`mergePassLocked` in `longtermmemory/consolidate.go:43` picks the
+merge survivor with one condition:
+
+```go
+if s.rows[idB].core && !s.rows[idA].core {
+    keepID, dropID = idB, idA
+}
+```
+
+This condition only fires when exactly one side is core. When both
+`idA` and `idB` are core, the condition is false, so `keepID` stays
+`idA` and `dropID` stays `idB`. `mergeRows` then deletes `dropID`,
+which is core. A near-duplicate pair of two core rows silently loses
+one of them.
+
+This breaks a stated invariant. `store.go:84` says: "Consolidation
+never deletes core rows; only this call can," about `Delete`. It does
+not. `docs/packages/longtermmemory.md:101-104` says a core row is
+never evicted, then states the merge rule as "with both sides sharing
+a tier, the earlier Created row survives." That wording covers the
+both-core case, but the rule is wrong there: it lets the earlier
+`Created` core row survive and the later `Created` core row get
+deleted, which the "never evicted" claim forbids.
+
+Reproduction: promote two near-duplicate entries to core, then cross
+the consolidation load factor. `CoreEntries` returns one row instead
+of two, and `PromoteToCore` on the deleted row's id returns
+`ErrEntryNotFound`.
+
+### Decision: skip the merge when both sides are core
+
+When a near-duplicate pair has both sides core, the merge pass leaves
+both rows untouched. Neither merges, neither is deleted, and neither
+loses a tag. The pair stays two separate core entries.
+
+This is the smallest change that restores the invariant. A core row
+protects durable, agent-curated content from automatic deletion.
+`Delete` is documented as the only call that removes a core row.
+Skipping the merge keeps that contract true for every input, not
+only the one-core-side case.
+
+Rejected options and the reason:
+
+- Keep today's earlier-`Created` rule for the both-core case. This is
+  the current behavior. It deletes a core row and violates the
+  documented invariant.
+- Merge the two core rows into one survivor, the same as the
+  one-core-side and both-archive cases. This still deletes a core
+  row's id. A caller holding that id gets `ErrEntryNotFound` from
+  `PromoteToCore` or `Delete`, the same loss as today, only renamed.
+- Fail the triggering `Save` when a both-core near-duplicate pair
+  exists. Consolidation runs inside `Save` as a background pass, not
+  as its own caller-facing operation. An unrelated save should not
+  fail because two older core rows happen to look alike.
+- Raise `CoreTierCap` or add a core-specific merge shape. Both add
+  surface no caller has asked for. `CoreTierCap` already bounds core
+  rows per scope; leaving a near-duplicate pair unmerged does not
+  raise that count, since both rows were already core before the
+  pass ran.
+
+### Fix scope
+
+Inside:
+
+- `longtermmemory/consolidate.go`, `mergePassLocked`: after the
+  `nearDuplicate` check and before computing `keepID`/`dropID`, add
+  one guard. When `s.rows[idA].core` and `s.rows[idB].core` are both
+  true, `continue` to the next `idB`. Do not call `mergeRows`, do not
+  add either id to `dead`, and do not append to `merged`.
+- Update the `consolidateLocked` doc comment
+  (`longtermmemory/consolidate.go:10-11`) and the `mergePassLocked`
+  doc comment (`longtermmemory/consolidate.go:20-22`) to state the
+  both-core case: two core rows that would otherwise merge stay
+  separate and unchanged.
+- Update `docs/packages/longtermmemory.md:101-104`. State three
+  cases instead of two: exactly one core side keeps that side
+  regardless of `Created`; both sides core, neither merges and both
+  survive; both sides archive, the earlier `Created` row survives,
+  id breaking a tie.
+
+Outside:
+
+- No exported API change. `api/longtermmemory.txt` stays as locked.
+- No change to `unionTags`, `mergeRows`, `rekeyMergedLocked`, or
+  `evictArchiveLocked`. Each already runs only on the pair the merge
+  pass decides to touch; a skipped pair never reaches them.
+- No change to `PromoteToCore` or `CoreTierCap`. Two near-duplicate
+  core rows staying separate does not change the scope's core count;
+  both rows were core before the pass ran.
+- No change to the both-archive or the one-core-side branches. Their
+  existing tests, `TestConsolidationMergesNearDuplicates` and
+  `TestConsolidationCoreNeverDeleted`, stay green as positive
+  controls.
+
+### Fix API
+
+No exported surface change. `api/longtermmemory.txt` stays as locked.
+
+### Fix tests
+
+Add to `longtermmemory/longtermmemory_test/consolidate_test.go`:
+
+- `TestConsolidationSkipsBothCoreMerge` — the discriminating test.
+  Build two near-duplicate entries with `mergePair` or `nearDup`,
+  save both, and promote both to core. Run `fillAndTrigger(t, s, 6)`
+  to cross the load factor without triggering eviction. Assert
+  `CoreEntries` for the scope returns two rows, not one. Assert
+  `PromoteToCore` on each original id still returns `nil`, the
+  already-core no-op, not `ErrEntryNotFound`. Today's code merges the
+  pair, `CoreEntries` returns one row, and `PromoteToCore` on the
+  deleted id returns `ErrEntryNotFound`; the fix makes both
+  assertions pass.
+- Same test, one more assertion: `Count` for the scope after
+  consolidation is 9 (two core rows, six fillers, and the trigger
+  row), the same count `fillAndTrigger`'s sibling tests use. Today's
+  code reports 8, one row short, because the merge deleted a core
+  row.
+
+- `TestConsolidationSkipsBothCoreMergeTrio` — a three-way core
+  near-duplicate clique, added as a sibling to
+  `TestConsolidationSkipsBothCoreMerge`. Follow the construction
+  idiom at
+  `longtermmemory/longtermmemory_test/consolidate_test.go:336-347`
+  (`TestConsolidationSurvivorAbsorbedByCore`). Build one base entry,
+  then two more via `nearDup(base, ...)` with distinct `Detail`
+  values, so all three share identical title-plus-summary tokens and
+  every pairwise Jaccard reaches 1.0. This guarantees the guard fires
+  on all three core-core pairs (A-B, A-C, B-C), not just two. Save
+  all three and promote all three to core. Run
+  `fillAndTrigger(t, s, 6)` to cross the load factor. Assert
+  `CoreEntries` for the scope returns three rows, not one or two.
+  Assert `Count` for the scope reflects zero deletions from the trio:
+  three core rows, six fillers, and the trigger row. The guard skips
+  every core-core pair in the trio, so no core row is ever assigned
+  as `dropID`, and the loop degrades to leaving all three untouched.
+
+Positive controls already shipped, unaffected by this fix:
+
+- `TestConsolidationCoreNeverDeleted` — one core row, one archive
+  near-duplicate. The fix changes no branch this test exercises: the
+  guard only fires when both sides are core.
+- `TestConsolidationMergesNearDuplicates` — both sides archive. The
+  fix changes no branch this test exercises.
+
+### Fix verification
+
+- `make verify` passes; `longtermmemory` and the total hold the 85
+  coverage floor.
+- `go test -race ./longtermmemory/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`,
+  `scripts/check_prose.py`, and `scripts/check_labels.py` pass.
+- `python3 scripts/check_test_tampering.py` passes.
+  `TestConsolidationSkipsBothCoreMerge` is a new test, not a rewrite
+  of a shipped one.
+- `policy/layers.json` needs no change. The `longtermmemory` row
+  stays an empty list.
+- No conformance vector: this package carries no wire format.
+- Do not add an `Allow-Test-Change` trailer. No shipped assertion
+  changes in this commit.

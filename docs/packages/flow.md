@@ -129,8 +129,9 @@ The exported surface below mirrors `api/flow.txt`.
   resolved.
 - `Report.Outcomes()` — a copy of every resolved step's `Outcome`,
   keyed by ID. Caller mutation cannot change the `Report`.
-- `Checkpoint.Validate()` — rejects an empty `Status` and a step ID
-  named in more than one of `Done`, `Skipped`, and `Failed`.
+- `Checkpoint.Validate()` — rejects an empty `Status`, a step ID
+  named in more than one of `Done`, `Skipped`, and `Failed`, and an
+  unsorted `Done`, `Skipped`, or `Failed`.
 - `Checkpoint.Encode()` — validates, then marshals the checkpoint to
   JSON.
 - `Decode(data)` — unmarshals JSON, then validates the result.

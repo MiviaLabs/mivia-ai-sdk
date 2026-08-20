@@ -85,7 +85,7 @@ exported surface below mirrors `api/contextplan.txt`.
 - `Window.CompactTarget()` — returns the target in tokens:
   `TargetTokens` when positive, else `Budget` times `TargetPercent`,
   floored.
-- `Compaction.Validate()` — rejects percents outside `(0, 100]`, a
+- `Compaction.Validate()` — rejects percents outside `[0, 100]`, a
   negative `TargetTokens` or `RecentTail`, a `RecentTail` over
   `MaxRecentTail`, an empty but present `PreserveNames` entry, and
   duplicate `PreserveNames` entries. When `TargetTokens` is zero, a

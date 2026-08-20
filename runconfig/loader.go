@@ -3,6 +3,7 @@ package runconfig
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
@@ -154,7 +155,7 @@ func Load(data []byte) (*Definition, error) {
 func declaredTools(names []string) (map[string]bool, error) {
 	declared := make(map[string]bool, len(names))
 	for _, n := range names {
-		if n == "" {
+		if strings.TrimSpace(n) == "" {
 			return nil, fmt.Errorf("%w: blank tool name", ErrBadDocument)
 		}
 		if declared[n] {

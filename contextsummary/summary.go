@@ -68,13 +68,14 @@ func validateItemList(field string, items []string) error {
 	}
 	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
-		if strings.TrimSpace(item) == "" {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
 			return fmt.Errorf("contextsummary: %s has a blank item", field)
 		}
-		if _, dup := seen[item]; dup {
+		if _, dup := seen[trimmed]; dup {
 			return fmt.Errorf("contextsummary: %s has a duplicate item", field)
 		}
-		seen[item] = struct{}{}
+		seen[trimmed] = struct{}{}
 		if err := validateTextForm(field, item); err != nil {
 			return err
 		}

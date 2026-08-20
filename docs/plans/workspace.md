@@ -1000,3 +1000,85 @@ Change two only:
 - `workspace` holds a mutation-kill floor of 96, in
   `scripts/mutation_denylist/workspace.json`. Run `make mutation-gate`
   to check it.
+
+## Correctness fix: Options.Validate admits a whitespace-only Root
+
+Status: shipped in commit e86dc30.
+
+### Fix goal
+
+`Options.Validate`'s doc comment (`workspace/workspace.go:78-83`) says
+"Root must not be blank." The code (`:82`) checks `o.Root == ""`
+only. A `Root` of `" "` (a single space) is not empty, so it passes
+`Validate` and reaches `OpenWith`. `dispatch/options.go`,
+`tools/registry.go`, and `agentloop/options.go` already reject the
+same shape for their own required-string fields, through
+`strings.TrimSpace(name) == ""`. `Root` is a caller-supplied config
+value with no other check ahead of it, so a padded value (a common
+mistake from a YAML or JSON document) is exactly the case this
+package's other blank checks already guard against elsewhere in the
+module.
+
+### Fix scope
+
+Inside:
+
+- `Options.Validate`, in `workspace/workspace.go`, changes its check
+  from `if o.Root == ""` to `if strings.TrimSpace(o.Root) == ""`. The
+  stored and later-resolved `Root` value stays exactly as the caller
+  supplied it; only the blank test trims. `Open` and `OpenWith` do
+  not rewrite `Root` and do not trim it before resolving it, so a
+  `Root` with meaningful leading or trailing whitespace outside the
+  all-whitespace case is unaffected by this fix.
+- `workspace/workspace.go` gains a `"strings"` import.
+
+Outside:
+
+- Trimming `Root` before `filepath.Abs` or `os.OpenRoot`. This fix
+  only widens the blank rejection; it does not change how a
+  non-blank `Root` resolves.
+- `MaxReadBytes` or `Deny`. Neither carries a "blank" claim.
+
+### Fix API
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/workspace.txt`. No `policy/layers.json` change: `strings` is
+standard library, not an internal package edge.
+
+### Fix tests
+
+In `workspace/workspace_test/workspace_test.go`:
+
+- `TestOpenWithRejectsWhitespaceOnlyRoot` — `Options{Root: "
+  "}.Validate()` returns an error whose text contains `Root is
+  blank`, the same text `Options{Root: ""}.Validate()` already
+  returns. Fails against today's code, where `Validate`
+  returns nil for a single-space `Root`. Measured today: `Open(" ")`
+  still fails, but only later and only by accident, with a raw
+  `lstat: no such file or directory` error from `filepath.EvalSymlinks`
+  once the process's current directory holds no file named `" "`, not
+  with the deliberate blank-root rejection `Validate` is meant to
+  give. A caller whose working directory happens to hold such a file
+  would open it as the workspace root silently. This case pins the
+  earlier, deliberate rejection instead of that accidental, environment-
+  dependent one.
+- Positive control, extending the existing `TestOpenRejectsBlankRoot`
+  case or added beside it: `Open("")` and `OpenWith(Options{Root: ""})`
+  keep returning the same blank-root error they return today. Proves
+  the trim does not change the already-covered empty-string case.
+- A second positive control: `OpenWith(Options{Root: root})`, where
+  `root` is a real temporary directory `t.TempDir()` returns, still
+  opens successfully. Proves the trim does not reject a normal path.
+
+### Fix verification
+
+- `make verify` passes; `workspace` holds the 85 coverage floor.
+- `go test -race ./workspace/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change.
+- `make mutation-gate` holds `workspace`'s existing mutation-kill
+  floor of 96 in `scripts/mutation_denylist/workspace.json`.
+- `docs/packages/workspace.md` line 35's `Options.Validate()` entry
+  needs no wording change: "Root must not be blank" already matches
+  the corrected code.

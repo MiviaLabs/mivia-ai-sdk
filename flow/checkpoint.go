@@ -38,9 +38,10 @@ type Checkpoint struct {
 	Failed  []string
 }
 
-// Validate rejects an empty Status and a step ID named in more than
-// one of Done, Skipped, and Failed: a step cannot resolve to two
-// different outcomes. Encode and Decode both call it.
+// Validate rejects an empty Status, a step ID named in more than one
+// of Done, Skipped, and Failed (a step cannot resolve to two
+// different outcomes), and an unsorted Done, Skipped, or Failed.
+// Encode and Decode both call it.
 func (c Checkpoint) Validate() error {
 	if c.Status == machine.Status("") {
 		return errorf("checkpoint: status must not be empty")
@@ -60,6 +61,9 @@ func (c Checkpoint) Validate() error {
 				return errorf("checkpoint: step %q named in both %s and %s", id, prior, g.name)
 			}
 			seen[id] = g.name
+		}
+		if !sort.StringsAreSorted(g.ids) {
+			return errorf("checkpoint: %s is not sorted", g.name)
 		}
 	}
 	return nil

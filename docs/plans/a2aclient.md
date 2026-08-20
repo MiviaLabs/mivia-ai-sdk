@@ -85,7 +85,9 @@ type State int
 
 // The states a remote task passes through. A2A tasks move from
 // submitted through working to one terminal state: completed,
-// failed, or canceled.
+// failed, canceled, or rejected. Auth-required and input-required
+// both wait for client action. Unspecified and unknown both mean the
+// state is not yet determined.
 const (
 	StateUnspecified State = iota
 	StateSubmitted
@@ -93,6 +95,10 @@ const (
 	StateCompleted
 	StateFailed
 	StateCanceled
+	StateRejected
+	StateAuthRequired
+	StateInputRequired
+	StateUnknown
 )
 
 // String returns the constant name for state, or "unknown" for a

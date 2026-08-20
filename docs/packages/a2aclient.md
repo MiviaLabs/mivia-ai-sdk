@@ -16,8 +16,12 @@ in the module. The exported surface below mirrors `api/a2aclient.txt`.
   it.
 - `State` — the state of a remote task, mirrored from the a2a-go task
   state enum: `StateUnspecified`, `StateSubmitted`, `StateWorking`,
-  `StateCompleted`, `StateFailed`, `StateCanceled`. `String` returns
-  the constant name, or `"unknown"` outside the declared range.
+  `StateCompleted`, `StateFailed`, `StateCanceled`, `StateRejected`,
+  `StateAuthRequired`, `StateInputRequired`, `StateUnknown`. Every
+  a2a-go `TaskState` has one `State`. `String` returns the constant
+  name, or `"unknown"` outside the declared range. `StateUnknown`
+  returns that same text, so `"unknown"` names either the upstream
+  indeterminate state or an out-of-range value.
 
 Internally, `Client` drives its task lifecycle through an unexported
 `transport` interface (`Send`, `State`, `Result`, `Close`). `New`
@@ -64,7 +68,8 @@ test seam.
   error.
 - `Status` and `Result` reject the zero `TaskHandle` with an error.
 - `Result` only fetches a task's output once its `State` is terminal:
-  `StateCompleted`, `StateFailed`, or `StateCanceled`.
+  `StateCompleted`, `StateFailed`, `StateCanceled`, or
+  `StateRejected`. That set equals a2a-go's own `TaskState.Terminal`.
 - `Result` re-verifies the message signature after the remote hop.
   Signature verification is the invariant network transport adds: a
   message valid before the hop must still be valid after it.

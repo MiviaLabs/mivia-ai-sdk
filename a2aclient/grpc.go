@@ -71,8 +71,8 @@ func (g *grpcTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, er
 }
 
 // State fetches the task named by taskID and maps its a2a-go state
-// onto a State. An a2a-go state outside the declared set maps to
-// StateUnspecified.
+// onto a State. Every a2a-go TaskState has one State; an upstream
+// value added after this mapping maps to StateUnspecified.
 func (g *grpcTransport) State(ctx context.Context, taskID string) (State, error) {
 	task, err := g.tr.GetTask(ctx, &a2acore.TaskQueryParams{ID: a2acore.TaskID(taskID)})
 	if err != nil {
@@ -138,9 +138,13 @@ func dataFromParts(parts a2acore.ContentParts) (json.RawMessage, error) {
 	return nil, ErrNoDataPart
 }
 
-// stateFromTaskState maps an a2a-go TaskState onto a State.
+// stateFromTaskState maps an a2a-go TaskState onto a State. It names
+// all ten upstream constants. The default covers an upstream value
+// added after this mapping and reports StateUnspecified.
 func stateFromTaskState(ts a2acore.TaskState) State {
 	switch ts {
+	case a2acore.TaskStateUnspecified:
+		return StateUnspecified
 	case a2acore.TaskStateSubmitted:
 		return StateSubmitted
 	case a2acore.TaskStateWorking:
@@ -151,6 +155,14 @@ func stateFromTaskState(ts a2acore.TaskState) State {
 		return StateFailed
 	case a2acore.TaskStateCanceled:
 		return StateCanceled
+	case a2acore.TaskStateRejected:
+		return StateRejected
+	case a2acore.TaskStateAuthRequired:
+		return StateAuthRequired
+	case a2acore.TaskStateInputRequired:
+		return StateInputRequired
+	case a2acore.TaskStateUnknown:
+		return StateUnknown
 	default:
 		return StateUnspecified
 	}

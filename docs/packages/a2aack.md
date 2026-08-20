@@ -38,12 +38,15 @@ The returned `AckWait` runs the whole exchange for one message:
    context error wraps `ErrTimeout` with the last seen state; any
    other transport error propagates unwrapped.
 3. Select on a `Poll` ticker and the deadline ctx on every tick, and
-   read `Status` on each tick. Non-terminal states — `StateSubmitted`,
-   `StateWorking`, `StateUnspecified` — record the last state and
-   continue.
+   read `Status` on each tick. Unresolved states — `StateSubmitted`,
+   `StateWorking`, `StateUnspecified`, `StateUnknown` — record the
+   last state and continue.
 4. `StateCompleted` fetches `Result`, re-verifies the result's
-   signature, and builds the ack. `StateFailed` and `StateCanceled`
-   return an error wrapping `ErrRemoteFailed`.
+   signature, and builds the ack. `StateFailed`, `StateCanceled`, and
+   `StateRejected` return an error wrapping `ErrRemoteFailed`.
+   `StateAuthRequired` and `StateInputRequired` return the same
+   wrapped error. Both wait for client action `a2aack` never sends,
+   so polling cannot resolve them.
 5. The deadline or `ctx` returns an error wrapping `ErrTimeout` with
    the last seen state.
 
@@ -64,8 +67,9 @@ forged or tampered restatement never reaches the confirmed ack.
   `Options.Validate`/`Wait` returns it when `Timeout` is shorter than
   `Poll`. Pinned by `a2aack_test/options_test.go`.
 - `ErrRemoteFailed` ("a2aack: remote task failed") — the returned
-  `AckWait` wraps it when the remote task reaches `StateFailed` or
-  `StateCanceled`. Pinned by `a2aack_test/failed_test.go`.
+  `AckWait` wraps it when the remote task ends failed, canceled,
+  rejected, or in a state `a2aack` cannot resolve. Pinned by
+  `a2aack_test/failed_test.go`.
 - `ErrTimeout` ("a2aack: remote task timed out") — the returned
   `AckWait` wraps it when the deadline or `ctx` expires before the
   task completes. Pinned by `a2aack_test/timeout_test.go`.

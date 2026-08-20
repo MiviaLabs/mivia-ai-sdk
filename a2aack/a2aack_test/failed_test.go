@@ -57,3 +57,35 @@ func TestWaitFailsCorrectly(t *testing.T) {
 		}
 	})
 }
+
+// TestWaitFailsOnUnresolvableStates proves each state the poll loop
+// cannot resolve ends the wait with ErrRemoteFailed naming the state,
+// never with ErrTimeout after the deadline.
+func TestWaitFailsOnUnresolvableStates(t *testing.T) {
+	good := a2aack.Options{Poll: time.Millisecond, Timeout: 100 * time.Millisecond}
+	cases := []a2aclient.State{
+		a2aclient.StateRejected,
+		a2aclient.StateAuthRequired,
+		a2aclient.StateInputRequired,
+	}
+	for _, state := range cases {
+		t.Run(state.String(), func(t *testing.T) {
+			fake := &fakeRemote{statusStates: []a2aclient.State{state}}
+			fake.result = envelope.Message{ID: "res-1", Payload: "done"}
+			ackFn, err := a2aack.Wait(fake, good)
+			if err != nil {
+				t.Fatalf("Wait returned validation error %v before any task ran", err)
+			}
+			_, err = ackFn(context.Background(), signedMessage(t))
+			if !errors.Is(err, a2aack.ErrRemoteFailed) {
+				t.Fatalf("error = %v, want errors.Is(ErrRemoteFailed)", err)
+			}
+			if errors.Is(err, a2aack.ErrTimeout) {
+				t.Fatalf("error = %v, want no ErrTimeout: the loop must not poll to the deadline", err)
+			}
+			if !strings.Contains(err.Error(), state.String()) {
+				t.Fatalf("error = %q does not name the state %q", err, state)
+			}
+		})
+	}
+}

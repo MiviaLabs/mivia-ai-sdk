@@ -2012,6 +2012,15 @@ surface. Its contract, enforced by the caller in `agentloop`:
   `RoleTool` error message, without the underlying tool running,
   still seeds the dedup set: a byte-identical retry of that same call
   later in the same turn is deduped and serves `DuplicateCallNotice`.
+- An `Options.Audit` error returned on a deduped call's own
+  `AuditKindToolCall` record fails `Run`, exactly like an audit error
+  on a normally-run call: the `DuplicateCallNotice` message reaches
+  history before the audit call runs, so it survives in the returned
+  partial `Result`.
+- `FuzzCanonicalizeArgs`, in `agentloop` itself since
+  `canonicalizeArgs` is unexported: arbitrary bytes never panic
+  `canonicalizeArgs`, and a successful canonicalization is idempotent,
+  re-canonicalizing the returned form yields the same string.
 
 ### Addendum verification
 

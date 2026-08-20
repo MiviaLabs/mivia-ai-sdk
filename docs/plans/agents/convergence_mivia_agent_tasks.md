@@ -26,36 +26,134 @@ the value. The SDK side already carries the stronger guarantee; this
 is the one item in the program where the consumer adopts the SDK
 package rather than the SDK absorbing the consumer's code.
 
-- `internal/tools/write.go`, `edit.go`, `delete.go`, `read.go`,
-  `list_dir.go`, and over twenty more callers use
-  `internal/workspace.Root` today. Each needs to move to
-  `workspace.Workspace`.
+- `internal/workspace` has 60 non-test importers in the consumer;
+  measured and plan-reviewed. Of those, 21 touch confinement symbols
+  (`Root`, `Open`, `OpenFullDisk`, `LongPath`, `SameExistingPath`); the
+  remaining 39 use only `namespace.go`'s path-convention helpers and
+  are out of scope for this item. The 21 split into four groups:
+  Group A (20 files under `internal/tools/`: `write.go`, `edit.go`,
+  `delete.go`, `read.go`, `list_dir.go`, and 15 more — the real
+  file-edit/read/delete/list/search/run tool surface, the highest-risk
+  part of the swap), Group B (11 files of CLI wiring that construct a
+  `*Root` and thread it into Group A, led by `chat_workspace.go`),
+  Group C (`worktree_marker.go`, `internal/storage/worktree_instances.go`,
+  `internal/vcs/worktree.go` — `namespace.go`/`LongPath` convention
+  only, unrelated to confinement, permanently out of scope), Group D
+  (`internal/workflows/workspace/workspace.go` — `Open` plus
+  `SameExistingPath` for git-worktree identity comparison, no raw
+  filesystem mutation).
 - `namespace.go` (`Namespace = ".mivia"`, `SkillsDir`, `SessionsDir`,
   `WorktreesDir`, `ContextStorePath`, `MemoryDBPath`) never converges.
   It stays in `internal/workspace` as mivia's own on-disk layout
   convention, composed with the SDK's `Workspace` rather than folded
-  into it.
-- Open question, not yet answered by either revision: does SDK
-  `workspace.Workspace`'s API (`Open`, `OpenWith`, `ReadFile`,
-  `ReadFileLimit`, `WriteFile`, `List`, `Stat`, `Root()`) cover every
-  operation the twenty-plus callers need, or does the SDK package need
-  new methods first? Audit the callers before starting the swap. If a
-  method is missing, that is SDK-side work and belongs back in
-  `convergence.md`, not here — flag it rather than routing around the
-  SDK's API from the consumer side.
+  into it. `SameExistingPath` (a free function, `os.Stat` plus
+  `os.SameFile`, zero dependency on `*Root`/`Workspace`) needs no SDK
+  counterpart either — the consumer keeps it unchanged regardless of
+  what else converges.
+- **Group D is confirmed landable now**, verified by a full read (252
+  lines): `Open` plus `SameExistingPath` only, no raw filesystem
+  mutation. This is the consumer's first SDK import, via a `go.mod`
+  `replace` directive pointing at the local SDK checkout.
+- **Groups A and B are blocked** on SDK-side gaps, all confirmed by
+  reading the SDK's `workspace/` package against the actual consumer
+  call sites (not assumed from names). Adopting SDK `Workspace` for
+  these groups is impossible today without a guarantee regression,
+  which the decision record forbids:
+  - **No confined delete.** The consumer's `delete.go` resolves a path
+    through `*Root` once, then calls plain `os.Lstat`/`os.Remove`
+    directly on the returned string — the SDK's `Workspace` has no
+    delete primitive at all, fd-mediated or otherwise. This is one
+    gap (a confined delete/unlink method closing the check-then-use
+    window), not two — an earlier pass over-split it into a missing
+    `Lstat` and a missing `Remove`; the consumer never calls Root's
+    `Lstat` because Root has none.
+  - **No streaming/partial file handle.** `read.go`'s windowed read
+    scans a file with `bufio.Scanner`; `write.go`/`edit.go`
+    stream-write. SDK `ReadFile`/`ReadFileLimit`/`WriteFile` are
+    whole-buffer only.
+  - **No mode-preserving/custom-mode write.** SDK `WriteFile`
+    hardcodes `0o600`/`0o700`. The consumer's `write.go`/`edit.go`
+    create with `0o644`/`0o755` and explicitly preserve an existing
+    file's mode on rewrite — pinned by `TestSearchReplacePreservesFileMode`
+    and `TestSearchReplacePreservesRestrictiveFileMode`, both asserting
+    genuinely user-visible behavior (an executable hook script keeps
+    its bit; a `0600` file doesn't get silently widened). A naive swap
+    fails both.
+  - **No FIFO-safe non-blocking open.** The consumer's
+    `open_regular_unix.go` opens non-blocking then `fstat`s, closing a
+    window where a path becomes a FIFO between `Stat` and `Open` and
+    blocks the tool worker. SDK's `Open`/`WriteFile`/`Stat` call paths
+    have no equivalent guard. Frame this gap honestly when it's
+    absorbed: the consumer's `Root` is pure lexical confinement
+    (`filepath.EvalSymlinks` plus a string-prefix check, no file
+    descriptor); SDK `Workspace` is backed by a real `os.OpenRoot`
+    (Go 1.24+, confirmed in use), which structurally closes the
+    symlink-swap TOCTOU class the consumer's code cannot close today.
+    Adopting SDK `Workspace` is a net security improvement on the
+    confinement axis regardless of this FIFO gap remaining open — the
+    FIFO gap is a separate, still-open axis, not evidence the SDK
+    package is less safe than what it replaces.
+  - **No confined-path-resolve-without-open, for subprocess handoff.**
+    `run.go` and `search.go` resolve a confined subdirectory as a
+    subprocess's working directory or argument; `Workspace.Root()`
+    only covers the no-subpath case. There is no exported method to
+    get a confinement-checked absolute path for an arbitrary
+    caller-named subpath, for handoff to something outside
+    `Workspace`'s own I/O.
+  Each of these five gaps needs its own SDK plan and plan review
+  before Groups A/B can proceed. Do not build a workaround in the
+  consumer that routes around SDK `Workspace`'s API to fake coverage.
 - Parity oracle: impure (filesystem I/O). Use invariant and
   fault-ordinal tests per `convergence.md`'s "The parity oracle"
-  section, not byte-equal fixtures.
+  section, not byte-equal fixtures. Before writing them, read the
+  consumer's existing `internal/workspace` test files and enumerate
+  every invariant they already assert (path-outside-root rejection,
+  symlink-escape rejection, `Rel`/`LexicalRel` round-trip, `Unrestricted`
+  mode behavior) — every one needs a matching assertion against the
+  new code path, or the swap silently loses proven coverage.
 
 ### Set `GOPRIVATE`
 
-Source: `convergence.md`, Stage 1, first bullet.
+Source: `convergence.md`, Stage 1, first bullet. **Correction, plan
+reviewed:** that bullet's "both repositories and both
+continuous-integration pipelines" is overbroad on the SDK-CI half.
 
-`GOPRIVATE=github.com/MiviaLabs/*` in both repositories and both
-continuous-integration pipelines. A stage 1 prerequisite for the
-provider-fixture and fault-ordinal work below, and for any future move
-off a local `go.mod` `replace` directive. Cheap, do it early, do it
-before it blocks something else.
+`GOPRIVATE=github.com/MiviaLabs/*` (the glob — the org has several
+other MiviaLabs repos beyond these two, and `go env` only consults the
+pattern for modules actually imported, so the glob costs nothing
+extra) needs to land in the consumer only, not in this repo's CI:
+
+- **Consumer local dev**: `go env -w GOPRIVATE=github.com/MiviaLabs/*`,
+  documented as a one-time setup step.
+- **Consumer CI**: every Go-running job needs it, not just the one
+  composite action most jobs share — the consumer's CI has a handful
+  of jobs (macOS, Windows, a cross-compile job) that call `setup-go`
+  directly and skip the shared composite action. Each needs its own
+  copy of the step, or the CI job list needs restructuring so all
+  Go-running jobs route through one shared setup step.
+- **This repo (`mivia-ai-sdk`)**: do not add it. This repo's `go.mod`
+  imports no other MiviaLabs module today, and the convergence
+  direction is one-way (consumer imports SDK, never the reverse), so
+  setting it here would be dead config with no caller — the same
+  "no speculative generality" rule this repo applies to code. Re-add
+  it the moment this repo's own `go.mod` takes a dependency on another
+  private MiviaLabs module; that is a conditional trigger, not a
+  permanent omission.
+
+**`GOPRIVATE` alone does not authenticate fetch** — it only tells `go`
+to skip the module proxy and checksum database for matching paths, it
+supplies no credential. A git URL rewrite (SSH `insteadOf`, or an
+HTTPS rewrite backed by a scoped PAT in CI) is a separate, deferred
+follow-up — land it together with dropping the `replace` directive and
+pinning a real tag, not before. Until that follow-up lands, document
+`GOPRIVATE` with an explicit note that it alone is insufficient, so a
+developer adding a genuine private import before the credential piece
+exists doesn't hit an unexplained fetch failure with no pointer back
+to why.
+
+A stage 1 prerequisite for the provider-fixture and fault-ordinal work
+below, and for any future move off a local `go.mod` `replace`
+directive. Cheap, do it early, do it before it blocks something else.
 
 ### Add an import-policy gate to the consumer
 

@@ -477,9 +477,12 @@ grep evidence alone on the "goes" side and assertion alone on the
 - Rule: no stage closes with a `replace` directive committed. A gate
   on the consumer's `go.mod` checks this.
 - The SDK remote is private, per AGENTS.md. Set
-  `GOPRIVATE=github.com/MiviaLabs/*` in both repositories and in both
-  continuous-integration pipelines. This is a stage 1 prerequisite. A
-  tag pin fails without it.
+  `GOPRIVATE=github.com/MiviaLabs/*` in the consumer only — local dev
+  and every Go-running consumer CI job, not just the one most jobs
+  share. This repo's own CI needs no `GOPRIVATE`: this repo imports no
+  other MiviaLabs module today, so setting it here is dead config with
+  no caller. Re-add it if that changes. This is a stage 1 prerequisite
+  in the consumer. A tag pin fails without it there.
 - Rollback rule: an SDK import and the matching consumer deletion land
   in separate commits. The import lands first. Reverting a regression
   is then one commit, not a merge.
@@ -596,7 +599,9 @@ Exit criteria, all mechanically checkable:
 
 Build the oracle before moving any code.
 
-- Set `GOPRIVATE` in both repositories and both pipelines.
+- Set `GOPRIVATE` in the consumer, local dev and every Go-running CI
+  job. Not in this repo; see the "Module wiring" section's corrected
+  bullet above.
 - Define a recorded provider fixture format. Neither repository
   records provider traffic. Write one scripted-response format. Load
   it from a consumer fake and from an SDK fake. Record real traffic

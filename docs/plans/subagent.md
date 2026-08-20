@@ -714,9 +714,8 @@ string. `agentrun`'s `chain` requires a string result, so
 every real `Runner.Run` with `ErrResultNotText`; see
 `docs/plans/runconfig.md`'s phase 76 addendum. The fix JSON-encodes
 each result into `Out.Value` as a string, matching every other tool's
-convention. See
-`docs/plans/agents/phase77_workspace_list_stat_json_result.md` for the
-full change contract.
+convention. No standalone phase 77 plan file remains for this
+contract.
 
 ### Gap fix: export the mailbox-capacity sentinel
 

@@ -475,7 +475,7 @@ could not drive a real end-to-end `Runner.Run`. It also fixed
 `tools.ResultBudgetTool`, and `tools.PrivilegedTool` from every
 wrapped tool, following `spool/tool.go`'s capability-composition
 pattern. It added no new package and no new `policy/layers.json`
-edge. See docs/plans/agents/phase76_agentrun_schema_tool_decode.md.
+edge. No standalone phase 76 plan file remains.
 
 Phase 77 (workspace list and stat tools return a JSON string result)
 has shipped. It fixed a confirmed gap phase 76's addendum left open:
@@ -485,8 +485,8 @@ returned a typed struct in `tools.Out.Value`, not a string, so
 `runconfig.WorkspaceStatKind` with `ErrResultNotText` on every real
 `Runner.Run`. It changed both tools to return a JSON-encoded string,
 matching every other `subagent` tool's result convention. It added no
-new package and no new `policy/layers.json` edge. See
-docs/plans/agents/phase77_workspace_list_stat_json_result.md.
+new package and no new `policy/layers.json` edge. No standalone
+phase 77 plan file remains.
 
 ## Gate interactions
 

@@ -347,9 +347,8 @@ moved into `runconfig/steptool.go` and gained an unexported
 `tools.ProfiledTool`, `tools.ResultBudgetTool`, `tools.PrivilegedTool`)
 the wrapped tool implements, so a caller-set `tools.Scope` approval
 threshold or privilege check reads the wrapped tool's true published
-capability, not a stripped default. See
-`docs/plans/agents/phase76_agentrun_schema_tool_decode.md` for the
-full change contract.
+capability, not a stripped default. No standalone phase 76 plan file
+remains for this contract.
 
 ## Addendum: WorkspaceListKind and WorkspaceStatKind fix (phase 77)
 
@@ -363,6 +362,5 @@ constants `runconfig` publishes are now confirmed end to end through a
 real `Runner.Run`, by
 `TestRunnerResolvesWorkspaceListReal` and
 `TestRunnerResolvesWorkspaceStatReal` in
-`runconfig/runconfig_test/workspace_list_stat_test.go`. See
-`docs/plans/agents/phase77_workspace_list_stat_json_result.md` for
-the full change contract.
+`runconfig/runconfig_test/workspace_list_stat_test.go`. No standalone
+phase 77 plan file remains for this contract.

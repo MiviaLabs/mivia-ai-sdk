@@ -433,7 +433,8 @@ JSON `options` section, mapping to `agentrun.Options.Budget`. It
 depends on the shipped `subagent`, `workspace`, `diff`, and
 `contextbudget` packages, and on the shipped phase 71. It adds no
 new package and one `policy/layers.json` edge (`runconfig` to
-`contextbudget`). See docs/plans/agents/phase72_runconfig_blocks.md.
+`contextbudget`). Its contract folded into docs/plans/runconfig.md's
+API section; no standalone phase 72 plan file remains.
 
 Phase 73 (`contextplan` spools its own overflow) has shipped. It
 wires `contextplan.Planner` to `spool.Spool`: `NewPlanner` gains a

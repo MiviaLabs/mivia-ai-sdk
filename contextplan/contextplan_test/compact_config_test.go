@@ -1,10 +1,45 @@
 package contextplan_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 )
+
+// TestValidateRejectsNegativePercent pins the corrected error text:
+// Validate rejects an out-of-range percent with "outside [0, 100]",
+// not the stale "outside (0, 100]".
+func TestValidateRejectsNegativePercent(t *testing.T) {
+	err := contextplan.Compaction{TriggerPercent: -1}.Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "outside [0, 100]") {
+		t.Fatalf("Validate() error = %q, want it to contain %q", err.Error(), "outside [0, 100]")
+	}
+	if strings.Contains(err.Error(), "outside (0, 100]") {
+		t.Fatalf("Validate() error = %q, still contains the stale bound text", err.Error())
+	}
+}
+
+// TestValidateAcceptsZeroTriggerPercent is a positive control: the
+// zero value passes as the package defaults, not as a rejected bound.
+func TestValidateAcceptsZeroTriggerPercent(t *testing.T) {
+	if err := (contextplan.Compaction{}).Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
+
+// TestValidateAcceptsZeroTargetPercent is a second positive control:
+// TargetPercent zero passes independently of TriggerPercent's own
+// bound check.
+func TestValidateAcceptsZeroTargetPercent(t *testing.T) {
+	c := contextplan.Compaction{TriggerPercent: 50, TargetPercent: 0}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
 
 func TestCompactionValidate(t *testing.T) {
 	cases := []struct {

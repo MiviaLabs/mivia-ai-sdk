@@ -695,7 +695,7 @@ type Compaction struct {
     PreserveNames  []string
 }
 
-// Validate rejects percents outside (0, 100], a negative TargetTokens
+// Validate rejects percents outside [0, 100], a negative TargetTokens
 // or RecentTail, a RecentTail over MaxRecentTail, an empty but
 // present PreserveNames entry, and duplicate PreserveNames entries.
 // When TargetTokens is zero, a TargetPercent at or above the resolved

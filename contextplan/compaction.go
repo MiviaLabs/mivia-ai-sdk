@@ -46,7 +46,7 @@ type Compaction struct {
 	PreserveNames  []string
 }
 
-// Validate rejects percents outside (0, 100], a negative TargetTokens
+// Validate rejects percents outside [0, 100], a negative TargetTokens
 // or RecentTail, a RecentTail over MaxRecentTail, an empty but
 // present PreserveNames entry, and duplicate PreserveNames entries.
 // When TargetTokens is zero, a TargetPercent at or above the resolved
@@ -72,10 +72,10 @@ func (c Compaction) Validate() error {
 // validatePercents bounds both percents and the two-mode target rule.
 func (c Compaction) validatePercents() error {
 	if c.TriggerPercent < 0 || c.TriggerPercent > 100 {
-		return fmt.Errorf("contextplan: trigger percent %d outside (0, 100]", c.TriggerPercent)
+		return fmt.Errorf("contextplan: trigger percent %d outside [0, 100]", c.TriggerPercent)
 	}
 	if c.TargetPercent < 0 || c.TargetPercent > 100 {
-		return fmt.Errorf("contextplan: target percent %d outside (0, 100]", c.TargetPercent)
+		return fmt.Errorf("contextplan: target percent %d outside [0, 100]", c.TargetPercent)
 	}
 	if c.TargetTokens == 0 && c.targetPercent() >= c.triggerPercent() {
 		return fmt.Errorf("contextplan: target percent %d at or above trigger percent %d",

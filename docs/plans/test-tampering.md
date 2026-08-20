@@ -131,13 +131,16 @@ Gate-infrastructure detections, tree-wide:
 - `TT11`, the self-reference guard. Any change under `scripts/`,
   `Makefile`, `.githooks/`, `policy/`, `semgrep/`, or
   `.github/workflows/`, present in the same diff as a change to any
-  other file at all, fires `TT11`. "Any other file" means any path
-  outside that list, of any kind: a `_test.go` file, a `testdata/`
-  vector, a non-test `*.go` file, or a doc. The attack this guard
+  other, non-doc-companion file, fires `TT11`. The doc-companion
+  exception is a later addendum; see "TT11 doc companions" below.
+  "Any other file" means any path outside the infra list, of any
+  kind: a `_test.go` file, a `testdata/` vector, a non-test `*.go`
+  file, or a doc outside the doc-companion set. The attack this guard
   defends against lands in `_test.go` and `testdata/vectors/`, the
   same places `TT01`–`TT10` look; a rule that only paired gate-infra
   changes with non-test Go changes would miss the exact attack the
-  plan exists to catch. `TT11` fires even when nothing else does.
+  plan exists to catch. `TT11` fires even when nothing else does,
+  except the doc-companion-only case below.
 - `TT12`, a new entry added to a `scripts/mutation_denylist/*.json`
   file's `denylist` array, or a new file added under that directory.
 - `TT13`, a weakened floor: `COVERAGE_FLOOR` in `Makefile` lowered, a
@@ -192,6 +195,57 @@ Gate-infrastructure detections, tree-wide:
   a change that only ever touches the enforcement mechanism itself, and
   nothing it enforces against, is exactly the diff a self-reference
   guard exists to catch, whether or not another file rides along.
+
+### TT11 doc companions (addendum)
+
+AGENTS.md's own enforcement ladder requires several gate-infra changes
+to land with a matching doc update in the same commit: "Do not land a
+package without `docs/plans/<pkg>.md` ... same change," and similar
+rules elsewhere. Before this addendum, that mandated pairing always
+tripped `TT11` on itself, forcing a manual `Allow-Gate-Change`
+override on the single most common legitimate gate-infra change: a
+script fix landed with its required plan-doc update. This addendum is
+a deliberate, user-approved narrowing of the guard. It targets one
+specific laundering path. It does not weaken `TT11` against gate
+infra paired with real code.
+
+A doc companion is one of three paths: `AGENTS.md` exactly, a `.md`
+file under `docs/plans/`, or a `.md` file under `docs/packages/`.
+`check_self_reference_guard` gains a helper, `_is_doc_companion(path)`,
+returning true for exactly these three cases. The `AGENTS.md`-exact
+branch stays an exact string match, already as narrow as possible.
+The `docs/plans/` and `docs/packages/` branches each require both the
+path prefix and `path.endswith(".md")`; a `.go` file placed under
+either tree fails the extension check and is not a doc companion. The
+rule then computes two sets from the diff's non-infra paths: `other`,
+every non-infra path as before, and `non_doc_other`, the subset of
+`other` excluding doc companions. `TT11` fires only when both `infra`
+and `non_doc_other` are non-empty.
+
+This keeps three behaviors distinct:
+
+- Gate infra paired only with `AGENTS.md`: silent. `non_doc_other` is
+  empty.
+- Gate infra paired only with one or more `docs/plans/*.md` or
+  `docs/packages/*.md` files: silent. Same reason.
+- Gate infra paired with a real code file — any path
+  `_is_doc_companion` does not match, including a `.go` file anywhere,
+  a `.md` file outside `docs/plans/` and `docs/packages/`, or a `.go`
+  file placed inside `docs/plans/` or `docs/packages/` — whether or
+  not a doc companion also rides along in the same diff: fires. The
+  `non_doc_other` split is path-only: a path either matches one of
+  `_is_doc_companion`'s three cases or it counts as code. There is no
+  separate extension-based classification beyond the `.md` check
+  already inside `_is_doc_companion`. A doc companion never launders a
+  real code change; `non_doc_other` still contains the code file, so
+  `TT11` still fires.
+
+`scripts/test_tampering_rules_infra.py` must record this reasoning as
+a comment next to `_is_gate_infra` and `_is_doc_companion`, per
+AGENTS.md's own instruction to record an approved gate exception
+directly in the gate file. The comment states the narrowing is
+user-approved and names the laundering path it closes, so a future
+reader does not mistake the exception for an oversight.
 
 ### Override mechanism
 
@@ -349,6 +403,54 @@ Additional probes:
   trailers without a `--message-file`.
 - `--range` combined with `--message-file` exits 2.
 
+`TT11` doc-companion probes (addendum), eight new probe functions
+added to `scripts/test_tampering_probes_infra.py`, one function per
+case below. Each probe is a genuine discriminator: it plants a diff,
+runs `check_self_reference_guard` directly, and asserts a specific
+presence or absence of `TT11`, not just that the call returns without
+an exception.
+
+- Gate infra plus `AGENTS.md` alone, nothing else in the diff: assert
+  no `TT11` finding.
+- Gate infra plus one `docs/plans/*.md` file alone, nothing else in
+  the diff: assert no `TT11` finding.
+- Gate infra plus one `docs/packages/*.md` file alone, nothing else
+  in the diff: assert no `TT11` finding. `docs/packages/` gets the
+  same silence grant as `docs/plans/` and needs its own case; a probe
+  set that only exercises `docs/plans/` never proves the
+  `docs/packages/` branch works.
+- Gate infra plus one real `.go` file at an ordinary path (for
+  example `foo/bar.go`, outside `docs/plans/` and `docs/packages/`),
+  nothing else: assert `TT11` still fires, unchanged from before the
+  addendum. This case never reaches `_is_doc_companion`'s `.md`
+  extension check; the path-prefix check alone already rejects it.
+- Gate infra plus one `.go` file placed at `docs/plans/malicious.go`,
+  nothing else: assert `TT11` still fires. The path prefix matches
+  `docs/plans/`, so this case forces execution of the
+  `path.endswith(".md")` branch inside `_is_doc_companion` and proves
+  the extension check, not the prefix alone, rejects the file.
+- Gate infra plus one `.go` file placed at
+  `docs/packages/malicious.go`, nothing else: assert `TT11` still
+  fires. Same reasoning as the `docs/plans/` case, for the
+  `docs/packages/` prefix.
+- Gate infra plus one real `.go` file at an ordinary path and one
+  `docs/plans/*.md` companion together, in the same diff: assert
+  `TT11` still fires. This proves the doc companion does not launder
+  a real code change riding beside it.
+- Gate infra plus one real `.go` file at an ordinary path and one
+  `docs/packages/*.md` companion together, in the same diff: assert
+  `TT11` still fires. Same reasoning as the `docs/plans/` companion
+  case, for the `docs/packages/` companion path. Together the last
+  two cases rule out an implementation that treats any doc companion
+  in the diff as a free pass for a code file riding along.
+
+The builder registers all eight probe functions above in
+`run_infra_probes`'s dispatch tuple
+(`scripts/test_tampering_probes_infra.py`, the block that already
+invokes `_probe_tt11_clean_infra_only` and the other `TT11` probes).
+An unregistered probe function is well-formed but never runs under
+`--probe`; registration in the tuple is mandatory, not optional.
+
 ## Verification
 
 Builder-executed wiring, outside the planner's own edits:
@@ -390,3 +492,21 @@ including this gate's own).
 do not check the new Python modules. The module split above follows
 the same file- and function-size discipline by convention, not by a
 mechanical gate, since no Python structure gate exists in this repo.
+
+### Verification for the TT11 doc-companion addendum
+
+No new gate, no `Makefile` change, no `policy/layers.json` row: the
+addendum only narrows an existing rule inside
+`scripts/test_tampering_rules_infra.py` and its probe module. Same
+gates as above cover it:
+
+- `make verify-fast` runs `check_test_tampering.py` itself, which
+  exercises `check_self_reference_guard` against the real repository
+  diff.
+- `make verify` runs `check_test_tampering.py --probe`, which must
+  include the eight new discriminator probe functions from the Tests
+  section above, registered in `run_infra_probes`'s dispatch tuple and
+  passing green alongside every existing TT01-TT14 probe.
+- `python3 scripts/check_prose.py`, `python3 scripts/check_plan.py`,
+  and `python3 scripts/check_labels.py` must pass against this plan
+  file itself.

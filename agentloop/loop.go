@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -61,6 +62,10 @@ type Loop struct {
 	window          *contextplan.Window
 	summarizer      *contextsummary.Summarizer
 	calibrated      *contextplan.Calibrated
+	concludeMargin  int
+	concludeNotice  string
+	dedupWithinTurn bool
+	heartbeat       time.Duration
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -106,7 +111,20 @@ func New(opts Options) (*Loop, error) {
 		window:          opts.Window,
 		summarizer:      opts.Summarizer,
 		calibrated:      opts.Calibrated,
+		concludeMargin:  opts.ConcludeMargin,
+		concludeNotice:  resolveConcludeNotice(opts.ConcludeNotice),
+		dedupWithinTurn: opts.DedupWithinTurn,
+		heartbeat:       opts.HeartbeatInterval,
 	}, nil
+}
+
+// resolveConcludeNotice returns notice unchanged when non-empty, else
+// DefaultConcludeNotice.
+func resolveConcludeNotice(notice string) string {
+	if notice == "" {
+		return DefaultConcludeNotice
+	}
+	return notice
 }
 
 // compileSchemas compiles each defs entry's Schema through

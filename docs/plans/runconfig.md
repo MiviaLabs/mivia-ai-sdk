@@ -73,7 +73,8 @@ The document shape is one JSON object with four sections.
   },
   "options": {
     "room": "platform-team",
-    "ask_to": "human-1"
+    "ask_to": "human-1",
+    "budget": {"max_bytes": 200000, "max_events": 500}
   },
   "tools": ["grep"]
 }
@@ -86,8 +87,12 @@ The document shape is one JSON object with four sections.
   Unknown JSON fields are ignored, matching `envelope.Decode`.
 - `plan.panels` holds parallel waves. Each panel is an array of step
   IDs.
-- `options` holds pure string scalars only. The loader maps `room` to
-  `Options.Room` and `ask_to` to `Options.AskTo`.
+- `options` maps `room` to `Options.Room`, `ask_to` to `Options.AskTo`,
+  and a present `budget` object (`max_bytes`, `max_events`) to
+  `Options.Budget` as a `*contextbudget.Limits`. An absent `budget`
+  leaves `Options.Budget` nil. `Load` performs no range check on
+  `budget`'s two integers; `contextbudget.Limits.Validate`, called
+  inside `agentrun.New` during `Runner`, rejects a negative value.
 - `tools` lists the external tool names a step binding may reference.
 
 Each step carries `tool` or `internal`, never both. A step carries
@@ -151,17 +156,23 @@ type Binding struct {
 type Kind string
 
 const (
-    FlowKind            Kind = "flow"
-    LedgerKind          Kind = "ledger"
-    MemoryKind          Kind = "memory"
-    RoomKind            Kind = "room"
-    SchedulerKind       Kind = "scheduler"
-    HeartbeatKind       Kind = "heartbeat"
-    DiscoveryKind       Kind = "discovery"
-    TriggerKind         Kind = "trigger"
-    ChannelKind         Kind = "channel"
-    ProviderKind        Kind = "provider"
+    FlowKind             Kind = "flow"
+    LedgerKind           Kind = "ledger"
+    MemoryKind           Kind = "memory"
+    RoomKind             Kind = "room"
+    SchedulerKind        Kind = "scheduler"
+    HeartbeatKind        Kind = "heartbeat"
+    DiscoveryKind        Kind = "discovery"
+    TriggerKind          Kind = "trigger"
+    ChannelKind          Kind = "channel"
+    ProviderKind         Kind = "provider"
     ProviderRegistryKind Kind = "providerregistry"
+    WorkspaceReadKind    Kind = "workspaceread"
+    WorkspaceWriteKind   Kind = "workspacewrite"
+    WorkspaceListKind    Kind = "workspacelist"
+    WorkspaceStatKind    Kind = "workspacestat"
+    DiffKind             Kind = "diff"
+    AsToolKind           Kind = "astool"
 )
 
 func NewBlocks() *Blocks
@@ -240,7 +251,8 @@ word `phase`.
 ## Verification
 
 - `policy/layers.json` grants runconfig the
-  `["agentrun", "flow", "machine", "subagent", "tools"]` row.
+  `["agentrun", "contextbudget", "flow", "machine", "subagent", "tools"]`
+  row.
 - `make verify` passes; runconfig and the module total hold the 85
   floor.
 - `go test -race ./runconfig/...` passes.
@@ -304,3 +316,51 @@ Verification:
 - `docs/plans/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
+
+## Addendum: schema-decode and capability forwarding (phase 76)
+
+Phase 76 closed the argument-decode gap phase 72 left open. `agentrun`'s
+`chain` decodes a step's payload through `tools.SchemaTool.DecodeArguments`
+before it calls the tool, when the resolved tool implements
+`tools.SchemaTool`, instead of always passing the raw string. This
+fixes argument decode for all five file/diff internal Kinds
+(`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
+`WorkspaceStatKind`, `DiffKind`).
+
+Decode success alone does not prove a Kind completes a real
+`agentrun.Runner.Run`: `chain` also requires the tool's result,
+`tools.Out.Value`, to be a `string`, or the step fails with
+`ErrResultNotText`. `WorkspaceReadKind`, `WorkspaceWriteKind`, and
+`DiffKind` return a string and are confirmed, by real end-to-end
+tests, to complete through `Runner.Run`. `WorkspaceListKind` and
+`WorkspaceStatKind` bind tools whose `Run` returns a struct
+(`[]subagent.WorkspaceEntry` and `subagent.WorkspaceFileInfo`), not a
+string; no test drives either through a real `Runner.Run`, and the
+result-type mismatch means they are expected to fail with
+`ErrResultNotText` until a follow-up phase resolves it.
+
+`runconfig/runner.go`'s `stepTool` wrapper, the type
+`Definition.Runner` puts around every resolved internal-Kind tool,
+moved into `runconfig/steptool.go` and gained an unexported
+`newStepTool` constructor. `newStepTool` composes exactly the optional
+`tools.Tool` capability interfaces (`tools.SchemaTool`,
+`tools.ProfiledTool`, `tools.ResultBudgetTool`, `tools.PrivilegedTool`)
+the wrapped tool implements, so a caller-set `tools.Scope` approval
+threshold or privilege check reads the wrapped tool's true published
+capability, not a stripped default. No standalone phase 76 plan file
+remains for this contract.
+
+## Addendum: WorkspaceListKind and WorkspaceStatKind fix (phase 77)
+
+Status: shipped. Phase 76's addendum above expected `WorkspaceListKind`
+and `WorkspaceStatKind` to fail `Runner.Run` with `ErrResultNotText`,
+because their bound tools returned a typed struct, not a string, in
+`tools.Out.Value`. Phase 77 changed `subagent.WorkspaceListTool.Run`
+and `subagent.WorkspaceStatTool.Run` to return a JSON-encoded string
+instead, matching every other `subagent` tool. All six `Kind`
+constants `runconfig` publishes are now confirmed end to end through a
+real `Runner.Run`, by
+`TestRunnerResolvesWorkspaceListReal` and
+`TestRunnerResolvesWorkspaceStatReal` in
+`runconfig/runconfig_test/workspace_list_stat_test.go`. No standalone
+phase 77 plan file remains for this contract.

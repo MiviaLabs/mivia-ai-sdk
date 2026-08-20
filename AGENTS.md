@@ -17,6 +17,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `agent/` — composition layer wiring blocks into an agent.
 - `agentrun/` — config-struct runner composition over agent.Run.
 - `subagent/` — blocks as tools, concurrent spawns, and mailboxes.
+- `runconfig/` — JSON-document loader binding a step graph to agentrun.Options.
 - `ledger/` — durable task admission, leased claims, fenced takeover.
 - `workspace/` — filesystem confinement via `os.Root` and secret denial.
 - `mcp/` — Model Context Protocol client over stdio/HTTP.
@@ -176,7 +177,11 @@ follow reliably. Each has a gate behind it.
 - Do not let coverage fall below 85%. The total and every package each
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.
-  Mutation testing is future work.
+  `scripts/check_mutation.py` covers the packages with a stored floor
+  in `scripts/mutation_denylist/`.
+- Do not delete, skip, rename out of collection, or weaken a test
+  instead of fixing the code behind it. Gate:
+  `scripts/check_test_tampering.py`.
 - Do not write an audit-finding label in comments, docs, or plans: a
   letter A through G followed by a digit. Gate:
   `scripts/check_labels.py`.

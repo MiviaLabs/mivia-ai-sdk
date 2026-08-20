@@ -14,7 +14,7 @@ import (
 func TestPlanFitsWhole(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestPlanFitsWhole(t *testing.T) {
 func TestPlanElidesOldestFirst(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestPlanElidesOldestFirst(t *testing.T) {
 func TestPlanRespectsRetention(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStore(t)
 			cache := newCache(t)
-			planner, err := contextplan.NewPlanner(store, cache)
+			planner, err := contextplan.NewPlanner(store, cache, nil)
 			if err != nil {
 				t.Fatalf("NewPlanner: %v", err)
 			}
@@ -176,7 +176,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 func TestPlanReservesHeadroom(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestPlanReservesHeadroom(t *testing.T) {
 func TestPlanStubDoesNotFit(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestPlanStubDoesNotFit(t *testing.T) {
 func TestPlanStubBoundaryStacked(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestPlanStubBoundaryStacked(t *testing.T) {
 func TestPlanReasoningEvents(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestPlanErrorCases(t *testing.T) {
 
 	t.Run("nil session", func(t *testing.T) {
 		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache)
+		planner, err := contextplan.NewPlanner(store, cache, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -330,7 +330,7 @@ func TestPlanErrorCases(t *testing.T) {
 
 	t.Run("invalid window", func(t *testing.T) {
 		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache)
+		planner, err := contextplan.NewPlanner(store, cache, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -343,7 +343,7 @@ func TestPlanErrorCases(t *testing.T) {
 
 	t.Run("resolution failure for a payload that would be kept", func(t *testing.T) {
 		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache)
+		planner, err := contextplan.NewPlanner(store, cache, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -367,7 +367,7 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 
 	t.Run("resolution failure for a payload that would be fully dropped", func(t *testing.T) {
 		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache)
+		planner, err := contextplan.NewPlanner(store, cache, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -387,7 +387,7 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 
 	t.Run("resolution failure for a reasoning event", func(t *testing.T) {
 		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache)
+		planner, err := contextplan.NewPlanner(store, cache, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -407,7 +407,7 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 func TestPlanConcurrentUse(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

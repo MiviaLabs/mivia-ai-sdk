@@ -35,6 +35,7 @@ package agentrun
   type Runner struct {
 }
   var ErrAmbiguousWait
+  var ErrArgumentDecode
   var ErrNoAgent
   var ErrNoMachine
   var ErrNoRecipient

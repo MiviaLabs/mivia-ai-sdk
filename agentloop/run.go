@@ -32,12 +32,16 @@ func (l *Loop) fireStop(ctx context.Context, res Result) {
 	_ = l.hooksReg.Fire(ctx, hooks.PointStop, res)
 }
 
-// run is Run's loop body, run once per Run call.
+// run is Run's loop body, run once per Run call. It holds only loop
+// control: the ctx-cancellation check, the MaxIterations check, one
+// call to runIteration, and the iteration-done decision that call
+// returns. runIteration holds the single-iteration body.
 func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error) {
 	history := append([]provider.Message(nil), msgs...)
 	var totalUsage provider.Usage
 	var runningTokens int
 	iterations := 0
+	noticeSent := false
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -47,71 +51,150 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopMaxIterations}, nil
 		}
 
-		trimmed, err := l.applyTrim(ctx, history, iterations)
-		if err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
-		}
-		history = trimmed
-
-		if err := l.checkBudget(history, iterations); err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
-		}
-
-		if l.window != nil {
-			planned, err := l.planHistory(ctx, history, iterations)
-			if err != nil {
-				return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
-			}
-			history = planned
-		}
-
-		at := l.runChat(ctx, history, iterations)
-		if at.err != nil {
-			if at.fromRecovery {
-				return Result{History: history, Iterations: iterations, Usage: totalUsage}, at.err
-			}
-			return l.hardFail(history, iterations, totalUsage), at.err
-		}
-		resp, req := at.resp, at.req
-		history = at.history
-		history = append(history, resp.Message)
-		iterations++
-		totalUsage = sumUsage(totalUsage, resp.Usage)
-		if l.usageAcc != nil {
-			_ = l.usageAcc.Record(l.sessionID, resp.Usage)
-		}
-		if l.audit != nil {
-			if err := l.audit(ctx, AuditRecord{Iteration: iterations, Kind: AuditKindCompletion, Request: req, Response: resp}); err != nil {
-				return l.hardFail(history, iterations, totalUsage),
-					fmt.Errorf("agentloop: iteration %d: audit: %w", iterations, err)
-			}
-		}
-		if l.calibrated != nil {
-			l.calibrated.Observe(resp.Usage.TotalTokens)
-		}
-		runningTokens += billedTokens(resp.Usage)
-		if l.maxTotalTokens > 0 && runningTokens > l.maxTotalTokens {
-			return l.hardFail(history, iterations, totalUsage),
-				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrTokenBudgetExceeded)
-		}
-
-		if len(resp.ToolCalls) == 0 {
-			return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: StopNoToolCalls}, nil
-		}
-		if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
-			return l.hardFail(history, iterations, totalUsage),
-				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
-		}
-
-		newHistory, veto, err := l.runToolCalls(at.iterCtx, history, resp.ToolCalls, iterations)
-		history = newHistory
-		if err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
-		}
-		if veto {
-			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopHookVeto}, nil
+		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent)
+		if done {
+			return res, err
 		}
 	}
+}
+
+// runIteration runs one loop iteration: trim, budget check, window
+// plan, the ConcludeMargin nudge, the Completer call, audit, the
+// token-budget check, and tool-call dispatch. It mutates history,
+// iterations, totalUsage, runningTokens, and noticeSent in place
+// through their pointers, matching run's prior inlined mutation. done
+// reports whether run must return (res, err) now; done false means
+// the iteration completed normally and run should loop again.
+// EventIterationStart fires on entry; EventIterationEnd fires from a
+// deferred closure covering every exit path, so every hard-fail cause
+// and every graceful stop emits it exactly once.
+func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeSent *bool) (res Result, err error, done bool) {
+	label := iterationLabel(*iterations + 1)
+	l.emitEvent(ctx, EventIterationStart, label)
+	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
+
+	trimmed, terr := l.applyTrim(ctx, *history, *iterations)
+	if terr != nil {
+		return l.hardFail(*history, *iterations, *totalUsage), terr, true
+	}
+	*history = trimmed
+
+	if berr := l.checkBudget(*history, *iterations); berr != nil {
+		return l.hardFail(*history, *iterations, *totalUsage), berr, true
+	}
+
+	if l.window != nil {
+		planned, perr := l.planHistory(ctx, *history, *iterations)
+		if perr != nil {
+			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage}, perr, true
+		}
+		*history = planned
+	}
+
+	if !*noticeSent && l.shouldConclude(*iterations) {
+		*history = append(*history, provider.Message{Role: provider.RoleUser, Content: l.concludeNotice})
+		*noticeSent = true
+	}
+	// noticeSent gates noticePresent: this run's own nudge must fire.
+	noticeInRequest := *noticeSent && noticePresent(*history, l.concludeNotice)
+
+	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
+	at := func() chatAttempt {
+		defer stopHeartbeat()
+		return l.runChat(ctx, *history, *iterations)
+	}()
+	if at.err != nil {
+		if at.fromRecovery {
+			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage}, at.err, true
+		}
+		return l.hardFail(*history, *iterations, *totalUsage), at.err, true
+	}
+	return l.afterChat(ctx, at, history, iterations, totalUsage, runningTokens, noticeInRequest)
+}
+
+// afterChat holds the second half of one iteration's body: recording
+// the response, audit, the token-budget check, and tool-call dispatch.
+// Split from runIteration to keep both under the structure gate's
+// per-function line cap. noticeInRequest, computed by runIteration,
+// picks StopConcluded over StopNoToolCalls when this iteration's
+// Completer request carried the ConcludeMargin nudge.
+func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeInRequest bool) (Result, error, bool) {
+	resp, req := at.resp, at.req
+	*history = at.history
+	*history = append(*history, resp.Message)
+	*iterations++
+	*totalUsage = sumUsage(*totalUsage, resp.Usage)
+	if l.usageAcc != nil {
+		_ = l.usageAcc.Record(l.sessionID, resp.Usage)
+	}
+	if l.audit != nil {
+		if aerr := l.audit(ctx, AuditRecord{Iteration: *iterations, Kind: AuditKindCompletion, Request: req, Response: resp}); aerr != nil {
+			return l.hardFail(*history, *iterations, *totalUsage),
+				fmt.Errorf("agentloop: iteration %d: audit: %w", *iterations, aerr), true
+		}
+	}
+	if l.calibrated != nil {
+		l.calibrated.Observe(resp.Usage.TotalTokens)
+	}
+	*runningTokens += billedTokens(resp.Usage)
+	if l.maxTotalTokens > 0 && *runningTokens > l.maxTotalTokens {
+		return l.hardFail(*history, *iterations, *totalUsage),
+			fmt.Errorf("agentloop: iteration %d: %w", *iterations, ErrTokenBudgetExceeded), true
+	}
+
+	if len(resp.ToolCalls) == 0 {
+		stop := StopNoToolCalls
+		if noticeInRequest {
+			stop = StopConcluded
+		}
+		return Result{Final: resp.Message, History: *history, Iterations: *iterations, Usage: *totalUsage, Stop: stop}, nil, true
+	}
+	if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
+		return l.hardFail(*history, *iterations, *totalUsage),
+			fmt.Errorf("agentloop: iteration %d: %w", *iterations, ErrCallsPerTurnExceeded), true
+	}
+
+	newHistory, veto, terr := l.runToolCalls(at.iterCtx, *history, resp.ToolCalls, *iterations)
+	*history = newHistory
+	if terr != nil {
+		return l.hardFail(*history, *iterations, *totalUsage), terr, true
+	}
+	if veto {
+		return Result{History: *history, Iterations: *iterations, Usage: *totalUsage, Stop: StopHookVeto}, nil, true
+	}
+	return Result{}, nil, false
+}
+
+// noticePresent reports whether history carries the ConcludeNotice
+// among its messages, the present-tense signal for whether the model
+// actually saw the nudge in this iteration's Completer request. A
+// sticky "was the notice ever appended" flag is not enough:
+// Options.Trim (or Window) may strip the notice out of a later
+// iteration's history before that iteration's Completer call runs.
+// See docs/plans/agents/phase79_graceful_conclude.md's Trim limit.
+// Callers must also gate this on noticeSent: noticePresent alone
+// cannot tell this run's own nudge apart from matching text a caller
+// fed in through the starting History for an unrelated reason.
+func noticePresent(history []provider.Message, notice string) bool {
+	for _, m := range history {
+		if m.Role == provider.RoleUser && m.Content == notice {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldConclude reports whether the upcoming Completer call, the
+// 1-based iteration k = iterations+1, qualifies for the ConcludeMargin
+// nudge: MaxIterations-k < ConcludeMargin. A zero ConcludeMargin never
+// qualifies, since k never exceeds MaxIterations. See
+// docs/plans/agents/phase79_graceful_conclude.md for the worked table.
+func (l *Loop) shouldConclude(iterations int) bool {
+	if l.concludeMargin <= 0 {
+		return false
+	}
+	k := iterations + 1
+	return l.maxIterations-k < l.concludeMargin
 }
 
 // chatAttempt carries one iteration's Completer outcome. iterCtx is

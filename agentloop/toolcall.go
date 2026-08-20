@@ -2,6 +2,7 @@ package agentloop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -13,6 +14,13 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
+// dedupKey identifies one (tool name, canonical arguments) pair within
+// one turn's dedup set. See canonicalizeArgs for the canonical form.
+type dedupKey struct {
+	name string
+	args string
+}
+
 // runToolCalls runs calls in ToolCall.Index order, sequentially,
 // appending one RoleTool message per call onto history. It stops
 // early and returns veto == true, with no error, on a PointPreTool
@@ -20,14 +28,41 @@ import (
 // this turn runs either. It also stops early, with ctx.Err() as the
 // returned error, when ctx is canceled ahead of a call: a canceled
 // run must not keep executing tool calls it can still skip.
+//
+// When l.dedupWithinTurn is true, a per-call dedup set, keyed by
+// dedupKey, starts empty on every call to runToolCalls (one call per
+// turn), so no dedup carries across iterations. A call whose
+// (name, canonical-argument) pair is already in the set never reaches
+// runOneToolCall: it short-circuits before PointPreTool, serving
+// DuplicateCallNotice with the duplicate call's own ToolCallID
+// instead. A call excluded from the set by a canonicalizeArgs error
+// always runs and is never recorded. Any call that does run, success
+// or ErrorPolicyReport-driven error, records its pair in the set once
+// its RoleTool message reaches history, so a later identical retry in
+// the same turn is deduped either way.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int) ([]provider.Message, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
+
+	seen := make(map[dedupKey]struct{})
 
 	for _, call := range ordered {
 		if err := ctx.Err(); err != nil {
 			return history, false, err
 		}
+
+		key, eligible := l.dedupKeyFor(call)
+		if eligible {
+			if _, dup := seen[key]; dup {
+				msg := provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: DuplicateCallNotice}
+				history = append(history, msg)
+				if err := l.auditToolCall(ctx, iteration, call, msg, nil); err != nil {
+					return history, false, err
+				}
+				continue
+			}
+		}
+
 		msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration)
 		if err != nil {
 			return history, false, err
@@ -36,19 +71,49 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 			return history, true, nil
 		}
 		history = append(history, msg)
-		if l.audit != nil {
-			if err := l.audit(ctx, AuditRecord{
-				Iteration:  iteration,
-				Kind:       AuditKindToolCall,
-				ToolCall:   call,
-				ToolResult: msg,
-				Err:        reported,
-			}); err != nil {
-				return history, false, fmt.Errorf("agentloop: iteration %d: audit: %w", iteration, err)
-			}
+		if eligible {
+			seen[key] = struct{}{}
+		}
+		if err := l.auditToolCall(ctx, iteration, call, msg, reported); err != nil {
+			return history, false, err
 		}
 	}
 	return history, false, nil
+}
+
+// dedupKeyFor builds call's dedup key when l.dedupWithinTurn is true
+// and call.Arguments canonicalizes without error. eligible is false
+// when dedup is off or canonicalization fails; a canonicalization
+// failure is fail-open, per canonicalizeArgs's contract: the call
+// still runs, unconditionally, and is never recorded in or matched
+// against the dedup set.
+func (l *Loop) dedupKeyFor(call provider.ToolCall) (dedupKey, bool) {
+	if !l.dedupWithinTurn {
+		return dedupKey{}, false
+	}
+	canon, err := canonicalizeArgs(json.RawMessage(call.Arguments))
+	if err != nil {
+		return dedupKey{}, false
+	}
+	return dedupKey{name: call.Name, args: canon}, true
+}
+
+// auditToolCall reports one AuditKindToolCall record through l.audit,
+// when set, wrapping a non-nil handler error with iteration.
+func (l *Loop) auditToolCall(ctx context.Context, iteration int, call provider.ToolCall, msg provider.Message, reported error) error {
+	if l.audit == nil {
+		return nil
+	}
+	if err := l.audit(ctx, AuditRecord{
+		Iteration:  iteration,
+		Kind:       AuditKindToolCall,
+		ToolCall:   call,
+		ToolResult: msg,
+		Err:        reported,
+	}); err != nil {
+		return fmt.Errorf("agentloop: iteration %d: audit: %w", iteration, err)
+	}
+	return nil
 }
 
 // runOneToolCall fires PointPreTool, decodes and runs one tool call,
@@ -59,8 +124,17 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 // as the tool result and returns that error as reported;
 // ErrorPolicyFail returns the error, wrapped with call.ID and
 // iteration, as Run's own hard failure, with reported nil. reported
-// is also nil on a successful call.
+// is also nil on a successful call. EventToolCallStart fires before
+// the PointPreTool fire; EventToolCallEnd fires from a deferred
+// closure covering every return path, including a veto and a
+// PointPreTool hook error, so both bracket the whole call, not only
+// its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
+// starts only after the veto check passes.
 func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (msg provider.Message, veto bool, reported error, err error) {
+	label := toolCallLabel(iteration, call)
+	l.emitEvent(ctx, EventToolCallStart, label)
+	defer func() { l.emitEvent(ctx, EventToolCallEnd, label) }()
+
 	if l.tracer != nil {
 		var span *trace.Span
 		ctx, span = l.tracer.Start(ctx, "agentloop.tool_call")
@@ -77,7 +151,11 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		}
 	}
 
-	t, out, runErr := l.decodeAndRun(ctx, call)
+	stopHeartbeat := l.startHeartbeat(ctx, EventToolCallHeartbeat, label)
+	t, out, runErr := func() (tools.Tool, tools.Out, error) {
+		defer stopHeartbeat()
+		return l.decodeAndRun(ctx, call)
+	}()
 
 	if l.hooksReg != nil {
 		_, _ = l.fireHook(ctx, hooks.PointPostTool, call)

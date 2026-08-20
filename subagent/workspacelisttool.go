@@ -51,7 +51,9 @@ func (t *workspaceListTool) ExecutionProfile() tools.ExecutionProfile {
 }
 
 // Run lists the directory at args.Path, relative to t.ft's bound
-// root, sorted the way ws.List's underlying os.ReadDir already sorts.
+// root, sorted the way ws.List's underlying os.ReadDir already
+// sorts. The result is a JSON-encoded string of []WorkspaceEntry, so
+// agentrun's chain accepts it as a tool result.
 func (t *workspaceListTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	args, ok := in.Value.(WorkspaceListArgs)
 	if !ok {
@@ -65,5 +67,9 @@ func (t *workspaceListTool) Run(ctx context.Context, in tools.InOut) (tools.Out,
 	for _, e := range entries {
 		out = append(out, WorkspaceEntry{Name: e.Name(), IsDir: e.IsDir()})
 	}
-	return tools.Out{Value: out}, nil
+	encoded, err := encodeToolResult(out)
+	if err != nil {
+		return tools.Out{}, err
+	}
+	return tools.Out{Value: encoded}, nil
 }

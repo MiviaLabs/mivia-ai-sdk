@@ -49,7 +49,14 @@ func newCache(t *testing.T) *memory.Store {
 // under retention, and returns the ref.
 func putPayload(t *testing.T, store *contextstate.MemStore, sessionID string, retention contextstate.RetentionClass, data []byte) contextstate.ContentRef {
 	t.Helper()
-	ref, err := contextstate.NewContentRef("contextplan_test", "workspace-a", sessionID, "subject-a", data)
+	return putPayloadForSubject(t, store, sessionID, "subject-a", retention, data)
+}
+
+// putPayloadForSubject mints a ContentRef over data under subjectID,
+// stores a PayloadRecord under retention, and returns the ref.
+func putPayloadForSubject(t *testing.T, store *contextstate.MemStore, sessionID, subjectID string, retention contextstate.RetentionClass, data []byte) contextstate.ContentRef {
+	t.Helper()
+	ref, err := contextstate.NewContentRef("contextplan_test", "workspace-a", sessionID, subjectID, data)
 	if err != nil {
 		t.Fatalf("NewContentRef: %v", err)
 	}

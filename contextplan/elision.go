@@ -33,11 +33,16 @@ const (
 // Elision is one drop or trim decision Plan made for one payload. Ref
 // is always the resolved PayloadRecord's ContentRef. Kept is the byte
 // length of StubContent's return for a stubbed payload; zero means
-// Plan inserted no message at all for that payload.
+// Plan inserted no message at all for that payload. SpoolRef is the
+// spool.Spool.Spool reference for a successful durable write, set only
+// for ElisionReasonWindowOverflow and ElisionReasonRetentionExpired
+// when Planner carries a non-nil spooler and the write succeeded.
+// Empty in every other case, including a failed write.
 type Elision struct {
-	Ref    contextstate.ContentRef
-	Reason ElisionReason
-	Kept   int
+	Ref      contextstate.ContentRef
+	Reason   ElisionReason
+	Kept     int
+	SpoolRef string
 }
 
 // StubContentBytes bounds the stub Plan builds for a

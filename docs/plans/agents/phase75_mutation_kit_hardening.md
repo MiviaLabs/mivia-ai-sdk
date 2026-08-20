@@ -1,6 +1,6 @@
 # Phase 75: mutation kit hardening
 
-Status: gap 1 shipped; gap 2 shipped; gap 3 open. This phase closes the three gaps that
+Status: shipped. All three gaps closed. This phase closes the three gaps that
 `docs/plans/agents/phase74_mutation_coverage_rollout.md` recorded and
 deferred. Phase 74 shipped as commit `24a1938`. Its "Tool gap" and
 "Verify wiring" sections are the source for all three gaps below.
@@ -563,6 +563,35 @@ that model. A failure shows as a red run on the Actions tab, and the
 team treats it as work to triage. This plan adds no notification step
 and no auto-filed issue. That stays open follow-up work, and the plan
 names it here so the gap is recorded, not forgotten.
+
+### Gap 3 result
+
+Shipped. `.github/workflows/mutation.yml` matches the fix above:
+`schedule` and `workflow_dispatch` triggers only, cron `0 3 * * 1`, one
+sequential job, `timeout-minutes: 330`, and the same pinned
+`actions/checkout` and `actions/setup-go` SHAs as `ci.yml`. No Semgrep
+step.
+
+The local proof step ran on the current tree: `python3 -c "import
+yaml,sys; yaml.safe_load(open('.github/workflows/mutation.yml'))"`
+passed, then a full `make mutation-gate` ran all twelve packages.
+Every package passed at its locked floor, and the run ended clean
+under `git diff --exit-code`. Wall time was over an hour, run outside
+this tool's per-call time limit and completed under `nohup`.
+
+Measured rates: a2aclient 96.67 (floor 95), agentloop 97.60 (floor
+96), contextstate 99.37 (floor 98), dispatch 95.35 (floor 94), envelope
+92.11 (floor 92), ledger 91.43 (floor 90), machine 100.00 (floor 100),
+mcp 100.00 (floor 100), schema 86.21 (floor 85), secretpath 100.00
+(floor 100), subagent 95.31 (floor 94), workspace 96.92 (floor 95).
+Every rate matches its floor with margin intact. No orphaned test
+binary survived the run, confirming gap 1 holds under a full twelve-
+package sweep.
+
+A pre-merge `workflow_dispatch` run stays impossible, per the Proof
+section above. The first real scheduled or dispatched run happens
+after this change merges to `main`, and its result belongs in a
+follow-up note, not in this plan.
 
 ## API
 

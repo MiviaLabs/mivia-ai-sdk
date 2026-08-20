@@ -21,6 +21,7 @@ verify-fast:
 		python3 scripts/check_labels.py
 		python3 scripts/check_names.py
 		python3 scripts/check_examples_sync.py
+	python3 scripts/check_test_tampering.py
 	$(SEMGREP_SCAN)
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 
@@ -54,6 +55,7 @@ verify: verify-fast verify-ledger-sqlite
 	python3 scripts/check_semgrep_probes.py
 	python3 scripts/check_mutation.py --probe
 	python3 scripts/check_orphan_packages.py --probe
+	python3 scripts/check_test_tampering.py --probe
 
 bench:
 	go test -run=NONE -bench=. -benchmem ./...

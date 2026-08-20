@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -92,6 +93,14 @@ var (
 	// ErrTrimExcluded is Options.Validate's error when both Window and
 	// Trim are set. Test with errors.Is.
 	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
+	// ErrConcludeMargin is Validate's error when ConcludeMargin is
+	// negative. Test with errors.Is.
+	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
+	// ErrHeartbeatRequiresBus is Options.Validate's error when
+	// HeartbeatInterval is positive and Bus is nil: a heartbeat with
+	// nowhere to emit is a caller mistake, not a silent no-op. Test
+	// with errors.Is.
+	ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -101,6 +110,14 @@ const RecoveryTargetTokens = 16384
 // CompactionNotice is the user-role message content Run appends after
 // a recovery compaction, so the model sees that compaction occurred.
 const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
+
+// DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
+const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
+
+// DuplicateCallNotice replaces a tool result's content when
+// DedupWithinTurn detects the same (tool, canonical-argument) call
+// already served earlier in the same turn.
+const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
 
 // ErrorPolicy names what Run does with a tool-run error: report it to
 // the model as a tool result, or end the run.
@@ -131,6 +148,10 @@ const (
 	// StopHookVeto is Run's stop reason when a PointPreTool handler
 	// vetoes a tool call. The tool does not run.
 	StopHookVeto StopReason = "hook_veto"
+	// StopConcluded is Run's stop reason when the model returns no tool
+	// call on an iteration ConcludeMargin nudged. Graceful, same
+	// Result-shape rule as StopNoToolCalls.
+	StopConcluded StopReason = "concluded"
 )
 
 // Options declares the blocks one New call wires into a Loop.
@@ -171,9 +192,9 @@ type Options struct {
 	// SessionID keys Usage's running total. Required when Usage is
 	// set.
 	SessionID string
-	// Bus is reserved for the loop's own events, pending a future
-	// event vocabulary. Run does not yet emit anything through it.
-	// Optional.
+	// Bus receives Run's iteration, completion-heartbeat, and
+	// tool-call events. Required when HeartbeatInterval is positive;
+	// Run emits nothing through a nil Bus otherwise. Optional.
 	Bus *events.Bus
 	// Budget caps one Completer call's message history by byte count
 	// and message count. A nil Budget means uncapped.
@@ -197,6 +218,36 @@ type Options struct {
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated
+	// ConcludeMargin nudges the model to produce a final answer as
+	// MaxIterations approaches, appending ConcludeNotice once, instead of
+	// hard-stopping at MaxIterations with no notice. Zero disables
+	// nudging. Run appends the notice before the Completer call at
+	// 1-based iteration k the first time MaxIterations-k < ConcludeMargin
+	// holds; k ranges from 1 to MaxIterations, so a positive ConcludeMargin
+	// greater than or equal to MaxIterations fires the nudge on Run's
+	// first iteration. See docs/plans/agents/phase79_graceful_conclude.md
+	// for the worked table.
+	ConcludeMargin int
+	// ConcludeNotice is the RoleUser content Run appends once nudging
+	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
+	// DefaultConcludeNotice. Run appends the notice at the tail of
+	// history, as the last message in the nudged iteration's
+	// Request.Messages, not spliced near the system message the way
+	// CompactionNotice is. A tail append puts the "final answer now"
+	// instruction directly before the model's next response. The append
+	// runs after this iteration's Trim, Budget, and Window steps,
+	// immediately before the Completer call.
+	ConcludeNotice string
+	// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
+	// already served earlier in the same turn, and serves
+	// DuplicateCallNotice instead of running the tool again. False, the
+	// zero value, runs every call, unchanged from the base plan.
+	DedupWithinTurn bool
+	// HeartbeatInterval emits a heartbeat Event on Bus every interval
+	// while one Completer call or one tool call is in flight. Zero
+	// disables heartbeats. A positive HeartbeatInterval requires a
+	// non-nil Bus.
+	HeartbeatInterval time.Duration
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -249,8 +300,10 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // failure: Completer required, Tools required, MaxIterations
 // positive, Usage requires a non-blank SessionID, a non-nil Budget
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
-// negative, and a non-nil Window passes Window.Validate, requires
-// Summarizer, requires Calibrated, and excludes Trim.
+// negative, a non-nil Window passes Window.Validate, requires
+// Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
+// is not negative, and finally a positive HeartbeatInterval requires
+// a non-nil Bus.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -285,6 +338,12 @@ func (o Options) Validate() error {
 		if o.Trim != nil {
 			return ErrTrimExcluded
 		}
+	}
+	if o.ConcludeMargin < 0 {
+		return ErrConcludeMargin
+	}
+	if o.HeartbeatInterval > 0 && o.Bus == nil {
+		return ErrHeartbeatRequiresBus
 	}
 	return nil
 }

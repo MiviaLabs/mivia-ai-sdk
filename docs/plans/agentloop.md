@@ -1603,3 +1603,561 @@ scripted `Completer` and one scripted `Summarizer` per case:
 - This addendum lands with or after the `contextplan` compaction
   change, the `contextsummary` package, and the `provider`
   `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.
+
+## Addendum: graceful work-limit conclude
+
+Status: shipped. A gap analysis against `internal/agent.Loop`, a
+production caller in the separate `mivia-agent` repository, found a
+capability `agentloop` lacked: a nudge toward a usable final answer as
+`MaxIterations` approaches. This addendum closes that gap, then closes
+one bug a post-ship logic review found in the same change window. It
+changes `options.go`, `loop.go`, and `run.go`. It adds no new package
+and no `policy/layers.json` row.
+
+### Addendum goal
+
+Nudge the model to produce a usable final answer as `MaxIterations`
+approaches, instead of hard-stopping at `StopMaxIterations` with
+whatever partial, mid-task state the transcript happens to hold.
+
+### Addendum scope
+
+Inside:
+
+- Two new `Options` fields, `ConcludeMargin` and `ConcludeNotice`.
+- One new `StopReason`, `StopConcluded`, for the case the nudge
+  worked: the model returned no tool call on an iteration whose sent
+  request still carried the notice.
+- One new exported constant, `DefaultConcludeNotice`.
+- One new sentinel, `ErrConcludeMargin`, for a negative
+  `ConcludeMargin`.
+
+Outside:
+
+- Nudging as `MaxTotalTokens` approaches. Estimating "one more turn's
+  headroom" against a token cap is a harder estimation problem than an
+  iteration count, and needs its own review once this addendum's
+  iteration-only nudge proves its shape.
+- Stripping `Request.Tools` on the nudged iteration to force a
+  text-only reply. This addendum only appends a text nudge; a model
+  that still requests a tool call on the nudged iteration is not
+  blocked, and `Run` still ends with `StopMaxIterations`, unchanged,
+  if the limit is hit.
+- Retrying the nudge more than once. `ConcludeMargin` fires the notice
+  exactly once, on the first iteration it applies to.
+- Interaction with `Options.Window`. `Window`'s compaction step may
+  drop, reorder, or summarize away `ConcludeNotice` before the nudged
+  `Completer` call sees it, the same class of risk as the `Trim` case
+  below. No test covers `ConcludeMargin` combined with `Window`: no
+  current caller pairs the two, and `Window` already excludes `Trim`
+  per `Options.Validate`, so the combination has one fewer variable
+  than the general case. A future addendum adds coverage once a
+  caller needs both together.
+
+### ConcludeMargin trigger formula
+
+`run.go`'s loop tracks a 0-based `iterations` counter, incremented
+after each `Completer` call, and checked `iterations >= l.maxIterations`
+at the top of the loop before the next call. Number each `Completer`
+call with a 1-based index `k`, so the call that runs while
+`iterations` holds `k-1` is call `k`. `k` ranges from 1 to
+`MaxIterations`.
+
+`Run` appends `ConcludeNotice` to history, once, immediately before
+the `Completer` call at the first `k` for which:
+
+```
+MaxIterations - k < ConcludeMargin
+```
+
+Zero `ConcludeMargin` never satisfies this inequality, since `k` never
+exceeds `MaxIterations`, so nudging stays disabled. A `ConcludeMargin`
+greater than or equal to `MaxIterations` satisfies it at `k = 1`, so
+the nudge fires on `Run`'s first iteration.
+
+Worked table, `MaxIterations = 5`:
+
+| ConcludeMargin | First qualifying k | Call nudged | Notes |
+| --- | --- | --- | --- |
+| 0 | none | none | nudging disabled |
+| 1 | 5 | the last allowed call only | `MaxIterations-5 = 0 < 1` |
+| 2 | 4 | the next-to-last call | `k=4` and `k=5` both qualify; the notice appends once, at the first qualifying `k` |
+
+### Addendum API
+
+```go
+// Options gains:
+
+// ConcludeMargin nudges the model to produce a final answer as
+// MaxIterations approaches, appending ConcludeNotice once, instead of
+// hard-stopping at MaxIterations with no notice. Zero disables
+// nudging. Run appends the notice before the Completer call at
+// 1-based iteration k the first time MaxIterations-k < ConcludeMargin
+// holds; k ranges from 1 to MaxIterations, so a positive ConcludeMargin
+// greater than or equal to MaxIterations fires the nudge on Run's
+// first iteration. See this addendum's worked table.
+ConcludeMargin int
+
+// ConcludeNotice is the RoleUser content Run appends once nudging
+// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
+// DefaultConcludeNotice. Run appends the notice at the tail of
+// history, as the last message in the nudged iteration's
+// Request.Messages, not spliced near the system message the way
+// CompactionNotice is. A tail append puts the "final answer now"
+// instruction directly before the model's next response. The append
+// runs after this iteration's Trim, Budget, and Window steps,
+// immediately before the Completer call.
+ConcludeNotice string
+```
+
+```go
+// DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
+const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
+
+// StopConcluded is Run's stop reason when the model returns no tool
+// call on an iteration whose sent request still carried
+// ConcludeNotice. Graceful, same Result-shape rule as
+// StopNoToolCalls.
+const StopConcluded StopReason = "concluded"
+```
+
+```go
+// ErrConcludeMargin is Validate's error when ConcludeMargin is
+// negative. Test with errors.Is.
+var ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
+```
+
+`Options.Validate` gains one rule: a negative `ConcludeMargin` fails
+validation with `ErrConcludeMargin`.
+
+### Addendum bug: StopConcluded misattributed from stale notice text
+
+A logic review run after this addendum first shipped found that
+`run.go`'s original `noticeInRequest := noticePresent(history,
+l.concludeNotice)` scanned the entire current history for the notice
+text, with no check that this run's own `ConcludeMargin` logic ever
+appended it. `loop.go`'s `resolveConcludeNotice` resolves
+`concludeNotice` to `DefaultConcludeNotice` unconditionally in `New`,
+even when `ConcludeMargin` is zero, so that exported string is always
+a live match target.
+
+Two reproductions confirmed the bug: `ConcludeMargin=0` (fully
+disabled) with a caller-supplied initial message equal to
+`DefaultConcludeNotice` returned `StopConcluded` instead of
+`StopNoToolCalls`; `ConcludeMargin=2` with the threshold never reached
+this run, same coincidental initial message, returned the same wrong
+result. A realistic trigger: an app that feeds a prior `Run` call's
+leftover `Result.History` into a fresh `Run` call carries the old
+notice text forward, even when the new call disables or never reaches
+the nudge.
+
+Fix: `noticeInRequest := noticeSent && noticePresent(history,
+l.concludeNotice)`, gating presence on this run's own causal flag.
+This preserves the original fix for the `Trim`-drops-the-notice case
+(`noticeSent` true, `noticePresent` false after `Trim` strips it,
+still resolves to `StopNoToolCalls`) while closing the false positive
+when this run never appended anything itself.
+
+### Addendum tests
+
+- `Options.Validate`: a negative `ConcludeMargin` fails with
+  `errors.Is(err, ErrConcludeMargin)`. A zero or positive
+  `ConcludeMargin` passes.
+- A scripted `Completer` set to run past `MaxIterations` without
+  `ConcludeMargin` stops at `StopMaxIterations`, unchanged from the
+  base plan.
+- `MaxIterations=5`, `ConcludeMargin=2`, a scripted `Completer` that
+  returns tool calls through iteration 3, and returns no tool call at
+  iteration 4: the sent `Request.Messages` for the iteration-4 call
+  ends with the notice, and `Run` stops at `StopConcluded` with
+  `Result.Iterations == 4`. This is the next-to-last-call row of the
+  worked table above.
+- `MaxIterations=5`, `ConcludeMargin=1`, the same scripted `Completer`
+  returning tool calls through iteration 4, and no tool call at
+  iteration 5: the notice appends only before the iteration-5 call,
+  not iteration 4, matching the worked table's last-call-only row.
+- The request sent to `Completer` on the nudged iteration carries the
+  notice message as the last element of `Request.Messages`.
+- `MaxIterations=5`, `ConcludeMargin=2`, a scripted `Completer` that
+  returns no tool call at iteration 1, strictly before the first
+  qualifying `k=4`: `Run` stops at `StopNoToolCalls`, not
+  `StopConcluded`, and the iteration-1 `Request.Messages` carries no
+  notice. This pins the boundary between an early, non-nudged stop and
+  a nudged one.
+- `MaxIterations=1`, `ConcludeMargin=1`: `k=1` satisfies
+  `MaxIterations-k < ConcludeMargin` on Run's first iteration, so the
+  first `Request.Messages` sent to `Completer` ends with the notice.
+  This pins the doc comment's claim that a `ConcludeMargin` greater
+  than or equal to `MaxIterations` fires the nudge on Run's first
+  iteration.
+- A `ConcludeMargin` set, but the model still requests a tool call on
+  the nudged iteration and every iteration after, still stops at
+  `StopMaxIterations` once the limit is reached; the sent request on
+  the nudged iteration still carries the notice.
+- An empty `ConcludeNotice` with a positive `ConcludeMargin` sends
+  `DefaultConcludeNotice`. A caller-set `ConcludeNotice` sends that
+  text instead.
+- The nudge message appends exactly once across a multi-iteration run,
+  even when several iterations pass while inside the margin
+  (`ConcludeMargin=2` case above already covers this: `k=4` and `k=5`
+  both qualify, but only one notice appends).
+- A `Trim` hook that drops every `RoleUser` message, run with
+  `ConcludeMargin` set: the notice appends to history, then the next
+  iteration's `Trim` call drops it before the following `Completer`
+  call sees it. `Run` still reaches `StopMaxIterations`, since the
+  model was never actually nudged. This is a documented, accepted
+  limit, not a guarantee this addendum makes: `Options.Trim` already
+  runs on the full history before every `Completer` call and may drop
+  any message, per the base plan's `Trim` contract; `ConcludeNotice`
+  gets no special protection from that contract.
+- The bug-fix regression: `MaxIterations=3`, `ConcludeMargin=2`, `Trim`
+  drops every `RoleUser` message, the model calls tools through
+  iteration 2 and returns no tool call at iteration 3. The notice
+  reaches iteration 2's request, `Trim` strips it before iteration 3's
+  request, and `Run` stops at `StopNoToolCalls`, not `StopConcluded`,
+  since the model never saw the notice on the iteration it stopped.
+- Two more bug-fix regressions: `ConcludeMargin=0` with a caller
+  initial message equal to `DefaultConcludeNotice` stops at
+  `StopNoToolCalls`; `ConcludeMargin=2` with the threshold unreached
+  this run and the same coincidental initial message also stops at
+  `StopNoToolCalls`.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change. `docs/packages/agentloop.md` gains the
+`ConcludeMargin`/`ConcludeNotice` surface and the "Graceful conclude
+near MaxIterations" section in the same change as the code.
+
+## Addendum: duplicate-call dedup within a turn
+
+Status: shipped. A gap analysis against `internal/agent.Loop`, a
+production caller in the separate `mivia-agent` repository, found a
+capability `agentloop` lacked: detection of a duplicate tool call
+within one turn, before it runs twice. This addendum closes that gap.
+It changes `options.go`, `loop.go`, and `toolcall.go`, and adds
+`wire.go`. It adds no new package and no `policy/layers.json` row.
+
+### Addendum goal
+
+Detect an identical `(tool name, arguments)` call already served
+earlier in the same turn, and serve a fixed notice instead of running
+the tool a second time. Avoid a duplicate side effect from a model
+that requests the same call twice in one turn's response.
+
+### Addendum scope
+
+Inside:
+
+- One new `Options` field, `DedupWithinTurn`.
+- Comparing calls by tool name and a canonical form of `Arguments`,
+  scoped to one turn: the set resets every call to `runToolCalls`, one
+  call per turn. One new unexported helper in `wire.go`,
+  `canonicalizeArgs(raw json.RawMessage) (string, error)`, builds the
+  canonical form: decode `raw` with a `json.Decoder` configured with
+  `UseNumber()`, into an `any`, then `json.Marshal` the result.
+  `UseNumber()` decodes each JSON number token into a `json.Number`, a
+  string type that keeps the source digits verbatim, instead of
+  collapsing every number into a Go `float64`. Plain `float64`
+  decoding loses precision above 2^53 and would silently canonicalize
+  two distinct large integers (IDs, nanosecond timestamps) to the same
+  value; `UseNumber()` avoids that collapse. `encoding/json` sorts
+  object keys on marshal, so this normalizes key order without a
+  repo-specific canonicalization utility.
+- Trailing-data check after decode. `json.Decoder.Decode` consumes
+  only one JSON value and does not check for bytes left over, unlike
+  `json.Unmarshal`. `canonicalizeArgs` calls `dec.More()` right after
+  `dec.Decode(&v)` succeeds. `dec.More()` true means bytes remain
+  after the first value: trailing garbage (`{"a":1}garbage`) or a
+  second concatenated JSON value (`{"a":1}{"b":2}`).
+  `canonicalizeArgs` treats a true `dec.More()` as a canonicalization
+  error (`errTrailingArgsData`) and returns it, so the call falls
+  under the fail-open contract below instead of canonicalizing from a
+  partial, misleading prefix.
+- Fail-open error contract for `canonicalizeArgs`. `call.Arguments` is
+  raw wire bytes assembled from streaming deltas and can be malformed
+  JSON before schema validation runs. When `canonicalizeArgs` returns
+  an error, the call is excluded from the dedup set: it is never
+  treated as a duplicate, and it always runs. A canonicalization error
+  never blocks a call and never fails the turn.
+- Hook-firing contract for a deduped call. The dedup check runs before
+  `PointPreTool` and short-circuits: a call identified as a duplicate
+  never reaches `PointPreTool` or `PointPostTool`. Those hook points
+  fire once per turn for a given `(tool, canonical-argument)` pair, on
+  the call that actually runs.
+- Dedup-set seeding for an errored call. `runOneToolCall` can append a
+  `RoleTool` error message via `ErrorPolicyReport` without the
+  underlying tool ever running. Any `RoleTool` message reaching
+  history for a call, success or error, seeds the dedup set for that
+  call's `(tool, canonical-argument)` pair. A later byte-identical
+  retry in the same turn is deduped either way, since the goal is to
+  avoid re-triggering a call already resolved one way or another.
+- One new exported constant, `DuplicateCallNotice`, served as the
+  `RoleTool` content for a detected duplicate.
+
+Outside:
+
+- Any interaction with a turn-level result-size shaping type. No such
+  type exists in `agentloop`. This addendum's dedup check produces one
+  `RoleTool` message per call, deduped or not, like any other tool
+  result; it defines no contract with a future result-shaping pass.
+- Cross-turn dedup: a call repeated on a later iteration is not
+  detected. `agentloop` holds no cross-iteration call history for this
+  purpose, and adding one is a larger design question about how long a
+  served call stays "recent" across a long-running loop.
+- True in-flight, concurrent dedup. Tool calls run sequentially, one
+  at a time; "already in flight" and "already served" are the same
+  condition. A future concurrent-tool-call design needs its own dedup
+  review.
+- Reusing the first call's actual result for the duplicate. The
+  duplicate always gets `DuplicateCallNotice`, a fixed notice, not the
+  original result replayed. Replaying a stale result risks the model
+  treating it as fresh, a correctness problem this addendum does not
+  take on.
+
+### Addendum API
+
+```go
+// Options gains:
+
+// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
+// already served earlier in the same turn, and serves
+// DuplicateCallNotice instead of running the tool again. False, the
+// zero value, runs every call, unchanged from the base plan.
+DedupWithinTurn bool
+```
+
+```go
+// DuplicateCallNotice replaces a tool result's content when
+// DedupWithinTurn detects the same (tool, canonical-argument) call
+// already served earlier in the same turn.
+const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
+```
+
+`canonicalizeArgs` stays unexported: `canonicalizeArgs(raw
+json.RawMessage) (string, error)`. It is not part of the locked
+surface. Its contract, enforced by the caller in `agentloop`:
+
+- On success, it returns a canonical string form of `raw`: numbers
+  keep their source digits via `json.Number`, object keys sort by
+  `encoding/json`'s marshal order. Success requires `raw` to decode as
+  exactly one JSON value with no bytes left over; `canonicalizeArgs`
+  checks this with `dec.More()` after `dec.Decode`.
+- On error (malformed `Arguments`, or a valid JSON prefix followed by
+  trailing bytes), the caller treats the call as never dedup-eligible:
+  it runs unconditionally and is never recorded in, or matched
+  against, the dedup set. This is a fail-open contract; a
+  canonicalization error never blocks a call and never fails the turn.
+- The dedup check, including a call to `canonicalizeArgs`, runs before
+  `PointPreTool`. A call identified as a duplicate short-circuits
+  there: it never reaches `PointPreTool` or `PointPostTool`, and the
+  underlying tool never runs for it.
+
+### Addendum tests
+
+- `DedupWithinTurn` false runs two identical calls in one turn twice,
+  unchanged from the base plan.
+- `DedupWithinTurn` true, two identical calls (same name, byte-equal
+  `Arguments`) in one turn, runs the first and serves
+  `DuplicateCallNotice` for the second, without a second `RunScoped`
+  call reaching the underlying tool.
+- Two calls with the same tool name but semantically identical
+  `Arguments` in a different key order both compare equal under
+  canonicalization, and the second is deduped.
+- Two calls with the same tool name and genuinely different
+  `Arguments` both run; neither is treated as a duplicate.
+- `canonicalizeArgs` adversarial cases:
+  - A numeric literal written as `1` in one call and `1.0` in the
+    other: `UseNumber()` keeps each source digit string as a distinct
+    `json.Number`, so the two calls are not deduped against each
+    other.
+  - Two large distinct integers that collide under naive `float64`
+    decoding, `9007199254740992` (2^53) and `9007199254740993`: with
+    `UseNumber()`, `canonicalizeArgs` keeps their exact digit strings
+    distinct, so the two calls compare unequal and both run. This
+    proves the fix closes the numeric-precision false-positive that
+    plain `float64` decoding would have caused.
+  - Raw JSON with a duplicate key, for example `{"a":1,"a":2}`:
+    `encoding/json` keeps the last value on decode, so
+    `canonicalizeArgs` sees only `{"a":2}`. A caller that sends
+    ambiguous duplicate-key JSON gets that encoding/json behavior, not
+    a dedup guarantee.
+  - Two calls whose string values differ only by Unicode-escape form,
+    for example `"café"` versus `"café"`: `encoding/json` decodes
+    both into the same Go string, so the second call is deduped.
+  - Malformed `Arguments`, for example truncated or non-JSON bytes:
+    `canonicalizeArgs` returns an error. The call still runs, is never
+    treated as a duplicate, and the turn does not fail.
+  - `Arguments` holding a valid JSON value followed by trailing bytes,
+    for example `{"a":1}garbage` or two concatenated JSON values
+    `{"a":1}{"b":2}`: `canonicalizeArgs` detects the leftover bytes
+    with `dec.More()` and returns an error instead of silently
+    ignoring them. A second call carrying the same leading fragment
+    but different trailing bytes is never falsely deduped against the
+    first.
+- The synthesized `RoleTool` message for a deduped call carries the
+  duplicate call's own `ToolCallID`, not the first call's `ToolCallID`.
+- `PointPreTool` and `PointPostTool` invocation counts for a turn with
+  two identical calls: both hook points fire exactly once for the
+  pair, on the first call only.
+- A `PointPreTool` veto on the first of two identical calls stops the
+  turn before the second call is ever reached.
+- The dedup set resets between iterations: a call repeated on a later
+  iteration runs again, proving no cross-turn dedup happens.
+- `Options.Audit`'s `AuditKindToolCall` record for a deduped call
+  carries a nil `Err`, since a served duplicate is not a tool-run
+  error.
+- A first call that resolves as an `ErrorPolicyReport`-appended
+  `RoleTool` error message, without the underlying tool running,
+  still seeds the dedup set: a byte-identical retry of that same call
+  later in the same turn is deduped and serves `DuplicateCallNotice`.
+- An `Options.Audit` error returned on a deduped call's own
+  `AuditKindToolCall` record fails `Run`, exactly like an audit error
+  on a normally-run call: the `DuplicateCallNotice` message reaches
+  history before the audit call runs, so it survives in the returned
+  partial `Result`.
+- `FuzzCanonicalizeArgs`, in `agentloop` itself since
+  `canonicalizeArgs` is unexported: arbitrary bytes never panic
+  `canonicalizeArgs`, and a successful canonicalization is idempotent,
+  re-canonicalizing the returned form yields the same string.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change. `docs/packages/agentloop.md` gains the
+`DedupWithinTurn`/`DuplicateCallNotice` surface and a "Duplicate-call
+dedup within a turn" section in the same change as the code.
+
+## Addendum: heartbeat and progress events
+
+Status: shipped. This addendum was phase 83
+(`docs/plans/agents/PHASES.md`); no standalone phase 83 plan file
+remains. It adds `Options.HeartbeatInterval` and six `events.Name`
+progress events to `Run`. It changes `heartbeat.go` (new),
+`options.go`, `run.go`, `loop.go`, and `toolcall.go`. It adds no new
+package and no new `policy/layers.json` edge: `events` was already an
+allowed `agentloop` import.
+
+### Addendum goal
+
+Emit periodic events on `Options.Bus`, wired since the base plan but
+never used, so a caller can show progress during a long `Completer`
+call or a long tool batch.
+
+### Addendum scope
+
+Inside:
+
+- One new `Options` field, `HeartbeatInterval time.Duration`.
+- Six new `events.Name` constants for iteration start/end, a periodic
+  completion heartbeat, a tool-call start/end, and a periodic
+  per-tool-call heartbeat.
+- Emitting on `Bus` at each of those points when `HeartbeatInterval`
+  is positive. A `Bus.Emit` error is swallowed, the same way `Run`
+  already swallows a `hooks.Registry.Fire` error from `PointStop`: a
+  heartbeat is observability, not a control-flow gate.
+- `Options.Validate` gains one rule, appended after the `Window`
+  block: a positive `HeartbeatInterval` with a nil `Bus` fails with
+  `ErrHeartbeatRequiresBus`.
+- An extraction in `run.go`: `runIteration` holds the single-iteration
+  body `run`'s `for` loop used to inline, so `run` stays under the
+  80-line function cap while bracketing every iteration exit path
+  with `EventIterationStart`/`EventIterationEnd`.
+- A shared ticker helper, `startHeartbeat`, used by both the
+  completion-heartbeat site in `runIteration` and the tool-call-
+  heartbeat site in `runOneToolCall`.
+
+Outside:
+
+- Any change to the `events` package. `events.Name` is already
+  `type Name string`; `agentloop` defines its own constants of that
+  type. `events.Bus`, `events.Event`, and `events.Handler` need no
+  change.
+- Carrying structured data richer than `events.Event.Data string`
+  allows. Every heartbeat event's `Data` is a short, human-readable
+  string.
+
+### Addendum API
+
+New `Options` field:
+
+```go
+// HeartbeatInterval emits a heartbeat Event on Bus every interval
+// while one Completer call or one tool call is in flight. Zero
+// disables heartbeats. A positive HeartbeatInterval requires a
+// non-nil Bus.
+HeartbeatInterval time.Duration
+```
+
+New event names:
+
+```go
+const (
+    EventIterationStart      events.Name = "agentloop.iteration.start"
+    EventCompletionHeartbeat events.Name = "agentloop.completion.heartbeat"
+    EventToolCallStart       events.Name = "agentloop.tool_call.start"
+    EventToolCallHeartbeat   events.Name = "agentloop.tool_call.heartbeat"
+    EventToolCallEnd         events.Name = "agentloop.tool_call.end"
+    EventIterationEnd        events.Name = "agentloop.iteration.end"
+)
+```
+
+New sentinel:
+
+```go
+// ErrHeartbeatRequiresBus is Options.Validate's error when
+// HeartbeatInterval is positive and Bus is nil. Test with errors.Is.
+var ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
+```
+
+`runOneToolCall` (`toolcall.go`) returns before `RunScoped` on a
+`PointPreTool` veto. `EventToolCallStart` fires on entry, before the
+`PointPreTool` fire, and `EventToolCallEnd` fires from a deferred
+closure covering every return path, including the veto path and the
+`PointPreTool` hook-error path. The `EventToolCallHeartbeat` ticker
+starts only after the veto check passes, since a vetoed call never
+reaches the blocking `RunScoped` work a heartbeat reports progress
+on.
+
+See [packages/agentloop.md](packages/agentloop.md)'s "Events" section
+for the full field list, the failure mode, and the gating rule.
+
+### Addendum tests
+
+- `Options.Validate`: a positive `HeartbeatInterval` with a nil `Bus`
+  fails with `errors.Is(err, ErrHeartbeatRequiresBus)`, only after
+  every earlier check passes. A zero `HeartbeatInterval` passes
+  regardless of `Bus`.
+- A scripted `Completer` that blocks past two heartbeat intervals,
+  run with a `Bus` subscribed to `EventCompletionHeartbeat`, receives
+  at least two heartbeat events before the call returns. A zero
+  `HeartbeatInterval` receives none.
+- `EventIterationStart`/`EventIterationEnd` fire once per iteration,
+  in order, on every exit path from `runIteration`: ctx cancellation,
+  a trim error, a budget error, a `planHistory` error, an audit
+  error, the token-budget-exceeded error, a tool-call error, and both
+  graceful stops.
+- Heartbeat ticker goroutine cleanup: no leak when ctx is canceled
+  mid-call, and no leak when the call returns before the first tick
+  fires.
+- `PointPreTool` veto and hook-error paths: `EventToolCallStart`
+  followed immediately by `EventToolCallEnd`, with no
+  `EventToolCallHeartbeat` in between.
+- Tool-call heartbeat, positive path: `EventToolCallStart`, at least
+  two `EventToolCallHeartbeat` events, then `EventToolCallEnd`, in
+  order.
+- `Bus.Emit`'s "no subscriber for name" error is swallowed, matching
+  the `PointStop`/`hooks.Registry.Fire` swallow precedent; `Run`
+  completes normally.
+- A race sub-case: heartbeat emission from the ticking goroutine and
+  the main loop's own state changes run concurrently, under
+  `go test -race`, with no data race.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change: `events` was already an allowed import.
+

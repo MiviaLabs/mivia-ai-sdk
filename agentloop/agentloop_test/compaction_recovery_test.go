@@ -209,7 +209,7 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	rejection := fmt.Errorf("vendor: %w", provider.ErrPromptTooLong)
 	loop, f := newRecoveryFixture(t, w, 1, []error{rejection}, []provider.Response{provider.Response{}}, nil)
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, provider.ErrPromptTooLong) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrPromptTooLong", err)
 	}
@@ -218,6 +218,12 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry below one percent of the budget", got)
+	}
+	if res.Iterations != 0 {
+		t.Fatalf("Result.Iterations = %d, want 0: the rejection fails the first iteration", res.Iterations)
+	}
+	if len(res.History) != len(msgs) {
+		t.Fatalf("Result.History = %+v, want the pre-recovery history carried on the fromRecovery branch, unlike the base hard-fail rule's zero Result at Iterations 0", res.History)
 	}
 }
 
@@ -258,6 +264,73 @@ func TestRunRecoverySummarizerFailureNoRetry(t *testing.T) {
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry after a recovery summarizer failure", got)
+	}
+}
+
+// TestRunRecoveryCompactedNothingDroppedInjectsNoticeAfterSystem proves
+// recoverPromptTooLong's compaction can return Compacted true with
+// nothing dropped and no prior summary, when every unit is already
+// mandatory: the notice then lands via injectNotice's after-system
+// branch, not its after-summary branch, and the summarizer never runs.
+func TestRunRecoveryCompactedNothingDroppedInjectsNoticeAfterSystem(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 50)},
+	}
+	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
+	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Run() = %v, want nil", err)
+	}
+	if got := f.completer.callCount(); got != 2 {
+		t.Fatalf("completer calls = %d, want exactly 2: one rejection, one retry", got)
+	}
+	sumCalls, _ := f.summary.stats()
+	if sumCalls != 0 {
+		t.Fatalf("summarizer calls = %d, want 0: both units are mandatory, so nothing is dropped", sumCalls)
+	}
+	_, reqs := completerRequests(f.completer)
+	retried := reqs[1].Messages
+	if got := summaryNamed(retried); got != 0 {
+		t.Fatalf("retried request summary count = %d, want 0: nothing was dropped to summarize", got)
+	}
+	if len(retried) != 3 || retried[0].Role != provider.RoleSystem ||
+		retried[1].Content != agentloop.CompactionNotice || retried[2].Content != msgs[1].Content {
+		t.Fatalf("retried request = %+v, want [system, notice, original user] with the notice directly after system", retried)
+	}
+}
+
+// TestRunRecoveryCompactedBudgetExceededAfterSummaryInjection proves the
+// post-compaction budget re-check inside recoverPromptTooLong itself
+// fails closed, distinct from the same check reached through
+// planHistory's own compactHistory call: the original window's trigger
+// is high enough that planHistory passes the history through
+// unchanged, so the rejection and the budget failure both happen
+// inside recovery.
+func TestRunRecoveryCompactedBudgetExceededAfterSummaryInjection(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 40)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "final"},
+	}
+	w := contextplan.Window{MaxTokens: 50, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetTokens: 5}}
+	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}}, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
+	}
+	if got := f.completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: the original request triggers the rejection, but the recovery retry must never fire once its own budget re-check fails", got)
+	}
+	sumCalls, _ := f.summary.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: the recovery compaction must drop the middle message and summarize it before the re-check fails", sumCalls)
 	}
 }
 

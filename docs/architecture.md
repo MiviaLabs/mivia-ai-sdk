@@ -19,15 +19,19 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-three packages and the import edges
+The diagram shows the forty-five packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
-`durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
+imports. `channel`, `contextbudget`, `contextstate`, `diff`,
+`discovery`, `durablefence`, `envfile`, `events`, `hooks`,
+`longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
-`contextplan` imports `contextstate`, `provider`, and `memory`.
-`spool` imports `tools` alone. `a2aloopback` imports `a2a` and
+`contextplan` imports `contextstate`, `provider`, `memory`, and
+`spool`. `spool` imports `tools` alone. `a2aloopback` imports `a2a` and
 `envelope`, the same two internal packages `a2aclient` imports.
+`workspace` imports `secretpath` alone. `runconfig` imports
+`agentrun`, `contextbudget`, `flow`, `machine`, `subagent`, and
+`tools`.
 
 ```mermaid
 flowchart LR
@@ -43,6 +47,7 @@ flowchart LR
     contextplan --> contextstate
     contextplan --> provider
     contextplan --> memory
+    contextplan --> spool
     flow --> events
     flow --> machine
     heartbeat --> events
@@ -114,6 +119,16 @@ flowchart LR
     subagent --> tools
     subagent --> trace
     subagent --> trigger
+    subagent --> diff
+    subagent --> secretpath
+    subagent --> workspace
+    workspace --> secretpath
+    runconfig --> agentrun
+    runconfig --> contextbudget
+    runconfig --> flow
+    runconfig --> machine
+    runconfig --> subagent
+    runconfig --> tools
     e2e --> agent
     e2e --> channel
     e2e --> discovery
@@ -135,6 +150,8 @@ flowchart LR
     tools[tools]
     trigger[trigger]
     usage[usage]
+    envfile[envfile]
+    longtermmemory[longtermmemory]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
@@ -343,7 +360,10 @@ flowchart LR
   `Calibrated.Observe` after every turn keeps the estimate honest. A
   `provider.ErrPromptTooLong` rejection recovers once through a
   one-percent trigger, a bounded target, one `CompactionNotice`, and
-  exactly one retry. `agentloop` imports `provider`, `tools`,
+  exactly one retry. A positive `Options.HeartbeatInterval` paired
+  with a non-nil `Options.Bus` makes `Run` emit iteration, tool-call,
+  and heartbeat `events.Name` progress events; either one alone stays
+  silent. `agentloop` imports `provider`, `tools`,
   `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
   `contextplan`, and `contextsummary`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
@@ -490,7 +510,7 @@ flowchart LR
 - `contextplan/` — fits one durable session into a bounded provider
   request. It provides `Planner` with `NewPlanner` and `Plan`,
   `Window` with `Validate` and `Budget`, `PlanResult`, `Elision`,
-  `ElisionReason` and its three constants, `Calibrate` and
+  `ElisionReason` and its four constants, `Calibrate` and
   `Calibrated`, `IsReasoningEvent`, `StubContent`, and the sentinels
   `ErrNilStore`, `ErrNilCache`, `ErrMaxTokensNotPositive`,
   `ErrReserveNegative`, `ErrReserveTooLarge`, and `ErrNilSession`.
@@ -499,15 +519,19 @@ flowchart LR
   drops the rest; a reasoning event, per `IsReasoningEvent`, never
   enters the built `provider.Request`. `Calibrated` wraps a
   `provider.TokenEstimator` with an EWMA correction factor `Observe`
-  updates after each turn, guarded by a mutex for concurrent use. The
-  compaction surface adds `Compaction` with `Validate`, `Compact`,
+  updates after each turn, guarded by a mutex for concurrent use.
+  `NewPlanner` takes a third, nil-safe `*spool.Spool`; a wired `Spool`
+  receives the full payload behind every window-overflow and
+  retention-expired `Elision`, keyed to the payload's own
+  `SubjectID`, and `Elision.SpoolRef` carries the write's reference.
+  The compaction surface adds `Compaction` with `Validate`, `Compact`,
   `CompactResult`, `CompactTrigger` and `CompactTarget`, the
   retention and tail-fill constants, and the `Compact` sentinels:
   `Compact` applies the trigger check and a fixed retention set over
   one message list, pure, with no LLM call, and mints the
   `context-compact-v1` idempotency key through `contextstate.Mint`.
-  `contextplan` imports `contextstate`, `provider`, and `memory`. See
-  [packages/contextplan.md](packages/contextplan.md).
+  `contextplan` imports `contextstate`, `provider`, `memory`, and
+  `spool`. See [packages/contextplan.md](packages/contextplan.md).
 - `contextsummary/` — the LLM summarizer for compaction. It provides
   `Summary` with `Validate` and `Render`, `SummaryMessage`,
   `TokenEstimate`, `Summarizer` with `NewSummarizer` and `Summarize`,

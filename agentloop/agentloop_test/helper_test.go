@@ -56,6 +56,14 @@ func (s *scriptedCompleter) lastRequest() provider.Request {
 	return s.reqs[len(s.reqs)-1]
 }
 
+// requestAt returns the idx'th (0-based) provider.Request Chat
+// received, in call order.
+func (s *scriptedCompleter) requestAt(idx int) provider.Request {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reqs[idx]
+}
+
 // errBoom is a sentinel a fixture tool returns to prove an error
 // propagates unchanged.
 var errBoom = errors.New("agentloop_test: boom")

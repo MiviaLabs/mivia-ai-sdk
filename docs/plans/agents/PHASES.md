@@ -334,6 +334,15 @@ explicit opt-in. Route exclusion propagates by default, matching
 the sibling repo's transition-driven readiness. No standalone
 phase 61 plan file remains.
 
+Phase 62 (`provider` tool-call history) has shipped. It adds
+`Message.ToolCalls`, so a caller can append a completed assistant
+turn back into `Request.Messages`. `Validate` adds
+`ErrToolCallsUnexpected`: a non-empty `ToolCalls` on any role but
+`RoleAssistant` rejects. `buildResponse` keeps `Response.ToolCalls`
+and `Response.Message.ToolCalls` in sync on the streamed path. Its
+contract folded into docs/plans/provider.md; no standalone phase 62
+plan file remains.
+
 Phase 63 (`skills`) has shipped. It adds one leaf package: `Skill`
 carries a name, instructions text, trigger phrases, and required
 tool names; `Skill.Validate` checks a non-blank name, non-blank
@@ -348,6 +357,51 @@ skill is read, not called: it carries no `Run` method. It depends on
 no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
 package plan lives at docs/plans/skills.md.
+
+Phase 64 (`schema`) has shipped, in commit 7aea007. It adds one leaf
+package: `Compiled` and `Compile` load a JSON Schema document;
+`Validate` checks a payload against it and returns a bounded,
+model-facing `Corrective` message on failure. `MaxSchemaBytes`,
+`MaxSchemaDepth`, `MaxPayloadBytes`, and `MaxCorrectiveBytes` bound
+the admission and the reply. It imports
+`github.com/santhosh-tekuri/jsonschema/v6`, an authorized third-party
+exception scoped to this package. Its package plan lives at
+docs/plans/schema.md.
+
+Phase 65 (`contextstate`) has shipped. It adds one leaf package, plus
+a unification inside `envelope`, ported from `mivia-agent`'s
+`internal/contextstate` and `internal/contentref`. It holds the
+durable context contract and the single canonical content-reference
+minter: sessions, checkpoints, commit validation, retention classes,
+and volume `Limits`. Its package plan lives at
+docs/plans/contextstate.md.
+
+Phase 66 (`contextplan`) has shipped. It adds one package, built on
+the shipped phase 65 `contextstate` and `provider` interfaces. It
+fits one durable session into a bounded provider request: `Planner`
+decides what a token `Window` keeps, stubs, or drops, and
+`Calibrated` corrects its token estimator against each turn's real
+usage. A companion change folds reasoning vocabulary types into
+`provider`. Its package plan lives at docs/plans/contextplan.md.
+
+Phase 67 (`spool`) has shipped. It adds one leaf package plus a
+`tools.Tool` wrapper, under the phase 65 `contextstate` contract.
+`Spool` stores oversized content under a principal-scoped grant and
+hands the caller a bounded view plus a reference; `SpoolTool` wraps
+any `tools.Tool` with the same truncate-and-reference behavior. No
+standalone phase 67 plan file remains; its contract lives in
+docs/plans/spool.md.
+
+Phase 68 (file text leaves) has shipped. It adds four packages:
+`envfile` loads a dotenv file into a map without leaking parsed
+values into an error message; `secretpath` matches a filesystem path
+against configured secret-path patterns; `workspace` confines
+filesystem access to one root directory through `os.Root`, with a
+size-bounded read; `diff` produces a bounded unified line diff
+between two byte slices. Each package plan lives at
+docs/plans/envfile.md, docs/plans/secretpath.md,
+docs/plans/workspace.md, and docs/plans/diff.md; no standalone phase
+68 plan file remains.
 
 Phase 69 (`agentloop`) has shipped. It adds one composition package:
 `Run` takes a `provider.Completer`, a `tools.Registry`, and a
@@ -370,6 +424,29 @@ opens. It adds no new package. Its addendum lives in
 docs/plans/subagent.md's "File tools addendum"; no standalone phase
 71 plan file remains.
 
+Phase 72 (`runconfig` blocks) has shipped. It adds six `Kind`
+constants (`WorkspaceReadKind`, `WorkspaceWriteKind`,
+`WorkspaceListKind`, `WorkspaceStatKind`, `DiffKind`, `AsToolKind`)
+binding a JSON document's step to a `subagent` file tool, a diff
+tool, or a nested subagent runner. It adds a `budget` field to the
+JSON `options` section, mapping to `agentrun.Options.Budget`. It
+depends on the shipped `subagent`, `workspace`, `diff`, and
+`contextbudget` packages, and on the shipped phase 71. It adds no
+new package and one `policy/layers.json` edge (`runconfig` to
+`contextbudget`). Its contract folded into docs/plans/runconfig.md's
+API section; no standalone phase 72 plan file remains.
+
+Phase 73 (`contextplan` spools its own overflow) has shipped. It
+wires `contextplan.Planner` to `spool.Spool`: `NewPlanner` gains a
+third, nil-safe `spooler *spool.Spool` parameter, and `Plan` writes a
+window-overflow or retention-expired elision's full payload to a
+wired `Spool`, keyed to the payload's own `SubjectID`. A spool write
+never fails `Plan`. It adds no new package and one
+`policy/layers.json` edge (`contextplan` to `spool`). Its contract
+folded into docs/plans/contextplan.md's "Correctness fix: contextplan
+spools its own overflow" section; no standalone phase 73 plan file
+remains.
+
 Phase 74 is plan-only and not scheduled. It is the mutation kit's
 second rollout step: seven new per-package floors (`workspace`,
 `subagent`, `agentloop`, `mcp`, `dispatch`, `a2aclient`, `schema`),
@@ -388,6 +465,78 @@ inside `scripts/check_semgrep_probes.py`, so two scoped-rule probes
 sharing one fixture basename fail loudly instead of silently
 overwriting each other's expected entry. It adds no new package. No
 standalone phase 75 plan file remains.
+
+Phase 76 (agentrun schema-tool argument decode) has shipped. It fixed
+a confirmed gap `agentrun.Runner.chain` left open: a resolved tool
+implementing `tools.SchemaTool` never got its `DecodeArguments`
+called, so the five `subagent` file tools phase 72 bound to a `Kind`
+could not drive a real end-to-end `Runner.Run`. It also fixed
+`runconfig`'s `stepTool` wrapper, which dropped `tools.ProfiledTool`,
+`tools.ResultBudgetTool`, and `tools.PrivilegedTool` from every
+wrapped tool, following `spool/tool.go`'s capability-composition
+pattern. It added no new package and no new `policy/layers.json`
+edge. No standalone phase 76 plan file remains.
+
+Phase 77 (workspace list and stat tools return a JSON string result)
+has shipped. It fixed a confirmed gap phase 76's addendum left open:
+`subagent.WorkspaceListTool.Run` and `subagent.WorkspaceStatTool.Run`
+returned a typed struct in `tools.Out.Value`, not a string, so
+`agentrun`'s `chain` failed both `runconfig.WorkspaceListKind` and
+`runconfig.WorkspaceStatKind` with `ErrResultNotText` on every real
+`Runner.Run`. It changed both tools to return a JSON-encoded string,
+matching every other `subagent` tool's result convention. It added no
+new package and no new `policy/layers.json` edge. No standalone
+phase 77 plan file remains.
+
+Phases 78, 80, 82, and 84 are plan-only and not scheduled. Phases 79,
+81, and 83 have shipped; their design rationale is folded into
+`docs/plans/agentloop.md`'s "graceful work-limit conclude",
+"duplicate-call dedup within a turn", and "heartbeat and progress
+events" addenda, and no standalone phase 79, phase 81, or phase 83
+plan file remains. A gap analysis compared `agentloop` against
+`internal/agent.Loop`, a production caller in a separate, external
+repository (`mivia-agent`), and found seven capabilities that caller
+needs and `agentloop` lacks. Each gap is its own phase: steering and
+interruption (78), graceful work-limit conclude (79, shipped),
+per-batch tool-result size shaping (80), duplicate-call dedup within a
+turn (81, shipped), prompt-injection-safe hook and steer framing (82),
+heartbeat and progress events (83, shipped; see below), and
+partial-recovery streaming (84). These phases are queued behind, not
+part of, the dependency-ordered list above; they close a separate
+capability gap, not a step in the existing numbered initiative. Phase
+84 depends on phase 78; no other phase in this group depends on
+another. Phase 82 is partly blocked on a `hooks.Handler` signature
+change and phase 84 is blocked on a `provider` package decision, each
+flagged in its own file. Each remaining phase needs its own plan
+review before a builder starts it. See
+docs/plans/agents/phase78_steering_and_interruption.md,
+phase80_batch_result_shaping.md, phase82_injection_safe_framing.md,
+and phase84_partial_recovery_streaming.md.
+
+Phase 83 (`agentloop` heartbeat and progress events) has shipped. It
+adds `Options.HeartbeatInterval` and six `events.Name` constants:
+`EventIterationStart`, `EventCompletionHeartbeat`,
+`EventToolCallStart`, `EventToolCallHeartbeat`, `EventToolCallEnd`,
+and `EventIterationEnd`. A positive `HeartbeatInterval` paired with a
+non-nil `Options.Bus` makes `Run` emit these events; either one alone
+stays silent, and `Options.Validate` rejects a positive
+`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`. It
+adds no new package and no new `policy/layers.json` edge: `events`
+was already an allowed `agentloop` import. Its contract folded into
+docs/plans/agentloop.md's "Addendum: heartbeat and progress events"
+section; no standalone phase 83 plan file remains.
+
+Phases 85 and 86 are plan-only and not scheduled, reviewed and
+approved. A bug audit found two confirmed, reproducible defects with
+no test coverage: `longtermmemory` silently splits one scope into two
+buckets when a caller's `Scope` string carries stray whitespace (85),
+and `contextplan.Calibrated` pairs an `Observe` call against the wrong
+estimate under concurrent or multi-estimate use, corrupting its EWMA
+calibration factor with no crash and no race-detector flag (86).
+Neither phase depends on the other. Phase 86 needs a companion change
+to `agentloop` landed in the same commit, detailed in its own file.
+See docs/plans/agents/phase85_longtermmemory_scope_normalization.md
+and phase86_calibrated_observe_pairing_fix.md.
 
 ## Gate interactions
 

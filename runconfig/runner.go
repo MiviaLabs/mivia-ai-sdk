@@ -1,7 +1,6 @@
 package runconfig
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
@@ -23,7 +22,7 @@ func (d *Definition) Runner() (*agentrun.Runner, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := reg.Add(stepTool{step: b.Step, inner: inner}); err != nil {
+		if err := reg.Add(newStepTool(b.Step, inner)); err != nil {
 			return nil, fmt.Errorf("%w: step %q: %s", ErrBadDocument, b.Step, err.Error())
 		}
 	}
@@ -47,19 +46,4 @@ func (d *Definition) resolve(b Binding) (tools.Tool, error) {
 		return nil, fmt.Errorf("%w: step %q needs %q", ErrUnknownTool, b.Step, b.Tool)
 	}
 	return t, nil
-}
-
-// stepTool adapts one resolved tool to its step ID, so the built ack
-// chain runs it by that ID.
-type stepTool struct {
-	step  string
-	inner tools.Tool
-}
-
-// Name returns the bound step ID.
-func (s stepTool) Name() string { return s.step }
-
-// Run delegates to the resolved tool.
-func (s stepTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	return s.inner.Run(ctx, in)
 }

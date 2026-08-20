@@ -237,14 +237,17 @@ Inside:
   `tools.ExecutionClassWrite`.
 - `WorkspaceListTool(name string, ft *FileTools) tools.Tool`.
   Lists one directory, relative to `ft`'s bound root; a blank path
-  lists the root itself. Result is a JSON-renderable
+  lists the root itself. Result is a JSON-encoded string of
   `[]WorkspaceEntry`, one `{name, is_dir}` pair per entry, sorted the
-  way `ws.List`'s underlying `os.ReadDir` already sorts. Not
-  privileged. `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
+  way `ws.List`'s underlying `os.ReadDir` already sorts; see the
+  "Gap fix: workspace list and stat results as a string" addendum
+  below for the shipped JSON-string result shape. Not privileged.
+  `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
 - `WorkspaceStatTool(name string, ft *FileTools) tools.Tool`.
-  Stats one path, relative to `ft`'s bound root. Result is one
-  `WorkspaceFileInfo` (`name`, `size`, `is_dir`, `mod_time`). Not
-  privileged. `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
+  Stats one path, relative to `ft`'s bound root. Result is a
+  JSON-encoded string of one `WorkspaceFileInfo` (`name`, `size`,
+  `is_dir`, `mod_time`); see the same addendum below. Not privileged.
+  `ExecutionProfile.Class` is `tools.ExecutionClassRead`.
 - `DiffTool(name string, ft *FileTools, maxLines int) tools.Tool`.
   Previews a write: diffs the on-disk content at a
   caller-model-supplied path, read through `ft`'s bound workspace,
@@ -700,6 +703,19 @@ In `subagent/subagent_test/filetools_test.go`:
   `envfile.LoadBytes` term is marked dropped, not met, with the
   reasoning "Envfile" in `docs/plans/agents/phase71_filetools.md`
   states.
+
+### Gap fix: workspace list and stat results as a string
+
+Status: shipped. `WorkspaceListTool.Run` and `WorkspaceStatTool.Run`
+returned `[]WorkspaceEntry` and `WorkspaceFileInfo` directly in
+`tools.Out.Value`, not a string. Every other `subagent` tool returns a
+string. `agentrun`'s `chain` requires a string result, so
+`runconfig.WorkspaceListKind` and `runconfig.WorkspaceStatKind` failed
+every real `Runner.Run` with `ErrResultNotText`; see
+`docs/plans/runconfig.md`'s phase 76 addendum. The fix JSON-encodes
+each result into `Out.Value` as a string, matching every other tool's
+convention. No standalone phase 77 plan file remains for this
+contract.
 
 ### Gap fix: export the mailbox-capacity sentinel
 

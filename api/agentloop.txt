@@ -2,9 +2,18 @@ package agentloop
   const AuditKindCompletion = "completion"
   const AuditKindToolCall = "tool_call"
   const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
+  const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
+  const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
+  const EventCompletionHeartbeat = "agentloop.completion.heartbeat"
+  const EventIterationEnd = "agentloop.iteration.end"
+  const EventIterationStart = "agentloop.iteration.start"
+  const EventToolCallEnd = "agentloop.tool_call.end"
+  const EventToolCallHeartbeat = "agentloop.tool_call.heartbeat"
+  const EventToolCallStart = "agentloop.tool_call.start"
   const RecoveryTargetTokens = 16384
+  const StopConcluded = "concluded"
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
@@ -47,6 +56,10 @@ package agentloop
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer
   Calibrated *contextplan.Calibrated
+  ConcludeMargin int
+  ConcludeNotice string
+  DedupWithinTurn bool
+  HeartbeatInterval time.Duration
 }
   type Result struct {
   Final provider.Message
@@ -59,7 +72,9 @@ package agentloop
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
+  var ErrConcludeMargin
   var ErrEstimatorRequired
+  var ErrHeartbeatRequiresBus
   var ErrInvalidSchema
   var ErrMaxIterations
   var ErrNoCompleter

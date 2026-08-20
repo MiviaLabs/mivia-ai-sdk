@@ -1,0 +1,12 @@
+#!/bin/sh
+# commit-msg gate for mivia-ai-sdk. Runs the diff-only test-tampering
+# check against the real repository, with the drafted commit message
+# and the staged diff both available. pre-commit runs before the
+# message exists and cannot enforce overrides; this hook is the real,
+# override-capable gate. See docs/plans/test-tampering.md. Installed
+# via `make install-hooks` (sets core.hooksPath to .githooks). Never
+# bypass with --no-verify or skip env vars. Fail closed: a script
+# failure blocks the commit.
+set -e
+
+python3 scripts/check_test_tampering.py --message-file "$1"

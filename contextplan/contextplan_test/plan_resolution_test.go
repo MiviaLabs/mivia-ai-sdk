@@ -22,7 +22,7 @@ import (
 // cache and so only exercises the cache-miss error path.
 func TestPlanResolutionCacheHitStoreMiss(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestPlanResolutionCacheHitStoreMiss(t *testing.T) {
 // pinned the fast path this change deletes and is now false.
 func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 func TestPlanResolutionConcurrentSameRef(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -173,7 +173,7 @@ func (c countingEstimator) EstimateTokens(req provider.Request) (int, error) {
 func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
 // UTF-8.
 func TestPlanStubStaysValidUTF8(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -260,7 +260,7 @@ func (o overheadEstimator) EstimateTokens(req provider.Request) (int, error) {
 // overhead.
 func TestPlanOverheadEstimatorExceedsBudget(t *testing.T) {
 	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache)
+	planner, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

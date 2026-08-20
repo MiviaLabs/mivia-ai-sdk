@@ -21,15 +21,10 @@
       "target": "not yet planned",
       "permanent": false
     },
-    "spool": {
-      "reason": "Truncation-spool leaf plus its tools.Tool wrapper, shipped ahead of a caller.",
-      "target": "not yet planned",
-      "permanent": false
-    },
     "agentloop": {
-      "reason": "Model tool-calling loop, shipped as a composition package with no internal caller yet.",
-      "target": "not yet planned",
-      "permanent": false
+      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found mivia-agent's loop covers steering, per-batch tool-result shaping, dedup, work-limit budgets with graceful conclude, and hook-injection framing that agentloop has no equivalent for; agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller.",
+      "target": "external application code (outside this module), e.g. mivia-agent's internal/agent package once it adapts to agentloop.Options",
+      "permanent": true
     },
     "subagent": {
       "reason": "Blocks-as-tools composition package. docs/plans/runconfig.md and policy/layers.json both describe a runconfig import of subagent; runconfig's code does not import it yet.",

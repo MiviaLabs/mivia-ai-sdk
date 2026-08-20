@@ -15,18 +15,23 @@ or a bound trips. The exported surface below mirrors
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
-  `Window`, `Summarizer`, `Calibrated`. `Completer` and `Tools` are
-  required; the rest are optional. `Bus` is reserved for the loop's
-  own events, pending a future event vocabulary; `Run` does not yet
-  emit anything through it.
+  `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
+  `ConcludeNotice`, `DedupWithinTurn`, `HeartbeatInterval`.
+  `Completer` and `Tools` are required; the rest are optional. `Bus`
+  receives `Run`'s iteration, completion-heartbeat, and tool-call
+  events, gated on a positive `HeartbeatInterval`: a zero
+  `HeartbeatInterval` emits nothing, even through a non-nil `Bus`.
+  `HeartbeatInterval` requires a non-nil `Bus` in turn;
+  `Options.Validate` rejects the opposite pairing with
+  `ErrHeartbeatRequiresBus`. See "Events" below.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error
   return.
 - `StopReason` — a string enum naming why `Run` stopped gracefully:
-  `StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto`. No
-  `StopToolError` constant exists: a tool error under
-  `ErrorPolicyFail` is a hard failure, not a graceful stop.
+  `StopNoToolCalls`, `StopMaxIterations`, `StopHookVeto`,
+  `StopConcluded`. No `StopToolError` constant exists: a tool error
+  under `ErrorPolicyFail` is a hard failure, not a graceful stop.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
   tool-run error: `ErrorPolicyReport` (the zero value; sends the
   error text back as the tool's `RoleTool` result and continues) or
@@ -120,6 +125,12 @@ Use `errors.Is` to test these.
 - `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
   exclusive") — `Options.Validate` returns it when both `Window` and
   `Trim` are set.
+- `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
+  negative") — `Options.Validate` returns it for a negative
+  `ConcludeMargin`.
+- `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
+  non-nil Bus") — `Options.Validate` returns it when
+  `HeartbeatInterval` is positive and `Bus` is nil.
 
 ## Context planning and prompt-too-long recovery
 
@@ -156,10 +167,72 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
+## Graceful conclude near MaxIterations
+
+A positive `Options.ConcludeMargin` nudges the model toward a final
+answer as `MaxIterations` approaches, instead of hard-stopping with
+whatever partial state the transcript holds. Zero disables nudging.
+
+Number each `Completer` call with a 1-based index `k`, from 1 to
+`MaxIterations`. `Run` appends `ConcludeNotice` to history once,
+immediately before the call at the first `k` for which
+`MaxIterations - k < ConcludeMargin` holds. A `ConcludeMargin` at or
+above `MaxIterations` satisfies this at `k = 1`, so the nudge fires on
+`Run`'s first iteration. An empty `ConcludeNotice` uses
+`DefaultConcludeNotice`.
+
+The append lands at the tail of history, as the last message in the
+nudged iteration's `Request.Messages`, after that iteration's `Trim`,
+`Budget`, and `Window` steps — not spliced near the system message the
+way `CompactionNotice` is. `Run` stops at `StopConcluded`, not
+`StopNoToolCalls`, when the model returns no tool call on an iteration
+whose actual sent request still carried the notice. A model that keeps
+requesting tool calls through the nudge is not blocked; `Run` still
+ends at `StopMaxIterations`, unchanged, if the limit is hit.
+
+`StopConcluded` never fires from notice text that reached history some
+other way — a caller re-feeding a prior `Run` call's leftover
+`History`, or coincidental content matching `ConcludeNotice`. The
+check requires both that this run's own `ConcludeMargin` logic queued
+the notice and that the notice still sits in the request the model
+actually answered; a `Trim` or `Window` step that strips the notice
+before the model sees it falls back to `StopNoToolCalls`.
+
+`Options.Window` may also drop, reorder, or summarize away the notice
+before a nudged call; no test covers `ConcludeMargin` combined with
+`Window`, and the two have no current caller pairing them.
+
+## Duplicate-call dedup within a turn
+
+`Options.DedupWithinTurn` detects a duplicate `(tool name, canonical
+arguments)` call already served earlier in the same turn, and serves
+`DuplicateCallNotice` instead of running the tool a second time. False,
+the zero value, runs every call, unchanged from the base behavior.
+
+`runToolCalls` starts an empty dedup set on every call, one call per
+turn, so no dedup carries across iterations. Canonicalization decodes
+`call.Arguments` with `json.Decoder.UseNumber()`, so numbers keep
+their source digit string instead of collapsing into `float64`, then
+re-marshals; `encoding/json` sorts object keys on marshal, so two
+calls with the same arguments in a different key order compare equal.
+A canonicalization error (malformed JSON, or a valid JSON value
+followed by trailing bytes) excludes that call from the dedup set: it
+always runs and is never recorded or matched against the set.
+
+The dedup check runs before `PointPreTool` and short-circuits: a call
+identified as a duplicate never reaches `PointPreTool` or
+`PointPostTool`, and the underlying tool never runs for it. The
+synthesized `RoleTool` message for a deduped call carries the
+duplicate call's own `ToolCallID`. Any call that does run, success or
+an `ErrorPolicyReport`-rendered error, seeds the dedup set once its
+`RoleTool` message reaches history, so a later byte-identical retry in
+the same turn is deduped either way.
+
 ## Result shape
 
 On every graceful stop (`StopNoToolCalls`, `StopMaxIterations`,
-`StopHookVeto`), `Run` returns a fully populated `Result` and a nil
+`StopHookVeto`, `StopConcluded`), `Run` returns a fully populated
+`Result` and a nil
 error: `History` carries every message appended so far, `Iterations`
 carries the completed iteration count, and `Usage` carries the tokens
 summed so far. `Final` carries the last message appended, or the zero
@@ -197,13 +270,44 @@ in the order `Run` produces them: `AuditKindCompletion` once per
 iteration, right after that iteration's `Completer.Chat` response is
 appended to history and before any of that iteration's bound checks
 run; `AuditKindToolCall` once per tool call whose result reaches
-history. A `PointPreTool` veto and an `ErrorPolicyFail` tool error
-produce no `AuditKindToolCall` record, since neither appends a
-`RoleTool` message to history. `Options.Audit` stays optional and
+history, including a deduped call. A `PointPreTool` veto and an
+`ErrorPolicyFail` tool error produce no `AuditKindToolCall` record,
+since neither appends a `RoleTool` message to history. A deduped
+call's `AuditKindToolCall` record carries a nil `Err`, since a served
+duplicate is not a tool-run error. `Options.Audit` stays optional and
 `agentloop` stays envelope-agnostic: a caller wanting a signed audit
 trail builds and signs its own `envelope.Message` chain from the
 `AuditRecord` values, the same way `agent.confirmStep` signs steps
 outside the `flow` block it wraps.
+
+## Events
+
+A positive `Options.HeartbeatInterval` paired with a non-nil
+`Options.Bus` makes `Run` emit progress events on `Bus`. Either one
+alone emits nothing: a zero `HeartbeatInterval` disables every event
+below, even with `Bus` set, and `Options.Validate` rejects a positive
+`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`.
+
+`Run` emits six `events.Name` constants, each carrying a
+human-readable label in `Event.Data`:
+
+- `EventIterationStart` — fires once at the start of every iteration.
+- `EventCompletionHeartbeat` — fires every `HeartbeatInterval` while
+  one `Completer` call is in flight.
+- `EventToolCallStart` — fires once at the start of every tool call,
+  before the `PointPreTool` hook fires.
+- `EventToolCallHeartbeat` — fires every `HeartbeatInterval` while one
+  tool call is in flight. Never fires for a `PointPreTool`-vetoed
+  call, since a vetoed call never reaches the blocking work a
+  heartbeat reports progress on.
+- `EventToolCallEnd` — fires once at the end of every tool call,
+  including a `PointPreTool` veto or hook-error return.
+- `EventIterationEnd` — fires once at the end of every iteration,
+  covering every exit path: a graceful stop or a hard-fail error.
+
+`Run` swallows every `Bus.Emit` error, including "no subscriber for
+name", matching the `PointStop`-fire swallow precedent elsewhere in
+`Run`.
 
 ## Error marker
 
@@ -274,6 +378,8 @@ trimming without `agentloop` importing `contextplan` itself. See
   `PointStop` fire the same way `agentrun.Runner.Run` fires them.
 - [trace.md](trace.md) — a wired `Tracer` opens one span per
   iteration and one per tool call.
+- [events.md](events.md) — `Bus.Subscribe` and `Bus.Emit` back the
+  progress events. See "Events" above.
 - [contextbudget.md](contextbudget.md) — a wired `Budget` caps one
   `Completer` call's message history.
 

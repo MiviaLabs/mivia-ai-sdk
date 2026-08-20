@@ -74,13 +74,13 @@ func TestNewPlannerNilArguments(t *testing.T) {
 	store := newStore(t)
 	cache := newCache(t)
 
-	if _, err := contextplan.NewPlanner(nil, cache); !errors.Is(err, contextplan.ErrNilStore) {
+	if _, err := contextplan.NewPlanner(nil, cache, nil); !errors.Is(err, contextplan.ErrNilStore) {
 		t.Fatalf("err = %v, want ErrNilStore", err)
 	}
-	if _, err := contextplan.NewPlanner(store, nil); !errors.Is(err, contextplan.ErrNilCache) {
+	if _, err := contextplan.NewPlanner(store, nil, nil); !errors.Is(err, contextplan.ErrNilCache) {
 		t.Fatalf("err = %v, want ErrNilCache", err)
 	}
-	p, err := contextplan.NewPlanner(store, cache)
+	p, err := contextplan.NewPlanner(store, cache, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

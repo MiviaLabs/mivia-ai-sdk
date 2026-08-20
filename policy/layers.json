@@ -59,7 +59,8 @@
     "contextplan": [
       "contextstate",
       "provider",
-      "memory"
+      "memory",
+      "spool"
     ],
     "contextstate": [],
     "contextsummary": [
@@ -128,6 +129,7 @@
     ],
     "runconfig": [
       "agentrun",
+      "contextbudget",
       "flow",
       "machine",
       "subagent",

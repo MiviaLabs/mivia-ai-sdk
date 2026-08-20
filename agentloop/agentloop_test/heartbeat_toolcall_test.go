@@ -60,7 +60,14 @@ func TestRunHeartbeatGoroutineLeakNoTick(t *testing.T) {
 // TestRunOneToolCallVetoEventOrder proves a PointPreTool veto still
 // produces EventToolCallStart immediately followed by
 // EventToolCallEnd, with no EventToolCallHeartbeat in between and no
-// heartbeat ticker started.
+// heartbeat ticker started. The event sequence alone cannot prove the
+// last part: Run returns in well under one heartbeatTestInterval, so
+// a bug that started the ticker before the veto check, instead of
+// after, would still emit zero heartbeat events in that window. The
+// goroutine-count check below closes that gap: a ticker started but
+// never stopped (no deferred stop reachable from the veto's early
+// return) leaks its goroutine, which assertNoGoroutineLeak catches
+// even though the event assertion would not.
 func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
@@ -83,6 +90,7 @@ func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	before := countNumGoroutine(t)
 	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
@@ -95,12 +103,16 @@ func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("event sequence = %v, want %v", got, want)
 	}
+	assertNoGoroutineLeak(t, before)
 }
 
 // TestRunOneToolCallHookErrorEventOrder proves a non-veto PointPreTool
 // hook error still produces EventToolCallStart immediately followed
 // by EventToolCallEnd, with no EventToolCallHeartbeat in between and
-// no heartbeat ticker started, matching the veto path's bracket.
+// no heartbeat ticker started, matching the veto path's bracket. See
+// TestRunOneToolCallVetoEventOrder's comment for why the goroutine
+// check, not the event assertion, is what actually proves the ticker
+// never started.
 func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
@@ -123,6 +135,7 @@ func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
+	before := countNumGoroutine(t)
 	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); !errors.Is(err, errBoom) {
 		t.Fatalf("Run() error = %v, want errBoom", err)
 	}
@@ -131,6 +144,7 @@ func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("event sequence = %v, want %v", got, want)
 	}
+	assertNoGoroutineLeak(t, before)
 }
 
 // TestRunOneToolCallHeartbeatPositivePath proves a non-vetoed tool

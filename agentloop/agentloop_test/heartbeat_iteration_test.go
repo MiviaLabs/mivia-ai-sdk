@@ -2,6 +2,9 @@ package agentloop_test
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -306,5 +309,110 @@ func TestRunIterationEndHardFailPaths(t *testing.T) {
 				t.Fatalf("EventIterationEnd events = %v, want exactly one", got)
 			}
 		})
+	}
+}
+
+// delayedRecoveryCompleter answers Chat like scriptedCompleter, with
+// one call in flight for delay before it answers: the recovery-retry
+// equivalent of slowCompleter, letting a heartbeat test observe ticks
+// across both of runChat's Chat calls (the rejected original and the
+// recovery retry), not only its outer boundary.
+type delayedRecoveryCompleter struct {
+	delay     time.Duration
+	responses []provider.Response
+	errs      []error
+
+	mu    sync.Mutex
+	calls int
+}
+
+func (d *delayedRecoveryCompleter) Name() string { return "delayed-recovery" }
+
+func (d *delayedRecoveryCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	d.mu.Lock()
+	idx := d.calls
+	d.calls++
+	d.mu.Unlock()
+	select {
+	case <-time.After(d.delay):
+	case <-ctx.Done():
+		return provider.Response{}, ctx.Err()
+	}
+	if idx < len(d.errs) && d.errs[idx] != nil {
+		return provider.Response{}, d.errs[idx]
+	}
+	return d.responses[idx], nil
+}
+
+func (d *delayedRecoveryCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return nil, errors.New("delayedRecoveryCompleter: ChatStream not supported")
+}
+
+func (d *delayedRecoveryCompleter) callCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.calls
+}
+
+// TestRunCompletionHeartbeatSpansPromptTooLongRecovery proves the
+// completion-heartbeat ticker startHeartbeat starts around runChat in
+// runIteration keeps ticking across runChat's internal
+// recoverPromptTooLong retry, a second l.completer.Chat call nested
+// inside the same closure the scope-tightening fix (commit 20be851)
+// wraps. The outer closure brackets the whole runChat call, so a
+// rejected-then-retried iteration is still "one Completer call in
+// flight" for heartbeat purposes; a build that only ticked around the
+// first physical Chat call would go silent during the retry and still
+// pass every other heartbeat test, none of which exercises this path.
+func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 2000)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	if err != nil {
+		t.Fatalf("NewSummarizer error = %v, want nil", err)
+	}
+	completer := &delayedRecoveryCompleter{
+		delay:     heartbeatTestBlock,
+		errs:      []error{provider.ErrPromptTooLong},
+		responses: []provider.Response{{}, {Message: textMessage(provider.RoleAssistant, "done")}},
+	}
+	bus := events.New()
+	ch, handler := eventChan()
+	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: tools.New(), MaxIterations: 4,
+		Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if _, err := loop.Run(context.Background(), msgs); err != nil {
+			t.Errorf("Run() error = %v, want nil", err)
+		}
+	}()
+
+	timer := time.NewTimer(heartbeatTestTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		t.Fatalf("timed out after %v waiting for Run to return", heartbeatTestTimeout)
+	}
+
+	if got := completer.callCount(); got != 2 {
+		t.Fatalf("completer calls = %d, want exactly 2: one rejection, one retry", got)
+	}
+	got := len(drainAllBuffered(ch))
+	if got == 0 {
+		t.Fatalf("EventCompletionHeartbeat count = 0, want > 0 across both the rejected call and the retry")
 	}
 }

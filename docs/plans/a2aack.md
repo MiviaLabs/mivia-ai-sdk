@@ -74,3 +74,26 @@ errors, and one real `agent.Agent` resolving its step through `Wait`.
 `policy/layers.json` allows `a2aack` to import `a2aclient`, `agent`,
 and `envelope`. `make api-update` lands `api/a2aack.txt`. `make
 verify` passes and `a2aack` holds the 85 coverage floor.
+## Addendum: states the poll loop cannot resolve
+
+`a2aclient.State` gains four constants. See the addendum "Mirror the
+whole upstream task state enum" in `docs/plans/a2aclient.md` for the
+design, the tests, and the doc sites. That addendum owns the change;
+this note records its effect on the poll contract.
+
+The `poll` switch gains two cases. `StateRejected` returns
+`ErrRemoteFailed` beside `StateFailed` and `StateCanceled`. All three
+are terminal and none carries a result. `StateAuthRequired` and
+`StateInputRequired` also return `ErrRemoteFailed`. Both wait for
+client action that `a2aack` never sends, so polling cannot resolve
+them. The error names the state in each case.
+
+`StateUnspecified` and `StateUnknown` stay in the default branch. The
+loop keeps polling and records the name for the timeout message.
+
+`ErrRemoteFailed` widens its stated contract. Its doc comment and
+`docs/packages/a2aack.md` must read "failed, canceled, rejected, or a
+state `a2aack` cannot resolve".
+
+`api/a2aack.txt` does not change. The package gains no exported
+symbol.

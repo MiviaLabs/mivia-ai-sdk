@@ -380,3 +380,237 @@ var (
   a `docs/README.md` index entry, a `docs/architecture.md` module-map
   bullet, and an `AGENTS.md` Layout line for `longtermmemory/`.
 - No conformance vector: this package carries no wire format.
+
+## Addendum: the merge survivor must stay a valid, addressable entry
+
+This addendum is commit one of two. Commit two fixes `a2aclient` and
+`a2aack`; see `docs/plans/a2aclient.md`. The two commits do not share
+a file.
+
+### Problem
+
+`mergeRows` in `longtermmemory/consolidate.go` mutates the survivor's
+`Tags` in place. It breaks two documented rules.
+
+- The tag cap breaks. `unionTags` dedupes without a cap. Two legal
+  eight-tag entries merge into a sixteen-tag survivor. `Entry.Validate`
+  rejects that entry, yet the store holds it and `resultOf` returns
+  it.
+- The content address breaks. `entryID` hashes the tag list.
+  `mergeRows` rewrites `Tags` under the old map key. `Save` then
+  computes a different id for the same content, misses the map, and
+  inserts a duplicate row.
+
+Both are reproduced. A merge of two eight-tag entries yields sixteen
+tags, and `Entry.Validate` on those tags returns "16 tags, max 8". A
+re-save of the survivor's own content yields a second row with a
+second id and two search hits.
+
+### Decision: cap the union at eight tags
+
+Truncate the merged tag list to `maxTags` in first-seen order. The
+survivor's own tags fill the list first. The dropped row's tags fill
+the rest until the cap.
+
+Rejected options and the reason:
+
+- Skip the merge when the union is over the cap. Near-duplicate rows
+  then survive, so consolidation frees less space and `ErrStoreFull`
+  arrives sooner.
+- Re-validate and fail the `Save` that triggered consolidation. A
+  background merge would then break a legitimate save.
+
+The tradeoff is bounded, deterministic tag loss. The alternative is an
+entry the package's own `Validate` rejects.
+
+### Decision: recompute the merged entry's id
+
+A merged entry is new content, so it gets a new content address. The
+merge pass recomputes the survivor's id and re-keys both `s.rows` and
+the scope set.
+
+State this plainly: a merged entry changes identity. A caller that
+holds an id across a consolidation gets `ErrEntryNotFound` from
+`Delete` and `PromoteToCore`. The package already has this failure
+mode for an evicted row, and `consolidate_test.go` already pins it.
+
+Rejected option: stop merging tags at all. The id would stay valid and
+both bugs would close. It loses tag data, and it contradicts the union
+rule that this plan, `docs/packages/longtermmemory.md`, and a shipped
+test all state.
+
+### Implementation shape
+
+Keep the merge loop free of re-keying. A re-key inside the loop would
+leave the loop's own id list pointing at deleted map entries.
+
+- `unionTags` takes the cap. It stops appending at `maxTags`.
+- `mergePassLocked` collects each survivor's old id during the pass.
+  It calls one new helper after the pass ends.
+- `rekeyMergedLocked(ids []string)` walks the collected ids in pass
+  order. For each id it skips a row the pass later deleted. It skips
+  an id whose recomputed value is unchanged. Otherwise it moves the
+  row pointer to the new key, adds the new id to the scope set, and
+  removes the old id.
+- A recomputed id that already exists identifies identical content.
+  The moved row replaces it. That is the same outcome `Save` gives for
+  a duplicate, so the helper needs no branch for it.
+
+The row pointer moves whole, so the `core` flag follows the survivor.
+Move the pointer itself. A fresh `&row{entry: ...}` drops the `core`
+flag.
+
+The skip-deleted branch is reachable, not defensive. A survivor of one
+merge can be the dropped side of a later merge in the same pass. Three
+rows sharing a title and a summary show it: archive `A` created
+2026-01-01, archive `B` created 2026-01-02, and core `C` created
+2026-03-01. `scopeIDsLocked` orders them A, B, C. `A` absorbs `B`, then
+`C` absorbs `A`, because a core side always survives. The collected
+list still names `A`, which no longer exists.
+
+### Save must re-check the id after consolidation
+
+`store.go:56-66` computes `id`, misses `s.rows`, consolidates, then
+writes `s.rows[id] = &row{entry: e}`. Consolidation could only delete
+ids before this change. The re-key lets consolidation mint one, so the
+write can now land on a live row.
+
+The losing case: a core row and an archive near-duplicate merge, and
+the merged content addresses to exactly the `id` the caller is saving.
+`Save` overwrites the survivor's `*row`, so the `core` flag is lost.
+`addToScope` is a no-op on an id already in the set, so nothing
+dangles and nothing errors. The promoted row silently becomes an
+archive row that eviction may delete.
+
+Fix: repeat the existence check after `s.consolidateLocked(scope)` and
+before the full-scope check. Return `resultOf` for the existing row,
+the same way the first check does.
+
+### Tests
+
+Put every test below in
+`longtermmemory/longtermmemory_test/consolidate_test.go`, except
+`TestSaveDedupesAgainstAMintedID`, which goes in `store_test.go`. Both
+files stay well under 500 lines.
+
+Every merge test must first make consolidation run. `store.go:60` is
+the only call site, and it fires only at the 0.8 load factor. Each
+test therefore uses `New(10)`, fills the scope to eight rows, and then
+saves one distinct trigger entry. `TestSaveDedupesAgainstAMintedID` is
+the exception: its ninth save is the colliding entry, which is its own
+trigger. Do not add a separate trigger there. A separate trigger merges
+first, so the colliding save inserts a ninth row and the test reads
+green both before and after the fix. The eight rows count the test's own
+subject rows; distinct fillers make up the rest.
+`TestConsolidationMergesNearDuplicates` uses that shape at
+`consolidate_test.go:29-68`; copy it. A two-row or three-row store
+never reaches the load factor, so no merge runs and the test passes
+for the wrong reason.
+
+Each test below fails against today's code, except where a bullet says
+otherwise.
+
+- `TestConsolidationCapsMergedTags` — merge two near-duplicate archive
+  entries carrying eight distinct tags each. Assert the survivor
+  carries exactly eight tags, that they equal the keep row's eight
+  tags, and that an `Entry` rebuilt with those tags passes `Validate`.
+  Today the survivor carries sixteen tags and `Validate` returns
+  "16 tags, max 8".
+- `TestConsolidationRekeysMergedEntry` — after the merge, save an
+  `Entry` whose fields equal the survivor's content, including the
+  survivor's tags. Assert the returned id equals the survivor's id and
+  that `Count` did not grow. Today the save mints a second id and the
+  scope holds a duplicate row.
+- `TestConsolidationMergedIDLeavesTheOldID` — capture the keep row's
+  id before consolidation. After the merge assert the survivor's id
+  differs, and that `Delete` on the old id returns `ErrEntryNotFound`.
+  Today the id is unchanged and `Delete` succeeds.
+- `TestConsolidationKeepsCoreFlagAcrossRekey` — a core row tagged
+  `alpha` and an older archive near-duplicate tagged `beta`. Capture
+  the core row's id from its `Save`. The union changes, so the id
+  changes. Assert three things: `CoreEntries` returns one row; that
+  row's `ID` differs from the captured id; and `PromoteToCore` on the
+  captured id returns `ErrEntryNotFound`. Today the id never changes,
+  so the second and third assertions fail. The first assertion alone
+  would pass today, because the swap already keeps the core side.
+- `TestConsolidationSurvivorAbsorbedByCore` — the three-row cluster
+  from the implementation section: archive `A`, archive `B`, and core
+  `C`, all sharing a title and a summary, each with a distinct tag.
+  Assert the pass completes, the scope holds one row of that cluster,
+  and `CoreEntries` returns it. Then save an `Entry` equal to the
+  survivor's content, carrying the three-tag union. Assert the
+  returned id equals the survivor's id and that `Count` did not grow.
+  Today the survivor's id came from its pre-merge tags, so that save
+  mints a second row. The test also covers the helper's skip-deleted
+  branch, which nil-derefs without the existence check.
+- `TestSaveDedupesAgainstAMintedID` — the `Save` re-check. Use
+  `New(10)`. Build six filler rows, a core row `S` tagged `alpha`, and
+  an archive near-duplicate `D` tagged `beta`. That is eight rows, so
+  the next save crosses the load factor. Then save an `Entry` equal to
+  `S` with tags `alpha` and `beta`. The merge mints exactly that id.
+  Assert `CoreEntries` still returns the survivor, and assert
+  `Count` is 7. The `CoreEntries` assertion is the discriminating one:
+  today the save overwrites the row and drops the `core` flag. The
+  `Count` assertion is a sanity pin and reads 7 either way.
+
+Positive controls. Each one blocks a fix that breaks the working path.
+
+- `TestConsolidationMergesNearDuplicates`, already shipped, still
+  asserts the survivor carries the full two-tag union in first-seen
+  order. A cap that truncates below `maxTags` fails it.
+- `TestConsolidationLeavesUnmergedIDsStable` — new. Capture the ids of
+  the distinct filler rows before consolidation. After consolidation
+  assert `PromoteToCore` on each surviving filler id succeeds. A fix
+  that re-keys every row fails it.
+- `TestConsolidationCoreNeverDeleted`, already shipped, still asserts
+  the core survivor. It is not a control for the `core` flag: both of
+  its rows come from `validEntry`, whose tags are always `go`, so the
+  union never changes and no re-key runs.
+
+### Doc updates in the same commit
+
+Every site below states a rule this change makes false. The list comes
+from a grep over `.md` and `.go` for "union", "merge", "idempotent",
+and "content address".
+
+- `longtermmemory/consolidate.go` — the `mergePassLocked` comment, the
+  `mergeRows` comment, and the `unionTags` comment. Each must state
+  the cap. `mergePassLocked` must state the re-key.
+- `docs/packages/longtermmemory.md` — the union invariant near line
+  103, and the `Save` id paragraph near line 47.
+- `docs/plans/longtermmemory.md` — the union decision near line 295,
+  the id decision near line 284, and the merge test bullet near line
+  331.
+- `docs/architecture.md` — the `longtermmemory` module-map bullet near
+  line 562, which claims ids are content-addressed over every field.
+
+Re-run the grep after the edits. No remaining site may claim an
+uncapped union or a stable id across a merge.
+
+Do not carry one sentence forward. `consolidate.go:10-11` says "A core
+row is never the deleted side of a merge". The swap at
+`consolidate.go:39-41` fires only when exactly one side is core. With
+two core sides, `idB` is deleted. Write the rule the code holds: with
+exactly one core side, the core row survives. The both-core case is a
+pre-existing defect and belongs to its own plan.
+
+One ordering effect belongs in the same edit, at low severity. Both
+`evictArchiveLocked` and `Search` break a `Created` tie by id. A
+re-key can flip which row wins a tie. No shipped test ties `Created`,
+so no behavior changes today.
+
+### Verification
+
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  `python3 scripts/check_prose.py`, and
+  `python3 scripts/check_labels.py` pass.
+- `go test -race ./longtermmemory/...` passes.
+- `make verify` passes, including `scripts/check_test_tampering.py`.
+- `policy/layers.json` needs no change. The `longtermmemory` row stays
+  an empty list; the package gains no import.
+- `api/longtermmemory.txt` needs no change. Every changed symbol is
+  unexported. Run `make api-update` and expect an empty diff.
+- Coverage floor of 85 holds for `longtermmemory` and the total.
+- No conformance vector: this package carries no wire format.
+- Do not add an `Allow-Test-Change` trailer. No shipped assertion
+  changes in this commit.

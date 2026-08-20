@@ -111,10 +111,12 @@ exported surface below mirrors `api/contextplan.txt`.
 - `Calibrated.EstimateTokens(req)` — calls the wrapped estimator, then
   scales the result by the current correction factor, always within
   `[MinCorrectionFactor, MaxCorrectionFactor]`.
-- `Calibrated.Observe(actual)` — records one completed turn's real
-  token count against the last estimate, and updates the correction
-  factor by `alpha`, clamped to the same bounds. A first call before
-  any estimate, and a non-positive `actual`, are both no-ops.
+- `Calibrated.Observe(estimated, actual)` — records one completed
+  turn: `estimated` is the value `EstimateTokens` returned to the
+  caller for that turn, and `actual` is the real token count for the
+  same turn. Updates the correction factor multiplicatively against
+  `estimated`, clamped to `[MinCorrectionFactor, MaxCorrectionFactor]`.
+  A non-positive `estimated` or a non-positive `actual` is a no-op.
 - `IsReasoningEvent(e)` — reports whether `e.Kind ==
   provider.ReasoningEventKind`.
 - `StubContent(content)` — truncates `content` to `StubContentBytes`,
@@ -173,8 +175,10 @@ Use `errors.Is` to test these.
   other payload past budget drops.
 - `Calibrated`'s correction factor never leaves
   `[MinCorrectionFactor, MaxCorrectionFactor]`. One mutex guards
-  `factor` and `lastEst`, so `EstimateTokens` and `Observe` are safe
-  for concurrent use on one shared value.
+  `factor`, the only mutable field, so `EstimateTokens` and `Observe`
+  are safe for concurrent use on one shared value. `Observe` takes its
+  own `estimated` argument, so no caller relies on `Calibrated`'s
+  internal state to pair an estimate with an actual usage count.
 - A unit — an assistant message with `ToolCalls` plus its contiguous
   matching replies, or one single message — is selected atomically. A
   `PreserveNames` match on any message of a unit selects the whole

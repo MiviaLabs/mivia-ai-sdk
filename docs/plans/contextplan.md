@@ -852,6 +852,21 @@ In `contextplan/contextplan_test/compact_test.go`:
   panic, and the correction factor stays inside the clamp bounds after
   every join.
 
+### Change verification
+
+- `make verify` passes; `contextplan` holds the 85 coverage floor.
+- `api/contextplan.txt` gains the compaction surface through `make
+  api-update`, in the same change as the code.
+- `go test -race ./contextplan/...` passes.
+- `python3 scripts/check_plan.py`, `check_deps.py`, and
+  `check_prose.py` pass. The `contextplan` row in
+  `policy/layers.json` is unchanged; it already allows
+  `contextstate` and `provider`.
+- `docs/packages/contextplan.md` gains the compaction surface in the
+  same change as the code.
+- This change lands with or after the `provider` `Message.Name`
+  change; `Compact` reads that field.
+
 ## Correctness fix: Calibrated.Observe drops the shared-lastEst pairing
 
 Status: planned, not yet built.
@@ -995,6 +1010,15 @@ own addendum, not this plan:
   `Observe` call sees a non-positive `estimated` and no-ops, matching
   today's silent-degrade behavior for an estimator failure outside
   the planning step.
+- `runChat`'s recovery branch needs its own estimate too:
+  `recoverPromptTooLong` builds its own `retryReq` and calls
+  `Completer.Chat` on it internally, so the primary `req`'s estimate
+  never describes a recovered iteration's actual request.
+  `docs/plans/agentloop.md`'s own addendum must call
+  `l.calibrated.EstimateTokens(retryReq)` on this branch too, or
+  every recovered iteration's `Observe` call pairs against zero, a
+  permanent no-op that silently disables calibration for every
+  recovered turn.
 - At the call site in `run`, change `l.calibrated.Observe(resp.Usage.
   TotalTokens)` to `l.calibrated.Observe(at.estimatedTokens,
   resp.Usage.TotalTokens)`.

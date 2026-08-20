@@ -22,15 +22,13 @@ const (
 // Calibrated wraps a provider.TokenEstimator with an exponentially
 // weighted moving average, corrected after each completed turn
 // through Observe. A *Calibrated implements provider.TokenEstimator.
-// Safe for concurrent use: one mutex guards factor and lastEst, the
-// only mutable fields.
+// Safe for concurrent use: one mutex guards factor, the only mutable
+// field.
 type Calibrated struct {
-	mu      sync.Mutex
-	est     provider.TokenEstimator
-	alpha   float64
-	factor  float64
-	lastEst int
-	hasLast bool
+	mu     sync.Mutex
+	est    provider.TokenEstimator
+	alpha  float64
+	factor float64
 }
 
 // Calibrate wraps est with an EWMA correction factor. alpha is the
@@ -55,25 +53,27 @@ func (c *Calibrated) EstimateTokens(req provider.Request) (int, error) {
 	}
 	c.mu.Lock()
 	scaled := int(float64(raw) * c.factor)
-	c.lastEst = raw
-	c.hasLast = true
 	c.mu.Unlock()
 	return scaled, nil
 }
 
-// Observe records one completed turn's real provider.Usage.TotalTokens
-// against the last estimate this Calibrated produced, and updates the
-// correction factor by alpha, clamped to [MinCorrectionFactor,
-// MaxCorrectionFactor]. A first call, before any estimate, and a
-// non-positive actual, are both no-ops.
-func (c *Calibrated) Observe(actual int) {
+// Observe records one completed turn: estimated is the value
+// EstimateTokens returned to the caller for that turn - the
+// already-corrected figure, not a raw pre-scale count - and actual is
+// the real provider.Usage.TotalTokens for the same turn. Observe
+// corrects factor multiplicatively against estimated, so the fixed
+// point is unchanged from before this fix: a corrected estimate that
+// tracks actual. The result is clamped to [MinCorrectionFactor,
+// MaxCorrectionFactor]. A non-positive estimated or a non-positive
+// actual is a no-op.
+func (c *Calibrated) Observe(estimated, actual int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.hasLast || actual <= 0 || c.lastEst <= 0 {
+	if estimated <= 0 || actual <= 0 {
 		return
 	}
-	sample := float64(actual) / float64(c.lastEst)
-	next := (1-c.alpha)*c.factor + c.alpha*sample
+	sample := float64(actual) / float64(estimated)
+	next := c.factor * ((1 - c.alpha) + c.alpha*sample)
 	if next < MinCorrectionFactor {
 		next = MinCorrectionFactor
 	}

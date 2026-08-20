@@ -40,16 +40,21 @@ type Store interface {
 // MemStore is the shipped in-memory Store, mutex-guarded. It is the
 // default backend when New receives a nil Store.
 //
-// When built with a positive MemStoreOptions.MaxEntries, MemStore
-// bounds its entry count by tombstoning, not deleting, the oldest
-// terminal record once liveCount exceeds the cap. See
-// MemStoreOptions.MaxEntries for the tombstone's field contract.
+// With a positive MemStoreOptions.MaxEntries, MemStore deletes
+// records to hold its entry count near the cap. It never deletes a
+// StatusClaimed record whose LeaseUntil is after MemStoreOptions.Now.
+// See MemStoreOptions.MaxEntries and store_eviction.go.
+//
+// evictQueue is a permutation of the keys of tasks: CompareAndSwap
+// appends on the insert branch only, and eviction deletes a key from
+// both structures together.
 type MemStore struct {
-	mu            sync.Mutex
-	tasks         map[IdempotencyKey]TaskState
-	maxEntries    int
-	liveCount     int
-	terminalQueue []IdempotencyKey
+	mu         sync.Mutex
+	tasks      map[IdempotencyKey]TaskState
+	maxEntries int
+	evictQueue []IdempotencyKey
+	fenceFloor FenceToken
+	now        func() time.Time
 }
 
 // MemStoreOptions configures a MemStore built through
@@ -57,24 +62,29 @@ type MemStore struct {
 type MemStoreOptions struct {
 	// MaxEntries caps the number of records MemStore holds. Zero
 	// means unbounded, matching NewMemStore's existing behavior
-	// exactly. A positive MaxEntries evicts a terminal record's Task
-	// and Needs payload once liveCount exceeds the cap, replacing the
-	// stored record with a tombstone: Task and Needs set to nil,
-	// Owner and LeaseUntil set to their zero values, every other
-	// field (Key, Status, Sequence, Fence, Rev, BlockedBy, CreatedBy,
-	// CreatedAt, UpdatedBy, UpdatedAt) unchanged. A tombstone still
-	// answers Load and Range with found true, and still rejects
-	// re-admission through Admit: idempotency holds across eviction.
-	// A caller who needs every evicted record's original Task payload
-	// preserved must not enable MaxEntries.
+	// exactly. A positive MaxEntries deletes a record once the entry
+	// count exceeds the cap. A deleted record is gone: Load and Range
+	// report found false for its key.
 	//
-	// A tombstone clears Needs, so Claim's transitive ancestor walk
-	// cannot read through a tombstoned record to that record's own
-	// ancestors. A tombstone only ever replaces a terminal record, so
-	// a StatusCompleted tombstone can hide a failed grandparent from
-	// the walk. A caller who needs that check to hold across eviction
-	// must not enable MaxEntries.
+	// Deletion has three consequences. Idempotency becomes a bounded
+	// window, because Admit accepts a deleted key again and the task
+	// can run a second time. A deleted failed or blocked need stops
+	// blocking its dependents, because a need that is not found
+	// blocks nothing. A record can be deleted between Admit and
+	// Claim, or after its lease expired while its owner still works,
+	// so Claim, Renew, Release, Takeover, and Complete can return
+	// ErrNoKey for a key the caller admitted.
+	//
+	// MaxEntries bounds the records that hold no live lease. It does
+	// not bound the records that hold one: a StatusClaimed record
+	// whose LeaseUntil is after Now is never deleted. A caller who
+	// needs a hard memory bound must bound its own concurrency. A
+	// caller who needs permanent idempotency must leave MaxEntries at
+	// zero or use a durable Store.
 	MaxEntries int
+	// Now supplies the clock eviction reads to decide whether a
+	// record's lease is live. A nil Now resolves to time.Now.
+	Now func() time.Time
 }
 
 // NewMemStore builds an empty, unbounded MemStore ready for use.
@@ -84,14 +94,20 @@ func NewMemStore() *MemStore {
 }
 
 // NewMemStoreWithOptions builds an empty MemStore honoring opts. It
-// returns a wrapped ErrInvalidMaxEntries for a negative MaxEntries.
+// returns a wrapped ErrInvalidMaxEntries for a negative MaxEntries. A
+// nil opts.Now resolves to time.Now.
 func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error) {
 	if opts.MaxEntries < 0 {
 		return nil, fmt.Errorf("ledger: MemStoreOptions.MaxEntries must not be negative, got %d: %w", opts.MaxEntries, ErrInvalidMaxEntries)
 	}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &MemStore{
 		tasks:      make(map[IdempotencyKey]TaskState),
 		maxEntries: opts.MaxEntries,
+		now:        now,
 	}, nil
 }
 
@@ -112,7 +128,9 @@ func (m *MemStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, boo
 // to one more than the prior stored Rev. A zero-value old against an
 // absent key inserts new at Rev zero. Any other mismatch, including
 // old against an absent key when old is not the zero value, fails
-// with ok false and no error.
+// with ok false and no error. An insert raises new.Fence to the
+// store-wide fence floor, so a key's fence never decreases across
+// deletion and re-admission.
 func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -125,12 +143,12 @@ func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old T
 			return false, nil
 		}
 		new.Rev = 0
-		m.tasks[key] = new
-		m.liveCount++
-		if isTerminalStatus(new.Status) {
-			m.terminalQueue = append(m.terminalQueue, key)
+		if new.Fence < m.fenceFloor {
+			new.Fence = m.fenceFloor
 		}
-		m.evictOverCap()
+		m.tasks[key] = new
+		m.evictQueue = append(m.evictQueue, key)
+		m.evictOverCap(key)
 		return true, nil
 	}
 	if cur.Sequence != old.Sequence || cur.Status != old.Status || cur.Fence != old.Fence || cur.Rev != old.Rev {
@@ -138,32 +156,8 @@ func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old T
 	}
 	new.Rev = cur.Rev + 1
 	m.tasks[key] = new
-	if isTerminalStatus(new.Status) && !isTerminalStatus(cur.Status) {
-		m.terminalQueue = append(m.terminalQueue, key)
-	}
-	m.evictOverCap()
+	m.evictOverCap(key)
 	return true, nil
-}
-
-// evictOverCap tombstones the oldest queued terminal record while
-// liveCount exceeds maxEntries and the terminal queue still holds a
-// candidate. It is a no-op when maxEntries is zero (unbounded). The
-// caller must hold m.mu.
-func (m *MemStore) evictOverCap() {
-	for m.maxEntries > 0 && m.liveCount > m.maxEntries && len(m.terminalQueue) > 0 {
-		k := m.terminalQueue[0]
-		m.terminalQueue = m.terminalQueue[1:]
-		rec, ok := m.tasks[k]
-		if !ok {
-			continue
-		}
-		rec.Task = nil
-		rec.Needs = nil
-		rec.Owner = ""
-		rec.LeaseUntil = time.Time{}
-		m.tasks[k] = rec
-		m.liveCount--
-	}
 }
 
 // Range calls fn once per stored record, in no defined order. It

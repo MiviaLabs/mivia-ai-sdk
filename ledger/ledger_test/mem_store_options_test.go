@@ -38,7 +38,7 @@ func admitClaimComplete(t *testing.T, l *ledger.Ledger, ctx context.Context, key
 
 // TestNewMemStoreWithOptionsZeroValueUnbounded proves a MemStore built
 // with the zero-value MemStoreOptions behaves like NewMemStore:
-// unbounded, no tombstoning under load.
+// unbounded, no eviction under load.
 func TestNewMemStoreWithOptionsZeroValueUnbounded(t *testing.T) {
 	ctx := context.Background()
 	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{})
@@ -76,13 +76,12 @@ func TestNewMemStoreWithOptionsNegativeMaxEntriesRejected(t *testing.T) {
 }
 
 // TestMemStoreEvictionBoundaryNoTombstone proves a MemStore driven to
-// liveCount exactly at MaxEntries never tombstones.
+// exactly MaxEntries records deletes nothing and blanks nothing. The
+// name is historical: MemStore deletes records now and writes no
+// tombstone.
 func TestMemStoreEvictionBoundaryNoTombstone(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 3})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 3)
 	l := ledgerOver(t, store)
 	keys := []ledger.IdempotencyKey{"k1", "k2", "k3"}
 	for i, key := range keys {
@@ -99,19 +98,17 @@ func TestMemStoreEvictionBoundaryNoTombstone(t *testing.T) {
 	}
 }
 
-// TestMemStoreEvictionOldestTerminalFirst proves the oldest-queued
-// terminal key tombstones first, and a claimed record is never
-// tombstoned regardless of how many times the cap is exceeded.
+// TestMemStoreEvictionOldestTerminalFirst proves the oldest queued
+// key is deleted first, and a record holding a live lease is never
+// deleted regardless of how many times the cap is exceeded.
 func TestMemStoreEvictionOldestTerminalFirst(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 2})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 2)
 	l := ledgerOver(t, store)
 
-	// "kept" stays claimed for the whole test: it must never
-	// tombstone, no matter how many terminal records evict around it.
+	// "kept" holds a live lease at fixedNow for the whole test: it
+	// must never be deleted, no matter how many records evict
+	// around it.
 	if ok, err := l.Admit(ctx, testActor, "kept", 1, "kept-payload", fixedNow); err != nil || !ok {
 		t.Fatalf("Admit(kept): ok=%v err=%v", ok, err)
 	}
@@ -131,11 +128,8 @@ func TestMemStoreEvictionOldestTerminalFirst(t *testing.T) {
 	}
 
 	oldest, found, err := l.State(ctx, "k1")
-	if err != nil || !found {
-		t.Fatalf("State(k1): found=%v err=%v", found, err)
-	}
-	if oldest.Task != nil {
-		t.Fatalf("k1 Task = %v, want nil: the oldest-queued terminal key must tombstone first", oldest.Task)
+	if err != nil || found {
+		t.Fatalf("State(k1) = %+v found=%v err=%v, want found false: the oldest queued key must be deleted first", oldest, found, err)
 	}
 
 	newest, found, err := l.State(ctx, "k5")
@@ -148,15 +142,13 @@ func TestMemStoreEvictionOldestTerminalFirst(t *testing.T) {
 }
 
 // TestMemStoreEvictionSameCallTombstonesImmediately proves the
-// same-call eviction edge case: a cap of 1 already breached by two
-// pending records, then the second key's own Complete call tombstones
-// it immediately, since it becomes the sole queued entry.
+// same-call eviction edge case: admitting "b" breaches a cap of 1 and
+// deletes the head "a" inside b's own write, because "a" holds no
+// lease and "b" is the exempt current key. The name is historical:
+// eviction deletes the record now and writes no tombstone.
 func TestMemStoreEvictionSameCallTombstonesImmediately(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 1})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 1)
 	l := ledgerOver(t, store)
 
 	if ok, err := l.Admit(ctx, testActor, "a", 1, "a-payload", fixedNow); err != nil || !ok {
@@ -166,6 +158,13 @@ func TestMemStoreEvictionSameCallTombstonesImmediately(t *testing.T) {
 		t.Fatalf("Admit(b): ok=%v err=%v", ok, err)
 	}
 
+	gone, found, err := l.State(ctx, "a")
+	if err != nil || found {
+		t.Fatalf("State(a) = %+v found=%v err=%v, want found false: b's own admission deletes the head", gone, found, err)
+	}
+
+	// "b" still names the deleted "a" in Needs. A missing need
+	// blocks nothing, so Claim(b) succeeds.
 	fence := mustClaim(t, l, ctx, "b", "owner-b")
 	if err := l.Complete(ctx, testActor, "b", "owner-b", fence, ledger.StatusCompleted, fixedNow); err != nil {
 		t.Fatalf("Complete(b): %v", err)
@@ -175,23 +174,20 @@ func TestMemStoreEvictionSameCallTombstonesImmediately(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("State(b): found=%v err=%v", found, err)
 	}
-	if st.Task != nil || st.Needs != nil {
-		t.Fatalf("b = %+v, want Task and Needs both nil immediately after Complete tombstoned it in the same call", st)
+	if st.Status != ledger.StatusCompleted {
+		t.Fatalf("b.Status = %q, want StatusCompleted: b survives its own Complete", st.Status)
 	}
-	if st.Owner != "" || !st.LeaseUntil.IsZero() {
-		t.Fatalf("b = %+v, want Owner and LeaseUntil both zeroed by tombstoning", st)
+	if st.Task == nil {
+		t.Fatalf("b = %+v, want its Task intact: eviction deletes, it never blanks", st)
 	}
 }
 
-// TestMemStoreEvictionTolerated proves a MemStore whose every current
-// record is StatusPending or StatusClaimed (no terminal entries to
-// tombstone) keeps accepting Admit past the cap.
+// TestMemStoreEvictionTolerated proves a MemStore whose every record
+// holds a live lease keeps accepting Admit past the cap and deletes
+// nothing.
 func TestMemStoreEvictionTolerated(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 1})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 1)
 	l := ledgerOver(t, store)
 
 	keys := []ledger.IdempotencyKey{"k1", "k2", "k3"}
@@ -199,6 +195,7 @@ func TestMemStoreEvictionTolerated(t *testing.T) {
 		if ok, err := l.Admit(ctx, testActor, key, ledger.Sequence(i+1), "payload", fixedNow); err != nil || !ok {
 			t.Fatalf("Admit(%s): ok=%v err=%v", key, ok, err)
 		}
+		mustClaim(t, l, ctx, key, ledger.OwnerID("owner-"+string(key)))
 	}
 	for _, key := range keys {
 		st, found, err := l.State(ctx, key)
@@ -206,21 +203,18 @@ func TestMemStoreEvictionTolerated(t *testing.T) {
 			t.Fatalf("State(%s): found=%v err=%v", key, found, err)
 		}
 		if st.Task == nil {
-			t.Fatalf("key %s Task is nil, want no tombstone while the terminal queue is empty", key)
+			t.Fatalf("key %s Task is nil, want every live lease kept whole", key)
 		}
 	}
 }
 
-// TestMemStoreEvictionPreservesIdempotency proves idempotency holds
-// across eviction: a re-admission at a tombstoned key's sequence
-// still reports false, nil, and Load against that key still reports
-// found true with a nil Task.
+// TestMemStoreEvictionPreservesIdempotency proves idempotency is a
+// bounded window under a cap: an evicted key reports found false and
+// admits again. The name is historical: eviction now ends the
+// idempotency guarantee for the deleted key.
 func TestMemStoreEvictionPreservesIdempotency(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 2})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 2)
 	l := ledgerOver(t, store)
 
 	admitClaimComplete(t, l, ctx, "target", 1)
@@ -228,44 +222,37 @@ func TestMemStoreEvictionPreservesIdempotency(t *testing.T) {
 	admitClaimComplete(t, l, ctx, "k2", 1)
 
 	before, found, err := l.State(ctx, "target")
-	if err != nil || !found {
-		t.Fatalf("State(target) before re-admit: found=%v err=%v", found, err)
-	}
-	if before.Task != nil {
-		t.Fatalf("target Task = %v, want nil: it must have tombstoned once the cap was exceeded", before.Task)
+	if err != nil || found {
+		t.Fatalf("State(target) before re-admit = %+v found=%v err=%v, want found false", before, found, err)
 	}
 
 	ok, err := l.Admit(ctx, testActor, "target", 99, "re-admitted", fixedNow)
 	if err != nil {
 		t.Fatalf("Admit(target) re-admission: %v", err)
 	}
-	if ok {
-		t.Fatalf("Admit(target) at a higher sequence against a tombstoned terminal record: want false, got true")
+	if !ok {
+		t.Fatalf("Admit(target) after eviction: want true, got false")
 	}
 
 	after, found, err := l.State(ctx, "target")
 	if err != nil || !found {
-		t.Fatalf("State(target) after re-admit attempt: found=%v err=%v", found, err)
+		t.Fatalf("State(target) after re-admit: found=%v err=%v", found, err)
 	}
-	if after.Task != nil {
-		t.Fatalf("target Task = %v, want still nil: a rejected re-admission must not mutate the tombstone", after.Task)
+	if after.Task != "re-admitted" || after.Status != ledger.StatusPending {
+		t.Fatalf("target = %+v, want the re-admitted payload at StatusPending", after)
 	}
 }
 
-// TestMemStoreRangeAfterEviction proves Range visits a tombstoned
-// record and a live record with the right fields.
+// TestMemStoreRangeAfterEviction proves Range visits the surviving
+// record only, and never the deleted key.
 func TestMemStoreRangeAfterEviction(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 1})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 1)
 	l := ledgerOver(t, store)
 
 	admitClaimComplete(t, l, ctx, "k1", 1)
-	// Admitting k2 pushes liveCount over the cap of 1 and
-	// triggers k1's eviction, since k1 is the sole queued
-	// terminal entry.
+	// Admitting k2 pushes the entry count over the cap of 1 and
+	// deletes k1, the queue head with no live lease.
 	if ok, err := l.Admit(ctx, testActor, "k2", 1, "k2-payload", fixedNow); err != nil || !ok {
 		t.Fatalf("Admit(k2): ok=%v err=%v", ok, err)
 	}
@@ -277,18 +264,11 @@ func TestMemStoreRangeAfterEviction(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Range: %v", err)
 	}
-	if len(visited) != 2 {
-		t.Fatalf("visited %d keys, want 2", len(visited))
+	if len(visited) != 1 {
+		t.Fatalf("visited %d keys, want 1", len(visited))
 	}
-	tomb, ok := visited["k1"]
-	if !ok {
-		t.Fatalf("Range missed k1")
-	}
-	if tomb.Task != nil || tomb.Needs != nil {
-		t.Fatalf("tombstoned k1 = %+v, want Task and Needs both nil", tomb)
-	}
-	if tomb.Status != ledger.StatusCompleted {
-		t.Fatalf("tombstoned k1.Status = %q, want StatusCompleted preserved", tomb.Status)
+	if gone, ok := visited["k1"]; ok {
+		t.Fatalf("Range visited deleted k1 = %+v, want it absent", gone)
 	}
 	live, ok := visited["k2"]
 	if !ok {
@@ -299,32 +279,32 @@ func TestMemStoreRangeAfterEviction(t *testing.T) {
 	}
 }
 
-// TestMemStoreSnapshotBlockedAfterEviction proves a Snapshot taken after
-// eviction round-trips through Encode/Decode, including a tombstoned
-// StatusBlocked entry with BlockedBy intact.
+// TestMemStoreSnapshotBlockedAfterEviction proves a Snapshot taken
+// after eviction round-trips through Encode/Decode, including a
+// StatusBlocked entry whose failed need was deleted.
 func TestMemStoreSnapshotBlockedAfterEviction(t *testing.T) {
 	ctx := context.Background()
-	store, err := ledger.NewMemStoreWithOptions(ledger.MemStoreOptions{MaxEntries: 1})
-	if err != nil {
-		t.Fatalf("NewMemStoreWithOptions: %v", err)
-	}
+	store := cappedStore(t, 1)
 	l := ledgerOver(t, store)
 
+	// Fail "root" before "dep" is admitted. Admit reads root as
+	// failed, so dep inserts already StatusBlocked, and dep's own
+	// insert then deletes root under the cap of 1.
 	if ok, err := l.Admit(ctx, testActor, "root", 1, "root-payload", fixedNow); err != nil || !ok {
 		t.Fatalf("Admit(root): ok=%v err=%v", ok, err)
-	}
-	if ok, err := l.Admit(ctx, testActor, "dep", 1, "dep-payload", fixedNow, "root"); err != nil || !ok {
-		t.Fatalf("Admit(dep): ok=%v err=%v", ok, err)
 	}
 	fence := mustClaim(t, l, ctx, "root", "owner-root")
 	if err := l.Complete(ctx, testActor, "root", "owner-root", fence, ledger.StatusFailed, fixedNow); err != nil {
 		t.Fatalf("Complete(root): %v", err)
 	}
-	// "dep" is now StatusBlocked (terminal) but not yet evicted:
-	// liveCount sat at the cap after root's own eviction. A
-	// further admission pushes liveCount over the cap again and
-	// evicts dep next.
-	mustAdmit(t, l, ctx, "extra", 1)
+	if ok, err := l.Admit(ctx, testActor, "dep", 1, "dep-payload", fixedNow, "root"); err != nil || !ok {
+		t.Fatalf("Admit(dep): ok=%v err=%v", ok, err)
+	}
+
+	rootState, found, err := l.State(ctx, "root")
+	if err != nil || found {
+		t.Fatalf("State(root) = %+v found=%v err=%v, want found false: dep's insert deletes it", rootState, found, err)
+	}
 
 	depState, found, err := l.State(ctx, "dep")
 	if err != nil || !found {
@@ -333,8 +313,8 @@ func TestMemStoreSnapshotBlockedAfterEviction(t *testing.T) {
 	if depState.Status != ledger.StatusBlocked || depState.BlockedBy != "root" {
 		t.Fatalf("dep = %+v, want StatusBlocked with BlockedBy root", depState)
 	}
-	if depState.Task != nil || depState.Needs != nil {
-		t.Fatalf("dep = %+v, want a tombstoned Task and Needs", depState)
+	if depState.Task == nil {
+		t.Fatalf("dep = %+v, want its Task intact: eviction deletes, it never blanks", depState)
 	}
 
 	snap, err := l.Snapshot(ctx)
@@ -360,5 +340,8 @@ func TestMemStoreSnapshotBlockedAfterEviction(t *testing.T) {
 	}
 	if decodedDep.BlockedBy != "root" {
 		t.Fatalf("decoded dep.BlockedBy = %q, want root", decodedDep.BlockedBy)
+	}
+	if decodedDep.Task == nil {
+		t.Fatalf("decoded dep = %+v, want a non-nil Task", *decodedDep)
 	}
 }

@@ -20,6 +20,10 @@ way. `contextplan` consumes `spool` today: `Planner` writes a
 budget-driven elision's full payload to a wired `*spool.Spool`, keyed
 to the payload's `SubjectID`. See `docs/plans/contextplan.md`'s
 "contextplan spools its own overflow" section.
+`e2e/e2e_test/spool_test.go` proves a caller-driven
+`SpoolTool`/`ReadOutputTool` pairing runs through a live `agentrun`
+composition path; see "Change: prove ReadOutputTool reaches a live
+composition path" below.
 
 ## Scope
 
@@ -779,3 +783,153 @@ The example drops the standalone `sp.Spool`/`sp.Load` walkthrough
 lines that duplicated `Spool`'s own doc comment. The paired
 `SpoolTool`/`ReadOutputTool` walkthrough now covers the same `sp`
 value end to end, matching what a tool-registry caller needs.
+
+## Change: prove ReadOutputTool reaches a live composition path
+
+Status: planned.
+
+### Change goal
+
+Show that `ReadOutputTool` is present, schema-typed, and resolvable
+by name and scope in the same `*tools.Registry` object
+`agentrun.New` validates and wires for a chain, not only through
+`spool`'s own tests. Today no test outside `spool/spool_test/` calls
+`spool.ReadOutputTool`. The one e2e test that wires `SpoolTool` into
+a live `agentrun.Options.Tools` registry
+(`e2e/e2e_test/spool_test.go`) never registers `ReadOutputTool` and
+never resolves it through that registry. It resolves the spooled body
+by calling `sp.Load` straight from the test, bypassing the registry a
+live agent run would use. This change does not run `ReadOutputTool`
+through `agentrun.Runner.chain()`'s own `AckWait` closure; it calls
+`Registry.RunScoped` directly, after the chain has already finished,
+using the same registry and scope value the chain was built with.
+
+### Finding: this is a test gap, not a missing feature
+
+`spool` does not need a new exported symbol, and `agentrun` does not
+need an auto-wiring feature. Three facts support this.
+
+First, every composition layer in this SDK already requires the
+caller to build and register each tool by hand.
+`agentrun.Options.Tools` takes a caller-built `*tools.Registry`
+(`agentrun/options.go:57`). `subagent`'s file tools follow the same
+shape: a caller calls `subagent.WorkspaceReadTool(...)` and then adds
+the result to a registry itself. No package in this SDK inspects a
+registry's contents and adds a matching tool on the caller's behalf.
+An auto-wiring feature in `agentrun` or `agent` would be the first of
+its kind, with one caller in mind. AGENTS.md's building-block rule
+forbids adding abstraction without a caller.
+
+Second, auto-wiring is not mechanically possible without a new,
+purpose-built marker. `spoolTool` (`spool/tool.go:16`) is unexported.
+A composition layer outside `spool` cannot type-assert a registry
+entry as "a `SpoolTool`-wrapped tool wrapping this `*Spool`". Building
+that detection would need a new exported marker interface on `spool`,
+serving one caller, which is the same speculative-generality problem
+stated a different way.
+
+Third, the caller already has everything it needs. `SpoolTool` takes
+an existing `*Spool` since the prior change in this file, so the
+caller holds the same value it passes to `ReadOutputTool`. Pairing the
+two calls and registering both is two extra lines in code the caller
+already writes. `docs/packages/spool.md`'s usage example already shows
+this pairing.
+
+The real gap is narrower: nothing proves the pairing works end to end
+through a live registry a composition layer drives. The fix is a test
+change, not a new production symbol.
+
+### Change scope
+
+Inside:
+
+- Extend `e2e/e2e_test/spool_test.go`,
+  `TestSpoolToolTruncatesLargeStepResult`: register a
+  `spool.ReadOutputTool` built over the same `sp` into the same `reg`
+  used by `agentrun.Options.Tools`, alongside the existing
+  `SpoolTool`-wrapped tool.
+- Build a `*tools.Scope` with `tools.NewScope` naming both tool names
+  (the `SpoolTool` name and `read_spooled_output`) in its Allowlist.
+  Set this scope on the shared `agentrun.Options.Scope` field, so the
+  chain `agentrun.New` builds runs the spool step through this same
+  scope, not a nil one.
+- After the existing assertions confirm the spooled view and its ref,
+  call `reg.RunScoped(ctx, "read_spooled_output", in, scope)` on that
+  same registry and scope value, with `in` built through
+  `readBack.(tools.SchemaTool).DecodeArguments` over a JSON payload
+  naming the captured ref. `agentrun.Runner.chain()`
+  (`agentrun/wire.go:128`) and `agentloop.Loop.Run`
+  (`agentloop/run.go:13`) both call `Registry.RunScoped`, never
+  `Registry.Run`; calling `Registry.Run` in the test would miss the
+  scope-gating branch a real chain step or loop iteration always goes
+  through. Passing the same non-nil `scope` value used to build the
+  chain, rather than nil, means the assertion actually exercises that
+  branch instead of coincidentally matching a scope-blind nil case.
+- Assert the page `reg.RunScoped` returns reconstructs `full`, the
+  tool result `SpoolTool` truncated. Also assert `reg.RunScoped` at
+  that name returns no error, proving `ReadOutputTool` is present,
+  schema-typed, and resolvable by name and scope in the same
+  `*tools.Registry` object `agentrun.New` validated and wired for the
+  chain's own run.
+
+Outside:
+
+- Any change to `spool`'s exported surface. `api/spool.txt` stays as
+  locked; this change touches only test code.
+- Any change to `agentrun`, `agent`, or `tools`. No auto-wiring
+  feature. No new exported symbol anywhere.
+- A flow step that calls `read_spooled_output` through
+  `agentrun`'s own chain. `flow.Step.Payload` is a static string
+  resolved once at plan-build time; the ref `SpoolTool` mints is
+  content-addressed and known only after the first step runs.
+  Threading a dynamic ref through a static `Payload` needs
+  `flow`-level templating this SDK does not have, and inventing it
+  for one test is out of scope. Calling `reg.RunScoped` directly
+  after the chain finishes proves the narrower resolvability claim
+  above without that machinery: the registry and scope under test
+  are the same live values `agentrun.Options.Tools` and
+  `agentrun.Options.Scope` held, not second ones built for the
+  assertion.
+
+### Change tests
+
+In `e2e/e2e_test/spool_test.go`:
+
+- `TestSpoolToolTruncatesLargeStepResult` (extended): after the chain
+  runs and the view and ref are captured, register `readBack` into
+  `reg` before the chain runs (both tools must be present when
+  `agentrun.New` builds the runner, matching how a real caller
+  assembles a registry once, up front), and set the same non-nil
+  `*tools.Scope` on `agentrun.Options.Scope`. Call
+  `reg.RunScoped(ctx, "read_spooled_output", in, scope)` with the
+  captured ref and assert the reconstructed page equals `full`. This
+  proves `ReadOutputTool` is present, schema-typed, and resolvable by
+  name and scope in the same registry object `agentrun.New` already
+  validated and wired; it does not prove the call runs inside
+  `agentrun.Runner.chain()`'s own `AckWait` closure.
+- No new test function. The existing test already builds the exact
+  registry, `*Spool`, and oversized-tool scaffolding this addition
+  needs; splitting it into two tests would duplicate that setup for no
+  added coverage.
+
+### Change docs
+
+`docs/packages/spool.md`'s usage example already shows the paired
+registration (see "Change: SpoolTool takes an existing Spool" above).
+No further doc edit is needed there. Add one sentence to this file's
+Goal section, next to the existing `contextplan` consumer line,
+naming `e2e/e2e_test/spool_test.go` as the proof that a caller-driven
+`SpoolTool`/`ReadOutputTool` pairing resolves by name and scope in
+the same registry a live `agentrun` composition wires.
+
+### Change verification
+
+- `make verify` passes; `spool` holds the 85 coverage floor.
+- `go test ./e2e/e2e_test/...` passes, covering the extended
+  `TestSpoolToolTruncatesLargeStepResult`.
+- `python3 scripts/check_plan.py`, `check_deps.py`, `check_prose.py`,
+  and `check_test_tampering.py` pass. The change only extends an
+  existing test with new assertions; it does not weaken or remove any
+  existing one.
+- `api/spool.txt`: no diff. `policy/layers.json`: no diff. This change
+  adds no exported symbol and no import edge.

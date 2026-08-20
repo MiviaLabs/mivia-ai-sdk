@@ -912,8 +912,10 @@ is a separate, explicit command for `ledger`'s
 holds the tag-gated `ledger` package to the same 85% coverage floor.
 `make mutation` runs a full per-package mutation sweep on demand: it
 applies text-level operator mutations to a named package's source, runs
-that package's tests per mutant, and checks the kill rate against the
-package's stored floor in `scripts/mutation_denylist/<pkg>.json`. It
+one `go test` per mutant over both the package directory and its
+external `<pkg>_test` directory, and checks the kill rate against the
+package's stored floor in `scripts/mutation_denylist/<pkg>.json`. Both
+targets go to one run, so a mutant dies when either package fails. It
 never runs inside `verify` or `verify-fast`, since a full sweep costs
 minutes.
 
@@ -921,6 +923,8 @@ GitHub Actions CI runs `make verify` on every push and pull request to
 `main`, defined in `.github/workflows/ci.yml`. No branch protection
 rule exists yet, so CI stays informational only: a failing check does
 not block a merge or a direct push.
+`.github/workflows/mutation.yml` runs `make mutation-gate` on a weekly
+cron and on manual dispatch, with a 330-minute timeout.
 
 ## Invariants
 

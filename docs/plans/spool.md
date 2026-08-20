@@ -558,7 +558,7 @@ the pairing becomes possible, then updates the docs to show it.
 
 ## Change: SpoolTool takes an existing Spool
 
-Status: planned.
+Status: shipped.
 
 ### Change goal
 

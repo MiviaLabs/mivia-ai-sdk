@@ -65,6 +65,66 @@ def _probe_single_commit_skips(tmp):
     return []
 
 
+def _probe_staged_reads_message_file(tmp):
+    """A staged diff with a --message-file must read that file's text
+    as the override message: the exact path the real commit-msg hook
+    uses in production."""
+    repo = _new_repo(tmp, "diffsrc_staged_message_file")
+    (repo / "a.txt").write_text("one\n")
+    commit_all(repo, "base")
+    (repo / "a.txt").write_text("two\n")
+    stage_all(repo)
+    msg_file = tmp / "diffsrc_staged_message_file_msg.txt"
+    msg_file.write_text("subject\n\nAllow-Test-Change: TT02 removed a flaky retry loop after root cause fix\n")
+    diff_args, message, skip = resolve_diff_source(None, str(msg_file), repo)
+    if skip or diff_args != ["--cached"] or message != msg_file.read_text():
+        return [f"diffsrc staged message-file: expected the file's text, got {message!r} skip={skip}"]
+    return []
+
+
+def _probe_staged_no_message_file_is_none(tmp):
+    """A staged diff with no --message-file must carry no message, so
+    a bare `make verify-fast` run can never accidentally honor a
+    trailer left over in the working tree."""
+    repo = _new_repo(tmp, "diffsrc_staged_no_message_file")
+    (repo / "a.txt").write_text("one\n")
+    commit_all(repo, "base")
+    (repo / "a.txt").write_text("two\n")
+    stage_all(repo)
+    diff_args, message, skip = resolve_diff_source(None, None, repo)
+    if skip or diff_args != ["--cached"] or message is not None:
+        return [f"diffsrc staged no message-file: expected message None, got {message!r} skip={skip}"]
+    return []
+
+
+def _probe_no_git_skips_end_to_end(tmp):
+    """The CLI itself, not just repo_root, must skip cleanly with exit
+    0 outside any git repository."""
+    plain = tmp / "plain_dir_e2e"
+    plain.mkdir()
+    result = subprocess.run(
+        [sys.executable, str(_CHECKER)], cwd=plain, capture_output=True, text=True
+    )
+    if result.returncode != 0 or "no .git found" not in result.stdout:
+        return [f"no-git end-to-end: expected exit 0 with a skip note, got {result.returncode} {result.stdout!r}"]
+    return []
+
+
+def _probe_single_commit_skips_end_to_end(tmp):
+    """The CLI itself, not just resolve_diff_source, must skip cleanly
+    with exit 0 on a repository with no parent commit and nothing
+    staged."""
+    repo = _new_repo(tmp, "diffsrc_single_e2e")
+    (repo / "a.txt").write_text("one\n")
+    commit_all(repo, "only commit")
+    result = subprocess.run(
+        [sys.executable, str(_CHECKER)], cwd=repo, capture_output=True, text=True
+    )
+    if result.returncode != 0 or "no parent commit" not in result.stdout:
+        return [f"single-commit end-to-end: expected exit 0 with a skip note, got {result.returncode} {result.stdout!r}"]
+    return []
+
+
 # --- override resolution --------------------------------------------------
 
 
@@ -102,6 +162,48 @@ def _probe_override_word_count_boundary(tmp):
     )
     if not unresolved or overridden:
         return [f"override word count: a five-word reason must fail, got overridden={overridden}"]
+    return []
+
+
+def _probe_gate_change_word_count_boundary(tmp):
+    """The gate-change floor is fifteen words, not the test-change
+    floor of six: a fourteen-word gate reason must still fail, even
+    though it clears the easier bar by a wide margin."""
+    findings_pass = [Finding("TT11", "Makefile", 1, "x")]
+    fifteen_words = " ".join(["word"] * 15)
+    unresolved, overridden = resolve_overrides(
+        findings_pass, f"subject\n\nAllow-Gate-Change: TT11 {fifteen_words}\n"
+    )
+    if unresolved or not overridden:
+        return [f"gate word count: a fifteen-word reason must pass, got unresolved={unresolved}"]
+
+    findings_fail = [Finding("TT11", "Makefile", 1, "x")]
+    fourteen_words = " ".join(["word"] * 14)
+    unresolved, overridden = resolve_overrides(
+        findings_fail, f"subject\n\nAllow-Gate-Change: TT11 {fourteen_words}\n"
+    )
+    if not unresolved or overridden:
+        return [f"gate word count: a fourteen-word reason must fail, got overridden={overridden}"]
+    return []
+
+
+def _probe_first_trailer_per_id_wins_even_if_invalid(tmp):
+    """resolve_overrides picks the first trailer for a given ID and
+    never falls through to a later, valid one: an invalid trailer
+    listed first must leave the finding unresolved, even when a
+    perfectly valid trailer for the same ID follows it."""
+    findings = [Finding("TT02", "a_test.go", 1, "x")]
+    message = (
+        "subject\n\n"
+        "Allow-Test-Change: TT02 too short\n"
+        "Allow-Test-Change: TT02 removed obsolete retry after fixing root cause thoroughly\n"
+    )
+    unresolved, overridden = resolve_overrides(findings, message)
+    if not unresolved or overridden:
+        return [
+            "first trailer wins: expected the invalid first trailer to leave TT02 unresolved "
+            f"despite a valid second trailer, got unresolved={unresolved} overridden={overridden}"
+        ]
     return []
 
 
@@ -191,9 +293,15 @@ def run_diffoverride_probes(tmp) -> list:
         _probe_fallback_to_parent,
         _probe_no_git_skips,
         _probe_single_commit_skips,
+        _probe_staged_reads_message_file,
+        _probe_staged_no_message_file_is_none,
+        _probe_no_git_skips_end_to_end,
+        _probe_single_commit_skips_end_to_end,
         _probe_override_waives_only_its_id,
         _probe_override_boilerplate_reason_unresolved,
         _probe_override_word_count_boundary,
+        _probe_gate_change_word_count_boundary,
+        _probe_first_trailer_per_id_wins_even_if_invalid,
         _probe_gate_change_alone_leaves_sibling_unresolved,
         _probe_test_change_never_waives_gate_ids,
         _probe_range_reads_tip_message,

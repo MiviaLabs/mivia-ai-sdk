@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
-"""--probe cases for TT01-TT08, the *_test.go rules. Each case builds
-its own throwaway git repo (see test_tampering_diff.py's probe-repo
-helpers): one violation commit that must fire the ID, one clean
-commit that must stay silent."""
+"""--probe cases for TT01-TT03, the function-collection and go:build
+*_test.go rules. TT04-TT08 live in
+test_tampering_probes_testfile_assert.py; see that file's header for
+why this is split. Each case builds its own throwaway git repo (see
+test_tampering_diff.py's probe-repo helpers): one violation commit
+that must fire the ID, one clean commit that must stay silent."""
 from test_tampering_diff import commit_all, diff_after_change, init_probe_repo
-from test_tampering_rules import (
-    check_assertion_decrease,
-    check_build_tag_changed,
-    check_comparison_dropped_for_bare_err,
-    check_moved_or_dropped,
-    check_numeric_literal_increase,
-    check_parallel_removed,
-    check_result_discarded,
-    check_skip_added,
-)
+from test_tampering_probes_testfile_assert import run_testfile_assert_probes
+from test_tampering_rules import check_build_tag_changed, check_moved_or_dropped, check_skip_added
 
 
 def _new_repo(tmp, name):
@@ -60,6 +54,33 @@ def _probe_tt01_clean_move(tmp):
     return []
 
 
+def _probe_tt01_violation_move_and_rename(tmp):
+    """A cross-file move that ALSO renames the function still fires
+    TT01, by design: the hash covers the func-declaration line (name
+    included), so a rename never "reappears" under the plan's own
+    hash-equality definition of a move, even to another conforming
+    name. This locks in that a rename-during-move needs an
+    Allow-Test-Change trailer, distinct from the untouched-name move
+    in _probe_tt01_clean_move above."""
+    repo = _new_repo(tmp, "tt01_move_rename")
+    body_stmts = '\tif 1 != 2 {\n\t\tt.Fatal("bad")\n\t}\n'
+    (repo / "a_test.go").write_text(
+        f'package a\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {{\n{body_stmts}}}\n'
+    )
+    commit_all(repo, "base")
+
+    def mutate(r):
+        (r / "a_test.go").write_text('package a\n\nimport "testing"\n')
+        (r / "b_test.go").write_text(
+            f'package a\n\nimport "testing"\n\nfunc TestFooV2(t *testing.T) {{\n{body_stmts}}}\n'
+        )
+
+    diffs = diff_after_change(repo, mutate)
+    if not _has(check_moved_or_dropped(diffs), "TT01"):
+        return ["tt01 violation move and rename: expected TT01, since a rename changes the hashed body"]
+    return []
+
+
 # --- TT02: a new skip, unmatched by a removal in the same hunk --------
 
 
@@ -79,6 +100,33 @@ def _probe_tt02_violation(tmp):
     if not _has(check_skip_added(diffs), "TT02"):
         return ["tt02 violation: expected TT02 for an unmatched new skip"]
     return []
+
+
+def _probe_tt02_violation_other_patterns(tmp):
+    """Three of the four _SKIP_PATTERNS entries beyond t.Skip( must
+    each independently fire TT02: t.SkipNow(, t.Skipf(, and the
+    testing.Short() short-mode guard."""
+    problems = []
+    for suffix, added_line in (
+        ("skipnow", "\tt.SkipNow()\n"),
+        ("skipf", '\tt.Skipf("slow: %s", reason)\n'),
+        ("short", "\tif testing.Short() {\n\t\tt.Skip(\"slow\")\n\t}\n"),
+    ):
+        repo = _new_repo(tmp, f"tt02_violation_{suffix}")
+        (repo / "a_test.go").write_text(
+            'package a\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {\n\tdoWork()\n}\n'
+        )
+        commit_all(repo, "base")
+        diffs = diff_after_change(
+            repo,
+            lambda r, added_line=added_line: (r / "a_test.go").write_text(
+                'package a\n\nimport "testing"\n\n'
+                f"func TestFoo(t *testing.T) {{\n{added_line}\tdoWork()\n}}\n"
+            ),
+        )
+        if not _has(check_skip_added(diffs), "TT02"):
+            problems.append(f"tt02 violation {suffix}: expected TT02 for {added_line.strip()!r}")
+    return problems
 
 
 def _probe_tt02_clean_message_change(tmp):
@@ -119,6 +167,25 @@ def _probe_tt03_violation(tmp):
     return []
 
 
+def _probe_tt03_violation_changed_tag(tmp):
+    """An existing go:build expression changed, not merely added where
+    none existed, is the other documented TT03 sub-case."""
+    repo = _new_repo(tmp, "tt03_violation_changed")
+    (repo / "a_test.go").write_text(
+        '//go:build oldtag\n\npackage a\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {}\n'
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "a_test.go").write_text(
+            '//go:build newtag\n\npackage a\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {}\n'
+        ),
+    )
+    if not _has(check_build_tag_changed(diffs), "TT03"):
+        return ["tt03 violation changed tag: expected TT03 for a changed go:build expression"]
+    return []
+
+
 def _probe_tt03_clean_unchanged_tag(tmp):
     repo = _new_repo(tmp, "tt03_clean")
     (repo / "a_test.go").write_text(
@@ -137,266 +204,22 @@ def _probe_tt03_clean_unchanged_tag(tmp):
     return []
 
 
-# --- TT04: net decrease in assertion sites -----------------------------
-
-
-def _probe_tt04_violation(tmp):
-    repo = _new_repo(tmp, "tt04_violation")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        '\tif !cond1 {\n\t\tt.Error("one")\n\t}\n'
-        '\tif !cond2 {\n\t\tt.Error("two")\n\t}\n'
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            '\tif !cond1 {\n\t\tt.Error("one")\n\t}\n'
-            "}\n"
-        ),
-    )
-    if not _has(check_assertion_decrease(diffs), "TT04"):
-        return ["tt04 violation: expected TT04 for a net assertion decrease"]
-    return []
-
-
-def _probe_tt04_clean_helper_extraction(tmp):
-    repo = _new_repo(tmp, "tt04_clean")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        '\tif !cond1 {\n\t\tt.Error("one")\n\t}\n'
-        '\tif !cond2 {\n\t\tt.Error("two")\n\t}\n'
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            '\tif !cond1 {\n\t\tt.Error("one")\n\t}\n'
-            "\trunCases(t)\n"
-            "}\n\n"
-            "func TestBar(t *testing.T) {\n"
-            "\trunCases(t)\n"
-            "}\n"
-        ),
-    )
-    findings = check_assertion_decrease(diffs)
-    if _has(findings, "TT04"):
-        return [f"tt04 clean helper extraction: unexpected TT04: {findings}"]
-    return []
-
-
-# --- TT05: a non-error comparison replaced by a bare err check --------
-
-
-def _probe_tt05_violation(tmp):
-    repo = _new_repo(tmp, "tt05_violation")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        '\tif got != want {\n\t\tt.Fatal("mismatch")\n\t}\n'
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            "\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n"
-            "}\n"
-        ),
-    )
-    if not _has(check_comparison_dropped_for_bare_err(diffs), "TT05"):
-        return ["tt05 violation: expected TT05 for a comparison replaced by a bare err check"]
-    return []
-
-
-def _probe_tt05_clean_new_check(tmp):
-    repo = _new_repo(tmp, "tt05_clean")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        '\tif got != want {\n\t\tt.Fatal("mismatch")\n\t}\n'
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            '\tif got != want {\n\t\tt.Fatal("mismatch")\n\t}\n'
-            "\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n"
-            "}\n"
-        ),
-    )
-    findings = check_comparison_dropped_for_bare_err(diffs)
-    if _has(findings, "TT05"):
-        return [f"tt05 clean new check: unexpected TT05: {findings}"]
-    return []
-
-
-# --- TT06: a checked result now discarded ------------------------------
-
-
-def _probe_tt06_violation(tmp):
-    repo = _new_repo(tmp, "tt06_violation")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        "\tv, err := f()\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_ = v\n"
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            "\t_, _ = f()\n"
-            "}\n"
-        ),
-    )
-    if not _has(check_result_discarded(diffs), "TT06"):
-        return ["tt06 violation: expected TT06 for a discarded, previously checked result"]
-    return []
-
-
-def _probe_tt06_clean_rename(tmp):
-    repo = _new_repo(tmp, "tt06_clean")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n"
-        "\tv, err := f()\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_ = v\n"
-        "}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n"
-            "\tresult, err := f()\n\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_ = result\n"
-            "}\n"
-        ),
-    )
-    findings = check_result_discarded(diffs)
-    if _has(findings, "TT06"):
-        return [f"tt06 clean rename: unexpected TT06: {findings}"]
-    return []
-
-
-# --- TT07: a tolerance/timeout literal increased -----------------------
-
-
-def _probe_tt07_violation(tmp):
-    repo = _new_repo(tmp, "tt07_violation")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\n'
-        "func TestFoo(t *testing.T) {\n\ttime.Sleep(10 * time.Millisecond)\n}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\n'
-            "func TestFoo(t *testing.T) {\n\ttime.Sleep(100 * time.Millisecond)\n}\n"
-        ),
-    )
-    if not _has(check_numeric_literal_increase(diffs), "TT07"):
-        return ["tt07 violation: expected TT07 for an increased sleep literal"]
-    return []
-
-
-def _probe_tt07_clean_decrease(tmp):
-    repo = _new_repo(tmp, "tt07_clean")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\n'
-        "func TestFoo(t *testing.T) {\n\ttime.Sleep(100 * time.Millisecond)\n}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport (\n\t"testing"\n\t"time"\n)\n\n'
-            "func TestFoo(t *testing.T) {\n\ttime.Sleep(10 * time.Millisecond)\n}\n"
-        ),
-    )
-    findings = check_numeric_literal_increase(diffs)
-    if _has(findings, "TT07"):
-        return [f"tt07 clean decrease: unexpected TT07: {findings}"]
-    return []
-
-
-# --- TT08: a removed t.Parallel() with no matching addition -----------
-
-
-def _probe_tt08_violation(tmp):
-    repo = _new_repo(tmp, "tt08_violation")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n\tt.Parallel()\n\tdoWork()\n}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {\n\tdoWork()\n}\n'
-        ),
-    )
-    if not _has(check_parallel_removed(diffs), "TT08"):
-        return ["tt08 violation: expected TT08 for a removed t.Parallel()"]
-    return []
-
-
-def _probe_tt08_clean_unrelated_edit(tmp):
-    repo = _new_repo(tmp, "tt08_clean")
-    (repo / "a_test.go").write_text(
-        'package a\n\nimport "testing"\n\n'
-        "func TestFoo(t *testing.T) {\n\tt.Parallel()\n\tdoWork()\n}\n"
-    )
-    commit_all(repo, "base")
-    diffs = diff_after_change(
-        repo,
-        lambda r: (r / "a_test.go").write_text(
-            'package a\n\nimport "testing"\n\n'
-            "func TestFoo(t *testing.T) {\n\tt.Parallel()\n\tdoOtherWork()\n}\n"
-        ),
-    )
-    findings = check_parallel_removed(diffs)
-    if _has(findings, "TT08"):
-        return [f"tt08 clean unrelated edit: unexpected TT08: {findings}"]
-    return []
-
-
 def run_testfile_probes(tmp) -> list:
-    """run_testfile_probes runs every TT01-TT08 case against tmp."""
+    """run_testfile_probes runs every TT01-TT08 case against tmp: the
+    TT01-TT03 cases here, plus TT04-TT08 from
+    test_tampering_probes_testfile_assert."""
     problems = []
     for fn in (
         _probe_tt01_violation,
         _probe_tt01_clean_move,
+        _probe_tt01_violation_move_and_rename,
         _probe_tt02_violation,
+        _probe_tt02_violation_other_patterns,
         _probe_tt02_clean_message_change,
         _probe_tt03_violation,
+        _probe_tt03_violation_changed_tag,
         _probe_tt03_clean_unchanged_tag,
-        _probe_tt04_violation,
-        _probe_tt04_clean_helper_extraction,
-        _probe_tt05_violation,
-        _probe_tt05_clean_new_check,
-        _probe_tt06_violation,
-        _probe_tt06_clean_rename,
-        _probe_tt07_violation,
-        _probe_tt07_clean_decrease,
-        _probe_tt08_violation,
-        _probe_tt08_clean_unrelated_edit,
     ):
         problems.extend(fn(tmp))
+    problems.extend(run_testfile_assert_probes(tmp))
     return problems

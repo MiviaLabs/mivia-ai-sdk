@@ -52,6 +52,37 @@ def _probe_tt11_violation(tmp):
     return []
 
 
+def _probe_tt11_violation_other_infra_prefixes(tmp):
+    """_is_gate_infra's other four prefixes (.githooks/, policy/,
+    semgrep/, .github/workflows/) plus the bare Makefile special case
+    must each independently pair with another file to fire TT11, not
+    just scripts/."""
+    problems = []
+    cases = (
+        ("makefile", "Makefile", "x = 1\n", "x = 2\n"),
+        ("githooks", ".githooks/pre-push", "#!/bin/sh\n", "#!/bin/sh\nset -e\n"),
+        ("policy", "policy/layers.json", "{}\n", '{"a": []}\n'),
+        ("semgrep", "semgrep/extra.yml", "rules: []\n", "rules: [x]\n"),
+        ("workflows", ".github/workflows/extra.yml", "on: push\n", "on: pull_request\n"),
+    )
+    for suffix, path, before, after in cases:
+        repo = _new_repo(tmp, f"tt11_violation_{suffix}")
+        target = repo / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(before)
+        (repo / "other.go").write_text("package other\n")
+        commit_all(repo, "base")
+
+        def mutate(r, path=path, after=after):
+            (r / path).write_text(after)
+            (r / "other.go").write_text("package other\n\nvar y = 1\n")
+
+        diffs = diff_after_change(repo, mutate)
+        if not _has(check_self_reference_guard(diffs), "TT11"):
+            problems.append(f"tt11 violation {suffix}: expected TT11 for {path} paired with another file")
+    return problems
+
+
 def _probe_tt11_clean_infra_only(tmp):
     repo = _new_repo(tmp, "tt11_clean")
     (repo / "scripts").mkdir()
@@ -83,6 +114,25 @@ def _probe_tt12_violation(tmp):
     )
     if not _has(check_denylist_entry_added(diffs), "TT12"):
         return ["tt12 violation: expected TT12 for a new denylist entry"]
+    return []
+
+
+def _probe_tt12_violation_new_file(tmp):
+    """A brand-new mutation_denylist file, not a modified one, must
+    also fire TT12: the check_denylist_entry_added status == "A"
+    branch, distinct from the status == "M" branch above."""
+    repo = _new_repo(tmp, "tt12_violation_new_file")
+    (repo / "scripts" / "mutation_denylist").mkdir(parents=True)
+    (repo / "scripts" / "mutation_denylist" / "existing.json").write_text('{"denylist": [], "floor": 90}\n')
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "scripts" / "mutation_denylist" / "pkg.json").write_text(
+            '{"denylist": [{"file": "x.go", "snippet": "a"}], "floor": 90}\n'
+        ),
+    )
+    if not _has(check_denylist_entry_added(diffs), "TT12"):
+        return ["tt12 violation new file: expected TT12 for a new mutation denylist file"]
     return []
 
 
@@ -145,6 +195,46 @@ def _probe_tt13_violation_coverage_floor(tmp):
     )
     if not _has(check_weakened_floor(diffs), "TT13"):
         return ["tt13 coverage floor: expected TT13 for a lowered COVERAGE_FLOOR"]
+    return []
+
+
+def _probe_tt13_violation_mutation_floor(tmp):
+    """The mutation_denylist floor branch is a distinct code path from
+    the Makefile COVERAGE_FLOOR branch above: it must fire on its own,
+    not just ride along with a Makefile change."""
+    repo = _new_repo(tmp, "tt13_mutation_floor")
+    (repo / "scripts" / "mutation_denylist").mkdir(parents=True)
+    (repo / "scripts" / "mutation_denylist" / "pkg.json").write_text(
+        '{"denylist": [], "floor": 90}\n'
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "scripts" / "mutation_denylist" / "pkg.json").write_text(
+            '{"denylist": [], "floor": 70}\n'
+        ),
+    )
+    if not _has(check_weakened_floor(diffs), "TT13"):
+        return ["tt13 mutation floor: expected TT13 for a lowered mutation_denylist floor"]
+    return []
+
+
+def _probe_tt13_clean_mutation_floor_raise(tmp):
+    repo = _new_repo(tmp, "tt13_mutation_floor_clean")
+    (repo / "scripts" / "mutation_denylist").mkdir(parents=True)
+    (repo / "scripts" / "mutation_denylist" / "pkg.json").write_text(
+        '{"denylist": [], "floor": 90}\n'
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "scripts" / "mutation_denylist" / "pkg.json").write_text(
+            '{"denylist": [], "floor": 95}\n'
+        ),
+    )
+    findings = check_weakened_floor(diffs)
+    if _has(findings, "TT13"):
+        return [f"tt13 mutation floor clean raise: unexpected TT13: {findings}"]
     return []
 
 
@@ -294,12 +384,16 @@ def run_infra_probes(tmp) -> list:
     problems = []
     for fn in (
         _probe_tt11_violation,
+        _probe_tt11_violation_other_infra_prefixes,
         _probe_tt11_clean_infra_only,
         _probe_tt12_violation,
+        _probe_tt12_violation_new_file,
         _probe_tt12_clean_floor_raise,
         _probe_tt13_violation,
         _probe_tt13_clean_unrelated_edit,
         _probe_tt13_violation_coverage_floor,
+        _probe_tt13_violation_mutation_floor,
+        _probe_tt13_clean_mutation_floor_raise,
         _probe_tt14_violation_hook_deleted,
         _probe_tt14_clean_hook_comment_added,
         _probe_tt14_hook_invocation_broken,

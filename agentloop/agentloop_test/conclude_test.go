@@ -234,6 +234,14 @@ func TestRunConcludeMarginModelIgnoresNudge(t *testing.T) {
 	if res.Iterations != 3 {
 		t.Fatalf("Iterations = %d, want 3", res.Iterations)
 	}
+	// ConcludeMargin=2, MaxIterations=3: k=2 qualifies (3-2=1<2), so
+	// the notice must have reached iteration 2's request before the
+	// model ignored it. Without this assertion, the test could pass
+	// even if the nudge never fired at all.
+	req2 := completer.requestAt(1)
+	if lastMessageContent(req2.Messages) != agentloop.DefaultConcludeNotice {
+		t.Fatalf("request 2 last message = %q, want DefaultConcludeNotice", lastMessageContent(req2.Messages))
+	}
 }
 
 // TestRunConcludeNoticeDefaultAndOverride proves an empty
@@ -416,5 +424,65 @@ func TestRunConcludeMarginTrimDropsNoticeBeforeStop(t *testing.T) {
 	}
 	if res.Iterations != 3 {
 		t.Fatalf("Iterations = %d, want 3", res.Iterations)
+	}
+}
+
+// TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory proves
+// StopConcluded requires this run's own ConcludeMargin logic to have
+// queued the notice, not merely that matching text exists in the
+// caller's starting History. ConcludeMargin=0 disables nudging, so
+// noticeSent never becomes true this run, even though the caller's
+// first message happens to equal DefaultConcludeNotice verbatim.
+func TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory(t *testing.T) {
+	reg := tools.New()
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 1, ConcludeMargin: 0,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, agentloop.DefaultConcludeNotice),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls: ConcludeMargin=0 disables nudging, the caller's own history must not fake a nudge", res.Stop)
+	}
+}
+
+// TestRunConcludeMarginIgnoresCallerNoticeBeforeThreshold proves the
+// same rule as TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory
+// with a positive ConcludeMargin: the threshold is never reached this
+// run, so noticeSent stays false even though the caller's starting
+// message happens to equal DefaultConcludeNotice verbatim.
+// ConcludeMargin=2, MaxIterations=5: the model stops with no tool call
+// at iteration 1, well before the first qualifying k=4.
+func TestRunConcludeMarginIgnoresCallerNoticeBeforeThreshold(t *testing.T) {
+	reg := tools.New()
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 2,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, agentloop.DefaultConcludeNotice),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls: shouldConclude never returned true this run, the leftover notice text must not fake StopConcluded", res.Stop)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1", res.Iterations)
 	}
 }

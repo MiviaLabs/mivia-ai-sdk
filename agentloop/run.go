@@ -70,7 +70,8 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 			history = append(history, provider.Message{Role: provider.RoleUser, Content: l.concludeNotice})
 			noticeSent = true
 		}
-		noticeInRequest := noticePresent(history, l.concludeNotice)
+		// noticeSent gates noticePresent: this run's own nudge must fire.
+		noticeInRequest := noticeSent && noticePresent(history, l.concludeNotice)
 
 		at := l.runChat(ctx, history, iterations)
 		if at.err != nil {
@@ -144,6 +145,9 @@ func (l *Loop) recordChat(ctx context.Context, iterations int, req provider.Requ
 // Options.Trim (or Window) may strip the notice out of a later
 // iteration's history before that iteration's Completer call runs.
 // See docs/plans/agents/phase79_graceful_conclude.md's Trim limit.
+// Callers must also gate this on noticeSent: noticePresent alone
+// cannot tell this run's own nudge apart from matching text a caller
+// fed in through the starting History for an unrelated reason.
 func noticePresent(history []provider.Message, notice string) bool {
 	for _, m := range history {
 		if m.Role == provider.RoleUser && m.Content == notice {

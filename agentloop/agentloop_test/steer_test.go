@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -216,6 +217,57 @@ func TestSteerTriggeredButErrNotCanceled(t *testing.T) {
 	}
 	if !isZeroResult(res) {
 		t.Fatalf("Result = %+v, want the zero value: no iteration completed", res)
+	}
+}
+
+// TestSteerFiresPointStopWithSteeredPayload proves a graceful
+// StopSteered stop fires PointStop with the same Result RunSteerable
+// returns, matching the payload guarantee TestRunFiresPointStop*
+// already pins for StopNoToolCalls and a hard fail.
+func TestSteerFiresPointStopWithSteeredPayload(t *testing.T) {
+	entered := make(chan struct{})
+	c := &blockingCompleter{entered: entered}
+	hreg := hooks.New()
+	var got agentloop.Result
+	var gotOK bool
+	if err := hreg.Add(hooks.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
+		got, gotOK = payload.(agentloop.Result)
+		return true, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: c, Tools: tools.New(), MaxIterations: 5, Hooks: hreg,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	steer := agentloop.NewSteer()
+	msgs := []provider.Message{textMessage(provider.RoleUser, "hi")}
+
+	resCh := make(chan agentloop.Result, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		res, err := loop.RunSteerable(context.Background(), msgs, steer)
+		resCh <- res
+		errCh <- err
+	}()
+
+	<-entered
+	steer.Trigger()
+	res, err := <-resCh, <-errCh
+
+	if err != nil {
+		t.Fatalf("RunSteerable() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopSteered {
+		t.Fatalf("Stop = %q, want StopSteered", res.Stop)
+	}
+	if !gotOK {
+		t.Fatalf("PointStop payload type = %T, want agentloop.Result", got)
+	}
+	if got.Stop != res.Stop || got.Iterations != res.Iterations {
+		t.Fatalf("PointStop payload = %+v, want the same Result RunSteerable returned: %+v", got, res)
 	}
 }
 

@@ -116,8 +116,8 @@ func TestRunFiresPointStopOnGracefulStop(t *testing.T) {
 
 // TestRunFiresPointStopOnHardFail proves a wired Hooks registry fires
 // PointStop once on a hard-fail return, here ErrCallsPerTurnExceeded,
-// and that a PointStop handler's own veto does not change Run's
-// error.
+// with the same partial Result Run itself returns, and that a
+// PointStop handler's own veto does not change Run's error.
 func TestRunFiresPointStopOnHardFail(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
@@ -130,8 +130,11 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 	}}
 	hreg := hooks.New()
 	var fired int
+	var got agentloop.Result
+	var gotOK bool
 	if err := hreg.Add(hooks.PointStop, "veto", func(ctx context.Context, payload any) (bool, error) {
 		fired++
+		got, gotOK = payload.(agentloop.Result)
 		return false, nil
 	}); err != nil {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
@@ -142,12 +145,18 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
 	if !errors.Is(err, agentloop.ErrCallsPerTurnExceeded) {
 		t.Fatalf("Run() error = %v, want ErrCallsPerTurnExceeded", err)
 	}
 	if fired != 1 {
 		t.Fatalf("PointStop fired %d times, want 1", fired)
+	}
+	if !gotOK {
+		t.Fatalf("PointStop payload type = %T, want agentloop.Result", got)
+	}
+	if got.Stop != res.Stop || got.Iterations != res.Iterations || len(got.History) != len(res.History) {
+		t.Fatalf("PointStop payload = %+v, want the same partial Result Run returned: %+v", got, res)
 	}
 }
 

@@ -1,4 +1,7 @@
 package provider
+  const CacheStyleExplicit = "explicit"
+  const CacheStyleImplicit = "implicit"
+  const CacheStyleNone = "none"
   const MaxNameBytes = 128
   const ReasoningEffortHigh = "high"
   const ReasoningEffortLow = "low"
@@ -9,10 +12,21 @@ package provider
   const RoleSystem = "system"
   const RoleTool = "tool"
   const RoleUser = "user"
+  const ToolChoiceAuto = "auto"
+  const ToolChoiceNone = "none"
   func (c Chunk) Validate() (error)
   func (m Message) Validate() (error)
+  func (r Request) Validate() (error)
   func RedactBlock(b ReasoningBlock) (ReasoningBlock)
   func RunTurn(ctx context.Context, c Completer, req Request) (Response, error)
+  type CacheStyle string
+  type CacheUsage struct {
+  Reported bool
+  Style CacheStyle
+  InputTokens int
+  CachedInputTokens int
+  CacheWriteTokens int
+}
   type Chunk struct {
   Delta string
   ToolCallDelta *ToolCall
@@ -20,6 +34,9 @@ package provider
   Usage Usage
   FinishReason string
   Err error
+  ReasoningDelta string
+  CacheUsage CacheUsage
+  WebSearch []WebSearchResult
 }
   type Completer interface {
 	Name() string
@@ -35,11 +52,14 @@ package provider
   Name string
   ToolCallID string
   ToolCalls []ToolCall
+  ReasoningContent string
+  CreatedAt time.Time
 }
   type ReasoningBlock struct {
   Content string
   Redacted bool
 }
+  type ReasoningDialect string
   type ReasoningEffort string
   type ReasoningPolicy interface {
 	ReasoningEffort() string
@@ -49,6 +69,14 @@ package provider
   Messages []Message
   Tools []ToolDefinition
   Stream bool
+  Temperature *float64
+  MaxTokens *int
+  ToolChoice ToolChoice
+  Timeout time.Duration
+  SessionID string
+  DisableProviderReplay bool
+  ReasoningEffort ReasoningEffort
+  ReasoningDialect ReasoningDialect
 }
   type Response struct {
   Model string
@@ -56,6 +84,8 @@ package provider
   ToolCalls []ToolCall
   Usage Usage
   FinishReason string
+  CacheUsage CacheUsage
+  WebSearch []WebSearchResult
 }
   type Role string
   type TokenEstimator interface {
@@ -67,6 +97,7 @@ package provider
   Name string
   Arguments []byte
 }
+  type ToolChoice string
   type ToolDefinition struct {
   Name string
   Description string
@@ -78,12 +109,23 @@ package provider
   TotalTokens int
   CachedTokens int
 }
+  type WebSearchResult struct {
+  Title string
+  Content string
+  Link string
+  Media string
+  Icon string
+  Refer string
+  PublishDate string
+}
   var ErrChunkErrDoneConflict
   var ErrNameInvalid
   var ErrNameUnexpected
   var ErrPromptTooLong
+  var ErrReasoningContentUnexpected
   var ErrStreamClosedEarly
   var ErrToolCallIDRequired
   var ErrToolCallIDUnexpected
   var ErrToolCallsUnexpected
+  var ErrToolChoiceInvalid
   var ErrUnknownRole

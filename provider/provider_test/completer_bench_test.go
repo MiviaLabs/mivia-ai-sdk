@@ -10,11 +10,14 @@ import (
 // BenchmarkRunTurnNonStream benchmarks RunTurn against a fake
 // Completer in non-streaming mode. The fake does no I/O.
 // Target: under one microsecond per call.
-// Measured: ~14 ns/op, 0 B/op, 0 allocs/op (the Messages validation
-// loop and the Chat dispatch both allocate nothing for this shape).
+// Measured: ~26 ns/op, 0 B/op, 0 allocs/op (Request.Validate, the
+// Messages validation loop, and the Chat dispatch all allocate
+// nothing for this shape, including the widened Response literal).
 func BenchmarkRunTurnNonStream(b *testing.B) {
 	f := &fakeCompleter{name: "bench", chatResp: provider.Response{
-		Message: provider.Message{Role: provider.RoleAssistant, Content: "ok"},
+		Message:    provider.Message{Role: provider.RoleAssistant, Content: "ok"},
+		CacheUsage: provider.CacheUsage{Reported: true, Style: provider.CacheStyleImplicit, InputTokens: 12, CachedInputTokens: 4},
+		WebSearch:  []provider.WebSearchResult{{Title: "result", Link: "https://example.test"}},
 	}}
 	req := provider.Request{
 		Model:    "bench-model",
@@ -36,7 +39,9 @@ func BenchmarkRunTurnNonStream(b *testing.B) {
 // real regression.
 func TestRunTurnAllocBudget(t *testing.T) {
 	f := &fakeCompleter{name: "bench", chatResp: provider.Response{
-		Message: provider.Message{Role: provider.RoleAssistant, Content: "ok"},
+		Message:    provider.Message{Role: provider.RoleAssistant, Content: "ok"},
+		CacheUsage: provider.CacheUsage{Reported: true, Style: provider.CacheStyleImplicit, InputTokens: 12, CachedInputTokens: 4},
+		WebSearch:  []provider.WebSearchResult{{Title: "result", Link: "https://example.test"}},
 	}}
 	req := provider.Request{
 		Model:    "bench-model",
@@ -73,9 +78,10 @@ func streamBenchChunks() []provider.Chunk {
 // and buildResponse, the allocation-heavy half of RunTurn that
 // BenchmarkRunTurnNonStream does not reach.
 // Target: under ten microseconds per call.
-// Measured: ~1.5 us/op, ~1264 B/op, 16 allocs/op (the goroutine, map,
+// Measured: ~1.5 us/op, ~2096 B/op, 16 allocs/op (the goroutine, map,
 // slice, and strings.Builder growth for the merged tool call and
-// content).
+// content, plus the two builders' zero-length ReasoningDelta writes,
+// which allocate nothing).
 func BenchmarkRunTurnStream(b *testing.B) {
 	req := provider.Request{Model: "bench-model", Stream: true}
 	ctx := context.Background()

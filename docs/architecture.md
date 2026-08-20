@@ -457,23 +457,34 @@ flowchart LR
   SDK has one form. See [packages/contextstate.md](packages/contextstate.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
-  `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Response`,
-  `Chunk`, `Chunk.Validate`, `ContextAccountant`, `ReasoningPolicy`,
-  `TokenEstimator`, `ReasoningEffort` and its four level constants,
-  `ReasoningBlock`, `RedactBlock`, `ReasoningEventKind`, and the
-  sentinels `ErrToolCallIDUnexpected`,
+  `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Request.Validate`,
+  `Response`, `Chunk`, `Chunk.Validate`, `ContextAccountant`,
+  `ReasoningPolicy`, `TokenEstimator`, `ReasoningEffort` and its four
+  level constants, `ReasoningDialect`, `ToolChoice` and its two
+  constants, `CacheStyle` and its three constants, `CacheUsage`,
+  `WebSearchResult`, `ReasoningBlock`, `RedactBlock`,
+  `ReasoningEventKind`, and the sentinels `ErrToolCallIDUnexpected`,
   `ErrToolCallIDRequired`, `ErrUnknownRole`, `ErrToolCallsUnexpected`,
-  `ErrChunkErrDoneConflict`, and `ErrStreamClosedEarly`. `Message`
-  carries `ToolCalls` on an assistant turn; `RunTurn` copies them onto
-  `Response.Message.ToolCalls` as well as `Response.ToolCalls`.
+  `ErrChunkErrDoneConflict`, `ErrStreamClosedEarly`,
+  `ErrReasoningContentUnexpected`, and `ErrToolChoiceInvalid`.
+  `Message` carries `ToolCalls` on an assistant turn and
+  `ReasoningContent` on an assistant turn only; `RunTurn` copies
+  `ToolCalls` onto `Response.Message.ToolCalls` as well as
+  `Response.ToolCalls`, and copies the drained `ReasoningDelta` text
+  onto `Response.Message.ReasoningContent`. `Request` carries the
+  request controls a hosted-model client needs: `Temperature` and
+  `MaxTokens` as pointers, `ToolChoice`, `Timeout`, `SessionID`,
+  `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
+  `Response` and the terminal `Chunk` carry `CacheUsage` and
+  `WebSearch` for provider-side cache and search accounting.
   `Completer` has no
   implementation in this SDK; a caller supplies its own concrete type.
-  `RunTurn` dispatches on `Request.Stream`, validates every message
-  first, and aggregates a streamed `Chunk` sequence into one
-  `Response`. `ReasoningEventKind` is the `contextstate.SourceEvent.Kind`
-  value a reasoning trace carries; `RedactBlock` clears a
-  `ReasoningBlock`'s content and marks it redacted. `provider` imports
-  no other package in this module. See
+  `RunTurn` validates `Request` once, then validates every message,
+  dispatches on `Request.Stream`, and aggregates a streamed `Chunk`
+  sequence into one `Response`. `ReasoningEventKind` is the
+  `contextstate.SourceEvent.Kind` value a reasoning trace carries;
+  `RedactBlock` clears a `ReasoningBlock`'s content and marks it
+  redacted. `provider` imports no other package in this module. See
   [packages/provider.md](packages/provider.md).
 - `contextplan/` — fits one durable session into a bounded provider
   request. It provides `Planner` with `NewPlanner` and `Plan`,

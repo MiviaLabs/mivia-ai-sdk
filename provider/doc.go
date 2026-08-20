@@ -8,7 +8,12 @@
 // Map: types.go = Role and its constants, Message, Message.Validate,
 // ToolDefinition, ToolCall, Usage, Request, Response, Chunk,
 // Chunk.Validate, and the sentinel errors ErrToolCallIDUnexpected,
-// ErrToolCallIDRequired, ErrUnknownRole, ErrChunkErrDoneConflict;
-// completer.go = Completer, ContextAccountant, ReasoningPolicy;
-// runturn.go = RunTurn. Contribution rules: ../AGENTS.md.
+// ErrToolCallIDRequired, ErrUnknownRole, ErrChunkErrDoneConflict,
+// ErrReasoningContentUnexpected; request.go = ToolChoice and its
+// constants, Request.Validate, ErrToolChoiceInvalid,
+// ReasoningDialect, CacheStyle and its constants, CacheUsage,
+// WebSearchResult; completer.go = Completer, ContextAccountant,
+// ReasoningPolicy; reasoning.go = ReasoningEffort and its constants,
+// ReasoningBlock, RedactBlock; runturn.go = RunTurn. Contribution
+// rules: ../AGENTS.md.
 package provider

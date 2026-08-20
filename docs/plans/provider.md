@@ -30,7 +30,7 @@ tracking. Those are caller or future-phase concerns layered on top of
 one `Chat` call, not part of the contract itself.
 
 `provider` imports nothing internal. No third-party import. Stdlib
-only: `context`, `errors`, `fmt`. A leaf package stays easiest to test
+only: `context`, `errors`, `fmt`, `time`. A leaf package stays easiest to test
 and depend on: any future package that needs a model binding imports
 `provider` alone, with no transitive pull-in. This matches AGENTS.md's
 dependency-inward design: leaf blocks first, composition last.
@@ -373,3 +373,447 @@ method runs.
 - Consumers in this change window: `contextplan.Compact` reads
   `Name` for `PreserveNames`; `contextsummary.SummaryMessage` sets it;
   `agentloop` tests `ErrPromptTooLong`. Each lands its own plan.
+
+## Change: request controls, reasoning replay, and turn accounting
+
+Status: shipped. This change widens the value types only. The
+`Completer` interface keeps its three methods: `Name`, `Chat`,
+`ChatStream(ctx, req) (<-chan Chunk, error)`. No new method, no new
+required capability.
+
+### Change goal
+
+Carry the request controls, the reasoning-replay content, and the
+turn-accounting fields a real hosted-model client needs, so a caller
+does not have to fork `Request`, `Message`, `Response`, or `Chunk`
+into its own package to add them. `provider` still ships no
+implementation; every field here is a value the interface carries,
+never logic the interface runs.
+
+### Change scope
+
+Inside:
+
+- Eight new `Request` fields: `Temperature`, `MaxTokens`, `ToolChoice`,
+  `Timeout`, `SessionID`, `DisableProviderReplay`, `ReasoningEffort`,
+  and `ReasoningDialect`. Eight fields, one bullet.
+- Two new `Message` fields: `ReasoningContent` and `CreatedAt`, plus
+  the role rule `ReasoningContent` follows.
+- Two new `Response` fields: `CacheUsage` and `WebSearch`.
+- Three new `Chunk` fields that keep the streamed path able to
+  produce the same `Response` shape the non-streamed path produces:
+  `ReasoningDelta`, `CacheUsage`, `WebSearch`.
+- Four new types: `ToolChoice`, `ReasoningDialect`, `CacheStyle`, and
+  `CacheUsage`, plus one struct: `WebSearchResult`.
+- One new sentinel, `ErrReasoningContentUnexpected`, and one new
+  sentinel, `ErrToolChoiceInvalid`, plus the `Request.Validate` method
+  that returns the second one.
+- One new stdlib import, `time`, for `Request.Timeout` and
+  `Message.CreatedAt`; the shipped plan's intro line, "Stdlib only:
+  `context`, `errors`, `fmt`," must change in the same change.
+
+Outside:
+
+- Any concrete client. This change adds no HTTP call, no vendor
+  wire-decode, and no factory or registry construction function. The
+  reference file's `New`, `NewForProvider`, `Options`, and the
+  built-in provider factory table stay out of this SDK; a concrete
+  client is a separate module.
+- `ContextAccountingAware` and `ContextAccountingProfile`. The
+  reference file's byte- and token-cost estimator
+  (`EstimateRequestCost`, `PruneMessagesKeepTurns`,
+  `MessageTokensAt`, and the rest of its `context.go`) is a large,
+  separate concern: per-message cost estimation and history pruning,
+  not a request or response shape. `provider` already ships
+  `TokenEstimator` for the estimation half of that concern; pruning
+  stays a `contextplan`-level concern in this SDK. Out of scope here;
+  a future plan ports it if a caller needs it.
+- `ReasoningPolicyAware`'s `RequiresReplay` and `RejectReasoningLess`
+  bits. `provider` already ships `ReasoningPolicy` as an optional
+  capability with a different, narrower shape
+  (`ReasoningEffort() string`). Widening that capability is a
+  separate decision from carrying replay content on `Message`, and
+  the gap list for this change names only the value types, not a new
+  capability interface.
+- Range validation on `Temperature` or `MaxTokens`. Valid ranges are
+  provider-specific; a caller's `Completer` implementation checks its
+  own provider's bounds. `provider` validates only the vocabulary it
+  owns: `Role`, `Name`, and now `ToolChoice`.
+- Provider-specific reasoning dialect names. See the design decision
+  below.
+
+### Change API
+
+The surface below is the lock target. It lands in `api/provider.txt`
+via `make api-update`, in the same change as the code.
+
+`Request` gains eight fields:
+
+```go
+type Request struct {
+    Model                  string
+    Messages               []Message
+    Tools                  []ToolDefinition
+    Stream                 bool
+    Temperature            *float64
+    MaxTokens              *int
+    ToolChoice             ToolChoice
+    Timeout                time.Duration
+    SessionID              string
+    DisableProviderReplay  bool
+    ReasoningEffort        ReasoningEffort
+    ReasoningDialect       ReasoningDialect
+}
+```
+
+- `Temperature *float64` and `MaxTokens *int` are pointers: a nil
+  pointer means "the caller sent no override, use the completer's own
+  default"; a non-nil pointer to `0` is a caller instruction, not an
+  absent field. `Request` had no numeric field before this change, so
+  this fixes the pointer convention for this package's first two.
+- `ToolChoice ToolChoice` stays a plain value, not a pointer, because
+  its zero value (`""`) already means "unspecified" and is distinct
+  from `ToolChoiceAuto` and `ToolChoiceNone`, the same way `Role`'s
+  zero value differs from its four named constants.
+- `Timeout time.Duration` stays a plain value: zero already means "no
+  caller-side timeout override", the standard meaning of a zero
+  `time.Duration` in this module (`heartbeat.Monitor` uses the same
+  rule).
+- `SessionID string` and `DisableProviderReplay bool` stay plain
+  values: an empty string and `false` are their natural "not set"
+  reading, so a pointer buys nothing here.
+- `ReasoningEffort ReasoningEffort` reuses the existing type from
+  `reasoning.go`, rather than adding a new `ReasoningLevel` type. Its
+  zero value (`""`) means "send no reasoning field at all", matching
+  this change's design decision below; `ReasoningEffortNone` stays a
+  distinct, explicit value from empty.
+- `ReasoningDialect ReasoningDialect` is a new, opaque string type.
+  See the design decision below for why it carries no constants in
+  this package.
+
+```go
+// ToolChoice controls whether and how a completion may call a tool.
+// The empty value means unspecified: the completer's own default
+// applies. ToolChoiceAuto and ToolChoiceNone are the two closed,
+// provider-neutral overrides Request.Validate accepts.
+type ToolChoice string
+
+const (
+    ToolChoiceAuto ToolChoice = "auto"
+    ToolChoiceNone ToolChoice = "none"
+)
+
+// ErrToolChoiceInvalid is Request.Validate's error when ToolChoice
+// holds any value other than "", ToolChoiceAuto, or ToolChoiceNone.
+var ErrToolChoiceInvalid = errors.New("provider: tool choice is not auto, none, or empty")
+
+// Validate enforces the closed ToolChoice vocabulary. RunTurn calls
+// it once, before it validates any Messages entry.
+func (r Request) Validate() error
+
+// ReasoningDialect names the wire dialect a Completer should use to
+// carry ReasoningEffort to its provider. The empty value means "use
+// the completer's own default dialect". provider defines no closed
+// set of dialect names; a concrete client package owns its own
+// vocabulary and compares against its own constants, never a
+// provider literal.
+type ReasoningDialect string
+```
+
+`Message` gains two fields and one role rule:
+
+```go
+type Message struct {
+    Role             Role
+    Content          string
+    Name             string
+    ToolCallID       string
+    ToolCalls        []ToolCall
+    ReasoningContent string
+    CreatedAt        time.Time
+}
+```
+
+- `ReasoningContent string` carries a model's chain-of-thought for one
+  assistant turn, verbatim, for a completer whose provider requires
+  the caller to echo it back on a later tool-call turn. `Validate`
+  treats it the same way it already treats `ToolCalls`: legal only on
+  `RoleAssistant`, and `ErrReasoningContentUnexpected` on any other
+  role. `Validate` checks it last, after the `ToolCalls` check.
+- `CreatedAt time.Time` is wall-clock time for when the message
+  entered the caller's own history. The zero value means unknown.
+  `Validate` applies no rule to it; every role may carry it or omit
+  it.
+
+```go
+// ErrReasoningContentUnexpected is Validate's error when
+// ReasoningContent is non-empty on a Message whose Role is not
+// RoleAssistant.
+var ErrReasoningContentUnexpected = errors.New("provider: reasoning content unexpected outside RoleAssistant")
+```
+
+`Response` gains two fields:
+
+```go
+type Response struct {
+    Model        string
+    Message      Message
+    ToolCalls    []ToolCall
+    Usage        Usage
+    FinishReason string
+    CacheUsage   CacheUsage
+    WebSearch    []WebSearchResult
+}
+```
+
+`Response` carries no separate `ReasoningContent` field.
+`Response.Message.ReasoningContent` already holds it, since `Response`
+holds `Message` as a field; a second, flat field would be a second
+source of truth for the same value. This is a deliberate difference
+from the reference file, whose `Response` does not embed its `Message`
+type.
+
+```go
+// CacheStyle names how a provider's wire format expresses
+// prompt-cache reuse for one turn.
+type CacheStyle string
+
+const (
+    CacheStyleNone     CacheStyle = "none"
+    CacheStyleImplicit CacheStyle = "implicit"
+    CacheStyleExplicit CacheStyle = "explicit"
+)
+
+// CacheUsage reports provider-side prompt-cache accounting for one
+// turn. Reported false means the provider's response carried none of
+// the recognized cache-usage fields; every other field is meaningless
+// when Reported is false, the same "reported flag gates the rest"
+// shape TokenEstimator's callers already expect from Usage-adjacent
+// types.
+type CacheUsage struct {
+    Reported          bool
+    Style             CacheStyle
+    InputTokens       int
+    CachedInputTokens int
+    CacheWriteTokens  int
+}
+
+// WebSearchResult is one provider-supplied search result attached to
+// a completion. Every field is a raw transport-level string; provider
+// does not interpret or render it. No JSON tag: provider carries
+// in-process values only and defines no wire format of its own.
+type WebSearchResult struct {
+    Title       string
+    Content     string
+    Link        string
+    Media       string
+    Icon        string
+    Refer       string
+    PublishDate string
+}
+```
+
+`Chunk` gains three fields, so the streamed path can build the same
+`Response` shape the non-streamed path builds:
+
+```go
+type Chunk struct {
+    Delta          string
+    ToolCallDelta  *ToolCall
+    Done           bool
+    Usage          Usage
+    FinishReason   string
+    Err            error
+    ReasoningDelta string
+    CacheUsage     CacheUsage
+    WebSearch      []WebSearchResult
+}
+```
+
+- `ReasoningDelta string` follows `Delta`'s own rule: it concatenates,
+  in arrival order, into `Response.Message.ReasoningContent`, the same
+  way `Delta` concatenates into `Response.Message.Content`.
+- `CacheUsage CacheUsage` and `WebSearch []WebSearchResult` follow
+  `Usage`'s existing rule: the zero value on every non-terminal
+  `Chunk`, and the real value only on the terminal chunk
+  (`Done == true`). `RunTurn` copies the terminal chunk's values onto
+  `Response.CacheUsage` and `Response.WebSearch`, the same way it
+  already copies `Usage` and `FinishReason`.
+- `Chunk.Validate` gains no new rule. `CacheUsage` and `WebSearch`
+  follow the same unenforced "zero until Done" convention
+  `FinishReason` already follows; `provider` does not police a
+  producer that sets them early, the same way it does not police one
+  today for `FinishReason`.
+
+`RunTurn`'s aggregation contract changes to match:
+
+- `RunTurn` calls `req.Validate()` once, before it validates any
+  `Messages` entry and before it dispatches to `Chat` or
+  `ChatStream`. A `Validate` failure returns the zero `Response` and
+  that error, unwrapped, the same precedence `Message.Validate`
+  failures already hold.
+- `drainStream` accumulates `ReasoningDelta` into a second
+  `strings.Builder`, alongside the existing `Delta` builder.
+- `buildResponse` sets `Response.Message.ReasoningContent` from the
+  accumulated `ReasoningDelta` text, and sets `Response.CacheUsage`
+  and `Response.WebSearch` from the terminal chunk's values, alongside
+  its existing `Usage` and `FinishReason` assignment.
+
+### Design decisions
+
+**Reasoning dial location: inside `provider`, not a new leaf
+package.** The reference file's `reasoning.Level` and
+`reasoning.Dialect` live in their own package because `internal/config`
+also needs them, and `provider` already imports `config`; a shared
+package avoids a cycle. This SDK has no such second consumer today:
+nothing outside `provider` needs `ReasoningEffort` or
+`ReasoningDialect` on its own. `provider` already carries its
+reasoning vocabulary in-package (`reasoning.go`, shipped: `Reasoning
+Effort`, `ReasoningBlock`, `RedactBlock`). Extending that same file
+keeps one cohesive vocabulary in one package, matches
+`AGENTS.md`'s rule against splitting a package with no real second
+consumer, and adds no `policy/layers.json` row. A future plan moves
+the vocabulary to its own leaf package only once a second package
+needs it standalone.
+
+**`ReasoningDialect` carries no constants in this package.** The
+reference file's `Dialect` enumerates seven wire dialects
+(`DialectOpenAI`, `DialectThinking`, and so on), each tied to a
+specific provider's JSON shape. `provider` ships no concrete client
+and makes no HTTP call, so it has no caller for those seven names
+today; defining them here would be a taxonomy with no reader, which
+`AGENTS.md`'s orchestrator guidance calls speculative generality. The
+type stays open (`type ReasoningDialect string`) so a caller-supplied
+`Completer` package defines and compares against its own constants,
+the same way `Request.Model` is an opaque string this package never
+enumerates.
+
+**Streaming shape: keep `<-chan Chunk`, add no `ChatTurn` method and
+no `io.Writer`.** The reference file streams through a caller-supplied
+`io.Writer` on `Request.StreamWriter` and adds a third method,
+`ChatTurn`, so a tool-calling turn has a place to return
+`*Response` outside the streaming path. This package's `Chat` and
+`ChatStream` already produce the same `Response` shape on both paths,
+including `ToolCalls`, through `RunTurn`'s aggregation; a `ChatTurn`
+method would duplicate that shape for no new information. A channel
+also composes with `context` cancellation the way this package
+already relies on: `RunTurn`'s drain loop already selects on
+`ctx.Done()` against the channel, a pattern an `io.Writer` cannot
+express without a second control channel. Two production consumers,
+`agentloop` and `subagent`, already depend on the channel shape;
+switching to a writer would force both to rewrite their aggregation
+logic for no gain this change's gap list asks for. Widening `Chunk`
+instead of the method set keeps the streamed and non-streamed paths
+at parity with one aggregation function, `RunTurn`, instead of two.
+
+**Pointer fields: `Temperature` and `MaxTokens` only.** Every other
+new field's zero value already means "not set" without ambiguity
+(`""` for strings and `ToolChoice`/`ReasoningDialect`, `0` for
+`time.Duration`, `false` for a bool, the zero `time.Time` for
+`CreatedAt`). `Temperature` and `MaxTokens` are the one case where a
+caller-meant `0` (a deterministic sample, a hard token cap) reads
+identically to "unset" if the field were a plain `float64` or `int`.
+A pointer disambiguates the two, matching the reference file's own
+`*float64`/`*int` choice for exactly these two fields, and matching
+no other field in this package, because no other field has this
+ambiguity.
+
+### Change tests
+
+Test files stay in `provider/provider_test/`. Additions, not new
+files, since existing files already hold each type's tests.
+
+- `types_test.go` — table-driven additions:
+  - `Request.Validate` cases: `""`, `ToolChoiceAuto`, and
+    `ToolChoiceNone` all pass; any other `ToolChoice` value fails
+    `ErrToolChoiceInvalid`.
+  - `Message.Validate` cases: a `RoleAssistant` message with
+    `ReasoningContent` set passes; the same content on `RoleSystem`,
+    `RoleUser`, and `RoleTool` each fail
+    `ErrReasoningContentUnexpected`. Precedence: an unknown role with
+    `ReasoningContent` set still returns `ErrUnknownRole` first, and a
+    `RoleTool` message missing `ToolCallID` with `ReasoningContent`
+    set returns `ErrToolCallIDRequired` before
+    `ErrReasoningContentUnexpected`.
+  - A zero-value `CreatedAt` and a set `CreatedAt` both pass
+    `Message.Validate`, on every role.
+  - `CacheUsage{}` and `WebSearchResult{}` zero values behave as
+    documented: `Reported == false` on the zero `CacheUsage`, an empty
+    `[]WebSearchResult` on the zero `Response`.
+- `completer_test.go` — `RunTurn` cases:
+  - A `Request` with an invalid `ToolChoice` fails
+    `req.Validate()` and calls neither `Completer` method, before any
+    `Messages` entry is checked.
+  - A `Request` with a valid `ToolChoice` and one invalid `Messages`
+    entry still fails on the message, unwrapped, the existing
+    precedence.
+  - A fake `ChatStream` that sends two `Chunk` values carrying
+    `ReasoningDelta` fragments produces a `Response.Message
+    .ReasoningContent` that concatenates them in order, alongside the
+    existing `Delta`-to-`Content` case.
+  - A fake `ChatStream`'s terminal `Chunk` carrying a non-zero
+    `CacheUsage` and a non-empty `WebSearch` slice produces a
+    `Response` whose `CacheUsage` and `WebSearch` match; a
+    non-terminal chunk's `CacheUsage`/`WebSearch` values are
+    discarded, matching the terminal-chunk-only rule.
+- `completer_bench_test.go` — the existing benchmark's fake `Response`
+  gains a `CacheUsage` and one `WebSearchResult` entry, so the
+  benchmark measures the widened `Response`'s real allocation cost,
+  not the old, narrower shape.
+- `validate_fuzz_test.go` — `FuzzMessageValidate` gains a fourth
+  fuzzed input, a `ReasoningContent` presence flag, alongside the
+  existing `Role`, `ToolCallID`, and `ToolCalls`-length inputs. The
+  oracle adds the new precedence rule: a non-empty `ReasoningContent`
+  on a known, non-`RoleAssistant` role returns
+  `ErrReasoningContentUnexpected` only after the existing `Role`,
+  `ToolCallID`, and `ToolCalls` checks pass; `ErrUnknownRole` and the
+  `ToolCallID`/`ToolCalls` errors still win over it on the same
+  `Message`, matching the field's documented last-checked position.
+
+### Change verification
+
+- `make verify` passes: gofmt, vet, tests, the python gates, the
+  Semgrep scan and probes, and the coverage block.
+- The coverage floor of 85 holds for `provider` and for the total.
+- `policy/layers.json` needs no edit. `provider`'s row stays `[]`; this
+  change adds fields and types, not an import.
+- `api/provider.txt` gains, via `make api-update` in the same change
+  as the code: the eight new `Request` fields, `ToolChoice` and its
+  two constants, `Request.Validate`, `ErrToolChoiceInvalid`,
+  `ReasoningDialect`, the two new `Message` fields,
+  `ErrReasoningContentUnexpected`, the two new `Response` fields,
+  `CacheStyle` and its three constants, `CacheUsage`,
+  `WebSearchResult`, and the three new `Chunk` fields.
+- `docs/architecture.md`'s `provider/` bullet gains the widened field
+  and type list, in the same change as the code.
+- `docs/packages/provider.md` gains every new type, field, and
+  sentinel, matching the docs-maintenance convention this file already
+  follows for the `Name` field change above.
+- `provider/doc.go`'s file map gains the new types' home files.
+- No conformance vector: `provider` still defines no wire format; it
+  carries in-process values only, the same statement the shipped plan
+  already makes.
+- `python3 scripts/check_structure.py` must pass on `provider/types.go`
+  after the build. The file holds 219 lines before this change; the
+  builder checks the file stays at or below the 500-line limit after
+  the nine new types and fields land, and splits the file if it does
+  not.
+- Consumer check, done ahead of this change landing, against
+  `docs/architecture.md`'s dependency graph: `agentloop`,
+  `subagent`, `contextplan`, `contextsummary`, `providerregistry`,
+  `usage`, and `e2e` all import `provider`, and each constructs or
+  consumes `provider.Message`, `provider.Request`, `provider.Response`,
+  or `provider.Chunk` values with keyed struct literals only,
+  confirmed by a repository-wide search (`agentloop/definitions.go`,
+  `toolcall.go`, `options.go`, `loop.go`, `compaction.go`, `run.go`;
+  `subagent/providertool.go`, `providerregistrytool.go`;
+  `contextplan/planner.go`, `compact.go`; `contextsummary/summarizer.go`,
+  `summary.go`; `providerregistry/route.go`; `usage/wrap.go`,
+  `accumulator.go`; `e2e/fault.go`; and the doc example
+  `docs/examples/_agentcomposition/main.go`). Adding a field breaks no
+  keyed literal. `agentrun` and `runconfig` hold no direct `provider`
+  reference today; they reach `provider` values only through
+  `agentloop`'s own types, so neither needs a source change for this
+  change to compile. The `Completer` interface's method set is
+  unchanged, so no implementer or caller of `Completer` needs a change
+  either.

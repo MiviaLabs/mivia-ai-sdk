@@ -141,6 +141,8 @@ func TestSentinelsDistinctByString(t *testing.T) {
 		provider.ErrNameUnexpected,
 		provider.ErrNameInvalid,
 		provider.ErrPromptTooLong,
+		provider.ErrReasoningContentUnexpected,
+		provider.ErrToolChoiceInvalid,
 	}
 	seen := make(map[string]string, len(sentinels))
 	for _, s := range sentinels {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"time"
 	"unicode/utf8"
 )
 
@@ -38,6 +39,10 @@ var (
 	// exceeds the model's context window. A Completer returns or wraps
 	// it; provider ships no implementation itself.
 	ErrPromptTooLong = errors.New("provider: prompt exceeds the model context window")
+	// ErrReasoningContentUnexpected is Validate's error when
+	// ReasoningContent is non-empty on a Message whose Role is not
+	// RoleAssistant.
+	ErrReasoningContentUnexpected = errors.New("provider: reasoning content unexpected outside RoleAssistant")
 )
 
 // MaxNameBytes bounds Message.Name when set.
@@ -60,29 +65,40 @@ const (
 // a RoleAssistant message; it holds the calls that assistant turn made.
 // Name is legal only on RoleUser and RoleTool messages; an empty Name
 // is legal on every role. See MaxNameBytes for the bound.
+// ReasoningContent carries a model's chain-of-thought for one
+// assistant turn, verbatim, for a completer whose provider requires
+// the caller to echo it back on a later tool-call turn; it is legal
+// only on RoleAssistant. CreatedAt is wall-clock time for when the
+// message entered the caller's own history; its zero value means
+// unknown, and every role may carry it or omit it.
 type Message struct {
-	Role       Role
-	Content    string
-	Name       string
-	ToolCallID string
-	ToolCalls  []ToolCall
+	Role             Role
+	Content          string
+	Name             string
+	ToolCallID       string
+	ToolCalls        []ToolCall
+	ReasoningContent string
+	CreatedAt        time.Time
 }
 
 // Validate enforces the ToolCallID/Role pairing rule, the closed set
-// of Role constants, the Name rule, and the ToolCalls rule. It checks
-// Role legality first: a Role outside the four constants always
-// returns ErrUnknownRole, regardless of Name, ToolCallID, or
-// ToolCalls. For one of the four known roles, Validate next checks
-// the Name rule: ErrNameUnexpected when Name is non-empty on a Role
-// other than RoleUser or RoleTool; ErrNameInvalid when a non-empty
-// Name exceeds MaxNameBytes, is not valid UTF-8, or carries a control
-// character. Only then does Validate check the ToolCallID pairing
-// rule: ErrToolCallIDUnexpected when ToolCallID is non-empty on a
+// of Role constants, the Name rule, the ToolCalls rule, and the
+// ReasoningContent rule. It checks Role legality first: a Role
+// outside the four constants always returns ErrUnknownRole, regardless
+// of Name, ToolCallID, ToolCalls, or ReasoningContent. For one of the
+// four known roles, Validate next checks the Name rule:
+// ErrNameUnexpected when Name is non-empty on a Role other than
+// RoleUser or RoleTool; ErrNameInvalid when a non-empty Name exceeds
+// MaxNameBytes, is not valid UTF-8, or carries a control character.
+// Then Validate checks the ToolCallID pairing rule:
+// ErrToolCallIDUnexpected when ToolCallID is non-empty on a
 // non-RoleTool message; ErrToolCallIDRequired when ToolCallID is empty
-// on a RoleTool message. Finally, Validate rejects a non-empty
-// ToolCalls on any known Role other than RoleAssistant with
-// ErrToolCallsUnexpected. RunTurn calls Validate on every entry of
-// Request.Messages before it dispatches.
+// on a RoleTool message. Next, Validate rejects a non-empty ToolCalls
+// on any known Role other than RoleAssistant with
+// ErrToolCallsUnexpected. Finally, Validate rejects a non-empty
+// ReasoningContent on any known Role other than RoleAssistant with
+// ErrReasoningContentUnexpected. RunTurn calls Validate on every entry
+// of Request.Messages before it dispatches.
 func (m Message) Validate() error {
 	switch m.Role {
 	case RoleSystem, RoleUser:
@@ -95,12 +111,18 @@ func (m Message) Validate() error {
 		if len(m.ToolCalls) > 0 {
 			return ErrToolCallsUnexpected
 		}
+		if err := m.validateReasoningContent(); err != nil {
+			return err
+		}
 	case RoleAssistant:
 		if err := m.validateName(); err != nil {
 			return err
 		}
 		if m.ToolCallID != "" {
 			return ErrToolCallIDUnexpected
+		}
+		if err := m.validateReasoningContent(); err != nil {
+			return err
 		}
 	case RoleTool:
 		if err := m.validateName(); err != nil {
@@ -111,6 +133,9 @@ func (m Message) Validate() error {
 		}
 		if len(m.ToolCalls) > 0 {
 			return ErrToolCallsUnexpected
+		}
+		if err := m.validateReasoningContent(); err != nil {
+			return err
 		}
 	default:
 		return ErrUnknownRole
@@ -135,6 +160,19 @@ func (m Message) validateName() error {
 		if r < 0x20 || r == 0x7f {
 			return ErrNameInvalid
 		}
+	}
+	return nil
+}
+
+// validateReasoningContent applies the ReasoningContent rule for one
+// known role. A non-empty ReasoningContent outside RoleAssistant is
+// ErrReasoningContentUnexpected.
+func (m Message) validateReasoningContent() error {
+	if m.ReasoningContent == "" {
+		return nil
+	}
+	if m.Role != RoleAssistant {
+		return ErrReasoningContentUnexpected
 	}
 	return nil
 }
@@ -170,41 +208,69 @@ type Usage struct {
 
 // Request is the input to every Completer method. An empty Model
 // means the implementation's own default. Tools may be empty when the
-// caller offers none.
+// caller offers none. Temperature and MaxTokens are pointers: nil
+// means "use the completer's own default", a non-nil pointer to zero
+// is a caller instruction. ToolChoice's zero value means unspecified.
+// Timeout's zero value means no caller-side timeout override.
+// SessionID and DisableProviderReplay use their natural zero-value
+// "not set" reading. ReasoningEffort's zero value means send no
+// reasoning field at all. ReasoningDialect's zero value means use the
+// completer's own default dialect. See Request.Validate for the
+// ToolChoice rule.
 type Request struct {
-	Model    string
-	Messages []Message
-	Tools    []ToolDefinition
-	Stream   bool
+	Model                 string
+	Messages              []Message
+	Tools                 []ToolDefinition
+	Stream                bool
+	Temperature           *float64
+	MaxTokens             *int
+	ToolChoice            ToolChoice
+	Timeout               time.Duration
+	SessionID             string
+	DisableProviderReplay bool
+	ReasoningEffort       ReasoningEffort
+	ReasoningDialect      ReasoningDialect
 }
 
 // Response is the aggregated result of one turn. Model echoes the
 // model that actually served the request, which may differ from
 // Request.Model on a provider that redirects to a fallback. ToolCalls
-// is empty when the model returned plain text.
+// is empty when the model returned plain text. Response carries no
+// separate reasoning-content field: Message.ReasoningContent already
+// holds it, since Response embeds Message. CacheUsage and WebSearch
+// hold the terminal Chunk's values on the streamed path, or the
+// Completer's own values on the non-streamed path.
 type Response struct {
 	Model        string
 	Message      Message
 	ToolCalls    []ToolCall
 	Usage        Usage
 	FinishReason string
+	CacheUsage   CacheUsage
+	WebSearch    []WebSearchResult
 }
 
 // Chunk is one increment of a streamed response. Done is true only on
-// the final chunk that completes without error; Usage and
-// FinishReason are the zero value until then. ToolCallDelta is
-// non-nil only on a chunk that carries a tool-call fragment. Err is
-// nil on every chunk except a terminal chunk that reports a
-// mid-stream failure; when a chunk carries a non-nil Err, the channel
-// closes after it and no further chunk follows. A chunk never carries
-// both a non-nil Err and Done == true.
+// the final chunk that completes without error; Usage, FinishReason,
+// CacheUsage, and WebSearch are the zero value until then.
+// ToolCallDelta is non-nil only on a chunk that carries a tool-call
+// fragment. ReasoningDelta concatenates, in arrival order, into
+// Response.Message.ReasoningContent, the same way Delta concatenates
+// into Response.Message.Content. Err is nil on every chunk except a
+// terminal chunk that reports a mid-stream failure; when a chunk
+// carries a non-nil Err, the channel closes after it and no further
+// chunk follows. A chunk never carries both a non-nil Err and
+// Done == true.
 type Chunk struct {
-	Delta         string
-	ToolCallDelta *ToolCall
-	Done          bool
-	Usage         Usage
-	FinishReason  string
-	Err           error
+	Delta          string
+	ToolCallDelta  *ToolCall
+	Done           bool
+	Usage          Usage
+	FinishReason   string
+	Err            error
+	ReasoningDelta string
+	CacheUsage     CacheUsage
+	WebSearch      []WebSearchResult
 }
 
 // Validate enforces that Err and Done == true are mutually exclusive

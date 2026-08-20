@@ -3,6 +3,7 @@ package provider_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
@@ -193,6 +194,128 @@ func TestMessageValidateToolCalls(t *testing.T) {
 				t.Fatalf("Validate() = %v, want errors.Is %v", err, c.wantErr)
 			}
 		})
+	}
+}
+
+func TestRequestValidateToolChoice(t *testing.T) {
+	cases := []struct {
+		name       string
+		toolChoice provider.ToolChoice
+		wantErr    error
+	}{
+		{name: "empty is unspecified", toolChoice: ""},
+		{name: "auto", toolChoice: provider.ToolChoiceAuto},
+		{name: "none", toolChoice: provider.ToolChoiceNone},
+		{
+			name:       "unknown value",
+			toolChoice: provider.ToolChoice("bogus"),
+			wantErr:    provider.ErrToolChoiceInvalid,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := provider.Request{ToolChoice: c.toolChoice}
+			err := req.Validate()
+			if c.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("Validate() = %v, want errors.Is %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestMessageValidateReasoningContent(t *testing.T) {
+	cases := []struct {
+		name    string
+		msg     provider.Message
+		wantErr error
+	}{
+		{
+			name: "valid assistant with reasoning content",
+			msg:  provider.Message{Role: provider.RoleAssistant, ReasoningContent: "chain of thought"},
+		},
+		{
+			name:    "invalid system with reasoning content",
+			msg:     provider.Message{Role: provider.RoleSystem, ReasoningContent: "chain of thought"},
+			wantErr: provider.ErrReasoningContentUnexpected,
+		},
+		{
+			name:    "invalid user with reasoning content",
+			msg:     provider.Message{Role: provider.RoleUser, ReasoningContent: "chain of thought"},
+			wantErr: provider.ErrReasoningContentUnexpected,
+		},
+		{
+			name:    "invalid tool with reasoning content",
+			msg:     provider.Message{Role: provider.RoleTool, ToolCallID: "call-1", ReasoningContent: "chain of thought"},
+			wantErr: provider.ErrReasoningContentUnexpected,
+		},
+		{
+			name:    "unknown role with reasoning content still fails on role first",
+			msg:     provider.Message{Role: provider.Role("bogus"), ReasoningContent: "chain of thought"},
+			wantErr: provider.ErrUnknownRole,
+		},
+		{
+			name:    "tool missing tool call id with reasoning content fails on tool call id first",
+			msg:     provider.Message{Role: provider.RoleTool, ReasoningContent: "chain of thought"},
+			wantErr: provider.ErrToolCallIDRequired,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.msg.Validate()
+			if c.wantErr == nil {
+				if err != nil {
+					t.Fatalf("Validate() = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("Validate() = %v, want errors.Is %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
+func TestMessageValidateCreatedAt(t *testing.T) {
+	roles := []provider.Role{provider.RoleSystem, provider.RoleUser, provider.RoleAssistant, provider.RoleTool}
+	for _, role := range roles {
+		t.Run(string(role)+" zero CreatedAt", func(t *testing.T) {
+			msg := provider.Message{Role: role}
+			if role == provider.RoleTool {
+				msg.ToolCallID = "call-1"
+			}
+			if err := msg.Validate(); err != nil {
+				t.Fatalf("Validate() = %v, want nil", err)
+			}
+		})
+		t.Run(string(role)+" set CreatedAt", func(t *testing.T) {
+			msg := provider.Message{Role: role, CreatedAt: time.Now()}
+			if role == provider.RoleTool {
+				msg.ToolCallID = "call-1"
+			}
+			if err := msg.Validate(); err != nil {
+				t.Fatalf("Validate() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestCacheUsageZeroValue(t *testing.T) {
+	var cu provider.CacheUsage
+	if cu.Reported {
+		t.Fatal("zero CacheUsage.Reported = true, want false")
+	}
+}
+
+func TestResponseZeroValueWebSearch(t *testing.T) {
+	var resp provider.Response
+	if len(resp.WebSearch) != 0 {
+		t.Fatalf("zero Response.WebSearch len = %d, want 0", len(resp.WebSearch))
 	}
 }
 

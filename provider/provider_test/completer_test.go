@@ -108,6 +108,84 @@ func TestRunTurnStreamedMessageCarriesToolCalls(t *testing.T) {
 	}
 }
 
+func TestRunTurnValidatesToolChoiceBeforeMessages(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	req := provider.Request{
+		ToolChoice: provider.ToolChoice("bogus"),
+		Messages:   []provider.Message{{Role: provider.Role("also-bogus")}},
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrToolChoiceInvalid) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolChoiceInvalid", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+	if f.chatCalled || f.streamCalled {
+		t.Fatal("RunTurn() dispatched to the Completer despite an invalid ToolChoice")
+	}
+}
+
+func TestRunTurnValidToolChoiceStillValidatesMessages(t *testing.T) {
+	f := &fakeCompleter{name: "fake"}
+	req := provider.Request{
+		ToolChoice: provider.ToolChoiceAuto,
+		Messages:   []provider.Message{{Role: provider.RoleUser, ToolCallID: "call-1"}},
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if !errors.Is(err, provider.ErrToolCallIDUnexpected) {
+		t.Fatalf("RunTurn() error = %v, want errors.Is ErrToolCallIDUnexpected", err)
+	}
+	if !reflect.DeepEqual(got, provider.Response{}) {
+		t.Fatalf("RunTurn() response = %+v, want zero value", got)
+	}
+}
+
+func TestRunTurnStreamedReasoningDeltaConcatenates(t *testing.T) {
+	chunks := []provider.Chunk{
+		{Delta: "hel", ReasoningDelta: "first "},
+		{Delta: "lo", ReasoningDelta: "second"},
+		{Done: true, FinishReason: "stop"},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true, Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}}
+
+	resp, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if resp.Message.Content != "hello" {
+		t.Fatalf("resp.Message.Content = %q, want %q", resp.Message.Content, "hello")
+	}
+	if resp.Message.ReasoningContent != "first second" {
+		t.Fatalf("resp.Message.ReasoningContent = %q, want %q", resp.Message.ReasoningContent, "first second")
+	}
+}
+
+func TestRunTurnStreamedTerminalChunkCarriesCacheAndWebSearch(t *testing.T) {
+	wantCacheUsage := provider.CacheUsage{Reported: true, Style: provider.CacheStyleImplicit, InputTokens: 10, CachedInputTokens: 4}
+	wantWebSearch := []provider.WebSearchResult{{Title: "t", Link: "l"}}
+	chunks := []provider.Chunk{
+		{Delta: "a", CacheUsage: provider.CacheUsage{Reported: true, Style: provider.CacheStyleExplicit, InputTokens: 99}, WebSearch: []provider.WebSearchResult{{Title: "discarded"}}},
+		{Delta: "b", Done: true, CacheUsage: wantCacheUsage, WebSearch: wantWebSearch},
+	}
+	f := &fakeCompleter{name: "fake", streamChunks: chunks}
+	req := provider.Request{Stream: true, Messages: []provider.Message{{Role: provider.RoleUser, Content: "hi"}}}
+
+	resp, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(resp.CacheUsage, wantCacheUsage) {
+		t.Fatalf("resp.CacheUsage = %+v, want %+v", resp.CacheUsage, wantCacheUsage)
+	}
+	if !reflect.DeepEqual(resp.WebSearch, wantWebSearch) {
+		t.Fatalf("resp.WebSearch = %+v, want %+v", resp.WebSearch, wantWebSearch)
+	}
+}
+
 func TestOptionalCapabilityInterfaces(t *testing.T) {
 	capable := &capableFake{fakeCompleter: fakeCompleter{name: "capable"}, contextWindow: 128000, reasoningEffort: "high"}
 	var c provider.Completer = capable

@@ -12,15 +12,42 @@ below mirrors `api/provider.txt`.
 - `Role` — a message's role. Constants: `RoleSystem`, `RoleUser`,
   `RoleAssistant`, `RoleTool`.
 - `Message` — one turn in a conversation. `Role`, `Content`, `Name`,
-  `ToolCallID`, `ToolCalls`. `Name` is legal only on `RoleUser` and
-  `RoleTool`; an empty `Name` is legal on every role.
+  `ToolCallID`, `ToolCalls`, `ReasoningContent`, `CreatedAt`. `Name` is
+  legal only on `RoleUser` and `RoleTool`; an empty `Name` is legal on
+  every role. `ReasoningContent` is legal only on `RoleAssistant`.
+  `CreatedAt` is wall-clock time for when the message entered the
+  caller's own history; its zero value means unknown, on every role.
 - `ToolDefinition` — one tool a model may call.
 - `ToolCall` — one call the model requests, or one fragment while it
   streams.
 - `Usage` — token accounting for one completed turn.
-- `Request` — the input to every `Completer` method.
-- `Response` — the aggregated result of one turn.
-- `Chunk` — one increment of a streamed response.
+- `Request` — the input to every `Completer` method. Adds `Temperature`
+  and `MaxTokens` (`*float64`/`*int`; nil means "use the completer's
+  own default"), `ToolChoice`, `Timeout`, `SessionID`,
+  `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
+- `ToolChoice` — controls whether and how a completion may call a
+  tool. Constants: `ToolChoiceAuto`, `ToolChoiceNone`. The empty value
+  means unspecified.
+- `ReasoningDialect` — names the wire dialect a `Completer` uses to
+  carry `ReasoningEffort` to its provider. Opaque: `provider` defines
+  no closed set of dialect names; a concrete client owns its own
+  vocabulary.
+- `Response` — the aggregated result of one turn. Adds `CacheUsage` and
+  `WebSearch`. Carries no separate reasoning-content field;
+  `Response.Message.ReasoningContent` already holds it.
+- `Chunk` — one increment of a streamed response. Adds
+  `ReasoningDelta`, `CacheUsage`, and `WebSearch`, zero until `Done`,
+  the same convention `Usage` and `FinishReason` follow.
+- `CacheStyle` — names how a provider's wire format expresses
+  prompt-cache reuse for one turn. Constants: `CacheStyleNone`,
+  `CacheStyleImplicit`, `CacheStyleExplicit`.
+- `CacheUsage` — provider-side prompt-cache accounting for one turn.
+  `Reported == false` means the provider's response carried none of
+  the recognized cache-usage fields; every other field is meaningless
+  then.
+- `WebSearchResult` — one provider-supplied search result attached to
+  a completion. Every field is a raw transport-level string; `provider`
+  does not interpret or render it.
 - `ContextAccountant` — an optional capability exposing the bound
   model's maximum token count.
 - `ReasoningPolicy` — an optional capability exposing the configured
@@ -53,15 +80,18 @@ without either importing the other.
 
 ## Functions and methods
 
-- `RunTurn(ctx, c, req)` — dispatches on `req.Stream`: calls `c.Chat`
-  when false; calls `c.ChatStream`, drains, and aggregates when true.
-  Validates every `req.Messages` entry with `Message.Validate` before
-  it dispatches. Selects on `ctx.Done()` while it drains a stream.
+- `RunTurn(ctx, c, req)` — calls `req.Validate()` once, then validates
+  every `req.Messages` entry with `Message.Validate`, before it
+  dispatches on `req.Stream`: calls `c.Chat` when false; calls
+  `c.ChatStream`, drains, and aggregates when true. Selects on
+  `ctx.Done()` while it drains a stream.
 - `Message.Validate()` — enforces the `ToolCallID`/`Role` pairing rule,
-  the closed set of `Role` constants, the `Name` rule, and the
-  `ToolCalls`/`Role` rule.
+  the closed set of `Role` constants, the `Name` rule, the
+  `ToolCalls`/`Role` rule, and the `ReasoningContent`/`Role` rule.
 - `Chunk.Validate()` — enforces `Err` and `Done == true` are mutually
   exclusive on one `Chunk`.
+- `Request.Validate()` — enforces the closed `ToolChoice` vocabulary:
+  `""`, `ToolChoiceAuto`, or `ToolChoiceNone`.
 
 ## Failure modes
 
@@ -106,6 +136,16 @@ Use `errors.Is` to test these.
   provider rejects an over-long prompt. `provider` ships no
   implementation itself; `agentloop` tests for it with `errors.Is` on
   its recovery path.
+- `ErrReasoningContentUnexpected` ("provider: reasoning content
+  unexpected outside RoleAssistant") — `Message.Validate` returns it
+  when `ReasoningContent` is non-empty on a message whose `Role` is
+  not `RoleAssistant`. Pinned by
+  `provider/provider_test/types_test.go` and
+  `provider/provider_test/validate_fuzz_test.go`.
+- `ErrToolChoiceInvalid` ("provider: tool choice is not auto, none, or
+  empty") — `Request.Validate` returns it when `ToolChoice` holds any
+  value other than `""`, `ToolChoiceAuto`, or `ToolChoiceNone`. Pinned
+  by `provider/provider_test/types_test.go`.
 
 ## Invariants
 
@@ -124,8 +164,19 @@ below.
   for one of the four known roles.
 - `Message.Validate` rejects a non-empty `ToolCalls` on any known role
   other than `RoleAssistant`; the `ToolCallID` check runs first.
+- `Message.Validate` checks the `ReasoningContent` rule last, after
+  the `ToolCalls` check: a non-empty `ReasoningContent` outside
+  `RoleAssistant` returns `ErrReasoningContentUnexpected`.
+- `RunTurn` calls `req.Validate()` before it validates any
+  `req.Messages` entry and before it dispatches; a `Validate` failure
+  returns the zero `Response` and that error, unwrapped.
 - `RunTurn` sets `Response.Message.ToolCalls` to the same merged calls
-  it sets on `Response.ToolCalls`, on the streamed path.
+  it sets on `Response.ToolCalls`, and sets
+  `Response.Message.ReasoningContent` to the concatenated
+  `ReasoningDelta` text, on the streamed path.
+- `RunTurn` copies the terminal `Chunk`'s `CacheUsage` and `WebSearch`
+  onto `Response.CacheUsage` and `Response.WebSearch`, on the streamed
+  path.
 - `Chat` always waits for the complete response before it returns; a
   caller ignores `Request.Stream` when it calls `Chat` directly.
 - `ChatStream` always returns a channel immediately; the channel

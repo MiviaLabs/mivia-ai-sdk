@@ -8,22 +8,30 @@ import (
 
 // RunTurn dispatches on req.Stream: it calls c.Chat when false, and
 // calls c.ChatStream, drains, and aggregates when true. It calls
-// Message.Validate on every entry of req.Messages, in order, before
-// it dispatches; the first invalid entry stops validation and RunTurn
-// returns the zero Response and that error, unwrapped, without
-// calling either Completer method. On the streamed path RunTurn
-// selects on ctx.Done() during drain; when ctx finishes first, RunTurn
-// discards any partial aggregation and returns the zero Response
-// alongside ctx.Err(). RunTurn returns the first error either
-// Completer method returns, unwrapped, alongside the zero Response.
-// When the ChatStream channel closes before any chunk carries
-// Done == true or a non-nil Err, RunTurn discards any partial
-// aggregation and returns the zero Response alongside
-// ErrStreamClosedEarly; a mid-stream failure never returns a partial
-// Response. On the streamed path Response.Message.ToolCalls carries
-// the same merged calls as Response.ToolCalls after every call.
-// buildResponse assigns both fields the same toolCalls slice.
+// req.Validate() once, before it validates any Messages entry and
+// before it dispatches to either Completer method; a Validate failure
+// returns the zero Response and that error, unwrapped. It then calls
+// Message.Validate on every entry of req.Messages, in order; the
+// first invalid entry stops validation and RunTurn returns the zero
+// Response and that error, unwrapped, without calling either
+// Completer method. On the streamed path RunTurn selects on
+// ctx.Done() during drain; when ctx finishes first, RunTurn discards
+// any partial aggregation and returns the zero Response alongside
+// ctx.Err(). RunTurn returns the first error either Completer method
+// returns, unwrapped, alongside the zero Response. When the
+// ChatStream channel closes before any chunk carries Done == true or
+// a non-nil Err, RunTurn discards any partial aggregation and returns
+// the zero Response alongside ErrStreamClosedEarly; a mid-stream
+// failure never returns a partial Response. On the streamed path
+// Response.Message.ToolCalls carries the same merged calls as
+// Response.ToolCalls after every call, and Response.Message
+// .ReasoningContent carries the concatenated ReasoningDelta text.
+// buildResponse assigns both ToolCalls fields the same slice and
+// copies the terminal Chunk's CacheUsage and WebSearch onto Response.
 func RunTurn(ctx context.Context, c Completer, req Request) (Response, error) {
+	if err := req.Validate(); err != nil {
+		return Response{}, err
+	}
 	for _, m := range req.Messages {
 		if err := m.Validate(); err != nil {
 			return Response{}, err
@@ -40,15 +48,18 @@ func RunTurn(ctx context.Context, c Completer, req Request) (Response, error) {
 }
 
 // drainStream reads ch until a terminal Chunk or ctx cancellation,
-// aggregating Delta text and merged tool-call fragments into one
-// Response. See RunTurn's doc comment for the cancellation and
-// mid-stream failure contract.
+// aggregating Delta and ReasoningDelta text and merged tool-call
+// fragments into one Response. See RunTurn's doc comment for the
+// cancellation and mid-stream failure contract.
 func drainStream(ctx context.Context, ch <-chan Chunk) (Response, error) {
 	var content strings.Builder
+	var reasoning strings.Builder
 	calls := make(map[int]*ToolCall)
 	var order []int
 	var usage Usage
 	var finishReason string
+	var cacheUsage CacheUsage
+	var webSearch []WebSearchResult
 	for {
 		select {
 		case <-ctx.Done():
@@ -64,13 +75,16 @@ func drainStream(ctx context.Context, ch <-chan Chunk) (Response, error) {
 				return Response{}, chunk.Err
 			}
 			content.WriteString(chunk.Delta)
+			reasoning.WriteString(chunk.ReasoningDelta)
 			if chunk.ToolCallDelta != nil {
 				mergeToolCallDelta(calls, &order, chunk.ToolCallDelta)
 			}
 			if chunk.Done {
 				usage = chunk.Usage
 				finishReason = chunk.FinishReason
-				return buildResponse(&content, calls, order, usage, finishReason), nil
+				cacheUsage = chunk.CacheUsage
+				webSearch = chunk.WebSearch
+				return buildResponse(&content, &reasoning, calls, order, usage, finishReason, cacheUsage, webSearch), nil
 			}
 		}
 	}
@@ -97,9 +111,11 @@ func mergeToolCallDelta(calls map[int]*ToolCall, order *[]int, delta *ToolCall) 
 
 // buildResponse assembles the aggregated Response, ordering ToolCalls
 // by ascending Index. Message.Role is set to RoleAssistant
-// unconditionally, and Message.ToolCalls holds the same merged calls
-// as Response.ToolCalls.
-func buildResponse(content *strings.Builder, calls map[int]*ToolCall, order []int, usage Usage, finishReason string) Response {
+// unconditionally, Message.ToolCalls holds the same merged calls as
+// Response.ToolCalls, and Message.ReasoningContent holds the
+// accumulated reasoning text. cacheUsage and webSearch come from the
+// terminal Chunk.
+func buildResponse(content, reasoning *strings.Builder, calls map[int]*ToolCall, order []int, usage Usage, finishReason string, cacheUsage CacheUsage, webSearch []WebSearchResult) Response {
 	sorted := append([]int(nil), order...)
 	sort.Ints(sorted)
 	toolCalls := make([]ToolCall, 0, len(sorted))
@@ -107,9 +123,16 @@ func buildResponse(content *strings.Builder, calls map[int]*ToolCall, order []in
 		toolCalls = append(toolCalls, *calls[idx])
 	}
 	return Response{
-		Message:      Message{Role: RoleAssistant, Content: content.String(), ToolCalls: toolCalls},
+		Message: Message{
+			Role:             RoleAssistant,
+			Content:          content.String(),
+			ToolCalls:        toolCalls,
+			ReasoningContent: reasoning.String(),
+		},
 		ToolCalls:    toolCalls,
 		Usage:        usage,
 		FinishReason: finishReason,
+		CacheUsage:   cacheUsage,
+		WebSearch:    webSearch,
 	}
 }

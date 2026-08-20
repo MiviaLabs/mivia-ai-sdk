@@ -330,7 +330,8 @@ Outside:
   `tools`. Forcing every file tool through `spool.SpoolTool` by
   default would need a new `subagent` -> `spool` import edge for a
   concern `spool` already covers at the composition site. A caller
-  that wants spooling wraps `spool.SpoolTool(name, maxBytes, store,
+  that wants spooling builds a `*spool.Spool` with `spool.NewSpool`
+  and wraps `spool.SpoolTool(name, maxBytes, sp,
   subagent.WorkspaceReadTool(...))` itself, the same way it already
   composes `SpoolTool` over any other oversized-result tool.
 - Any bound on `WorkspaceWriteTool`'s content size beyond what

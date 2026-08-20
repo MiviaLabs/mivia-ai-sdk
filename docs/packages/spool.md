@@ -28,9 +28,11 @@ mirrors `api/spool.txt`.
   `principal` for a later `SpoolTool` call to read.
 - `PrincipalFrom(ctx)` — reads the principal `WithPrincipal` attached
   to `ctx`.
-- `SpoolTool(name, maxBytes, store, inner)` — wraps `inner` so a
-  string result over `maxBytes` spools to `store` under the `ctx`
-  principal instead of returning in full.
+- `SpoolTool(name, maxBytes, sp, inner)` — wraps `inner` so a string
+  result over `maxBytes` spools through `sp` under the `ctx`
+  principal instead of returning in full. A nil `sp` wraps
+  `ErrNilSpool`. Two `SpoolTool` calls sharing one `sp` share its
+  grant budget.
 
 ## Read-back tool and grant expiry
 
@@ -146,18 +148,32 @@ if err != nil {
     // maxGrantBytes was zero or negative
 }
 
-ctx := context.Background()
-view, ref, err := sp.Spool(ctx, "agent-a", []byte("oversized content..."))
-// view is a bounded, human-readable preview; ref names the full blob
+wrapped, err := spool.SpoolTool("big-tool", 4096, sp, myTool)
+if err != nil {
+    // sp was nil
+}
 
-full, err := sp.Load(ctx, "agent-a", ref)
-// full == the original bytes
+readBack, err := spool.ReadOutputTool(sp, 2048)
+if err != nil {
+    // sp was nil, or maxPageBytes was non-positive
+}
 
-_, err = sp.Load(ctx, "agent-b", ref)
-// err is spool.ErrWrongPrincipal
+registry := tools.New()
+registry.Add(wrapped)
+registry.Add(readBack)
 
-wrapped := spool.SpoolTool("big-tool", 4096, store, myTool)
-ctx = spool.WithPrincipal(ctx, "agent-a")
+ctx := spool.WithPrincipal(context.Background(), "agent-a")
 out, err := wrapped.Run(ctx, in)
-// out.Value truncates and names a ref when myTool's result exceeds 4096 bytes
+// out.Value truncates and appends a ref when myTool's result exceeds
+// 4096 bytes. A model reads that ref from the text and calls
+// read_spooled_output with it to page the full body back.
+
+argsJSON := []byte(`{"ref":"the-ref-from-out.Value"}`)
+args, _ := readBack.(tools.SchemaTool).DecodeArguments(argsJSON)
+page, err := readBack.Run(ctx, args)
+// page returns one bounded page of the body wrapped spooled
 ```
+
+`SpoolTool` and `ReadOutputTool` share `sp`, so `readBack` resolves a
+ref that `wrapped` spooled. A second `SpoolTool` call built against
+the same `sp` shares its grant budget with `wrapped`.

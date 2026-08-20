@@ -95,6 +95,9 @@ var (
 	// ErrConcludeMargin is Validate's error when ConcludeMargin is
 	// negative. Test with errors.Is.
 	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
+	// ErrTurnResultBudget is Validate's error when TurnResultBudget is
+	// negative. Test with errors.Is.
+	ErrTurnResultBudget = errors.New("agentloop: TurnResultBudget must not be negative")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -227,6 +230,21 @@ type Options struct {
 	// runs after this iteration's Trim, Budget, and Window steps,
 	// immediately before the Completer call.
 	ConcludeNotice string
+	// TurnResultBudget caps the summed byte size of one turn's rendered
+	// tool results, across every call in that turn, before they append to
+	// history. Zero means uncapped: the budget comparison and any shaping
+	// are skipped entirely, and every call's content passes through
+	// whole. Distinct from a Tool's own tools.ResultBudgetOf bound, which
+	// caps one call's content alone; TurnResultBudget shapes the batch as
+	// a set, after each call's own bound already applied, in
+	// ToolCall.Index order. Hard cap when positive: a call's content
+	// stays whole only when the running total plus that content's byte
+	// length does not exceed TurnResultBudget; otherwise the content is
+	// replaced with BatchTruncationNotice and the running total does not
+	// grow for it. The running total never exceeds TurnResultBudget.
+	// Applies to every appended RoleTool content, including a reported
+	// tool-run error under ErrorPolicyReport.
+	TurnResultBudget int
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -280,8 +298,8 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // positive, Usage requires a non-blank SessionID, a non-nil Budget
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
 // negative, a non-nil Window passes Window.Validate, requires
-// Summarizer, requires Calibrated, and excludes Trim, and
-// ConcludeMargin is not negative.
+// Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin is
+// not negative, and TurnResultBudget is not negative.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -319,6 +337,9 @@ func (o Options) Validate() error {
 	}
 	if o.ConcludeMargin < 0 {
 		return ErrConcludeMargin
+	}
+	if o.TurnResultBudget < 0 {
+		return ErrTurnResultBudget
 	}
 	return nil
 }

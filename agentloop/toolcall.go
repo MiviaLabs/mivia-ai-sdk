@@ -20,10 +20,22 @@ import (
 // this turn runs either. It also stops early, with ctx.Err() as the
 // returned error, when ctx is canceled ahead of a call: a canceled
 // run must not keep executing tool calls it can still skip.
+//
+// When l.turnResultBudget is positive, runToolCalls shapes each call's
+// already-rendered msg.Content against a running byte total for this
+// turn, after runOneToolCall's own per-call tools.ResultBudgetOf bound
+// already applied. A call's content stays whole only when the running
+// total plus its byte length does not exceed l.turnResultBudget;
+// otherwise the content is replaced with BatchTruncationNotice and the
+// running total does not grow for it. AuditRecord.Err always reports
+// the true per-call outcome, independent of this shaping. The running
+// total resets to zero once per runToolCalls call, at the start of
+// this turn's batch. l.turnResultBudget zero skips the check entirely.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int) ([]provider.Message, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 
+	runningTotal := 0
 	for _, call := range ordered {
 		if err := ctx.Err(); err != nil {
 			return history, false, err
@@ -34,6 +46,13 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		}
 		if veto {
 			return history, true, nil
+		}
+		if l.turnResultBudget > 0 {
+			if runningTotal+len(msg.Content) <= l.turnResultBudget {
+				runningTotal += len(msg.Content)
+			} else {
+				msg.Content = BatchTruncationNotice
+			}
 		}
 		history = append(history, msg)
 		if l.audit != nil {

@@ -90,6 +90,18 @@ var optionsValidateCases = []optionsValidateCase{
 		o.ConcludeMargin = 3
 		return o
 	}, nil, true},
+	{"negative TurnResultBudget fails", func(o agentloop.Options) agentloop.Options {
+		o.TurnResultBudget = -1
+		return o
+	}, agentloop.ErrTurnResultBudget, false},
+	{"zero TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
+		o.TurnResultBudget = 0
+		return o
+	}, nil, true},
+	{"positive TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
+		o.TurnResultBudget = 10
+		return o
+	}, nil, true},
 }
 
 // TestOptionsValidate runs optionsValidateCases.

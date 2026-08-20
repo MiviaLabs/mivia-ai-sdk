@@ -1416,15 +1416,17 @@ carries no build tag.
   `StatusPending` record. Assert the pending record is still present
   after its own write. Pins the `exempt` branch. Guard test.
 - `TestEvictionScanBudgetStops` — `MaxEntries: 9`, fixed `Now`. Insert
-  nine `StatusClaimed` records with live leases. No insert exceeds the
-  cap, so the queue keeps its insertion order. Insert one
-  `StatusCompleted` record. The round rotates the eight live heads,
-  hits the budget, and returns, so assert `len(m.tasks)` is 10. Then
-  perform one update-branch `CompareAndSwap` on any key. That round
-  rotates the ninth live head and reaches the completed record, so
-  assert `len(m.tasks)` is 9 and the completed key is gone. This pins
-  the `rotations >= evictScanBudget` branch and the budget's exact
-  effect. Guard test.
+  eight `StatusClaimed` records with live leases. No insert exceeds the
+  cap, so the queue keeps its insertion order. Insert two
+  `StatusCompleted` records; the second breaches the cap. The round
+  rotates the eight live heads, hits the budget, and returns, so assert
+  `len(m.tasks)` is 10. Then perform one update-branch
+  `CompareAndSwap` on any key. That round reaches the first completed
+  record at the queue head, so assert `len(m.tasks)` is 9 and the
+  completed key is gone. The eight live heads sit exactly at the
+  budget, so a budget off by one reaches the deletable key and the test
+  fails. This pins the `rotations >= evictScanBudget` branch and the
+  budget's exact effect. Guard test.
 - `TestEvictionRaisesFenceFloor` — `MaxEntries: 1`, fixed `Now`. Insert
   a terminal record carrying `Fence` 7, then insert a second key to
   evict it. Insert the first key again with `Fence` 0 and assert the

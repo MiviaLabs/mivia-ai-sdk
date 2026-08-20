@@ -436,11 +436,10 @@ third, nil-safe `spooler *spool.Spool` parameter, and `Plan` writes a
 window-overflow or retention-expired elision's full payload to a
 wired `Spool`, keyed to the payload's own `SubjectID`. A spool write
 never fails `Plan`. It adds no new package and one
-`policy/layers.json` edge (`contextplan` to `spool`). Its active
-contract folded into docs/plans/contextplan.md's "Correctness fix:
-contextplan spools its own overflow" section;
-docs/plans/agents/phase73_contextplan_spool.md stays as the
-historical design record.
+`policy/layers.json` edge (`contextplan` to `spool`). Its contract
+folded into docs/plans/contextplan.md's "Correctness fix: contextplan
+spools its own overflow" section; no standalone phase 73 plan file
+remains.
 
 Phase 74 is plan-only and not scheduled. It is the mutation kit's
 second rollout step: seven new per-package floors (`workspace`,

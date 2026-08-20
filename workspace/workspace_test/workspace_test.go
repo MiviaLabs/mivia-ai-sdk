@@ -119,6 +119,34 @@ func TestOpenRejectsBlankRoot(t *testing.T) {
 	}
 }
 
+// TestOpenWithRejectsWhitespaceOnlyRoot pins the deliberate blank-root
+// rejection for a single-space Root, distinct from the accidental,
+// environment-dependent EvalSymlinks failure the same Root produces
+// today. Fails against today's code, where Validate returns nil for a
+// single-space Root and the real rejection, if any, comes later from
+// filepath.EvalSymlinks instead.
+func TestOpenWithRejectsWhitespaceOnlyRoot(t *testing.T) {
+	err := (workspace.Options{Root: " "}).Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil error, want the blank-root rejection")
+	}
+	if err.Error() != "workspace: Root is blank" {
+		t.Fatalf("Validate() = %q, want %q", err.Error(), "workspace: Root is blank")
+	}
+}
+
+// TestOpenWithAcceptsRealRoot is a second positive control: a real
+// temporary directory still opens successfully, proving the trim does
+// not reject a normal path.
+func TestOpenWithAcceptsRealRoot(t *testing.T) {
+	dir := t.TempDir()
+	w, err := workspace.OpenWith(workspace.Options{Root: dir})
+	if err != nil {
+		t.Fatalf("OpenWith: %v", err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+}
+
 // TestWriteFileMode pins the modes WriteFile applies at create: 0o600
 // for the file and 0o700 for each created parent directory. No
 // os.FileMode reaches the package from a caller.

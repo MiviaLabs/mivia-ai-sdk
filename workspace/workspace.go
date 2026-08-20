@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 )
@@ -79,7 +80,7 @@ type Options struct {
 // be blank. MaxReadBytes must be Unbounded, zero, or a positive value
 // at or under maxReadLimit. Deny may be nil, which denies nothing.
 func (o Options) Validate() error {
-	if o.Root == "" {
+	if strings.TrimSpace(o.Root) == "" {
 		return errors.New("workspace: Root is blank")
 	}
 	return validateLimit(o.MaxReadBytes)

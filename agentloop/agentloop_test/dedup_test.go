@@ -135,6 +135,39 @@ func TestDedupWithinTurnDifferentArgumentsBothRun(t *testing.T) {
 	}
 }
 
+// TestDedupWithinTurnDifferentToolNamesSameArgumentsBothRun proves two
+// calls with byte-equal Arguments but different tool names are never
+// deduped against each other: dedupKey carries the tool name, so the
+// pair's keys differ even though their canonicalized args match.
+func TestDedupWithinTurnDifferentToolNamesSameArgumentsBothRun(t *testing.T) {
+	first := &schemaEchoTool{name: "first", schema: []byte(`{}`), result: "r1"}
+	second := &schemaEchoTool{name: "second", schema: []byte(`{}`), result: "r2"}
+	reg := tools.New()
+	mustAdd(t, reg, first)
+	mustAdd(t, reg, second)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "call-1", Name: "first", Arguments: []byte(`{"a":1}`)},
+			provider.ToolCall{ID: "call-2", Name: "second", Arguments: []byte(`{"a":1}`)},
+		),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if first.callCount() != 1 || second.callCount() != 1 {
+		t.Fatalf("call counts = first:%d second:%d, want 1,1: a different tool name must never be deduped against another tool's identical arguments", first.callCount(), second.callCount())
+	}
+	if got := toolResultContent(t, res.History, "call-2"); got != "r2" {
+		t.Fatalf("call-2 content = %q, want the real result %q, not DuplicateCallNotice", got, "r2")
+	}
+}
+
 // TestDedupWithinTurnCarriesDuplicateCallsOwnToolCallID proves the
 // synthesized RoleTool message for a deduped call carries the
 // duplicate call's own ToolCallID, not the first call's.

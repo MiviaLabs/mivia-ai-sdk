@@ -488,8 +488,8 @@ matching every other `subagent` tool's result convention. It added no
 new package and no new `policy/layers.json` edge. No standalone
 phase 77 plan file remains.
 
-Phases 78 and 80 through 84 are plan-only and not scheduled. Phase 79
-has shipped; its design rationale is folded into
+Phases 78 and 80 through 82 and 84 are plan-only and not scheduled.
+Phase 79 has shipped; its design rationale is folded into
 `docs/plans/agentloop.md`'s "graceful work-limit conclude" addendum,
 and no standalone phase 79 plan file remains. A gap analysis compared
 `agentloop` against `internal/agent.Loop`, a production caller in a
@@ -498,19 +498,32 @@ capabilities that caller needs and `agentloop` lacks. Each gap is its
 own phase: steering and interruption (78), graceful work-limit
 conclude (79, shipped), per-batch tool-result size shaping (80),
 duplicate-call dedup within a turn (81), prompt-injection-safe hook
-and steer framing (82), heartbeat and progress events (83), and
-partial-recovery streaming (84). These phases are queued behind, not
-part of, the dependency-ordered list above; they close a separate
-capability gap, not a step in the existing numbered initiative. Phase
-84 depends on phase 78; no other phase in this group depends on
-another. Phase 82 is partly blocked on a `hooks.Handler` signature
-change and phase 84 is blocked on a `provider` package decision, each
-flagged in its own file. Each remaining phase needs its own plan
-review before a builder starts it. See
-docs/plans/agents/phase78_steering_and_interruption.md,
+and steer framing (82), heartbeat and progress events (83, shipped;
+see below), and partial-recovery streaming (84). These phases are
+queued behind, not part of, the dependency-ordered list above; they
+close a separate capability gap, not a step in the existing numbered
+initiative. Phase 84 depends on phase 78; no other phase in this
+group depends on another. Phase 82 is partly blocked on a
+`hooks.Handler` signature change and phase 84 is blocked on a
+`provider` package decision, each flagged in its own file. Each
+remaining phase needs its own plan review before a builder starts it.
+See docs/plans/agents/phase78_steering_and_interruption.md,
 phase80_batch_result_shaping.md, phase81_duplicate_call_dedup.md,
-phase82_injection_safe_framing.md, phase83_heartbeat_events.md, and
+phase82_injection_safe_framing.md, and
 phase84_partial_recovery_streaming.md.
+
+Phase 83 (`agentloop` heartbeat and progress events) has shipped. It
+adds `Options.HeartbeatInterval` and six `events.Name` constants:
+`EventIterationStart`, `EventCompletionHeartbeat`,
+`EventToolCallStart`, `EventToolCallHeartbeat`, `EventToolCallEnd`,
+and `EventIterationEnd`. A positive `HeartbeatInterval` paired with a
+non-nil `Options.Bus` makes `Run` emit these events; either one alone
+stays silent, and `Options.Validate` rejects a positive
+`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`. It
+adds no new package and no new `policy/layers.json` edge: `events`
+was already an allowed `agentloop` import. Its contract folded into
+docs/plans/agentloop.md's "Addendum: heartbeat and progress events"
+section; no standalone phase 83 plan file remains.
 
 Phases 85 and 86 are plan-only and not scheduled, reviewed and
 approved. A bug audit found two confirmed, reproducible defects with

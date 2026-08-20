@@ -5,6 +5,12 @@ package agentloop
   const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
+  const EventCompletionHeartbeat = "agentloop.completion.heartbeat"
+  const EventIterationEnd = "agentloop.iteration.end"
+  const EventIterationStart = "agentloop.iteration.start"
+  const EventToolCallEnd = "agentloop.tool_call.end"
+  const EventToolCallHeartbeat = "agentloop.tool_call.heartbeat"
+  const EventToolCallStart = "agentloop.tool_call.start"
   const RecoveryTargetTokens = 16384
   const StopConcluded = "concluded"
   const StopHookVeto = "hook_veto"
@@ -51,6 +57,7 @@ package agentloop
   Calibrated *contextplan.Calibrated
   ConcludeMargin int
   ConcludeNotice string
+  HeartbeatInterval time.Duration
 }
   type Result struct {
   Final provider.Message
@@ -65,6 +72,7 @@ package agentloop
   var ErrCompactionFailed
   var ErrConcludeMargin
   var ErrEstimatorRequired
+  var ErrHeartbeatRequiresBus
   var ErrInvalidSchema
   var ErrMaxIterations
   var ErrNoCompleter

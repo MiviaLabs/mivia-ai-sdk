@@ -5,6 +5,7 @@ phase, tdd, perf, wip, draft, scratch, tmp, old, backup, or a version
 suffix like _v2, _v3 (versioning belongs in git, not in file names).
 Exits non-zero on violations."""
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -41,11 +42,33 @@ def check_file(path: Path, rel: Path) -> list[str]:
     return violations
 
 
+def _go_files(root: Path) -> list[Path]:
+    """Returns this worktree's own .go files: tracked plus untracked
+    files git would add, via `git ls-files`, so a nested worktree (a
+    sibling git checkout that happens to live under this tree, e.g.
+    .claude/worktrees/) never leaks into the scan. `git ls-files`
+    already resolves relative to the current worktree's own root, and
+    --exclude-standard applies .gitignore and .git/info/exclude, which
+    is where a nested worktree's directory is excluded. Falls back to
+    a plain filesystem walk when git is unavailable."""
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", "*.go"],
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout
+        return sorted(root / line for line in out.splitlines() if line)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return sorted(
+            p for p in root.rglob("*.go")
+            if ".git" not in p.parts and "semgrep" not in p.parts
+        )
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     violations = []
-    for path in sorted(root.rglob("*.go")):
-        if ".git" in path.parts or "semgrep" in path.parts:
+    for path in _go_files(root):
+        if not path.is_file():
             continue
         violations.extend(check_file(path, path.relative_to(root)))
     if violations:

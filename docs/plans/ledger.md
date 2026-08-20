@@ -914,3 +914,9 @@ Phase 42c adds the `Actor` type and four `TaskState` audit fields
 every mutating `Ledger` method, plus a `SQLiteStore` startup migration
 for a
 pre-phase database file.
+
+Mutation floor:
+
+- `ledger` holds a mutation-kill floor of 91, in
+  `scripts/mutation_denylist/ledger.json`. Run `make mutation-gate`
+  to check it.

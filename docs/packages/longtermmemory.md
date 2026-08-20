@@ -98,10 +98,11 @@ Use `errors.Is` to test these.
   or above 0.82), then oldest-archive eviction in a loop until the
   scope holds fewer than `MaxEntries` rows or nothing evictable
   remains. The merge never repeats inside one consolidation.
-- A core row is never evicted. With exactly one core side, the core
-  row survives the merge regardless of creation order; with both sides
-  sharing a tier, the earlier `Created` row survives, id breaking a
-  tie.
+- A core row is never evicted. With exactly one core side, that side
+  survives the merge regardless of creation order. With both sides
+  core, neither merges: the pair is skipped and both rows survive
+  unchanged. With both sides archive, the earlier `Created` row
+  survives, id breaking a tie.
 - The merge survivor keeps the union of both tag lists, deduplicated,
   in first-seen order, capped at eight tags. The survivor's own tags
   fill the list first, so the dropped row loses tags past the cap.

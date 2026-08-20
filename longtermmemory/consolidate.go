@@ -8,7 +8,8 @@ const nearDuplicateThreshold = 0.82
 // merge pass over near-duplicate rows, then oldest-archive eviction in
 // a loop until the scope holds fewer than maxEntries rows or nothing
 // evictable remains. With exactly one core side, the core row survives
-// the merge. A core row is never evicted. Called with s.mu held.
+// the merge; with both sides core, the pair is skipped and both rows
+// stay unchanged. A core row is never evicted. Called with s.mu held.
 func (s *Store) consolidateLocked(scope string) {
 	s.mergePassLocked(scope)
 	s.evictArchiveLocked(scope)
@@ -18,11 +19,13 @@ func (s *Store) consolidateLocked(scope string) {
 // merges each near-duplicate pair exactly once. The survivor keeps
 // the union of both tag lists, deduplicated, in first-seen order,
 // capped at maxTags. When exactly one side is core, that side survives
-// regardless of creation order; when both sides share a tier, the
-// earlier Created row survives, with the lower id breaking a tie. The
-// merged tags change the content address, so the pass re-keys every
-// survivor after the walk ends. A re-key inside the walk would leave
-// the walk's own id list pointing at deleted rows.
+// regardless of creation order. When both sides are core, the pair is
+// skipped: neither merges, neither is deleted, both survive unchanged.
+// When both sides are archive, the earlier Created row survives, with
+// the lower id breaking a tie. The merged tags change the content
+// address, so the pass re-keys every survivor after the walk ends. A
+// re-key inside the walk would leave the walk's own id list pointing
+// at deleted rows.
 func (s *Store) mergePassLocked(scope string) {
 	ids := s.scopeIDsLocked(scope, func(*row) bool { return true })
 	dead := make(map[string]struct{})
@@ -37,6 +40,9 @@ func (s *Store) mergePassLocked(scope string) {
 				continue
 			}
 			if !nearDuplicate(s.rows[idA].entry, s.rows[idB].entry) {
+				continue
+			}
+			if s.rows[idA].core && s.rows[idB].core {
 				continue
 			}
 			keepID, dropID := idA, idB

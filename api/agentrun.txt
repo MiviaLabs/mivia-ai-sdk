@@ -1,10 +1,13 @@
 package agentrun
+  func (a *Artifacts) Encode() ([]byte, error)
   func (a *Artifacts) Get(step string) (string, bool)
   func (a *Artifacts) History(step string) ([]Run)
   func (a *Artifacts) Set(step, value string)
   func (a *Artifacts) SetRun(msgID, step, value string)
+  func (a *Artifacts) Validate() (error)
   func (r *Runner) Bus() (*events.Bus)
   func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (machine.Status, machine.InOut, error)
+  func DecodeArtifacts(data []byte) (*Artifacts, error)
   func New(opts Options) (*Runner, error)
   func PayloadOf(step string, a *Artifacts) (func(machine.InOut) string)
   func ValidateMatrix(plan *flow.Definition, m *machine.Definition) (error)
@@ -36,6 +39,7 @@ package agentrun
 }
   var ErrAmbiguousWait
   var ErrArgumentDecode
+  var ErrArtifactsInconsistent
   var ErrNoAgent
   var ErrNoMachine
   var ErrNoRecipient

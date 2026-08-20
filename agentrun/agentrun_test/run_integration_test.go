@@ -261,6 +261,85 @@ func TestRunWithMonitor(t *testing.T) {
 	}
 }
 
+// TestRunResumesArtifactsAcrossProcesses proves a second, independent
+// Runner can read a first Runner's step output through Encode,
+// DecodeArtifacts, and PayloadOf, simulating a cross-process resume.
+// The first Runner runs only the first step; the second Runner, built
+// from fresh Options over the decoded Artifacts, runs the remaining
+// step and reads the first step's result through PayloadOf, not
+// through direct Get.
+func TestRunResumesArtifactsAcrossProcesses(t *testing.T) {
+	ctx := context.Background()
+
+	// First process: run the first step only.
+	firstArtifacts := &agentrun.Artifacts{}
+	firstPlan := mustFlow(t, []flow.Step{
+		{ID: "review", To: "reviewed", Payload: "seed1"},
+	}, nil)
+	firstReg := tools.New()
+	addTools(t, firstReg, prefixTool{name: "review", prefix: "reviewed:"})
+	firstMachine := mustMachine(t, "queued", tr("queued", "reviewed", "run"))
+
+	firstRunner, err := agentrun.New(agentrun.Options{
+		Agent:     mustAgent(t, firstPlan),
+		Machine:   firstMachine,
+		Tools:     firstReg,
+		Artifacts: firstArtifacts,
+	})
+	if err != nil {
+		t.Fatalf("New (first process): %v", err)
+	}
+	status, _, err := firstRunner.Run(ctx, "thread-resume-1", machine.InOut{Input: "go"})
+	if err != nil {
+		t.Fatalf("Run (first process): %v", err)
+	}
+	if status != "reviewed" {
+		t.Fatalf("status = %q, want %q", status, "reviewed")
+	}
+
+	// Persist and restore the artifacts, as a caller would across a
+	// process boundary.
+	data, err := firstArtifacts.Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	restored, err := agentrun.DecodeArtifacts(data)
+	if err != nil {
+		t.Fatalf("DecodeArtifacts: %v", err)
+	}
+
+	// Second process: a fresh Runner over the restored artifacts runs
+	// the remaining step, whose PayloadFrom reads the first step's
+	// result through PayloadOf.
+	secondPlan := mustFlow(t, []flow.Step{
+		{ID: "ship", To: "shipped", PayloadFrom: agentrun.PayloadOf("review", restored)},
+	}, nil)
+	secondReg := tools.New()
+	addTools(t, secondReg, prefixTool{name: "ship", prefix: "shipped:"})
+	secondMachine := mustMachine(t, "reviewed", tr("reviewed", "shipped", "run"))
+
+	secondRunner, err := agentrun.New(agentrun.Options{
+		Agent:     mustAgent(t, secondPlan),
+		Machine:   secondMachine,
+		Tools:     secondReg,
+		Artifacts: restored,
+	})
+	if err != nil {
+		t.Fatalf("New (second process): %v", err)
+	}
+	status, _, err = secondRunner.Run(ctx, "thread-resume-2", machine.InOut{Input: "go"})
+	if err != nil {
+		t.Fatalf("Run (second process): %v", err)
+	}
+	if status != "shipped" {
+		t.Fatalf("status = %q, want %q", status, "shipped")
+	}
+
+	if v, ok := restored.Get("ship"); !ok || v != "shipped:reviewed:seed1" {
+		t.Errorf("artifact ship = %q,%v want shipped:reviewed:seed1,true", v, ok)
+	}
+}
+
 // stringsContains reports whether s appears in err's text.
 func stringsContains(err error, s string) bool {
 	return err != nil && strings.Contains(err.Error(), s)

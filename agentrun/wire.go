@@ -2,6 +2,7 @@ package agentrun
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -327,4 +328,81 @@ func PayloadOf(step string, a *Artifacts) func(machine.InOut) string {
 		v, _ := a.Get(step)
 		return v
 	}
+}
+
+// wireArtifacts is the JSON form of an Artifacts value. It is
+// unexported because Artifacts.values and Artifacts.runs are
+// unexported and encoding/json cannot see them directly. This mirrors
+// machine.wireDefinition, which exists for the same reason.
+type wireArtifacts struct {
+	Values map[string]string `json:"values"`
+	Runs   map[string][]Run  `json:"runs"`
+}
+
+// Encode serializes a's current values and run history to JSON. It
+// validates first. It is safe for concurrent use; a concurrent Set
+// or SetRun blocks until Encode returns. A nil a encodes as the JSON
+// of an empty wireArtifacts and never touches the mutex.
+func (a *Artifacts) Encode() ([]byte, error) {
+	if a == nil {
+		return json.Marshal(wireArtifacts{})
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.checkInvariant(); err != nil {
+		return nil, err
+	}
+	w := wireArtifacts{Values: a.values, Runs: a.runs}
+	return json.Marshal(w)
+}
+
+// DecodeArtifacts parses JSON produced by Encode and validates the
+// result. The returned *Artifacts is ready for Get, History, Set,
+// SetRun, and a later Encode.
+func DecodeArtifacts(data []byte) (*Artifacts, error) {
+	var w wireArtifacts
+	if err := json.Unmarshal(data, &w); err != nil {
+		return nil, fmt.Errorf("agentrun: artifacts decode: %w", err)
+	}
+	a := &Artifacts{values: w.Values, runs: w.Runs}
+	if err := a.Validate(); err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// Validate reports whether a holds internally consistent state: every
+// step named in its run history has a current value equal to its last
+// run's value, and every step holding a current value has at least
+// one recorded run. Encode and DecodeArtifacts both call it.
+func (a *Artifacts) Validate() error {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.checkInvariant()
+}
+
+// checkInvariant runs Validate's check without acquiring a.mu. Callers
+// that already hold a.mu call this directly; Validate and Encode
+// acquire the lock once each and call this so Encode never nests two
+// acquisitions of a.mu in one call.
+func (a *Artifacts) checkInvariant() error {
+	for step, runs := range a.runs {
+		if len(runs) == 0 {
+			continue
+		}
+		last := runs[len(runs)-1].Value
+		cur, ok := a.values[step]
+		if !ok || cur != last {
+			return fmt.Errorf("agentrun: step %q: %w: current value %q, last run %q", step, ErrArtifactsInconsistent, cur, last)
+		}
+	}
+	for step := range a.values {
+		if len(a.runs[step]) == 0 {
+			return fmt.Errorf("agentrun: step %q: %w: current value with no recorded run", step, ErrArtifactsInconsistent)
+		}
+	}
+	return nil
 }

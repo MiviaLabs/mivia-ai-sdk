@@ -488,18 +488,19 @@ matching every other `subagent` tool's result convention. It added no
 new package and no new `policy/layers.json` edge. No standalone
 phase 77 plan file remains.
 
-Phases 78, 80, 82, 83, and 84 are plan-only and not scheduled. Phases
-79 and 81 have shipped; their design rationale is folded into
-`docs/plans/agentloop.md`'s "graceful work-limit conclude" and
-"duplicate-call dedup within a turn" addenda, and no standalone phase
-79 or phase 81 plan file remains. A gap analysis compared `agentloop`
-against `internal/agent.Loop`, a production caller in a separate,
-external repository (`mivia-agent`), and found seven capabilities that
-caller needs and `agentloop` lacks. Each gap is its own phase:
-steering and interruption (78), graceful work-limit conclude (79,
-shipped), per-batch tool-result size shaping (80), duplicate-call
-dedup within a turn (81, shipped), prompt-injection-safe hook and
-steer framing (82), heartbeat and progress events (83), and
+Phases 78, 80, 82, and 84 are plan-only and not scheduled. Phases 79,
+81, and 83 have shipped; their design rationale is folded into
+`docs/plans/agentloop.md`'s "graceful work-limit conclude",
+"duplicate-call dedup within a turn", and "heartbeat and progress
+events" addenda, and no standalone phase 79, phase 81, or phase 83
+plan file remains. A gap analysis compared `agentloop` against
+`internal/agent.Loop`, a production caller in a separate, external
+repository (`mivia-agent`), and found seven capabilities that caller
+needs and `agentloop` lacks. Each gap is its own phase: steering and
+interruption (78), graceful work-limit conclude (79, shipped),
+per-batch tool-result size shaping (80), duplicate-call dedup within a
+turn (81, shipped), prompt-injection-safe hook and steer framing (82),
+heartbeat and progress events (83, shipped; see below), and
 partial-recovery streaming (84). These phases are queued behind, not
 part of, the dependency-ordered list above; they close a separate
 capability gap, not a step in the existing numbered initiative. Phase
@@ -510,7 +511,20 @@ flagged in its own file. Each remaining phase needs its own plan
 review before a builder starts it. See
 docs/plans/agents/phase78_steering_and_interruption.md,
 phase80_batch_result_shaping.md, phase82_injection_safe_framing.md,
-phase83_heartbeat_events.md, and phase84_partial_recovery_streaming.md.
+and phase84_partial_recovery_streaming.md.
+
+Phase 83 (`agentloop` heartbeat and progress events) has shipped. It
+adds `Options.HeartbeatInterval` and six `events.Name` constants:
+`EventIterationStart`, `EventCompletionHeartbeat`,
+`EventToolCallStart`, `EventToolCallHeartbeat`, `EventToolCallEnd`,
+and `EventIterationEnd`. A positive `HeartbeatInterval` paired with a
+non-nil `Options.Bus` makes `Run` emit these events; either one alone
+stays silent, and `Options.Validate` rejects a positive
+`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`. It
+adds no new package and no new `policy/layers.json` edge: `events`
+was already an allowed `agentloop` import. Its contract folded into
+docs/plans/agentloop.md's "Addendum: heartbeat and progress events"
+section; no standalone phase 83 plan file remains.
 
 Phases 85 and 86 are plan-only and not scheduled, reviewed and
 approved. A bug audit found two confirmed, reproducible defects with

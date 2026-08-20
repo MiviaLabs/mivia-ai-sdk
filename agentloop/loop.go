@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -64,6 +65,7 @@ type Loop struct {
 	concludeMargin  int
 	concludeNotice  string
 	dedupWithinTurn bool
+	heartbeat       time.Duration
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -112,6 +114,7 @@ func New(opts Options) (*Loop, error) {
 		concludeMargin:  opts.ConcludeMargin,
 		concludeNotice:  resolveConcludeNotice(opts.ConcludeNotice),
 		dedupWithinTurn: opts.DedupWithinTurn,
+		heartbeat:       opts.HeartbeatInterval,
 	}, nil
 }
 

@@ -162,7 +162,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 		}
 	}
 	if l.calibrated != nil {
-		l.calibrated.Observe(resp.Usage.TotalTokens)
+		l.calibrated.Observe(at.estimatedTokens, resp.Usage.TotalTokens)
 	}
 	*runningTokens += billedTokens(resp.Usage)
 	if l.maxTotalTokens > 0 && *runningTokens > l.maxTotalTokens {
@@ -268,12 +268,13 @@ func (l *Loop) shouldConclude(iterations int) bool {
 // later tool calls. When err is set, fromRecovery distinguishes the
 // recovery path's carrying Result rule from the base hard-fail rule.
 type chatAttempt struct {
-	resp         provider.Response
-	req          provider.Request
-	history      []provider.Message
-	iterCtx      context.Context
-	err          error
-	fromRecovery bool
+	resp            provider.Response
+	req             provider.Request
+	history         []provider.Message
+	iterCtx         context.Context
+	err             error
+	fromRecovery    bool
+	estimatedTokens int
 }
 
 // runChat performs one iteration's Completer call under the iteration
@@ -296,12 +297,14 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
 	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+	estimated := l.estimateTokens(req)
 	resp, err := l.steerableChat(ctx, req, steer)
 	if span != nil {
 		span.End()
 	}
 	if err == nil {
-		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx}
+		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
+			estimatedTokens: estimated}
 	}
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
 		return chatAttempt{err: err, iterCtx: ctx}
@@ -310,7 +313,24 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if rerr != nil {
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
-	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx}
+	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
+		estimatedTokens: l.estimateTokens(retryReq)}
+}
+
+// estimateTokens returns l.calibrated.EstimateTokens(req), or zero
+// when l.calibrated is nil or the estimate call fails. Zero is a
+// safe default: Calibrated.Observe no-ops on a non-positive estimated
+// value, so an estimator failure here degrades silently, the same
+// rule EstimateTokens failures already followed outside planning.
+func (l *Loop) estimateTokens(req provider.Request) int {
+	if l.calibrated == nil {
+		return 0
+	}
+	est, err := l.calibrated.EstimateTokens(req)
+	if err != nil {
+		return 0
+	}
+	return est
 }
 
 // steerableChat calls l.completer.Chat on ctx directly when steer is

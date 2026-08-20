@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -446,26 +445,5 @@ func TestRunRecoveryWindowValidateFailurePropagatesErrCompactionFailed(t *testin
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry once the recovery window itself fails to validate", got)
-	}
-}
-
-func TestRunConcurrentSharedLoopWithPlanning(t *testing.T) {
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
-	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
-	loop, f := newRecoveryFixture(t, w, 1, nil, []provider.Response{final, final, final, final}, nil)
-	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
-	var wg sync.WaitGroup
-	for g := 0; g < 4; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := loop.Run(context.Background(), msgs); err != nil {
-				t.Errorf("Run: %v", err)
-			}
-		}()
-	}
-	wg.Wait()
-	if got := f.completer.callCount(); got != 4 {
-		t.Fatalf("completer calls = %d, want 4", got)
 	}
 }

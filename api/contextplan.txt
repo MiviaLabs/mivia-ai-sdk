@@ -13,7 +13,7 @@ package contextplan
   const MinCorrectionFactor = 0.5
   const StubContentBytes = 256
   func (c *Calibrated) EstimateTokens(req provider.Request) (int, error)
-  func (c *Calibrated) Observe(actual int)
+  func (c *Calibrated) Observe(estimated, actual int)
   func (c Compaction) Validate() (error)
   func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)
   func (w Window) Budget() (int)

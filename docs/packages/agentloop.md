@@ -179,9 +179,14 @@ message, and the rebuilt history re-estimated against
 after the whole sequence succeeds; a failed compaction returns the
 pre-compaction history in `Result.History`.
 
-After every `Chat` that returns a response, `Run` calls
-`Calibrated.Observe(resp.Usage.TotalTokens)` before the
-`MaxTotalTokens` check. A non-positive `TotalTokens` is a no-op.
+Before every `Chat` call, when `Calibrated` is set, `Run` calls
+`Calibrated.EstimateTokens` over that call's own request and holds the
+result. After `Chat` returns a response, `Run` calls
+`Calibrated.Observe(estimated, resp.Usage.TotalTokens)`, pairing that
+same call's estimate with its own actual usage, before the
+`MaxTotalTokens` check. A non-positive estimate or `TotalTokens` is a
+no-op. The recovery path holds its own estimate over its own retried
+request, never the pre-recovery estimate.
 
 On a `provider.ErrPromptTooLong` rejection with a non-nil `Window`,
 `Run` builds a recovery window with `Compaction.TriggerPercent` of 1

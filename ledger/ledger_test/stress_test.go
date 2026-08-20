@@ -95,13 +95,14 @@ func modelApply(st map[ledger.IdempotencyKey]modelRec, op *stressOp) (bool, ledg
 }
 
 // modelAdmit mirrors ledger.Admit: a terminal record or a sequence at
-// or below the stored one is a no-op; anything else rebases to pending.
+// or below the stored one is a no-op; anything else rebases to pending
+// and carries the stored fence forward.
 func modelAdmit(st map[ledger.IdempotencyKey]modelRec, op *stressOp) (bool, ledger.FenceToken, error) {
 	cur, found := st[op.key]
 	if found && (modelTerminal(cur.status) || op.seq <= cur.seq) {
 		return false, 0, nil
 	}
-	st[op.key] = modelRec{status: ledger.StatusPending, seq: op.seq}
+	st[op.key] = modelRec{status: ledger.StatusPending, seq: op.seq, fence: cur.fence}
 	return true, 0, nil
 }
 

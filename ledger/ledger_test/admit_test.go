@@ -151,7 +151,8 @@ func TestAdmitRebasesPendingOrClaimed(t *testing.T) {
 		if _, err := l.Admit(ctx, testActor, "k1", 1, "first", fixedNow); err != nil {
 			t.Fatalf("Admit: %v", err)
 		}
-		if _, err := l.Claim(ctx, testActor, "k1", "owner-a", fixedLease, fixedNow); err != nil {
+		fence, err := l.Claim(ctx, testActor, "k1", "owner-a", fixedLease, fixedNow)
+		if err != nil {
 			t.Fatalf("Claim: %v", err)
 		}
 		ok, err := l.Admit(ctx, testActor, "k1", 2, "second", fixedNow)
@@ -164,6 +165,15 @@ func TestAdmitRebasesPendingOrClaimed(t *testing.T) {
 		st, _, _ := l.State(ctx, "k1")
 		if st.Status != ledger.StatusPending {
 			t.Fatalf("Status after rebase = %q, want StatusPending", st.Status)
+		}
+		if st.Fence != fence {
+			t.Fatalf("Fence after rebase = %d, want carried %d", st.Fence, fence)
+		}
+		if st.Owner != "" {
+			t.Fatalf("Owner after rebase = %q, want empty", st.Owner)
+		}
+		if !st.LeaseUntil.IsZero() {
+			t.Fatalf("LeaseUntil after rebase = %v, want zero", st.LeaseUntil)
 		}
 	})
 }

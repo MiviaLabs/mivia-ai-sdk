@@ -11,6 +11,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `room/` — standing groups: membership roster, roles, admission.
 - `machine/` — status model: triggers, guards, transitions, wire form.
 - `flow/` — step graphs: sequential steps, panels, routing, retry, loops, checkpoint/resume.
+- `agentloop/` — a second composition path beside `flow`: a tool-calling loop over a `provider.Completer` and a `tools.Registry`.
 - `events/` — in-process reaction bus.
 - `tools/` — tool registry: execution profiles, scopes, approval gating.
 - `provider/` — model provider interface and reasoning vocabulary.

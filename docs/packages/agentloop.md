@@ -54,10 +54,13 @@ or a bound trips. The exported surface below mirrors
 - `(*Loop) Run(ctx, msgs)` — calls `Registry.RunScoped`, never
   `Registry.Run`, so a model-chosen call always passes through the
   `Loop`'s `Scope`. Returns the final `Result` and the first error.
-- `Options.Validate()` — checks `Completer` and `Tools` are set,
-  `MaxIterations` is positive, `Usage` requires a non-blank
+- `Options.Validate()` — checks, in order: `Completer` and `Tools` are
+  set, `MaxIterations` is positive, `Usage` requires a non-blank
   `SessionID`, a non-nil `Budget` passes `contextbudget.Limits.
-  Validate`, and `MaxTotalTokens` is not negative.
+  Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
+  passes `Window.Validate` and requires `Summarizer`, requires
+  `Calibrated`, and excludes `Trim`, `ConcludeMargin` is not negative,
+  and `TurnResultBudget` is not negative.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. The second return holds the names skipped for a missing
@@ -103,6 +106,12 @@ Use `errors.Is` to test these.
   `Arguments` fail `schema.Compiled.Validate` against the resolved
   tool's compiled schema, wrapped with the call ID and the underlying
   `schema` error. Never reaches `DecodeArguments`.
+- `ErrToolNotOffered` ("agentloop: tool call names a tool not offered
+  when New ran") — `Run`'s error when a model-chosen call names a
+  tool with no entry in the schema set `New` compiled once at
+  construction. This happens when a caller registers a schema-bearing,
+  scope-allowed tool on the shared `*tools.Registry` after `New` ran.
+  Routed through `OnToolError` exactly like `ErrArgumentValidation`.
 - `ErrPlanFailed` ("agentloop: context planning failed") — `Run`'s
   error when the per-iteration estimate fails.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s

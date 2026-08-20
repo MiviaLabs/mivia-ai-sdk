@@ -1471,6 +1471,11 @@ an under-reporting `Completer` cannot corrupt the correction factor.
 The observation runs before the `MaxTotalTokens` check, on both the
 normal path and a recovery retry.
 
+This call shape is historical. The "Pair Observe's estimate to its
+own request" addendum, later in this file, changes it to a
+two-argument `Observe(estimated, actual)` call. Read that addendum
+for the current shape.
+
 ### Recovery path, exact
 
 When `Completer.Chat` returns an error matching
@@ -3110,4 +3115,347 @@ the strengthened
 `policy/layers.json` change: the fix reuses an existing unexported
 helper and adds no import. The coverage floor stays at 85 percent for
 `agentloop` and the module total.
+
+## Addendum: pair Observe's estimate to its own request
+
+Status: planned, not yet built. Companion to
+`docs/plans/contextplan.md`'s "Correctness fix: Calibrated.Observe
+drops the shared-lastEst pairing". That fix changes
+`contextplan.Calibrated.Observe`'s signature from `Observe(actual
+int)` to `Observe(estimated, actual int)`, a breaking change with
+`agentloop/run.go` as the only internal caller. Both plans land in
+one commit; `agentloop` cannot compile against the new signature
+until this addendum's code lands too.
+
+### Addendum goal
+
+Give `Observe` the exact estimate that describes the request whose
+response it now scores, so `agentloop` stops relying on `Calibrated`'s
+own internal state to pair the two. Today's single call site,
+`l.calibrated.Observe(resp.Usage.TotalTokens)` inside `afterChat`,
+implicitly pairs the response against whatever `Calibrated.lastEst`
+holds at that moment. `Calibrated.lastEst` is unaffected by which
+goroutine or which iteration produced it once concurrent `Run` calls
+share one `*Loop` (`TestRunConcurrentSharedLoopWithPlanning`,
+`agentloop/agentloop_test/compaction_recovery_test.go`), so the
+pairing can silently cross goroutines. This addendum makes each
+iteration carry its own estimate end to end.
+
+### Addendum scope
+
+Inside:
+
+- `chatAttempt` (`agentloop/run.go`) gains one field,
+  `estimatedTokens int`.
+- `runChat` computes the primary request's estimate before the first
+  `Completer.Chat` call: when `l.calibrated != nil`, it calls
+  `l.calibrated.EstimateTokens(req)` right after building `req`, and
+  stores the result on the returned `chatAttempt.estimatedTokens`. An
+  `EstimateTokens` error here is non-fatal: `Chat` still runs,
+  `estimatedTokens` stays at its zero value, and the later `Observe`
+  call sees a non-positive `estimated` and no-ops, matching today's
+  silent-degrade behavior for an estimator failure outside planning.
+- `runChat` computes the recovery request's own estimate too, when
+  `recoverPromptTooLong` returns successfully. After `retryReq` comes
+  back, and when `l.calibrated != nil`, `runChat` calls
+  `l.calibrated.EstimateTokens(retryReq)` and stores the result on
+  the recovered `chatAttempt.estimatedTokens`, the same non-fatal
+  rule as the primary path. This corrects a gap in
+  `docs/plans/contextplan.md`'s companion-change note, which names
+  only "the point `req` is built" without separating `runChat`'s two
+  branches. `recoverPromptTooLong` (`agentloop/compaction.go`) calls
+  `Completer.Chat` on its own `retryReq` before `runChat` regains
+  control, so `EstimateTokens(retryReq)` runs after that `Chat` call
+  returns, not before it. `EstimateTokens` depends only on `req`, not
+  on the response, so computing it after `Chat` returns yields the
+  same value computing it before would; the ordering has no effect on
+  correctness. Without this second call, every recovered iteration's
+  `Observe` call would pair against the zero value, a permanent
+  no-op, and the correction factor would never learn from a recovered
+  turn's real usage.
+- `afterChat`'s Observe call site changes from
+  `l.calibrated.Observe(resp.Usage.TotalTokens)` to
+  `l.calibrated.Observe(at.estimatedTokens, resp.Usage.TotalTokens)`.
+- A `Calibrated` set without a `Window` now also gets one
+  `EstimateTokens` call per iteration, inside `runChat`, a call this
+  configuration never made before this addendum. `Options.Validate`'s
+  `ErrEstimatorRequired` rule only requires `Calibrated` when `Window`
+  is set; it does not forbid `Calibrated` alone. Gating the new call
+  on `l.calibrated != nil`, with no `l.window` check, is correct and
+  covers this configuration too. The added cost is one estimator call
+  per iteration, far cheaper than the one `Completer.Chat` call it
+  measures.
+
+Outside:
+
+- `agentloop/compaction.go`'s `checkCompactedBudget` and
+  `planHistory`'s own `EstimateTokens` calls. Those are planning-time
+  estimates that decide whether to compact; they never feed `Observe`,
+  so this addendum does not touch them.
+- `Options.Validate`. `ErrEstimatorRequired` already requires
+  `Calibrated` whenever `Window` is set; no new rule is needed for
+  this addendum's `l.calibrated != nil` gate to be safe.
+- `policy/layers.json`. `agentloop` already imports `contextplan`; no
+  edge changes.
+
+### Addendum API
+
+No exported symbol changes: `chatAttempt` is unexported, and
+`Result`, `Loop`, and `Options` keep their locked shape. `make
+api-update` must produce no `agentloop` diff.
+
+### Addendum mechanics, exact
+
+In `run.go`, `chatAttempt` gains one field:
+
+```go
+type chatAttempt struct {
+	resp            provider.Response
+	req             provider.Request
+	history         []provider.Message
+	iterCtx         context.Context
+	err             error
+	fromRecovery    bool
+	estimatedTokens int
+}
+```
+
+`runChat` computes the primary request's estimate immediately after
+building `req`, strictly before `steerableChat` sends it, so
+`estimatedTokens` always reflects the factor that was live at send
+time, never a later, possibly drifted one:
+
+```go
+req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+estimated := l.estimateTokens(req)
+resp, err := l.steerableChat(ctx, req, steer)
+if span != nil {
+	span.End()
+}
+if err == nil {
+	return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
+		estimatedTokens: estimated}
+}
+if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
+	return chatAttempt{err: err, iterCtx: ctx}
+}
+recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations)
+if rerr != nil {
+	return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
+}
+return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
+	estimatedTokens: l.estimateTokens(retryReq)}
+```
+
+The recovery branch keeps its estimate call after `recoverPromptTooLong`
+returns, since `retryReq` does not exist before that call: the function
+builds `retryReq` and calls `Completer.Chat` on it internally, in one
+step neither `runChat` nor this addendum touches. This means the
+recovery branch reads a possibly later `factor` snapshot than the one
+live when `retryReq` was actually sent, unlike the primary path above.
+This gap does not reintroduce the pairing bug this addendum fixes: a
+mispairing means `Observe` scores one iteration's actual usage against
+a different iteration's estimate. Here, `EstimateTokens(retryReq)`
+always measures `retryReq`'s own messages, tools, and model, the exact
+request `Chat` received, whichever `factor` snapshot it happens to
+read. A stale `factor` changes how tightly `estimated` tracks the
+model's real token count for that call, a precision cost, not a
+pairing error: `estimated` and `actual` still describe the same
+request. `Calibrated`'s own contract already tolerates this: any
+concurrent `Observe` call reads whatever `factor` is live at that
+instant, by design, per the Fix scope bullet on shared-`factor`
+correctness in `docs/plans/contextplan.md`.
+
+`estimateTokens` is a new unexported helper on `*Loop`, factoring the
+shared non-fatal-error rule out of both call sites:
+
+```go
+// estimateTokens returns l.calibrated.EstimateTokens(req), or zero
+// when l.calibrated is nil or the estimate call fails. Zero is a
+// safe default: Calibrated.Observe no-ops on a non-positive estimated
+// value, so an estimator failure here degrades silently, the same
+// rule EstimateTokens failures already followed outside planning.
+func (l *Loop) estimateTokens(req provider.Request) int {
+	if l.calibrated == nil {
+		return 0
+	}
+	est, err := l.calibrated.EstimateTokens(req)
+	if err != nil {
+		return 0
+	}
+	return est
+}
+```
+
+In `afterChat`, the Observe call site changes:
+
+```go
+if l.calibrated != nil {
+	l.calibrated.Observe(at.estimatedTokens, resp.Usage.TotalTokens)
+}
+```
+
+The `l.calibrated != nil` guard stays: `Observe` on a nil
+`*Calibrated` would panic, and `at.estimatedTokens` is meaningless
+when no `Calibrated` produced it.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/`:
+
+- A deterministic-estimate `Completer` and estimator pair, where
+  `runChat` triggers `recoverPromptTooLong` for one iteration and
+  succeeds normally for the rest. Assert the `Observe` call for the
+  recovered iteration pairs with the recovery path's own estimate,
+  not the pre-recovery estimate, by asserting the resulting `factor`
+  matches `contextplan`'s reference formula (see
+  `docs/plans/contextplan.md`'s Fix tests section) applied to the
+  known `(estimated, actual)` pairs. This fails against today's code,
+  which has no `estimatedTokens` field and cannot compile against the
+  new `Observe` signature; once `agentloop` is updated to compile,
+  it fails against a version that only estimates the primary `req`
+  and leaves the recovered branch's `estimatedTokens` at zero.
+- `TestRunConcurrentSharedLoopWithPlanning`, existing in
+  `compaction_recovery_test.go`, needs a fixture change before its
+  assertion can distinguish correct pairing from the bug it exists to
+  catch. Today all 4 goroutines share one `msgs` slice, one
+  deterministic `scaleEstimator`, and one `final` response reused for
+  every call with `Usage` at its zero value, so `actual` is `0` for
+  every call: already a permanent no-op under both the old and the new
+  `Observe` rule. Correct pairing and cross-goroutine-contaminated
+  pairing are numerically indistinguishable under that fixture; an
+  assertion against it would pass equally against fixed and still-buggy
+  code.
+
+  A free-running design, where every goroutine estimates, sends, and
+  observes on its own schedule with no test-controlled ordering, cannot
+  fix this. With `alpha == 1.0`, `Observe` computes `next := factor_live
+  * sample`, where `factor_live` is read fresh at `Observe`-call time
+  and `sample` embeds `factor_capture`, the value read earlier at
+  `EstimateTokens`-call time. Both are only guaranteed inside `[0.5,
+  2.0]` independently; their ratio can reach `4.0` or `0.25`, outside
+  `[0.5, 2.0]`, from legitimate concurrent drift between two *correctly
+  paired* calls, with no mispairing at all. A clamp-to-boundary result
+  is then not a reliable mispairing signal, and no fixed byte-length
+  spacing can rule this out: the number of `Observe` calls that can
+  interleave between one goroutine's own capture and its own observe is
+  scheduler-dependent, not bounded at test-authoring time. This plan
+  replaces the free-running design with a checkpointed one instead,
+  matching the fallback this addendum's round of review offered: a
+  smaller test with a fully known interleaving beats a larger one whose
+  soundness depends on an unprovable bound.
+
+  The checkpointed fixture, replacing today's `newRecoveryFixture`
+  wiring for this one test:
+  - A `Loop` built with `Calibrated: cal` (`cal := contextplan.Calibrate
+    (scaleEstimator{div: 1}, 1.0)`, held by the test) and `Window: nil`.
+    A nil `Window` skips `planHistory` and `Compact` entirely
+    (`agentloop/run.go:106`), so no `Budget()` or retention-overflow risk
+    exists for any message size this test picks; the earlier, rejected
+    design's fixture-cannot-run problem does not recur.
+  - Four goroutines, each running `loop.Run(ctx, msgs[g])` once
+    (`MaxIterations: 1`), each `msgs[g]` a single `RoleUser` message
+    whose content is `strings.Repeat` of a distinct rune, sized so
+    `scaleEstimator{div: 1}` reports a distinct raw estimate per
+    goroutine: 100, 200, 300, and 400 bytes.
+  - A new completer test double, `checkpointCompleter`, replaces
+    `scriptedCompleter` for this one test. It holds one gate per
+    goroutine, keyed by that goroutine's distinct message content. Its
+    `Chat` looks up the calling goroutine's gate by matching
+    `req.Messages[0].Content`, signals a `reached` channel the test
+    reads, then blocks on a `release` channel the test closes, then
+    returns that gate's scripted `provider.Response`.
+  - The test first waits for all four gates' `reached` signal before
+    closing any `release` channel. `runChat` (per this addendum's own
+    mechanics section) always calls `l.estimateTokens(req)` before
+    `steerableChat`, so a goroutine cannot reach its `Chat` gate before
+    its own `EstimateTokens` call has already returned. Since no
+    `release` channel has closed yet, no `Chat` call has returned, so
+    no `afterChat` and no `Observe` call has run for any goroutine.
+    `cal`'s `factor` is therefore still exactly `1.0` when every one of
+    the four captures happens, proven by this barrier, not assumed.
+  - The test then closes `release[1]`, waits for goroutine 1's `Run` to
+    return, closes `release[2]`, waits for goroutine 2's `Run`, and so
+    on through goroutine 4, one at a time. Each `Run` return proves that
+    goroutine's own `Observe` call has already completed, since `Observe`
+    runs synchronously inside `afterChat`, before `Run` can return, on
+    the single call path a response with no tool calls follows. This
+    fixes the exact order of the four `Observe` calls: 1, then 2, then
+    3, then 4, fully known, not merely bounded.
+  - The scripted `Usage.TotalTokens` for goroutines 1 through 4 are 110,
+    180, 360, and 320. With every `estimated` equal to that goroutine's
+    own raw value (`factor == 1.0` at every capture, from the barrier
+    above), the reference formula (`sample := actual/estimated; next :=
+    factor * ((1-alpha) + alpha*sample)`, `alpha == 1.0`) folds, in the
+    fixed release order, to:
+    - `factor0 = 1.0`
+    - `factor1 = factor0 * (110/100) = 1.10`
+    - `factor2 = factor1 * (180/200) = 1.10 * 0.90 = 0.99`
+    - `factor3 = factor2 * (360/300) = 0.99 * 1.20 = 1.188`
+    - `factor4 = factor3 * (320/400) = 1.188 * 0.80 = 0.9504`
+    No clamp fires; `0.9504` is the exact, fully derived expected final
+    factor.
+  - Contrast: under the reverted, single-`lastEst` pairing, the same
+    four captures still all run before any `Observe`, per the same
+    barrier, so `lastEst` ends at goroutine 4's raw value, `400`, once
+    all four captures complete. Every `Observe(actual)` call, in the
+    same fixed release order, then divides by `400` instead of its own
+    goroutine's raw value:
+    - `Observe(110)`: `sample = 110/400 = 0.275`, clamped to `0.5`.
+    - `Observe(180)`: `sample = 180/400 = 0.45`, `next = 0.5*0.45 =
+      0.225`, clamped to `0.5`.
+    - `Observe(360)`: `sample = 360/400 = 0.9`, `next = 0.5*0.9 = 0.45`,
+      clamped to `0.5`.
+    - `Observe(320)`: `sample = 320/400 = 0.8`, `next = 0.5*0.8 = 0.4`,
+      clamped to `0.5`.
+    The reverted pairing pins the factor at exactly `0.5`, sharply
+    diverging from the correctly paired `0.9504`.
+  - The test asserts the exact predicted value, not a range: after
+    goroutine 4's `Run` returns, call `cal.EstimateTokens` on a request
+    with exactly 10,000 bytes of content and assert the result is `9504`,
+    within a tolerance of `2` for accumulated float rounding.
+    `int(float64(raw) * factor)` truncates
+    (`contextplan/calibrated.go`), so the tolerance only needs to cover
+    floating-point drift across four multiplications, not the formula
+    itself.
+  - `go test -race` covers this test like every other: the four `Run`
+    calls are genuine concurrent goroutines sharing one `*Calibrated`,
+    and the checkpoint channels are the only synchronization between
+    them, so a data race in the shared `factor` field would still
+    surface under the race detector even though the *logical* order of
+    `Observe` calls is fixed by the test.
+- A `Calibrated`-without-`Window` configuration: a `Loop` built with
+  `Calibrated` set and `Window` nil. Assert `l.calibrated`'s factor
+  changes after one `Run` call, proving `runChat` now calls
+  `EstimateTokens` for this configuration. This fails against today's
+  code, which never calls `EstimateTokens` when `l.window` is nil, so
+  the factor never moves off its `1.0` starting value.
+- An estimator that fails on `EstimateTokens`, with `Calibrated` set:
+  `Run` still completes normally, the response reaches history
+  unchanged, and the `Completer.Chat` call still ran. This proves the
+  non-fatal-error rule: an estimate failure never fails the run. This
+  fails against a version that returns the `EstimateTokens` error
+  instead of degrading to zero.
+
+### Addendum verification
+
+- Both plans land in one commit: this addendum's `agentloop` code and
+  `docs/plans/contextplan.md`'s `Calibrated.Observe` signature change
+  land together. `agentloop` does not compile against the new
+  `Observe` signature until `chatAttempt.estimatedTokens` and the
+  updated call site land, so a split commit leaves the tree
+  non-building.
+- `make verify` passes; `agentloop` and `contextplan` both hold the 85
+  coverage floor.
+- `go test -race ./agentloop/... ./contextplan/...` passes.
+- `make api-update` produces no `api/agentloop.txt` diff: confirm this
+  explicitly, since `chatAttempt` and its new field stay unexported.
+  `api/contextplan.txt` changes, per `docs/plans/contextplan.md`'s
+  Fix verification.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change:
+  `agentloop` already imports `contextplan`.
+- `docs/packages/agentloop.md`'s `Calibrated.Observe(resp.Usage.
+  TotalTokens)` reference updates to the two-argument call, in the
+  same commit as the code.
 

@@ -177,7 +177,11 @@ follow reliably. Each has a gate behind it.
 - Do not let coverage fall below 85%. The total and every package each
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.
-  Mutation testing is future work.
+  `scripts/check_mutation.py` covers the packages with a stored floor
+  in `scripts/mutation_denylist/`.
+- Do not delete, skip, rename out of collection, or weaken a test
+  instead of fixing the code behind it. Gate:
+  `scripts/check_test_tampering.py`.
 - Do not write an audit-finding label in comments, docs, or plans: a
   letter A through G followed by a digit. Gate:
   `scripts/check_labels.py`.

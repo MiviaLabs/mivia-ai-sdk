@@ -21,11 +21,6 @@
       "target": "not yet planned",
       "permanent": false
     },
-    "spool": {
-      "reason": "Truncation-spool leaf plus its tools.Tool wrapper, shipped ahead of a caller.",
-      "target": "not yet planned",
-      "permanent": false
-    },
     "agentloop": {
       "reason": "Model tool-calling loop, shipped as a composition package with no internal caller yet.",
       "target": "not yet planned",

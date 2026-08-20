@@ -1128,3 +1128,115 @@ Companion tests in `agentloop/agentloop_test/`, tracked by
   same change as the code.
 - This change lands with or after the `provider` `Message.Name`
   change; `Compact` reads that field.
+
+## Correctness fix: contextplan spools its own overflow
+
+Status: shipped. Folded from `docs/plans/agents/phase73_contextplan_spool.md`;
+no standalone phase 73 plan file remains for this contract.
+
+### Fix goal
+
+Wire `Planner` to `spool.Spool`, so a payload `Plan` elides for a
+budget reason lands in durable, principal-scoped storage instead of
+only a `contextstate.MemStore` ref that can itself evict. Both this
+file and `docs/plans/spool.md` already named `contextplan` as
+`spool`'s expected consumer; this fix is that wiring.
+
+### Fix scope
+
+Inside:
+
+- `contextplan` gains one import edge to `spool` in
+  `policy/layers.json`.
+- `NewPlanner` gains a third parameter, `spooler *spool.Spool`. A nil
+  `spooler` is valid: `Plan` never calls `Spool.Spool` and behaves
+  exactly as it did before this fix.
+- `Plan` writes a dropped or stubbed payload's full `record.Data` to
+  the wired `Spool`, for `ElisionReasonWindowOverflow` and
+  `ElisionReasonRetentionExpired` only. Every other reason skips the
+  write.
+- `Elision` gains one field, `SpoolRef string`, the
+  `spool.Spool.Spool` reference on a successful write. Empty when no
+  write was attempted or the write failed.
+- The spool principal is `record.Ref.SubjectID`, the field
+  `contextstate.ContentRef` already carries for this ownership
+  purpose. `Plan` adds no new principal parameter.
+- A spool write failure never fails `Plan`. `SpoolRef` stays empty on
+  a `Spool.Spool` error, matching this SDK's best-effort diagnostic
+  pattern (`agent.EmitMessageDelivered`, `agent.EmitMessageAcked`).
+  This covers `ErrGrantTooLarge` and `ErrPrincipalConflict`.
+
+Outside:
+
+- A new principal parameter or a context-injected principal for
+  `Plan`. `record.Ref.SubjectID` already names the content's owner.
+- Spooling `ElisionReasonReasoningRedacted` content. Reasoning
+  redaction is deliberate exclusion, not a budget accident; spooling
+  it would hand a retrievable reference to content redaction exists
+  to keep out of reach.
+- Spooling `ElisionReasonRevoked` content. `MemStore.Get` already
+  denied this content as revoked; writing it to `Spool` would reopen,
+  through a second channel, what the store's fail-closed `Get`
+  closed. A deliberate security decision, not an oversight.
+- Any tool surface. No `SpoolTool`-wrapped retrieval path joins this
+  fix. A caller that wants a spooled elision back reads
+  `Elision.SpoolRef` and calls `Spool.Load` itself.
+- Any change to `spool`'s own package, or to the `*memory.Store`
+  decode cache's role.
+
+### Fix API
+
+`api/contextplan.txt` gains the changes below, via `make api-update`.
+No `api/spool.txt` change.
+
+- `func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spool.Spool) (*Planner, error)`
+  — breaking change to the locked two-parameter form. A nil `store`
+  or nil `cache` is an error, unchanged. A nil `spooler` is valid.
+- `type Elision struct { Ref contextstate.ContentRef; Reason ElisionReason; Kept int; SpoolRef string }`
+  — `SpoolRef` is set only when `Reason` is
+  `ElisionReasonWindowOverflow` or `ElisionReasonRetentionExpired`,
+  `Planner` carries a non-nil `spooler`, and the write succeeded.
+- `(Planner) Plan`'s doc comment states a wired `Spool` receives the
+  full payload behind every window-overflow and retention-expired
+  entry, keyed to `record.Ref.SubjectID`, best-effort, never failing
+  `Plan`.
+
+No other exported symbol changes.
+
+### Fix tests
+
+`contextplan/contextplan_test/plan_spool_test.go` and
+`plan_spool_integration_test.go`:
+
+- Nil spooler leaves every `SpoolRef` empty.
+- Window overflow and retention-expired elisions spool the full
+  payload, retrievable through `Spool.Load` with the record's
+  `SubjectID`.
+- Reasoning-redacted and revoked elisions never call `Spool.Spool`,
+  proven with a `ContentStore` double that fails the test if `Put`
+  runs.
+- A spool write failure, a grant-too-large error, and a
+  principal-conflict error each leave `SpoolRef` empty and `Plan`'s
+  own error nil.
+- Two payloads with different `SubjectID` values spool under separate
+  principals: `Spool.Load` with the wrong payload's `SubjectID`
+  fails `spool.ErrWrongPrincipal`.
+- A concurrency case extends the existing N-goroutine, one-shared-
+  `*Planner` case with a shared `*spool.Spool`, run under
+  `go test -race`.
+- `plan_spool_integration_test.go` round-trips a real
+  `*memory.Store`-backed `*spool.Spool` against a session that
+  overflows a small `Window`.
+
+### Fix verification
+
+- `make verify` passes; `contextplan` holds the 85 coverage floor.
+- `go test -race ./contextplan/... ./spool/...` passes.
+- `api/contextplan.txt` lands via `make api-update`; `api/spool.txt`
+  shows no diff.
+- `python3 scripts/check_deps.py` passes with the new `spool` edge on
+  the `contextplan` row and no edge added anywhere else.
+- `docs/plans/spool.md` gains a one-line note in its Goal section
+  that `contextplan` now consumes it.
+- `docs/packages/contextplan.md` reflects `NewPlanner`'s new
+  signature and `Elision.SpoolRef`, in the same commit as the code.

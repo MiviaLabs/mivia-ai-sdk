@@ -25,8 +25,8 @@ imports. `channel`, `contextbudget`, `contextstate`, `discovery`,
 `durablefence`, `events`, `hooks`, `provider`, `schema`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextstate` alone.
-`contextplan` imports `contextstate`, `provider`, and `memory`.
-`spool` imports `tools` alone. `a2aloopback` imports `a2a` and
+`contextplan` imports `contextstate`, `provider`, `memory`, and
+`spool`. `spool` imports `tools` alone. `a2aloopback` imports `a2a` and
 `envelope`, the same two internal packages `a2aclient` imports.
 
 ```mermaid
@@ -43,6 +43,7 @@ flowchart LR
     contextplan --> contextstate
     contextplan --> provider
     contextplan --> memory
+    contextplan --> spool
     flow --> events
     flow --> machine
     heartbeat --> events
@@ -490,7 +491,7 @@ flowchart LR
 - `contextplan/` — fits one durable session into a bounded provider
   request. It provides `Planner` with `NewPlanner` and `Plan`,
   `Window` with `Validate` and `Budget`, `PlanResult`, `Elision`,
-  `ElisionReason` and its three constants, `Calibrate` and
+  `ElisionReason` and its four constants, `Calibrate` and
   `Calibrated`, `IsReasoningEvent`, `StubContent`, and the sentinels
   `ErrNilStore`, `ErrNilCache`, `ErrMaxTokensNotPositive`,
   `ErrReserveNegative`, `ErrReserveTooLarge`, and `ErrNilSession`.
@@ -499,15 +500,19 @@ flowchart LR
   drops the rest; a reasoning event, per `IsReasoningEvent`, never
   enters the built `provider.Request`. `Calibrated` wraps a
   `provider.TokenEstimator` with an EWMA correction factor `Observe`
-  updates after each turn, guarded by a mutex for concurrent use. The
-  compaction surface adds `Compaction` with `Validate`, `Compact`,
+  updates after each turn, guarded by a mutex for concurrent use.
+  `NewPlanner` takes a third, nil-safe `*spool.Spool`; a wired `Spool`
+  receives the full payload behind every window-overflow and
+  retention-expired `Elision`, keyed to the payload's own
+  `SubjectID`, and `Elision.SpoolRef` carries the write's reference.
+  The compaction surface adds `Compaction` with `Validate`, `Compact`,
   `CompactResult`, `CompactTrigger` and `CompactTarget`, the
   retention and tail-fill constants, and the `Compact` sentinels:
   `Compact` applies the trigger check and a fixed retention set over
   one message list, pure, with no LLM call, and mints the
   `context-compact-v1` idempotency key through `contextstate.Mint`.
-  `contextplan` imports `contextstate`, `provider`, and `memory`. See
-  [packages/contextplan.md](packages/contextplan.md).
+  `contextplan` imports `contextstate`, `provider`, `memory`, and
+  `spool`. See [packages/contextplan.md](packages/contextplan.md).
 - `contextsummary/` — the LLM summarizer for compaction. It provides
   `Summary` with `Validate` and `Render`, `SummaryMessage`,
   `TokenEstimate`, `Summarizer` with `NewSummarizer` and `Summarize`,

@@ -334,6 +334,15 @@ explicit opt-in. Route exclusion propagates by default, matching
 the sibling repo's transition-driven readiness. No standalone
 phase 61 plan file remains.
 
+Phase 62 (`provider` tool-call history) has shipped. It adds
+`Message.ToolCalls`, so a caller can append a completed assistant
+turn back into `Request.Messages`. `Validate` adds
+`ErrToolCallsUnexpected`: a non-empty `ToolCalls` on any role but
+`RoleAssistant` rejects. `buildResponse` keeps `Response.ToolCalls`
+and `Response.Message.ToolCalls` in sync on the streamed path. Its
+contract folded into docs/plans/provider.md; no standalone phase 62
+plan file remains.
+
 Phase 63 (`skills`) has shipped. It adds one leaf package: `Skill`
 carries a name, instructions text, trigger phrases, and required
 tool names; `Skill.Validate` checks a non-blank name, non-blank
@@ -348,6 +357,51 @@ skill is read, not called: it carries no `Run` method. It depends on
 no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
 package plan lives at docs/plans/skills.md.
+
+Phase 64 (`schema`) has shipped, in commit 7aea007. It adds one leaf
+package: `Compiled` and `Compile` load a JSON Schema document;
+`Validate` checks a payload against it and returns a bounded,
+model-facing `Corrective` message on failure. `MaxSchemaBytes`,
+`MaxSchemaDepth`, `MaxPayloadBytes`, and `MaxCorrectiveBytes` bound
+the admission and the reply. It imports
+`github.com/santhosh-tekuri/jsonschema/v6`, an authorized third-party
+exception scoped to this package. Its package plan lives at
+docs/plans/schema.md.
+
+Phase 65 (`contextstate`) has shipped. It adds one leaf package, plus
+a unification inside `envelope`, ported from `mivia-agent`'s
+`internal/contextstate` and `internal/contentref`. It holds the
+durable context contract and the single canonical content-reference
+minter: sessions, checkpoints, commit validation, retention classes,
+and volume `Limits`. Its package plan lives at
+docs/plans/contextstate.md.
+
+Phase 66 (`contextplan`) has shipped. It adds one package, built on
+the shipped phase 65 `contextstate` and `provider` interfaces. It
+fits one durable session into a bounded provider request: `Planner`
+decides what a token `Window` keeps, stubs, or drops, and
+`Calibrated` corrects its token estimator against each turn's real
+usage. A companion change folds reasoning vocabulary types into
+`provider`. Its package plan lives at docs/plans/contextplan.md.
+
+Phase 67 (`spool`) has shipped. It adds one leaf package plus a
+`tools.Tool` wrapper, under the phase 65 `contextstate` contract.
+`Spool` stores oversized content under a principal-scoped grant and
+hands the caller a bounded view plus a reference; `SpoolTool` wraps
+any `tools.Tool` with the same truncate-and-reference behavior. No
+standalone phase 67 plan file remains; its contract lives in
+docs/plans/spool.md.
+
+Phase 68 (file text leaves) has shipped. It adds four packages:
+`envfile` loads a dotenv file into a map without leaking parsed
+values into an error message; `secretpath` matches a filesystem path
+against configured secret-path patterns; `workspace` confines
+filesystem access to one root directory through `os.Root`, with a
+size-bounded read; `diff` produces a bounded unified line diff
+between two byte slices. Each package plan lives at
+docs/plans/envfile.md, docs/plans/secretpath.md,
+docs/plans/workspace.md, and docs/plans/diff.md; no standalone phase
+68 plan file remains.
 
 Phase 69 (`agentloop`) has shipped. It adds one composition package:
 `Run` takes a `provider.Completer`, a `tools.Registry`, and a
@@ -369,6 +423,24 @@ every `WorkspaceReadTool`/`WorkspaceWriteTool`/`WorkspaceListTool`/
 opens. It adds no new package. Its addendum lives in
 docs/plans/subagent.md's "File tools addendum"; no standalone phase
 71 plan file remains.
+
+Phase 72 is plan-only and not scheduled. It adds `Kind` bindings for
+`runconfig` over the five file tools' post-phase-71 signature. It
+depends on the shipped `subagent`, `workspace`, `diff`, and
+`contextbudget` packages, and on the shipped phase 71. See
+docs/plans/agents/phase72_runconfig_blocks.md.
+
+Phase 73 (`contextplan` spools its own overflow) has shipped. It
+wires `contextplan.Planner` to `spool.Spool`: `NewPlanner` gains a
+third, nil-safe `spooler *spool.Spool` parameter, and `Plan` writes a
+window-overflow or retention-expired elision's full payload to a
+wired `Spool`, keyed to the payload's own `SubjectID`. A spool write
+never fails `Plan`. It adds no new package and one
+`policy/layers.json` edge (`contextplan` to `spool`). Its active
+contract folded into docs/plans/contextplan.md's "Correctness fix:
+contextplan spools its own overflow" section;
+docs/plans/agents/phase73_contextplan_spool.md stays as the
+historical design record.
 
 Phase 74 is plan-only and not scheduled. It is the mutation kit's
 second rollout step: seven new per-package floors (`workspace`,

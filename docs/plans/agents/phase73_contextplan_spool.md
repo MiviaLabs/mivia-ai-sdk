@@ -1,12 +1,11 @@
 # Phase 73: contextplan spools its own overflow
 
-Status: plan, revised after one hostile plan-reviewer pass (verdict
-REVISE, two blocking findings: the enumerated `NewPlanner` call-site
-list omitted most existing call sites, and the `ErrPrincipalConflict`
-test case as first written could not reach that error). Both are
-fixed below; ready for re-review. Builds on the shipped `contextplan`
-(phase 66) and `spool` (phase 67) packages. Phase numbering note:
-phase 71 (`docs/plans/agents/phase71_filetools.md`) and phase 72
+Status: shipped. Folded into `docs/plans/contextplan.md`'s
+"Correctness fix: contextplan spools its own overflow" section; this
+file stays as the historical design record, not the active contract.
+Builds on the shipped `contextplan` (phase 66) and `spool` (phase 67)
+packages. Phase numbering note: phase 71
+(`docs/plans/agents/phase71_filetools.md`) and phase 72
 (`docs/plans/agents/phase72_runconfig_blocks.md`) are separate,
 concurrent, plan-only changes to `subagent` and `runconfig`. This
 plan uses phase 73 to avoid a collision with either and touches
@@ -236,9 +235,7 @@ package.
 - No new test targets an empty `record.Ref.SubjectID` reaching
   `Spool.Spool`. `contextstate.PayloadRecord.Validate`, run by every
   `MemStore.Put`, already rejects an empty `SubjectID` before a record
-  can enter the store `Plan` reads from. This mirrors
-  `docs/plans/contextplan.md`'s own note that an unreachable branch
-  through a validated store stays undocumented by a test.
+  can enter the store `Plan` reads from.
 
 ## Verification
 

@@ -508,6 +508,18 @@ phase79_graceful_conclude.md, phase80_batch_result_shaping.md,
 phase81_duplicate_call_dedup.md, phase82_injection_safe_framing.md,
 phase83_heartbeat_events.md, and phase84_partial_recovery_streaming.md.
 
+Phases 85 and 86 are plan-only and not scheduled, reviewed and
+approved. A bug audit found two confirmed, reproducible defects with
+no test coverage: `longtermmemory` silently splits one scope into two
+buckets when a caller's `Scope` string carries stray whitespace (85),
+and `contextplan.Calibrated` pairs an `Observe` call against the wrong
+estimate under concurrent or multi-estimate use, corrupting its EWMA
+calibration factor with no crash and no race-detector flag (86).
+Neither phase depends on the other. Phase 86 needs a companion change
+to `agentloop` landed in the same commit, detailed in its own file.
+See docs/plans/agents/phase85_longtermmemory_scope_normalization.md
+and phase86_calibrated_observe_pairing_fix.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

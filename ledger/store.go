@@ -84,6 +84,8 @@ type MemStoreOptions struct {
 	MaxEntries int
 	// Now supplies the clock eviction reads to decide whether a
 	// record's lease is live. A nil Now resolves to time.Now.
+	// MemStore calls Now while it holds its own lock; Now must not
+	// call back into the same MemStore, or the call deadlocks.
 	Now func() time.Time
 }
 

@@ -128,16 +128,19 @@ func TestEvictionProtectsCurrentKey(t *testing.T) {
 	}
 }
 
-// TestEvictionScanBudgetStops proves one round rotates at most
+// TestEvictionScanBudgetStops proves one round rotates exactly
 // evictScanBudget protected heads, and that the next write resumes
-// where the budget stopped.
+// where the budget stopped. The queue holds eight live heads followed
+// by one deletable key, so the round stops one key short of it. An
+// off-by-one budget would reach that key and delete it.
 func TestEvictionScanBudgetStops(t *testing.T) {
 	m := evictionStore(t, 9)
 	live := storeClock.Add(time.Hour)
-	for _, k := range []IdempotencyKey{"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9"} {
+	for _, k := range []IdempotencyKey{"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8"} {
 		insertRecord(t, m, k, claimed(live))
 	}
 	insertRecord(t, m, "done", terminal())
+	insertRecord(t, m, "e", terminal())
 	if len(m.tasks) != 10 {
 		t.Fatalf("len(tasks) = %d, want 10: the budget stops the round inside the live run", len(m.tasks))
 	}

@@ -16,10 +16,10 @@ or a bound trips. The exported surface below mirrors
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
   `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
-  `ConcludeNotice`, `DedupWithinTurn`, `HeartbeatInterval`.
-  `Completer` and `Tools` are required; the rest are optional. `Bus`
-  receives `Run`'s iteration, completion-heartbeat, and tool-call
-  events, gated on a positive `HeartbeatInterval`: a zero
+  `ConcludeNotice`, `DedupWithinTurn`, `HeartbeatInterval`,
+  `TurnResultBudget`. `Completer` and `Tools` are required; the rest
+  are optional. `Bus` receives `Run`'s iteration, completion-heartbeat,
+  and tool-call events, gated on a positive `HeartbeatInterval`: a zero
   `HeartbeatInterval` emits nothing, even through a non-nil `Bus`.
   `HeartbeatInterval` requires a non-nil `Bus` in turn;
   `Options.Validate` rejects the opposite pairing with
@@ -58,10 +58,13 @@ or a bound trips. The exported surface below mirrors
 - `(*Loop) Run(ctx, msgs)` — calls `Registry.RunScoped`, never
   `Registry.Run`, so a model-chosen call always passes through the
   `Loop`'s `Scope`. Returns the final `Result` and the first error.
-- `Options.Validate()` — checks `Completer` and `Tools` are set,
-  `MaxIterations` is positive, `Usage` requires a non-blank
+- `Options.Validate()` — checks, in order: `Completer` and `Tools` are
+  set, `MaxIterations` is positive, `Usage` requires a non-blank
   `SessionID`, a non-nil `Budget` passes `contextbudget.Limits.
-  Validate`, and `MaxTotalTokens` is not negative.
+  Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
+  passes `Window.Validate` and requires `Summarizer`, requires
+  `Calibrated`, and excludes `Trim`, `ConcludeMargin` is not negative,
+  and `TurnResultBudget` is not negative.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. The second return holds the names skipped for a missing
@@ -107,6 +110,12 @@ Use `errors.Is` to test these.
   `Arguments` fail `schema.Compiled.Validate` against the resolved
   tool's compiled schema, wrapped with the call ID and the underlying
   `schema` error. Never reaches `DecodeArguments`.
+- `ErrToolNotOffered` ("agentloop: tool call names a tool not offered
+  when New ran") — `Run`'s error when a model-chosen call names a
+  tool with no entry in the schema set `New` compiled once at
+  construction. This happens when a caller registers a schema-bearing,
+  scope-allowed tool on the shared `*tools.Registry` after `New` ran.
+  Routed through `OnToolError` exactly like `ErrArgumentValidation`.
 - `ErrPlanFailed` ("agentloop: context planning failed") — `Run`'s
   error when the per-iteration estimate fails.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
@@ -128,6 +137,8 @@ Use `errors.Is` to test these.
 - `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
   negative") — `Options.Validate` returns it for a negative
   `ConcludeMargin`.
+- `ErrTurnResultBudget` — `Options.Validate` returns it for a negative
+  `TurnResultBudget`.
 - `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
   non-nil Bus") — `Options.Validate` returns it when
   `HeartbeatInterval` is positive and `Bus` is nil.
@@ -332,6 +343,30 @@ own length keeps zero content bytes and returns the marker alone. A
 bound shorter than the marker hard-cuts the content to `bound` bytes
 with no marker, since the marker itself would not fit.
 
+## Turn result budget
+
+A positive `Options.TurnResultBudget` caps the summed byte size of one
+turn's rendered tool results, across every call in that turn. It
+shapes each call's content after that call's own `tools.ResultBudgetOf`
+bound already applied, not instead of it.
+
+`runToolCalls` runs calls in `ToolCall.Index` order and tracks a
+running byte total for the turn, reset to zero at the start of each
+turn. A call's content stays whole only when the running total plus
+its byte length does not exceed `TurnResultBudget`; otherwise the
+content is replaced with `BatchTruncationNotice`
+("[batch-truncated] Turn tool-result budget exhausted; this result
+was omitted."), and the running total does not grow for that call. A
+zero `TurnResultBudget` skips the check entirely and every call's
+content passes through whole.
+
+Shaping applies to every appended `RoleTool` message's content,
+including an `ErrorPolicyReport` error report marked with
+`ToolErrorPrefix`. `AuditRecord.Err` always carries the call's true
+outcome, independent of whether `ToolResult.Content` was replaced by
+shaping. A `PointPreTool` veto stops the turn before shaping considers
+any later call, unchanged from a run with `TurnResultBudget` at zero.
+
 ## Invariants
 
 - `New` calls `Definitions` once; a tool registered after `New` but
@@ -349,7 +384,7 @@ with no marker, since the marker itself would not fit.
   arguments is a tool-run error and goes through the same
   `OnToolError` policy as a failed `Run`.
 - A zero `MaxCallsPerTurn` means unbounded. A zero `MaxTotalTokens`
-  means unbounded.
+  means unbounded. A zero `TurnResultBudget` means unbounded.
 - A nil `Options.Trim` passes history through unchanged and skips
   `provider.Message.Validate` on it.
 

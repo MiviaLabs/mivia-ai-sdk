@@ -41,31 +41,32 @@ type Result struct {
 // Loop is a bound, ready-to-run tool-calling loop. Built only through
 // New.
 type Loop struct {
-	completer       provider.Completer
-	reg             *tools.Registry
-	scope           *tools.Scope
-	model           string
-	maxIterations   int
-	maxCallsPerTurn int
-	maxTotalTokens  int
-	onToolError     ErrorPolicy
-	hooksReg        *hooks.Registry
-	tracer          *trace.Tracer
-	usageAcc        *usage.Accumulator
-	sessionID       string
-	bus             *events.Bus
-	budget          *contextbudget.Limits
-	trim            func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
-	defs            []provider.ToolDefinition
-	schemas         map[string]*schema.Compiled
-	audit           AuditFunc
-	window          *contextplan.Window
-	summarizer      *contextsummary.Summarizer
-	calibrated      *contextplan.Calibrated
-	concludeMargin  int
-	concludeNotice  string
-	dedupWithinTurn bool
-	heartbeat       time.Duration
+	completer        provider.Completer
+	reg              *tools.Registry
+	scope            *tools.Scope
+	model            string
+	maxIterations    int
+	maxCallsPerTurn  int
+	maxTotalTokens   int
+	onToolError      ErrorPolicy
+	hooksReg         *hooks.Registry
+	tracer           *trace.Tracer
+	usageAcc         *usage.Accumulator
+	sessionID        string
+	bus              *events.Bus
+	budget           *contextbudget.Limits
+	trim             func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	defs             []provider.ToolDefinition
+	schemas          map[string]*schema.Compiled
+	audit            AuditFunc
+	window           *contextplan.Window
+	summarizer       *contextsummary.Summarizer
+	calibrated       *contextplan.Calibrated
+	concludeMargin   int
+	concludeNotice   string
+	dedupWithinTurn  bool
+	heartbeat        time.Duration
+	turnResultBudget int
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -90,31 +91,32 @@ func New(opts Options) (*Loop, error) {
 		return nil, err
 	}
 	return &Loop{
-		completer:       opts.Completer,
-		reg:             opts.Tools,
-		scope:           opts.Scope,
-		model:           opts.Model,
-		maxIterations:   opts.MaxIterations,
-		maxCallsPerTurn: opts.MaxCallsPerTurn,
-		maxTotalTokens:  opts.MaxTotalTokens,
-		onToolError:     opts.OnToolError,
-		hooksReg:        opts.Hooks,
-		tracer:          opts.Tracer,
-		usageAcc:        opts.Usage,
-		sessionID:       opts.SessionID,
-		bus:             opts.Bus,
-		budget:          opts.Budget,
-		trim:            opts.Trim,
-		defs:            defs,
-		schemas:         schemas,
-		audit:           opts.Audit,
-		window:          opts.Window,
-		summarizer:      opts.Summarizer,
-		calibrated:      opts.Calibrated,
-		concludeMargin:  opts.ConcludeMargin,
-		concludeNotice:  resolveConcludeNotice(opts.ConcludeNotice),
-		dedupWithinTurn: opts.DedupWithinTurn,
-		heartbeat:       opts.HeartbeatInterval,
+		completer:        opts.Completer,
+		reg:              opts.Tools,
+		scope:            opts.Scope,
+		model:            opts.Model,
+		maxIterations:    opts.MaxIterations,
+		maxCallsPerTurn:  opts.MaxCallsPerTurn,
+		maxTotalTokens:   opts.MaxTotalTokens,
+		onToolError:      opts.OnToolError,
+		hooksReg:         opts.Hooks,
+		tracer:           opts.Tracer,
+		usageAcc:         opts.Usage,
+		sessionID:        opts.SessionID,
+		bus:              opts.Bus,
+		budget:           opts.Budget,
+		trim:             opts.Trim,
+		defs:             defs,
+		schemas:          schemas,
+		audit:            opts.Audit,
+		window:           opts.Window,
+		summarizer:       opts.Summarizer,
+		calibrated:       opts.Calibrated,
+		concludeMargin:   opts.ConcludeMargin,
+		concludeNotice:   resolveConcludeNotice(opts.ConcludeNotice),
+		dedupWithinTurn:  opts.DedupWithinTurn,
+		heartbeat:        opts.HeartbeatInterval,
+		turnResultBudget: opts.TurnResultBudget,
 	}, nil
 }
 

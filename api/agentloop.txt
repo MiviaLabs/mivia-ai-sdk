@@ -1,6 +1,7 @@
 package agentloop
   const AuditKindCompletion = "completion"
   const AuditKindToolCall = "tool_call"
+  const BatchTruncationNotice = "[batch-truncated] Turn tool-result budget exhausted; this result was omitted."
   const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
   const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
   const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
@@ -60,6 +61,7 @@ package agentloop
   ConcludeNotice string
   DedupWithinTurn bool
   HeartbeatInterval time.Duration
+  TurnResultBudget int
 }
   type Result struct {
   Final provider.Message
@@ -86,4 +88,5 @@ package agentloop
   var ErrTokenBudgetExceeded
   var ErrToolNotOffered
   var ErrTrimExcluded
+  var ErrTurnResultBudget
   var ErrUnrenderableResult

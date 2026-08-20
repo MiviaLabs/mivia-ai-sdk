@@ -165,13 +165,13 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 // iteration's Chat exactly once. When the compaction sequence returns
 // Compacted false, the history estimates under one percent of the
 // budget, so orig returns unchanged with no retry and no notice. Any
-// retry error, including a second rejection, propagates.
+// retry error, including a second rejection, propagates. An invalid
+// recovery window (a Budget of one token) fails closed inside
+// compactHistory's own contextplan.Compact call, wrapping the same
+// window error recoverPromptTooLong would have; no separate check is
+// needed here.
 func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int) (provider.Response, []provider.Message, provider.Request, error) {
 	rw := recoveryWindow(*l.window)
-	if err := rw.Validate(); err != nil {
-		return provider.Response{}, nil, provider.Request{},
-			fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, err)
-	}
 	rebuilt, compacted, err := l.compactHistory(ctx, history, rw, iteration, true)
 	if err != nil {
 		return provider.Response{}, nil, provider.Request{}, err

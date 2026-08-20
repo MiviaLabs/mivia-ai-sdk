@@ -201,6 +201,38 @@ func TestRunRecoveryTinyBudgetClampsTargetToOne(t *testing.T) {
 	t.Fatalf("retried request missing the notice: %+v", reqs[1].Messages)
 }
 
+// TestRunRecoveryLargeBudgetClampsTargetToRecoveryTargetTokens proves
+// recoveryWindow's min(RecoveryTargetTokens, Budget()/4) picks
+// RecoveryTargetTokens, not Budget()/4, once Budget()/4 exceeds it. A
+// Budget of 100000 makes Budget()/4 == 25000, well above
+// RecoveryTargetTokens's 16384; a single droppable message sized
+// between the two (20000 bytes) survives recovery only if
+// Budget()/4 were used uncapped, and gets dropped only if
+// RecoveryTargetTokens's smaller ceiling won.
+func TestRunRecoveryLargeBudgetClampsTargetToRecoveryTargetTokens(t *testing.T) {
+	big := strings.Repeat("o", 20000)
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: big},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 100000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
+	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
+	if _, err := loop.Run(context.Background(), msgs); err != nil {
+		t.Fatalf("Run() = %v, want nil", err)
+	}
+	if got := f.completer.callCount(); got != 2 {
+		t.Fatalf("completer calls = %d, want 2", got)
+	}
+	_, reqs := completerRequests(f.completer)
+	for _, m := range reqs[1].Messages {
+		if m.Content == big {
+			t.Fatalf("retried request still carries the full %d-byte message: RecoveryTargetTokens's smaller ceiling must have won over Budget()/4", len(big))
+		}
+	}
+}
+
 func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
@@ -219,11 +251,8 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry below one percent of the budget", got)
 	}
-	if res.Iterations != 0 {
-		t.Fatalf("Result.Iterations = %d, want 0: the rejection fails the first iteration", res.Iterations)
-	}
-	if len(res.History) != len(msgs) {
-		t.Fatalf("Result.History = %+v, want the pre-recovery history carried on the fromRecovery branch, unlike the base hard-fail rule's zero Result at Iterations 0", res.History)
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
 	}
 }
 
@@ -238,12 +267,15 @@ func TestRunRecoverySecondRejectionPropagates(t *testing.T) {
 	loop, f := newRecoveryFixture(t, w, 1,
 		[]error{provider.ErrPromptTooLong, provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, provider.Response{}}, nil)
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, provider.ErrPromptTooLong) {
 		t.Fatalf("Run() error = %v, want the second rejection propagated", err)
 	}
 	if got := f.completer.callCount(); got != 2 {
 		t.Fatalf("completer calls = %d, want 2: no third call after a second rejection", got)
+	}
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
 	}
 }
 
@@ -258,12 +290,45 @@ func TestRunRecoverySummarizerFailureNoRetry(t *testing.T) {
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, final}, errors.New("summary boom"))
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry after a recovery summarizer failure", got)
+	}
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
+	}
+}
+
+// TestRunRecoveryInvalidWindowFailsClosed proves the run fails
+// closed with ErrCompactionFailed, wrapping a Window.Validate error,
+// when recoverPromptTooLong's derived recovery window is itself
+// invalid. A Budget of exactly one token forces recoveryWindow's
+// clamp to set TargetTokens equal to Budget: max(1, min(RecoveryTargetTokens,
+// Budget/4)) with Budget 1 evaluates to 1, and a Window with
+// TargetTokens at or above Budget fails Validate, even though the
+// original, pre-recovery Window (TargetTokens unset) validated fine
+// at New. The invalid window fails inside compactHistory's own
+// contextplan.Compact call, which validates first; recoverPromptTooLong
+// carries no separate check. TriggerPercent 100 with a near-zero-byte
+// estimate keeps planHistory from compacting before the first Chat
+// call, so the run reaches the Completer and its scripted
+// ErrPromptTooLong rejection.
+func TestRunRecoveryInvalidWindowFailsClosed(t *testing.T) {
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("o", 50)}}
+	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
+	loop, f := newRecoveryFixture(t, w, 1_000_000, []error{provider.ErrPromptTooLong}, []provider.Response{{}}, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "at or above budget") {
+		t.Fatalf("Run() error = %v, want the recovery window's own compaction-target-at-or-above-budget Validate error wrapped", err)
+	}
+	if got := f.completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: an invalid recovery window must never retry", got)
 	}
 }
 

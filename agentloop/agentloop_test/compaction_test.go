@@ -26,6 +26,15 @@ func (e scaleEstimator) EstimateTokens(req provider.Request) (int, error) {
 	return total / e.div, nil
 }
 
+// erroringEstimator always fails EstimateTokens with err, to drive
+// planHistory's estimate-error branch, which a real contextplan
+// estimator never takes for a valid history.
+type erroringEstimator struct{ err error }
+
+func (e erroringEstimator) EstimateTokens(req provider.Request) (int, error) {
+	return 0, e.err
+}
+
 // summaryScript backs one Summarizer: it counts calls, records every
 // request, and answers with one fixed valid summary reply, or one
 // configured error.
@@ -34,6 +43,8 @@ type summaryScript struct {
 	calls int
 	reqs  []provider.Request
 	err   error
+	// reply overrides summaryReplyJSON when non-empty.
+	reply string
 }
 
 func (s *summaryScript) Name() string { return "summary-script" }
@@ -46,8 +57,12 @@ func (s *summaryScript) Chat(ctx context.Context, req provider.Request) (provide
 	if s.err != nil {
 		return provider.Response{}, s.err
 	}
+	reply := s.reply
+	if reply == "" {
+		reply = summaryReplyJSON
+	}
 	return provider.Response{
-		Message: provider.Message{Role: provider.RoleAssistant, Content: summaryReplyJSON},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: reply},
 	}, nil
 }
 
@@ -344,21 +359,37 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	}
 }
 
-func TestRunRetentionOverflowFailsBeforeRequest(t *testing.T) {
-	msgs := []provider.Message{
-		{Role: provider.RoleSystem, Content: "s"},
-		{Role: provider.RoleUser, Content: strings.Repeat("u", 100)},
+// TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed proves an
+// EstimateTokens failure at the per-iteration planning step fails the
+// run with ErrPlanFailed, wrapping the estimator's own error, before
+// any Completer call.
+func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
+	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
 	}
-	w := contextplan.Window{MaxTokens: 50, Compaction: contextplan.Compaction{TriggerPercent: 100}}
-	loop, f := newPlanningFixture(t, w, nil, nil)
-	_, err := loop.Run(context.Background(), msgs)
-	if !errors.Is(err, agentloop.ErrCompactionFailed) {
-		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	estErr := errors.New("estimator boom")
+	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
+	completer := &scriptedCompleter{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         tools.New(),
+		MaxIterations: 2,
+		Window:        &w,
+		Summarizer:    sum,
+		Calibrated:    contextplan.Calibrate(erroringEstimator{err: estErr}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
-		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
+	_, err = loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if !errors.Is(err, agentloop.ErrPlanFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrPlanFailed", err)
 	}
-	if got := f.completer.callCount(); got != 0 {
-		t.Fatalf("completer calls = %d, want 0", got)
+	if !errors.Is(err, estErr) {
+		t.Fatalf("Run() error = %v, want the estimator's own error wrapped", err)
+	}
+	if got := completer.callCount(); got != 0 {
+		t.Fatalf("completer calls = %d, want 0: a planning failure must never reach Chat", got)
 	}
 }

@@ -28,6 +28,13 @@ const truncationMarker = "...[truncated]"
 // provider.Message schema change.
 const ToolErrorPrefix = "[tool-error] "
 
+// BatchTruncationNotice replaces a tool result's content when
+// TurnResultBudget is exhausted before that call's turn in Index
+// order. Distinct from ToolErrorPrefix: a batch-shaped result is not
+// a tool-run error, and distinct from the per-call truncation marker,
+// which trims content in place instead of replacing it outright.
+const BatchTruncationNotice = "[batch-truncated] Turn tool-result budget exhausted; this result was omitted."
+
 // render turns out into a RoleTool message's Content string, in a
 // fixed order: a string value passes through unchanged; a []byte
 // value that is valid UTF-8 becomes its string form; anything else

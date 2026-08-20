@@ -1604,3 +1604,134 @@ scripted `Completer` and one scripted `Summarizer` per case:
   change, the `contextsummary` package, and the `provider`
   `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.
 
+## Addendum: heartbeat and progress events
+
+Status: shipped. This addendum was phase 83
+(`docs/plans/agents/PHASES.md`); no standalone phase 83 plan file
+remains. It adds `Options.HeartbeatInterval` and six `events.Name`
+progress events to `Run`. It changes `heartbeat.go` (new),
+`options.go`, `run.go`, `loop.go`, and `toolcall.go`. It adds no new
+package and no new `policy/layers.json` edge: `events` was already an
+allowed `agentloop` import.
+
+### Addendum goal
+
+Emit periodic events on `Options.Bus`, wired since the base plan but
+never used, so a caller can show progress during a long `Completer`
+call or a long tool batch.
+
+### Addendum scope
+
+Inside:
+
+- One new `Options` field, `HeartbeatInterval time.Duration`.
+- Six new `events.Name` constants for iteration start/end, a periodic
+  completion heartbeat, a tool-call start/end, and a periodic
+  per-tool-call heartbeat.
+- Emitting on `Bus` at each of those points when `HeartbeatInterval`
+  is positive. A `Bus.Emit` error is swallowed, the same way `Run`
+  already swallows a `hooks.Registry.Fire` error from `PointStop`: a
+  heartbeat is observability, not a control-flow gate.
+- `Options.Validate` gains one rule, appended after the `Window`
+  block: a positive `HeartbeatInterval` with a nil `Bus` fails with
+  `ErrHeartbeatRequiresBus`.
+- An extraction in `run.go`: `runIteration` holds the single-iteration
+  body `run`'s `for` loop used to inline, so `run` stays under the
+  80-line function cap while bracketing every iteration exit path
+  with `EventIterationStart`/`EventIterationEnd`.
+- A shared ticker helper, `startHeartbeat`, used by both the
+  completion-heartbeat site in `runIteration` and the tool-call-
+  heartbeat site in `runOneToolCall`.
+
+Outside:
+
+- Any change to the `events` package. `events.Name` is already
+  `type Name string`; `agentloop` defines its own constants of that
+  type. `events.Bus`, `events.Event`, and `events.Handler` need no
+  change.
+- Carrying structured data richer than `events.Event.Data string`
+  allows. Every heartbeat event's `Data` is a short, human-readable
+  string.
+
+### Addendum API
+
+New `Options` field:
+
+```go
+// HeartbeatInterval emits a heartbeat Event on Bus every interval
+// while one Completer call or one tool call is in flight. Zero
+// disables heartbeats. A positive HeartbeatInterval requires a
+// non-nil Bus.
+HeartbeatInterval time.Duration
+```
+
+New event names:
+
+```go
+const (
+    EventIterationStart      events.Name = "agentloop.iteration.start"
+    EventCompletionHeartbeat events.Name = "agentloop.completion.heartbeat"
+    EventToolCallStart       events.Name = "agentloop.tool_call.start"
+    EventToolCallHeartbeat   events.Name = "agentloop.tool_call.heartbeat"
+    EventToolCallEnd         events.Name = "agentloop.tool_call.end"
+    EventIterationEnd        events.Name = "agentloop.iteration.end"
+)
+```
+
+New sentinel:
+
+```go
+// ErrHeartbeatRequiresBus is Options.Validate's error when
+// HeartbeatInterval is positive and Bus is nil. Test with errors.Is.
+var ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
+```
+
+`runOneToolCall` (`toolcall.go`) returns before `RunScoped` on a
+`PointPreTool` veto. `EventToolCallStart` fires on entry, before the
+`PointPreTool` fire, and `EventToolCallEnd` fires from a deferred
+closure covering every return path, including the veto path and the
+`PointPreTool` hook-error path. The `EventToolCallHeartbeat` ticker
+starts only after the veto check passes, since a vetoed call never
+reaches the blocking `RunScoped` work a heartbeat reports progress
+on.
+
+See [packages/agentloop.md](packages/agentloop.md)'s "Events" section
+for the full field list, the failure mode, and the gating rule.
+
+### Addendum tests
+
+- `Options.Validate`: a positive `HeartbeatInterval` with a nil `Bus`
+  fails with `errors.Is(err, ErrHeartbeatRequiresBus)`, only after
+  every earlier check passes. A zero `HeartbeatInterval` passes
+  regardless of `Bus`.
+- A scripted `Completer` that blocks past two heartbeat intervals,
+  run with a `Bus` subscribed to `EventCompletionHeartbeat`, receives
+  at least two heartbeat events before the call returns. A zero
+  `HeartbeatInterval` receives none.
+- `EventIterationStart`/`EventIterationEnd` fire once per iteration,
+  in order, on every exit path from `runIteration`: ctx cancellation,
+  a trim error, a budget error, a `planHistory` error, an audit
+  error, the token-budget-exceeded error, a tool-call error, and both
+  graceful stops.
+- Heartbeat ticker goroutine cleanup: no leak when ctx is canceled
+  mid-call, and no leak when the call returns before the first tick
+  fires.
+- `PointPreTool` veto and hook-error paths: `EventToolCallStart`
+  followed immediately by `EventToolCallEnd`, with no
+  `EventToolCallHeartbeat` in between.
+- Tool-call heartbeat, positive path: `EventToolCallStart`, at least
+  two `EventToolCallHeartbeat` events, then `EventToolCallEnd`, in
+  order.
+- `Bus.Emit`'s "no subscriber for name" error is swallowed, matching
+  the `PointStop`/`hooks.Registry.Fire` swallow precedent; `Run`
+  completes normally.
+- A race sub-case: heartbeat emission from the ticking goroutine and
+  the main loop's own state changes run concurrently, under
+  `go test -race`, with no data race.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change: `events` was already an allowed import.
+

@@ -900,12 +900,12 @@ The gates are mechanical. They run in `make verify` and, on a subset,
 in the pre-commit hook.
 
 - `scripts/` — the gates: check_docs, check_structure, check_deps,
-  check_plan, check_prose, check_api, check_gomod,
+  check_plan, check_prose, check_api, check_thirdparty,
   check_semgrepignore, check_labels, check_names,
   check_semgrep_probes, check_mutation, check_orphan_packages,
   check_test_tampering, and api_surface (Go). `go_packages.py` is the
-  shared package enumerator behind the deps, plan, orphan, and API
-  gates.
+  shared package enumerator behind the deps, plan, orphan, API, and
+  third-party gates.
 - `semgrep/` — the pattern rules: no panic or exit in packages,
   stdlib-only imports, centralized constants, no hardcoded secrets, no
   suppression markers, no drift markers.

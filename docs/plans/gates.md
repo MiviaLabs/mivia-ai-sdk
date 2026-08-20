@@ -70,6 +70,7 @@ review-only limit.
 - the coverage run keeps its output; a failing test aborts `make verify`. Assert the profile lists every package from `go list ./...` minus scripts.
 - add a per-package floor: aggregate cover.out per package with awk; each package and the total must reach 85.
 - document in AGENTS.md: assertion-free tests and test deletion game the floor; review catches them. Note mutation testing as future work. Add no machinery.
+- Status: the mutation kit shipped. See `scripts/check_mutation.py` and `scripts/mutation_denylist/`.
 
 ### G. Doc truth (builder executes; outside planner boundaries)
 

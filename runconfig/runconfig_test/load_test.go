@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
@@ -149,6 +150,78 @@ func TestLoadSubAndLoop(t *testing.T) {
 	if len(d.Bindings) != 0 {
 		t.Fatalf("bindings = %+v, want none", d.Bindings)
 	}
+}
+
+// internalStepDoc returns a minimal valid document whose single step
+// binds the internal kind named kind.
+func internalStepDoc(kind string) string {
+	return `{
+		"machine": {"initial": "queued", "transitions": [
+			{"from": "queued", "to": "done", "trigger": "run"}
+		]},
+		"plan": {"steps": [{"id": "s1", "to": "done", "internal": "` + kind + `"}]},
+		"tools": []
+	}`
+}
+
+// TestLoadInternalKinds checks that every new Kind constant round-trips
+// through Load into a matching, internal Binding.
+func TestLoadInternalKinds(t *testing.T) {
+	cases := []struct {
+		name string
+		kind runconfig.Kind
+	}{
+		{"workspaceread", runconfig.WorkspaceReadKind},
+		{"workspacewrite", runconfig.WorkspaceWriteKind},
+		{"workspacelist", runconfig.WorkspaceListKind},
+		{"workspacestat", runconfig.WorkspaceStatKind},
+		{"diff", runconfig.DiffKind},
+		{"astool", runconfig.AsToolKind},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := loadDoc(t, internalStepDoc(tc.name))
+			if len(d.Bindings) != 1 {
+				t.Fatalf("bindings = %+v, want one", d.Bindings)
+			}
+			b := d.Bindings[0]
+			if b.Step != "s1" || !b.Internal || b.Kind != tc.kind {
+				t.Fatalf("binding = %+v, want step s1 internal %q", b, tc.kind)
+			}
+		})
+	}
+}
+
+// TestLoadOptionsBudget checks that a present options.budget round-trips
+// into Options.Budget, and an absent one leaves it nil.
+func TestLoadOptionsBudget(t *testing.T) {
+	t.Run("present", func(t *testing.T) {
+		d := loadDoc(t, `{
+			"machine": {"initial": "q", "transitions": [
+				{"from": "q", "to": "d", "trigger": "r"}
+			]},
+			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"options": {"budget": {"max_bytes": 200000, "max_events": 500}},
+			"tools": []
+		}`)
+		want := &contextbudget.Limits{MaxBytes: 200000, MaxEvents: 500}
+		if d.Options.Budget == nil || *d.Options.Budget != *want {
+			t.Fatalf("budget = %+v, want %+v", d.Options.Budget, want)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		d := loadDoc(t, `{
+			"machine": {"initial": "q", "transitions": [
+				{"from": "q", "to": "d", "trigger": "r"}
+			]},
+			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"options": {"room": "team"},
+			"tools": []
+		}`)
+		if d.Options.Budget != nil {
+			t.Fatalf("budget = %+v, want nil", d.Options.Budget)
+		}
+	})
 }
 
 // TestLoadUnknownFieldsIgnored checks that extra JSON fields are

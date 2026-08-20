@@ -3,14 +3,16 @@
 Status: plan, ready for plan review. Ships as changes to the shipped
 `runconfig` package. No new top-level package. Depends on
 already-shipped packages `subagent`, `workspace`, `diff`, and
-`contextbudget`, and on phase 71 (`docs/plans/agents/phase71_filetools.md`),
-which is plan-only as of this writing and not yet shipped. Phase 71
-replaces the five file tool constructors' `ws *workspace.Workspace`
-parameter with `ft *subagent.FileTools`, built through
-`subagent.OpenFileTools`. This phase's `Kind` bindings for the five
-file tools use the post-phase-71 signature throughout; this phase
-does not build or land before phase 71 ships, and its builder confirms
-phase 71's signatures are live in `subagent` before starting.
+`contextbudget`, and on phase 71 (folded into `docs/plans/subagent.md`'s
+"File tools addendum" section), which has shipped:
+`subagent.OpenFileTools`, `subagent.FileTools`, and
+the five file tool constructors all exist today with the
+post-phase-71 signature. Phase 71 replaced the five file tool
+constructors' `ws *workspace.Workspace` parameter with
+`ft *subagent.FileTools`, built through `subagent.OpenFileTools`. This
+phase's `Kind` bindings for the five file tools use that shipped
+signature throughout; this phase's precondition on phase 71 is
+satisfied.
 
 ## Why this phase exists
 
@@ -48,13 +50,25 @@ its validation failure (`runconfig/runconfig_test/runner_test.go`'s
 naming it). The plumbing from `Options.Budget` through
 `agentrun.New`'s `Budget.Validate` call already exists and is already
 tested; the only missing piece is the JSON round trip, the same gap
-`room` and `ask_to` already closed for their two fields. The gap is
-newly load-bearing, not newly cosmetic: this phase also makes
-`WorkspaceReadTool` and `DiffTool` reachable from a document, and both
-can return large results; a document author who can now declare an
-unbounded-output tool binding, but still cannot declare a context cap
-without a Go recompile, is a real gap this phase closes in the same
-change.
+`room` and `ask_to` already closed for their two fields.
+
+State the true invariant `budget` gates, so this phase's tests match
+what the code does, not what a reader might assume. `agent.Agent.Run`'s
+own doc comment (`agent/run.go:80-93`) and `confirmStep`
+(`agent/run.go:153-183`) fix the scope: `budget.Fits` checks the
+cumulative byte total of every step's own declared `payload` field,
+built before the bound tool runs, plus the 1-indexed step count. It
+never sees a tool's result. `agentrun/wire.go`'s `chain` reads the
+tool's actual output into the ack's result string after `Fits` has
+already passed judgment on the step, so no budget check ever compares
+against a tool's return value; this is a disclosed, shipped scope
+limit from phase 32, not a gap this phase changes. This phase closes
+the same, narrower gap `room` and `ask_to` already closed: an existing,
+already-tested Go-composed field (`Options.Budget`, gating a step's own
+declared `payload` size) gains a JSON round trip. Widening `Kind` to
+reach `WorkspaceReadTool` and `DiffTool` in the same change is
+unrelated to `budget`'s reason for inclusion; those two additions do
+not change what bytes `budget.Fits` counts.
 
 ## Goal
 
@@ -191,10 +205,17 @@ A document names any of the six the same way it names `"ledger"` or
 The caller resolves it exactly as every other `Kind`:
 
 ```go
-ft, _ := subagent.OpenFileTools(subagent.FileToolOptions{
+deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
+if err != nil {
+    return err
+}
+ft, err := subagent.OpenFileTools(subagent.FileToolOptions{
     Root: "/srv/agent-root",
-    Deny: secretpath.NewMatcher([]string{"*.env", "*.pem"}),
+    Deny: deny,
 })
+if err != nil {
+    return err
+}
 blocks := runconfig.NewBlocks()
 blocks.Set(runconfig.WorkspaceReadKind, subagent.WorkspaceReadTool("read-notes", ft, 65536))
 def.Blocks = blocks
@@ -269,8 +290,10 @@ No other exported symbol changes. `Load`, `Definition`, `Binding`,
 `Blocks`, `NewBlocks`, `Runner`, and the three sentinels keep their
 current signatures; `wireOptions` and `wireBudget` are unexported.
 
-`Load`'s doc comment gains the `budget` field in its enumerated
-mapping list, in the same change as the code.
+`Load`'s doc comment enumerates rejection conditions today; it has no
+options-field mapping list to extend, for `room` and `ask_to` either.
+This phase adds one clause to that comment naming the `budget`
+mapping, in the same change as the code.
 
 ## Tests
 
@@ -333,6 +356,38 @@ already cover.
   end-to-end pin for "a document naming a workspace tool builds a
   runnable resolver," matching the file's existing role for the
   `flow` internal case.
+- `load_integration_test.go` (or `runner_test.go`, builder's choice of
+  file, same fixture either way): one new case proves the real
+  invariant the "Why this phase exists" section states, not a tool's
+  output size. The case loads a document whose one step declares a
+  JSON `payload` field sized larger than a JSON-declared
+  `options.budget.max_bytes`, with the step's `tool` field naming
+  `stubTool`, reusing `runner_test.go`'s existing `stubTool` fixture
+  (echoes its input, costs nothing) registered on `Definition.External`
+  via `d.External.Add`, the same pattern `loadForRunner` already uses
+  in `runner_test.go`. The test loads the `Definition` and calls its
+  `Runner()` method, asserting it succeeds. It then calls the
+  resulting `Runner.Run` and asserts the run reports the budget
+  rejection, confirming
+  `agentrun/wire.go`'s `Runner.Run` passes `r.budget` into
+  `r.agent.Run` on every call, so the JSON-declared cap enforces during
+  the run against the step's own declared `payload`, not only during
+  `New` against a static `Limits` value. Because `confirmStep`'s
+  `budget.Fits` check runs before the bound tool executes
+  (`agent/run.go:153-183`), the rejection proves the cap fires on the
+  step's declared-payload size alone, independent of `stubTool`'s
+  behavior. A second, separate case in the same test pairs naturally
+  with the first: it combines a `WorkspaceReadKind` binding with a
+  `budget` well above the bound file's size, and asserts the run
+  succeeds, proving the `Kind` addition and the `budget` addition
+  compose without the tool's output size affecting the outcome either
+  way. Neither case claims `budget` gates a tool's return value;
+  `agent/run.go:80-93`'s doc comment and `confirmStep`
+  (`agent/run.go:153-183`) fix that scope, and this phase does not
+  change it. The existing "bad budget" case in `runner_test.go` stays;
+  it pins the separate, already-covered static-negative-`Limits`
+  rejection path through `Validate`, not the
+  payload-size-exceeded-at-run-time path this new case adds.
 
 ## Verification
 
@@ -356,14 +411,16 @@ already cover.
   additions in its own API section, in the same change that ships the
   code, following `docs/plans/TEMPLATE.md`'s API-surface discipline
   the way phase 71's addendum folded into `docs/plans/subagent.md`.
-- `AGENTS.md` already carries a `runconfig/` entry (added ahead of
-  this phase, as a standalone doc fix). This phase's builder reviews
-  that entry against the widened `Kind` set and the new `budget`
-  field, and updates it only if the widening makes an existing
-  sentence inaccurate; the entry names `Kind` as a type today, not
-  each constant, so no addition is required by default. The entry's
-  import list is one sentence that does go stale: it reads "Imports
-  agentrun, flow, machine, subagent, and tools" today, and this
-  phase's `contextbudget` import (Scope, above) makes that sentence
-  wrong the moment the code lands. The builder adds `contextbudget`
-  to that list in the same change.
+- `AGENTS.md` carries no `runconfig/` entry today; `grep -n
+  "runconfig" AGENTS.md` returns nothing. The Layout list in AGENTS.md
+  orders packages by architectural layer, not alphabetically. This
+  phase's builder adds one bullet immediately after the `subagent/`
+  bullet (`AGENTS.md:19`) and before the `ledger/` bullet, since
+  `runconfig` composes `agentrun.Options` at the same layer `agentrun`
+  and `subagent` occupy. The new bullet follows the list's existing
+  one-line-per-package format: `- \`runconfig/\` — JSON-document
+  loader binding a step graph to agentrun.Options.` The builder does
+  not add a separate import-list sentence; the existing bullets in
+  AGENTS.md's Layout list name only the package's concern, not its
+  import edges, so the new `runconfig/` bullet follows that same
+  one-clause shape.

@@ -2,6 +2,9 @@ package runconfig_test
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
@@ -10,7 +13,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
+	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // goldenDoc is the golden document: one external tool, one flow
@@ -91,4 +96,160 @@ func innerMachine(t *testing.T) *machine.Definition {
 		t.Fatalf("machine.New: %v", err)
 	}
 	return m
+}
+
+// workspaceReadGoldenDoc names a document naming a workspace tool: one
+// step bound to WorkspaceReadKind, alongside a room option, matching
+// goldenDoc's shape.
+const workspaceReadGoldenDoc = `{
+	"machine": {"initial": "queued", "transitions": [
+		{"from": "queued", "to": "done", "trigger": "run"}
+	]},
+	"plan": {"steps": [{"id": "read-notes", "to": "done", "internal": "workspaceread"}]},
+	"options": {"room": "platform-team"},
+	"tools": []
+}`
+
+// TestGoldenDocumentWorkspaceReadBuildsRunnableResolver loads a
+// document naming a workspace tool and proves it builds a runnable
+// resolver: Definition.Runner wires the real
+// subagent.WorkspaceReadTool, over a real, t.TempDir()-backed
+// *subagent.FileTools, into a valid *agentrun.Runner.
+//
+// This does not drive the bound step through Runner.Run. agentrun's
+// chain hands each gated step's declared string payload straight to
+// the resolved tool's Run (agentrun/wire.go's chain, tools.InOut{
+// Value: msg.Payload}); it never calls a tools.SchemaTool's
+// DecodeArguments. WorkspaceReadTool.Run requires the typed
+// subagent.WorkspaceReadArgs DecodeArguments produces, so driving
+// read-notes through a full Runner.Run always fails
+// subagent.ErrBadArguments, a pre-existing constraint of the shipped
+// agentrun and subagent contracts this phase's Scope does not change.
+// See runner_test.go's TestRunnerResolvesWorkspaceReadReal for the
+// same proof structure: a built resolver, plus a direct,
+// DecodeArguments-driven read through the exact bound tool instance,
+// proving the seeded file content reaches the caller unchanged.
+func TestGoldenDocumentWorkspaceReadBuildsRunnableResolver(t *testing.T) {
+	d := loadDoc(t, workspaceReadGoldenDoc)
+	if d.Options.Room != "platform-team" {
+		t.Fatalf("room = %q", d.Options.Room)
+	}
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("seeded content"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
+	if err != nil {
+		t.Fatalf("NewMatcher: %v", err)
+	}
+	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: dir, Deny: deny})
+	if err != nil {
+		t.Fatalf("OpenFileTools: %v", err)
+	}
+	defer ft.Close()
+	tool := subagent.WorkspaceReadTool("read-notes", ft, 65536)
+
+	blocks := runconfig.NewBlocks()
+	blocks.Set(runconfig.WorkspaceReadKind, tool)
+	d.Blocks = blocks
+	d.Options.Agent = agentOver(t, d)
+
+	runner, err := d.Runner()
+	if err != nil {
+		t.Fatalf("Runner: %v", err)
+	}
+	if runner == nil {
+		t.Fatal("Runner = nil, want a built, runnable resolver")
+	}
+
+	schemaTool, ok := tool.(tools.SchemaTool)
+	if !ok {
+		t.Fatal("tool does not implement tools.SchemaTool")
+	}
+	args, err := schemaTool.DecodeArguments([]byte(`{"path":"notes.txt"}`))
+	if err != nil {
+		t.Fatalf("DecodeArguments: %v", err)
+	}
+	out, err := tool.Run(context.Background(), args)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out.Value != "seeded content" {
+		t.Fatalf("Value = %q, want the seeded content unchanged", out.Value)
+	}
+}
+
+// TestBudgetGatesDeclaredPayloadSize proves the true invariant
+// options.budget gates: the cumulative byte total of every step's own
+// declared payload, checked before the bound tool runs, independent
+// of the tool's own output or behavior. See agent/run.go:80-93's doc
+// comment and confirmStep (agent/run.go:153-183).
+func TestBudgetGatesDeclaredPayloadSize(t *testing.T) {
+	t.Run("rejects an oversized declared payload", func(t *testing.T) {
+		doc := `{
+			"machine": {"initial": "q", "transitions": [
+				{"from": "q", "to": "d", "trigger": "r"}
+			]},
+			"plan": {"steps": [{"id": "s", "to": "d",
+				"payload": "this declared payload is deliberately far larger than the budget cap",
+				"tool": "stubTool"}]},
+			"options": {"budget": {"max_bytes": 5}},
+			"tools": ["stubTool"]
+		}`
+		d := loadDoc(t, doc)
+		if err := d.External.Add(stubTool{name: "stubTool"}); err != nil {
+			t.Fatalf("External.Add: %v", err)
+		}
+		d.Options.Agent = agentOver(t, d)
+
+		runner, err := d.Runner()
+		if err != nil {
+			t.Fatalf("Runner: %v", err)
+		}
+		_, _, err = runner.Run(context.Background(), "thread-budget", machine.InOut{})
+		if !errors.Is(err, agent.ErrOverBudget) {
+			t.Fatalf("err = %v, want agent.ErrOverBudget", err)
+		}
+	})
+
+	// A budget well above the run's total payload size composes with
+	// a bound internal Kind without the tool's own output size
+	// affecting the outcome either way. AsToolKind stands in for
+	// WorkspaceReadKind here: AsTool.Run accepts a plain string input,
+	// matching subagent.FlowTool, so — unlike the five file/diff tools
+	// — it runs unchanged through agentrun's chain; see
+	// TestGoldenDocumentWorkspaceReadBuildsRunnableResolver's comment
+	// for why WorkspaceReadKind cannot drive a full Runner.Run.
+	t.Run("kind binding composes with a permissive budget", func(t *testing.T) {
+		nested := innerRunner(t)
+		asTool := subagent.AsTool("s", nested, subagent.ToolOptions{})
+
+		doc := `{
+			"machine": {"initial": "q", "transitions": [
+				{"from": "q", "to": "d", "trigger": "r"}
+			]},
+			"plan": {"steps": [{"id": "s", "to": "d", "payload": "small",
+				"internal": "astool"}]},
+			"options": {"budget": {"max_bytes": 100000}},
+			"tools": []
+		}`
+		d := loadDoc(t, doc)
+		blocks := runconfig.NewBlocks()
+		blocks.Set(runconfig.AsToolKind, asTool)
+		d.Blocks = blocks
+		d.Options.Agent = agentOver(t, d)
+
+		runner, err := d.Runner()
+		if err != nil {
+			t.Fatalf("Runner: %v", err)
+		}
+		status, _, err := runner.Run(context.Background(), "thread-budget-ok", machine.InOut{})
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if status != "d" {
+			t.Fatalf("status = %q, want d", status)
+		}
+	})
 }

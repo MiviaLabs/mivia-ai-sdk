@@ -76,6 +76,11 @@ func shapeCases(t *testing.T) []rejectCase {
 			want: "unknown internal",
 		},
 		{
+			name: "near-miss internal kind",
+			doc:  replace(t, `"tool": "grep"`, `"internal": "workspace"`),
+			want: "unknown internal",
+		},
+		{
 			name: "unknown when",
 			doc:  replace(t, `"tool": "grep"`, `"when": "on_maybe", "tool": "grep"`),
 			want: "unknown when",
@@ -172,6 +177,21 @@ func TestLoadRejects(t *testing.T) {
 				t.Fatalf("err = %v, want it to name %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestLoadAcceptsNegativeBudget checks that Load performs no range
+// check on options.budget: a negative field loads without error, and
+// its rejection surfaces later, from Runner (see runner_test.go's
+// "negative budget via json" case).
+func TestLoadAcceptsNegativeBudget(t *testing.T) {
+	doc := replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_bytes": -1}}, "tools": ["grep"]`)
+	d, err := runconfig.Load([]byte(doc))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if d.Options.Budget == nil || d.Options.Budget.MaxBytes != -1 {
+		t.Fatalf("budget = %+v, want MaxBytes -1", d.Options.Budget)
 	}
 }
 

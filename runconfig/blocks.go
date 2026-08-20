@@ -35,6 +35,12 @@ const (
 	ChannelKind          Kind = "channel"
 	ProviderKind         Kind = "provider"
 	ProviderRegistryKind Kind = "providerregistry"
+	WorkspaceReadKind    Kind = "workspaceread"
+	WorkspaceWriteKind   Kind = "workspacewrite"
+	WorkspaceListKind    Kind = "workspacelist"
+	WorkspaceStatKind    Kind = "workspacestat"
+	DiffKind             Kind = "diff"
+	AsToolKind           Kind = "astool"
 )
 
 // kinds holds every Kind constant, for internal-name validation.
@@ -50,6 +56,12 @@ var kinds = map[Kind]bool{
 	ChannelKind:          true,
 	ProviderKind:         true,
 	ProviderRegistryKind: true,
+	WorkspaceReadKind:    true,
+	WorkspaceWriteKind:   true,
+	WorkspaceListKind:    true,
+	WorkspaceStatKind:    true,
+	DiffKind:             true,
+	AsToolKind:           true,
 }
 
 // Blocks holds one tools.Tool per internal Kind. The caller builds

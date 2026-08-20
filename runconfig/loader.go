@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -56,11 +57,17 @@ type wireLoop struct {
 	Max int `json:"max"`
 }
 
-// wireOptions is the JSON form of the options section. It holds pure
-// string scalars only.
+// wireOptions is the JSON form of the options section.
 type wireOptions struct {
-	Room  string `json:"room"`
-	AskTo string `json:"ask_to"`
+	Room   string      `json:"room"`
+	AskTo  string      `json:"ask_to"`
+	Budget *wireBudget `json:"budget"`
+}
+
+// wireBudget is the JSON form of an agentrun.Options.Budget cap.
+type wireBudget struct {
+	MaxBytes  int `json:"max_bytes"`
+	MaxEvents int `json:"max_events"`
 }
 
 // wireDocument is the whole JSON document.
@@ -98,7 +105,10 @@ type Definition struct {
 // undeclared external tool, a blank or duplicate tool name, an unknown
 // internal kind, an unknown when value, and any rejection from
 // machine.New or flow.New. It wraps every failure in ErrBadDocument.
-// The loader never reads the environment.
+// A present options.budget maps onto Options.Budget as a
+// *contextbudget.Limits, with no range check; Runner's call into
+// agentrun.New rejects a negative field. The loader never reads the
+// environment.
 func Load(data []byte) (*Definition, error) {
 	var doc wireDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
@@ -124,6 +134,12 @@ func Load(data []byte) (*Definition, error) {
 	if doc.Options != nil {
 		def.Options.Room = doc.Options.Room
 		def.Options.AskTo = doc.Options.AskTo
+		if doc.Options.Budget != nil {
+			def.Options.Budget = &contextbudget.Limits{
+				MaxBytes:  doc.Options.Budget.MaxBytes,
+				MaxEvents: doc.Options.Budget.MaxEvents,
+			}
+		}
 	}
 	plan, bindings, err := buildPlan(doc.Plan, declared)
 	if err != nil {

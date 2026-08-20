@@ -17,6 +17,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `agent/` — composition layer wiring blocks into an agent.
 - `agentrun/` — config-struct runner composition over agent.Run.
 - `subagent/` — blocks as tools, concurrent spawns, and mailboxes.
+- `runconfig/` — JSON-document loader binding a step graph to agentrun.Options.
 - `ledger/` — durable task admission, leased claims, fenced takeover.
 - `workspace/` — filesystem confinement via `os.Root` and secret denial.
 - `mcp/` — Model Context Protocol client over stdio/HTTP.

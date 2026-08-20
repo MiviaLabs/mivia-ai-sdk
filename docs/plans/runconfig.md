@@ -73,7 +73,8 @@ The document shape is one JSON object with four sections.
   },
   "options": {
     "room": "platform-team",
-    "ask_to": "human-1"
+    "ask_to": "human-1",
+    "budget": {"max_bytes": 200000, "max_events": 500}
   },
   "tools": ["grep"]
 }
@@ -86,8 +87,12 @@ The document shape is one JSON object with four sections.
   Unknown JSON fields are ignored, matching `envelope.Decode`.
 - `plan.panels` holds parallel waves. Each panel is an array of step
   IDs.
-- `options` holds pure string scalars only. The loader maps `room` to
-  `Options.Room` and `ask_to` to `Options.AskTo`.
+- `options` maps `room` to `Options.Room`, `ask_to` to `Options.AskTo`,
+  and a present `budget` object (`max_bytes`, `max_events`) to
+  `Options.Budget` as a `*contextbudget.Limits`. An absent `budget`
+  leaves `Options.Budget` nil. `Load` performs no range check on
+  `budget`'s two integers; `contextbudget.Limits.Validate`, called
+  inside `agentrun.New` during `Runner`, rejects a negative value.
 - `tools` lists the external tool names a step binding may reference.
 
 Each step carries `tool` or `internal`, never both. A step carries
@@ -151,17 +156,23 @@ type Binding struct {
 type Kind string
 
 const (
-    FlowKind            Kind = "flow"
-    LedgerKind          Kind = "ledger"
-    MemoryKind          Kind = "memory"
-    RoomKind            Kind = "room"
-    SchedulerKind       Kind = "scheduler"
-    HeartbeatKind       Kind = "heartbeat"
-    DiscoveryKind       Kind = "discovery"
-    TriggerKind         Kind = "trigger"
-    ChannelKind         Kind = "channel"
-    ProviderKind        Kind = "provider"
+    FlowKind             Kind = "flow"
+    LedgerKind           Kind = "ledger"
+    MemoryKind           Kind = "memory"
+    RoomKind             Kind = "room"
+    SchedulerKind        Kind = "scheduler"
+    HeartbeatKind        Kind = "heartbeat"
+    DiscoveryKind        Kind = "discovery"
+    TriggerKind          Kind = "trigger"
+    ChannelKind          Kind = "channel"
+    ProviderKind         Kind = "provider"
     ProviderRegistryKind Kind = "providerregistry"
+    WorkspaceReadKind    Kind = "workspaceread"
+    WorkspaceWriteKind   Kind = "workspacewrite"
+    WorkspaceListKind    Kind = "workspacelist"
+    WorkspaceStatKind    Kind = "workspacestat"
+    DiffKind             Kind = "diff"
+    AsToolKind           Kind = "astool"
 )
 
 func NewBlocks() *Blocks
@@ -240,7 +251,8 @@ word `phase`.
 ## Verification
 
 - `policy/layers.json` grants runconfig the
-  `["agentrun", "flow", "machine", "subagent", "tools"]` row.
+  `["agentrun", "contextbudget", "flow", "machine", "subagent", "tools"]`
+  row.
 - `make verify` passes; runconfig and the module total hold the 85
   floor.
 - `go test -race ./runconfig/...` passes.

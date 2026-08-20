@@ -3,6 +3,8 @@ package runconfig_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,8 +12,12 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
+	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
+	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
+	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -92,4 +98,181 @@ func TestRunnerResolves(t *testing.T) {
 			t.Fatalf("err = %v, want a forwarded budget error", err)
 		}
 	})
+	t.Run("negative budget via json", func(t *testing.T) {
+		doc := replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_events": -1}}, "tools": ["grep"]`)
+		d, err := runconfig.Load([]byte(doc))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if err := d.External.Add(stubTool{name: "grep"}); err != nil {
+			t.Fatalf("External.Add: %v", err)
+		}
+		d.Options.Agent = agentOver(t, d)
+		_, err = d.Runner()
+		if err == nil || !strings.Contains(err.Error(), "budget") {
+			t.Fatalf("err = %v, want a forwarded budget error", err)
+		}
+	})
+}
+
+// TestRunnerResolvesNewKindsStub checks each new Kind resolves its
+// bound step to a stub tool without error, proving the binding, not
+// the underlying tool's own behavior.
+func TestRunnerResolvesNewKindsStub(t *testing.T) {
+	cases := []struct {
+		name string
+		kind runconfig.Kind
+	}{
+		{"workspaceread", runconfig.WorkspaceReadKind},
+		{"workspacewrite", runconfig.WorkspaceWriteKind},
+		{"workspacelist", runconfig.WorkspaceListKind},
+		{"workspacestat", runconfig.WorkspaceStatKind},
+		{"diff", runconfig.DiffKind},
+		{"astool", runconfig.AsToolKind},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := loadDoc(t, internalStepDoc(tc.name))
+			blocks := runconfig.NewBlocks()
+			blocks.Set(tc.kind, stubTool{name: "stub"})
+			d.Blocks = blocks
+			d.Options.Agent = agentOver(t, d)
+			runner, err := d.Runner()
+			if err != nil {
+				t.Fatalf("Runner: %v", err)
+			}
+			if runner == nil {
+				t.Fatal("Runner = nil, want a built Runner")
+			}
+		})
+	}
+}
+
+// TestRunnerResolvesWorkspaceReadReal proves WorkspaceReadKind composes
+// with the real subagent and workspace types, not only a stub.
+//
+// agentrun's chain hands each gated step's declared string payload
+// straight to the resolved tool's Run (agentrun/wire.go's chain,
+// tools.InOut{Value: msg.Payload}); it never calls a tools.SchemaTool's
+// DecodeArguments. WorkspaceReadTool.Run requires the typed
+// subagent.WorkspaceReadArgs subagent's own DecodeArguments produces,
+// so driving this step through Runner.Run always fails
+// subagent.ErrBadArguments — a pre-existing constraint of the shipped
+// agentrun and subagent contracts, unrelated to this phase's scope.
+// This test proves the two facts the "not only a stub" claim needs
+// instead: Runner resolves the real tool without error, and the exact
+// tool instance bound under WorkspaceReadKind performs a real,
+// working workspace read when called the way a model-facing caller
+// would call it, through DecodeArguments.
+func TestRunnerResolvesWorkspaceReadReal(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello workspace"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	deny, err := secretpath.NewMatcher([]string{"*.env", "*.pem"})
+	if err != nil {
+		t.Fatalf("NewMatcher: %v", err)
+	}
+	ft, err := subagent.OpenFileTools(subagent.FileToolOptions{Root: dir, Deny: deny})
+	if err != nil {
+		t.Fatalf("OpenFileTools: %v", err)
+	}
+	defer ft.Close()
+	tool := subagent.WorkspaceReadTool("s1", ft, 65536)
+
+	d := loadDoc(t, internalStepDoc("workspaceread"))
+	blocks := runconfig.NewBlocks()
+	blocks.Set(runconfig.WorkspaceReadKind, tool)
+	d.Blocks = blocks
+	d.Options.Agent = agentOver(t, d)
+
+	runner, err := d.Runner()
+	if err != nil {
+		t.Fatalf("Runner: %v", err)
+	}
+	if runner == nil {
+		t.Fatal("Runner = nil, want a built Runner")
+	}
+
+	schemaTool, ok := tool.(tools.SchemaTool)
+	if !ok {
+		t.Fatal("tool does not implement tools.SchemaTool")
+	}
+	in, err := schemaTool.DecodeArguments([]byte(`{"path":"notes.txt"}`))
+	if err != nil {
+		t.Fatalf("DecodeArguments: %v", err)
+	}
+	out, err := tool.Run(context.Background(), in)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if out.Value != "hello workspace" {
+		t.Fatalf("Value = %q, want the seeded file content", out.Value)
+	}
+}
+
+// innerRunner builds a minimal *agentrun.Runner: a two-status machine,
+// a one-step plan, and one registered tool matching the step ID.
+func innerRunner(t *testing.T) *agentrun.Runner {
+	t.Helper()
+	m, err := machine.New("start", machine.Transition{From: "start", To: "done", Trigger: "go"})
+	if err != nil {
+		t.Fatalf("machine.New: %v", err)
+	}
+	plan, err := flow.New([]flow.Step{{ID: "only", To: "done", Payload: "go"}}, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	id, err := identity.New()
+	if err != nil {
+		t.Fatalf("identity.New: %v", err)
+	}
+	a, err := agent.New(id, discovery.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
+	if err != nil {
+		t.Fatalf("agent.New: %v", err)
+	}
+	reg := tools.New()
+	if err := reg.Add(stubTool{name: "only"}); err != nil {
+		t.Fatalf("reg.Add: %v", err)
+	}
+	r, err := agentrun.New(agentrun.Options{Agent: a, Machine: m, Tools: reg})
+	if err != nil {
+		t.Fatalf("agentrun.New: %v", err)
+	}
+	return r
+}
+
+// TestRunnerResolvesAsToolReal proves AsToolKind composes with a real
+// nested *agentrun.Runner, driving it to completion through the full
+// agent chain. Unlike the five file/diff tools' typed-argument
+// contract, AsTool.Run accepts a plain string input, matching
+// subagent.FlowTool, so it runs unchanged through agentrun's chain.
+func TestRunnerResolvesAsToolReal(t *testing.T) {
+	nested := innerRunner(t)
+	asTool := subagent.AsTool("s1", nested, subagent.ToolOptions{})
+
+	doc := `{
+		"machine": {"initial": "queued", "transitions": [
+			{"from": "queued", "to": "done", "trigger": "run"}
+		]},
+		"plan": {"steps": [{"id": "s1", "to": "done", "payload": "outer", "internal": "astool"}]},
+		"tools": []
+	}`
+	d := loadDoc(t, doc)
+	blocks := runconfig.NewBlocks()
+	blocks.Set(runconfig.AsToolKind, asTool)
+	d.Blocks = blocks
+	d.Options.Agent = agentOver(t, d)
+
+	runner, err := d.Runner()
+	if err != nil {
+		t.Fatalf("Runner: %v", err)
+	}
+	status, _, err := runner.Run(context.Background(), "thread-astool", machine.InOut{})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if status != "done" {
+		t.Fatalf("status = %q, want done", status)
+	}
 }

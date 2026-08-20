@@ -108,6 +108,11 @@ const CompactionNotice = "Earlier messages were compacted into a context summary
 // DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
 const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
 
+// DuplicateCallNotice replaces a tool result's content when
+// DedupWithinTurn detects the same (tool, canonical-argument) call
+// already served earlier in the same turn.
+const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
+
 // ErrorPolicy names what Run does with a tool-run error: report it to
 // the model as a tool result, or end the run.
 type ErrorPolicy string
@@ -227,6 +232,11 @@ type Options struct {
 	// runs after this iteration's Trim, Budget, and Window steps,
 	// immediately before the Completer call.
 	ConcludeNotice string
+	// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
+	// already served earlier in the same turn, and serves
+	// DuplicateCallNotice instead of running the tool again. False, the
+	// zero value, runs every call, unchanged from the base plan.
+	DedupWithinTurn bool
 }
 
 // AuditKind names which of Run's two audit-relevant events an

@@ -3,6 +3,7 @@ package agentloop
   const AuditKindToolCall = "tool_call"
   const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
   const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
+  const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
   const RecoveryTargetTokens = 16384
@@ -51,6 +52,7 @@ package agentloop
   Calibrated *contextplan.Calibrated
   ConcludeMargin int
   ConcludeNotice string
+  DedupWithinTurn bool
 }
   type Result struct {
   Final provider.Message

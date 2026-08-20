@@ -1,6 +1,7 @@
 package agentloop
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -8,6 +9,12 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
+
+// errTrailingArgsData is canonicalizeArgs's error when raw carries a
+// valid JSON value followed by leftover bytes: trailing garbage, or a
+// second concatenated JSON value. json.Decoder.Decode alone accepts
+// the leading value and ignores the rest; dec.More() catches it.
+var errTrailingArgsData = fmt.Errorf("agentloop: tool call arguments carry trailing data after one JSON value")
 
 // truncationMarker is appended to a rendered tool result that exceeds
 // t's published tools.ResultBudgetOf bound.
@@ -74,4 +81,35 @@ func truncateContent(content string, budget int) string {
 // incomplete by that cut, so the result stays valid UTF-8.
 func validPrefix(content string, n int) string {
 	return strings.ToValidUTF8(content[:n], "")
+}
+
+// canonicalizeArgs decodes raw as exactly one JSON value and returns
+// its canonical re-marshaled form, for dedup-key comparison. It
+// decodes with UseNumber(), so every number token keeps its source
+// digit string as a json.Number instead of collapsing into a float64:
+// plain float64 decoding loses precision above 2^53 and would
+// silently equate two distinct large integers. encoding/json sorts
+// object keys on Marshal, so key order does not affect the result.
+// raw must decode as exactly one JSON value with no bytes left over;
+// canonicalizeArgs checks this with dec.More() right after
+// dec.Decode, since json.Decoder.Decode alone accepts a valid JSON
+// prefix and ignores trailing bytes. An error return, either a decode
+// failure or errTrailingArgsData, means the caller must exclude this
+// call from the dedup set: it always runs and is never treated as a
+// duplicate.
+func canonicalizeArgs(raw json.RawMessage) (string, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return "", err
+	}
+	if dec.More() {
+		return "", errTrailingArgsData
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }

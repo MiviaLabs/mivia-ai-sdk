@@ -15,9 +15,28 @@ import (
 // the full termination and Result-shape contract. A wired Hooks
 // registry fires PointStop exactly once, on every return path, with
 // the returned Result as payload; a wired handler's veto or error
-// never changes what Run already decided to return.
+// never changes what Run already decided to return. See RunSteerable
+// for a graceful, in-flight stop a caller can request mid-run.
 func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error) {
-	res, err := l.run(ctx, msgs)
+	return l.RunSteerable(ctx, msgs, nil)
+}
+
+// RunSteerable is Run with one addition: a non-nil steer lets the
+// caller request a soft-cancel of the current iteration's in-flight
+// Completer.Chat call from another goroutine, through steer.Trigger.
+// ctx cancellation still ends the run as a hard failure, unchanged
+// from Run. A triggered steer ends the run gracefully instead, at the
+// next iteration boundary, with Stop == StopSteered and Final holding
+// the zero value: the run stops before a new response arrives, the
+// same rule every other pre-response graceful stop already follows.
+// History, Iterations, and Usage carry every already-completed
+// iteration's state. Run(ctx, msgs) is equivalent to
+// RunSteerable(ctx, msgs, nil).
+func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error) {
+	if steer != nil {
+		steer.reset()
+	}
+	res, err := l.run(ctx, msgs, steer)
 	l.fireStop(ctx, res)
 	return res, err
 }
@@ -32,8 +51,9 @@ func (l *Loop) fireStop(ctx context.Context, res Result) {
 	_ = l.hooksReg.Fire(ctx, hooks.PointStop, res)
 }
 
-// run is Run's loop body, run once per Run call.
-func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error) {
+// run is Run's loop body, run once per Run or RunSteerable call. A
+// nil steer behaves exactly as before this addendum.
+func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error) {
 	history := append([]provider.Message(nil), msgs...)
 	var totalUsage provider.Usage
 	var runningTokens int
@@ -65,8 +85,11 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 			history = planned
 		}
 
-		at := l.runChat(ctx, history, iterations)
+		at := l.runChat(ctx, history, iterations, steer)
 		if at.err != nil {
+			if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
+				return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopSteered}, nil
+			}
 			if at.fromRecovery {
 				return Result{History: history, Iterations: iterations, Usage: totalUsage}, at.err
 			}
@@ -95,23 +118,61 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message) (Result, error)
 				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrTokenBudgetExceeded)
 		}
 
-		if len(resp.ToolCalls) == 0 {
-			return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: StopNoToolCalls}, nil
+		res, done, err := l.runToolStage(at.iterCtx, history, resp, iterations, totalUsage)
+		if done {
+			return res, err
 		}
-		if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
-			return l.hardFail(history, iterations, totalUsage),
-				fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
-		}
-
-		newHistory, veto, err := l.runToolCalls(at.iterCtx, history, resp.ToolCalls, iterations)
-		history = newHistory
-		if err != nil {
-			return l.hardFail(history, iterations, totalUsage), err
-		}
-		if veto {
-			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopHookVeto}, nil
-		}
+		history = res.History
 	}
+}
+
+// runToolStage dispatches resp's tool calls, or reports
+// StopNoToolCalls when resp carries none. The returned bool reports
+// whether the loop must return res (and err) as run's own result;
+// when false, res.History carries the loop's next history and the
+// loop continues.
+func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage) (Result, bool, error) {
+	if len(resp.ToolCalls) == 0 {
+		return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: StopNoToolCalls}, true, nil
+	}
+	if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
+		return l.hardFail(history, iterations, totalUsage), true,
+			fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
+	}
+
+	newHistory, veto, err := l.runToolCalls(ctx, history, resp.ToolCalls, iterations)
+	if err != nil {
+		return l.hardFail(newHistory, iterations, totalUsage), true, err
+	}
+	if veto {
+		return Result{History: newHistory, Iterations: iterations, Usage: totalUsage, Stop: StopHookVeto}, true, nil
+	}
+	return Result{History: newHistory}, false, nil
+}
+
+// isSteerStop reports whether err is runChat's Completer.Chat call
+// reacting to steer's Trigger-derived cancellation, rather than a
+// hard failure. All four conditions must hold: steer is non-nil, err
+// did not come from the prompt-too-long recovery path, ctx itself was
+// not directly canceled, and err wraps context.Canceled while
+// steer.wasTriggered reports true. wasTriggered rules out a Completer
+// that independently wraps context.Canceled while a Steer happens to
+// be present but was never triggered. The ctx.Err() check tells a
+// steer-triggered cancellation of runChat's derived context apart
+// from a caller's direct ctx cancellation, which also propagates into
+// that derived context since context.WithCancel's child observes its
+// parent.
+func isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool) bool {
+	if steer == nil || fromRecovery {
+		return false
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	if !errors.Is(err, context.Canceled) {
+		return false
+	}
+	return steer.wasTriggered()
 }
 
 // chatAttempt carries one iteration's Completer outcome. iterCtx is
@@ -129,14 +190,25 @@ type chatAttempt struct {
 
 // runChat performs one iteration's Completer call under the iteration
 // span, recovering exactly once from a prompt-too-long rejection when
-// a window is set.
-func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int) chatAttempt {
+// a window is set. A non-nil steer derives a per-call context, arms
+// steer with that context's cancel func before the call, and disarms
+// it after, so Trigger can soft-cancel this one Completer.Chat call
+// without canceling ctx itself. A steer already triggered before this
+// call arms fires the derived cancel immediately, before
+// l.completer.Chat runs, carrying a Trigger fired during the previous
+// iteration's tool-call batch into this call's start. The returned
+// chatAttempt.iterCtx always carries ctx, never the derived context: a
+// later tool call in this turn must not run under a context a
+// completed Completer.Chat call already canceled. recoverPromptTooLong
+// keeps using ctx too, so a Trigger fired during that retry has no
+// effect until the next iteration boundary.
+func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer) chatAttempt {
 	var span *trace.Span
 	if l.tracer != nil {
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
 	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
-	resp, err := l.completer.Chat(ctx, req)
+	resp, err := l.steerableChat(ctx, req, steer)
 	if span != nil {
 		span.End()
 	}
@@ -151,6 +223,24 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
 	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx}
+}
+
+// steerableChat calls l.completer.Chat on ctx directly when steer is
+// nil. When steer is non-nil, it derives a child context, arms steer
+// with the child's cancel func, calls Chat on the child, then disarms
+// steer and cancels the child before returning: no derived context
+// leaks past this one call.
+func (l *Loop) steerableChat(ctx context.Context, req provider.Request, steer *Steer) (provider.Response, error) {
+	if steer == nil {
+		return l.completer.Chat(ctx, req)
+	}
+	chatCtx, cancel := context.WithCancel(ctx)
+	if steer.arm(cancel) {
+		cancel()
+	}
+	defer steer.disarm()
+	defer cancel()
+	return l.completer.Chat(chatCtx, req)
 }
 
 // hardFail builds the Result a hard-fail error return carries. Every

@@ -22,8 +22,8 @@ import (
 type Result struct {
 	// Final is the last message the model produced. Zero value when
 	// the stop happened before a new response arrived, or on
-	// StopHookVeto and StopMaxIterations by design, and on every
-	// hard-fail return.
+	// StopHookVeto, StopMaxIterations, and StopSteered by design, and
+	// on every hard-fail return.
 	Final provider.Message
 	// History carries every message appended so far, including the
 	// caller's starting messages.

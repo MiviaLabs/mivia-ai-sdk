@@ -1604,3 +1604,330 @@ scripted `Completer` and one scripted `Summarizer` per case:
   change, the `contextsummary` package, and the `provider`
   `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.
 
+## Addendum: steering and interruption
+
+Status: plan, revised after a hostile plan review. This addendum
+ports phase 78,
+`docs/plans/agents/phase78_steering_and_interruption.md`, into this
+file. It adds one new file, `agentloop/steer.go`, and changes
+`run.go` and `options.go`. It adds no new package and no
+`policy/layers.json` row.
+
+### Addendum goal
+
+Let a caller stop the current iteration's in-flight `Completer.Chat`
+call without a hard `ctx` cancellation. A hard `ctx` cancellation ends
+`Run` at its hard-fail path: `Final` and `Stop` stay the zero value. A
+steer request ends the run at the next iteration boundary instead,
+with `Stop == StopSteered`, and it leaves every already-appended
+history entry untouched, including a completed tool call's `RoleTool`
+message.
+
+### Addendum scope
+
+Inside:
+
+- One new type, `Steer`, a caller-held handle that requests a
+  soft-cancel of the in-flight `Completer.Chat` call for one
+  `RunSteerable` call.
+- One new method, `RunSteerable`, alongside `Run`. `Run`'s signature
+  and behavior do not change: `Run` becomes a one-line call to
+  `RunSteerable` with a nil `steer`, so `Run(ctx, msgs)` stays
+  identical to `RunSteerable(ctx, msgs, nil)`.
+- One new `StopReason`, `StopSteered`.
+- Threading a `steer *Steer` parameter through `run` (the unexported
+  loop body) and `runChat` (the unexported per-iteration `Completer`
+  call), so the soft-cancel scopes to one iteration's
+  `l.completer.Chat` call.
+- Extracting the new steer-versus-hard-fail classification into its
+  own unexported helper, `isSteerStop`, and extracting enough of
+  `run`'s existing body into a second unexported helper so `run`
+  itself stays at or under the 80-line structure-gate ceiling. See
+  Addendum mechanics.
+
+Outside:
+
+- Interrupting a running tool call. `runToolCalls` runs calls
+  sequentially, strictly after `runChat` returns; no tool call is ever
+  in flight when a steer request can bind a cancel func. A future
+  concurrent-tool-call design needs its own review of what
+  "interrupt a tool call" means.
+- Any change to `provider.Completer`. `RunSteerable` relies only on
+  the existing convention that a `Completer.Chat` implementation
+  observes the `context.Context` it receives, the same reliance `Run`
+  already has for `ctx.Err()` to surface mid-call on a hard
+  cancellation.
+- Any change to `Options` or `New`. `Steer` is a per-`RunSteerable`-call
+  value, not a per-`Loop` value: a `Loop` already supports concurrent
+  `Run` calls, and an `Options.Steer` field would let one caller's
+  steer request stop another caller's unrelated call sharing the same
+  `Loop`.
+- A steer request during the prompt-too-long recovery retry.
+  `recoverPromptTooLong` issues its own second `Completer.Chat` call
+  on the plain outer `ctx`, not on a steer-derived context. A
+  `Trigger` call fired while that retry is in flight has no effect
+  until the next iteration boundary. This matches the already-adopted
+  mid-tool-batch rule: a `Trigger` call has no effect on work already
+  dispatched: it only binds at the start of the next
+  `l.completer.Chat` call. `compaction.go` needs no change; this
+  addendum only documents the limitation.
+- A runtime guard against sharing one `Steer` value across two
+  concurrent `RunSteerable` calls. The doc comment forbids it and a
+  test documents the forbidden case; see Addendum API and Addendum
+  tests. No mutex-based cross-call guard ships in this addendum.
+
+### Addendum mechanics
+
+`runChat(ctx, history, iterations)` gains a `steer *Steer` parameter.
+When `steer` is nil, `runChat` is unchanged: it calls
+`l.completer.Chat(ctx, req)` on the tracer-annotated `ctx` exactly as
+today. When `steer` is non-nil, `runChat` derives a per-call context,
+`chatCtx, cancel := context.WithCancel(ctx)`, arms `steer` with
+`cancel`, calls `l.completer.Chat(chatCtx, req)`, then disarms
+`steer` and calls `cancel()` before returning, so no derived context
+leaks past its `Completer.Chat` call. `chatAttempt.iterCtx` keeps
+carrying the tracer-annotated `ctx`, not `chatCtx`: a later tool call
+in this turn must not run under a context a completed
+`Completer.Chat` call already canceled. `recoverPromptTooLong`'s own
+retry call keeps using the plain `ctx` it already receives; `runChat`
+passes no `chatCtx` into it. That retry call is unreachable by a
+steer request, matching the Addendum scope's documented limitation.
+
+`Steer` tracks one boolean, `triggered`, and one `context.CancelFunc`,
+`cancel`, under a `sync.Mutex`. `Trigger` sets `triggered` true and
+calls `cancel` when non-nil; both effects are idempotent, so a second
+`Trigger` call, or a `Trigger` call with no bound `cancel`, changes
+nothing further. `runChat`'s arm step stores the derived `cancel` and
+returns whether `triggered` was already true; when it was, `runChat`
+calls the just-stored `cancel` immediately, before
+`l.completer.Chat` runs, so a steer request fired during the previous
+iteration's tool-call batch takes effect at the very start of the
+next iteration's `Completer.Chat` call, not only during it. `runChat`'s
+disarm step clears `cancel` back to nil; it never clears `triggered`.
+
+`Steer` also exposes an unexported accessor, `wasTriggered() bool`,
+that reads `triggered` under the same `sync.Mutex` `Trigger` uses.
+`isSteerStop` is the only caller. This accessor is what lets
+classification tell a genuine steer-triggered cancellation apart from
+a `Completer` that independently returns or wraps `context.Canceled`
+for its own reason while a `Steer` happens to be present but was
+never triggered.
+
+`RunSteerable` resets `steer` at the call's own start, before the loop
+begins: `triggered` false, `cancel` nil. This reset is what makes a
+`Trigger` call before `RunSteerable` starts, or one left over from a
+prior `RunSteerable` call on a reused `Steer`, a no-op: the run begins
+as if `Trigger` had never fired. `RunSteerable` does not reset `steer`
+again at return; a `Trigger` call after `RunSteerable` has already
+returned has nothing left to cancel, since no iteration is in flight
+and no future call will observe today's `triggered` value without
+first going through the same start-of-call reset.
+
+`isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool) bool`
+is the unexported helper `run` calls to classify a `runChat` error.
+It returns true only when all four conditions hold together:
+`steer` is non-nil; `steer.wasTriggered()` is true; `fromRecovery` is
+false; and `errors.Is(err, context.Canceled)` holds while `ctx.Err()`
+is still nil. The `wasTriggered` condition is what closes the finding
+this addendum's plan review raised: without it, any `Completer` that
+independently wraps `context.Canceled` while a non-triggered `Steer`
+happens to be present would be misclassified as a steer stop instead
+of a hard failure. The `ctx.Err() == nil` condition is what
+distinguishes a steer-triggered cancellation of the derived `chatCtx`
+from a caller's direct `ctx` cancellation, which also propagates into
+`chatCtx` since `context.WithCancel`'s child observes its parent's
+cancellation. A direct `ctx` cancellation always leaves `ctx.Err()`
+non-nil, so it keeps falling through to the existing hard-fail path,
+unchanged. On a classified steer stop, `run` returns
+`Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopSteered}, nil`
+— the same partial-state shape every other graceful stop before a new
+response arrives already uses, matching `StopHookVeto`.
+
+`run`'s loop body is already at the 80-line structure-gate ceiling
+before this addendum (`agentloop/run.go`, the `run` function). Calling
+`isSteerStop` from `run` adds a branch `run` has no line budget left
+for. The implementation must also extract a second unexported helper
+from `run`'s existing body to make room, sized so both `run` and the
+new helper stay at or under 80 lines each. The natural candidate is
+the tool-call dispatch and veto-check block at the end of the loop
+(the `runToolCalls` call, its `veto` check, and the `StopHookVeto`
+return), moved into an unexported helper such as
+`runToolPhase(ctx, history, resp, iterations, totalUsage) (Result, bool, error)`,
+where the returned `bool` reports whether the loop should return the
+`Result` as-is or continue. The builder chooses the exact extraction
+boundary; the requirement is `run` at or under 80 lines after adding
+the `isSteerStop` branch, verified by
+`python3 scripts/check_structure.py`.
+
+### Addendum API
+
+```go
+// Steer is a caller-held handle that requests a soft-cancel of one
+// RunSteerable call's in-flight Completer.Chat call. Trigger is safe
+// to call from another goroutine, any number of times, before,
+// during, or after the RunSteerable call it is passed to. A Steer
+// triggered before RunSteerable starts, or after it already returned,
+// is a no-op: RunSteerable resets Steer's internal state at the start
+// of its own call. One Steer value must not be passed to two
+// concurrent RunSteerable calls: both calls would arm and disarm the
+// same triggered flag and cancel func, and one caller's Trigger could
+// stop the other caller's unrelated run.
+type Steer struct {
+    // unexported: a sync.Mutex, a triggered bool, and a bound
+    // context.CancelFunc.
+}
+
+// NewSteer returns a ready Steer, unbound to any RunSteerable call
+// until passed to one.
+func NewSteer() *Steer
+
+// Trigger requests the soft-cancel this Steer is bound to for its
+// current RunSteerable call, if any. Trigger fired mid-tool-call-batch
+// has no effect on the calls already dispatched in that batch; it
+// takes effect at the start of the next iteration's Completer.Chat
+// call instead. A Trigger call fired during a prompt-too-long recovery
+// retry has no effect until the following iteration boundary, for the
+// same reason. Calling Trigger more than once, or with no
+// RunSteerable call in progress, has no additional effect.
+func (s *Steer) Trigger()
+
+// RunSteerable is Run with one addition: a non-nil steer lets the
+// caller request a soft-cancel of the current iteration's in-flight
+// Completer.Chat call from another goroutine, through steer.Trigger.
+// ctx cancellation still ends the run as a hard failure, unchanged
+// from Run. A triggered steer ends the run gracefully instead, at the
+// next iteration boundary, with Stop == StopSteered and Final holding
+// the zero value: the run stops before a new response arrives, the
+// same rule every other pre-response graceful stop already follows
+// (see Result-shape rule above). This is a deliberate correction of
+// the origin brief, docs/plans/agents/phase78_steering_and_interruption.md,
+// which stated Final would carry the last message appended before the
+// steer fired; that statement conflicted with the base Result-shape
+// rule and this addendum overrides it. History, Iterations, and Usage
+// carry every already-completed iteration's state. Run(ctx, msgs) is
+// equivalent to RunSteerable(ctx, msgs, nil).
+func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
+```
+
+New `StopReason` constant, in `options.go`'s existing `StopReason`
+block:
+
+```go
+// StopSteered is Run's stop reason when a Steer.Trigger call requests
+// a soft-cancel of the in-flight Completer.Chat call. Graceful: nil
+// error, the same Result-shape rule as every other graceful stop that
+// happens before a new response arrives.
+const StopSteered StopReason = "steered"
+```
+
+Changed in `agentloop`:
+
+- `Run`'s body becomes `return l.RunSteerable(ctx, msgs, nil)`. Its
+  doc comment gains one sentence pointing to `RunSteerable` for a
+  graceful, in-flight stop. Its exported signature does not change.
+- `run` (unexported) gains a `steer *Steer` parameter, threaded
+  through from `RunSteerable`. `Run` passes `nil`. `run` calls the new
+  `isSteerStop` helper and the extracted tool-phase helper named in
+  Addendum mechanics, to stay at or under 80 lines.
+- `runChat` (unexported) gains a `steer *Steer` parameter, per the
+  Addendum mechanics section above.
+- `Result.Final`'s doc comment in `agentloop/loop.go` gains
+  `StopSteered` to its list of stop reasons that leave `Final` at the
+  zero value, alongside `StopHookVeto` and `StopMaxIterations`.
+
+`Steer`, `NewSteer`, `(*Steer).Trigger`, `RunSteerable`, and
+`StopSteered` land in `api/agentloop.txt` via `make api-update`, in
+the same change as the code. The `run`, `runChat`, `isSteerStop`, and
+the extracted tool-phase helper are unexported and touch no lock file.
+
+### Addendum tests
+
+`Steer` lives in a new sibling file, `agentloop/steer.go`, because it
+is a caller-facing type with its own invariants, not loop-body logic;
+keeping it out of `run.go` keeps that file's growth in check under the
+500-line structure gate. `RunSteerable` lives in `run.go`, next to
+`Run`, since the two share one loop body and one doc-comment
+cross-reference. `isSteerStop` also lives in `run.go`, next to `run`,
+since it is loop-body classification logic with no caller-facing
+role.
+
+Tests live in a new file, `agentloop/agentloop_test/steer_test.go`,
+because they exercise a new type and a new entry point, not an
+existing suite's concern.
+
+- `TestSteerTriggerMidCompleter`: a scripted `Completer` whose `Chat`
+  blocks on its own `ctx.Done()` before returning. A second goroutine
+  calls `steer.Trigger()` shortly after `RunSteerable` starts.
+  `RunSteerable` returns with `Stop == StopSteered`, a nil error, and
+  a zero-value `Final`.
+- `TestSteerTriggerAfterPriorIteration`: the same setup, but the
+  scripted `Completer` returns a normal tool-call response on its
+  first call and blocks on its second. `Trigger` fires mid-second-call.
+  `Result.History`, `Iterations`, and `Usage` carry the first
+  iteration's state; `Final` stays the zero value.
+- `TestSteerNeverTriggered`: a `Steer` passed to `RunSteerable` but
+  never triggered runs to its normal `StopNoToolCalls` stop, identical
+  to a plain `Run` call over the same scripted `Completer`.
+- `TestSteerCtxCanceledDirectly`: `ctx` canceled directly, with a
+  `Steer` present but never triggered, still hard-fails with the zero
+  `Final` and `Stop`, exactly like `Run`, proving `RunSteerable` does
+  not change hard-cancellation behavior.
+- `TestSteerNotTriggeredSpontaneousCancel`: a scripted `Completer`
+  whose `Chat` returns an error wrapping `context.Canceled` on its
+  own, for a reason unrelated to steering. `steer` is present, bound
+  to the call, but `Trigger` is never called, and the outer `ctx` is
+  never canceled. `RunSteerable` returns a non-nil error and
+  `Stop != StopSteered`, proving `isSteerStop` does not misclassify a
+  `Completer`'s own `context.Canceled` error as a steer stop just
+  because a `Steer` was passed in.
+- `TestSteerTriggerTwiceAndBeforeStart`: `Trigger` called twice in a
+  row does not panic and has the same single effect as one call.
+  `Trigger` called on a fresh `Steer`, before it is ever passed to
+  `RunSteerable`, then passed to a `RunSteerable` call that never
+  triggers it again, runs to its normal stop, proving the pre-start
+  trigger was a no-op.
+- `TestSteerTriggerConcurrent`: `N` goroutines call `Trigger`
+  concurrently on one `Steer` bound to one in-flight `RunSteerable`
+  call, under `go test -race`. No panic, no race, and `RunSteerable`
+  still returns `Stop == StopSteered` exactly once.
+- `TestSteerTriggerMidToolBatch`: a scripted multi-call tool batch
+  (three tool calls in one turn), with `steer.Trigger()` called while
+  the second call is executing. The third call still runs and its
+  `RoleTool` message still reaches `History`. The following iteration's
+  `Completer.Chat` call is steered immediately: `RunSteerable` returns
+  `Stop == StopSteered` without waiting on that call to block, proving
+  the "triggered before bind" carry-over inside one `RunSteerable`
+  call works.
+- `TestSteerTriggerMidPromptTooLongRecovery`: a scripted `Completer`
+  that rejects the first call with `provider.ErrPromptTooLong` and
+  blocks on the recovery retry's call. `steer.Trigger()` fires while
+  the retry is blocked. The retry still completes and its response
+  still reaches `History`; the following iteration is where the steer
+  takes effect, proving `Trigger` fired during a prompt-too-long retry
+  has no effect until the next iteration boundary, per the documented
+  limitation.
+- `TestSteerSharedAcrossConcurrentRuns` (documentation test, not a
+  guard test): one `Steer` passed to two concurrent `RunSteerable`
+  calls on the same `*Loop`, over scripted `Completer`s that both
+  block. Triggering the shared `Steer` stops one or both runs, and the
+  outcome is deliberately unspecified beyond "no panic, no race under
+  `go test -race`". The test's comment records that sharing one
+  `Steer` across concurrent `RunSteerable` calls is forbidden by the
+  `Steer` doc comment, and this test exists to pin the forbidden
+  behavior, not to certify it as supported.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt` and the structure gate against `run.go`'s new
+helpers. `go test -race ./agentloop/...` passes, including the
+concurrent-`Trigger` case and the shared-`Steer` documentation case.
+No `policy/layers.json` change: this addendum needs only `context`,
+already imported elsewhere in `agentloop`, and `sync`, which is new to
+`agentloop` but is a standard-library import, so it needs no
+`policy/layers.json` row; that file governs imports between packages
+of this module, not standard-library imports. The coverage floor
+stays at 85 percent for `agentloop` and the module total. `make
+api-update` runs, and the `api/agentloop.txt` diff lands in the same
+change as the code.
+

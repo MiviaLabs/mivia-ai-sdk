@@ -131,6 +131,11 @@ const (
 	// StopHookVeto is Run's stop reason when a PointPreTool handler
 	// vetoes a tool call. The tool does not run.
 	StopHookVeto StopReason = "hook_veto"
+	// StopSteered is Run's stop reason when a Steer.Trigger call requests
+	// a soft-cancel of the in-flight Completer.Chat call. Graceful: nil
+	// error, the same Result-shape rule as every other graceful stop that
+	// happens before a new response arrives.
+	StopSteered StopReason = "steered"
 )
 
 // Options declares the blocks one New call wires into a Loop.

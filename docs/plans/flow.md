@@ -958,3 +958,132 @@ row already covers every edge. Run `make verify`,
 `go test -race ./flow/...`, and `go test ./runconfig/...`. Hold
 `flow` coverage at or above 85. No conformance vector changes:
 `RetryPolicy` carries no wire form.
+
+## Correctness fix: Checkpoint.Validate never checks sortedness
+
+Status: planned, not yet built.
+
+### Fix goal
+
+`Checkpoint`'s doc comment (`flow/checkpoint.go:9-20`) calls `Done`,
+`Skipped`, and `Failed` "the sorted step IDs" three times. `Validate`
+(`:44-66`) never checks that any of the three slices is sorted.
+`Decode` (`flow/wire.go`) is the untrusted entry point and calls only
+`Validate`, so a hand-built or corrupted JSON document can carry an
+unsorted `Done`, `Skipped`, or `Failed` list and still pass `Decode`.
+
+A within-group duplicate ID is already rejected today: `Validate`'s
+`seen` map is shared across all three groups and persists across
+iterations, so a second occurrence of one ID inside one group also
+trips the "named in both" check, reported with both group names equal
+(for example `named in both Done and Done`). This fix does not touch
+that path; it only adds the missing sortedness check.
+
+`doneFrom`, `skippedFrom`, and `failedFrom` (`flow/checkpoint.go:68-84`)
+are the only producers of `Done`, `Skipped`, and `Failed` inside this
+package: both `Run` (through `fireCheckpoint`) and every existing test
+build a `Checkpoint` from these three helpers or from an
+already-sorted literal. Every producer already sorts through
+`idsWithOutcome`'s `sort.Strings` call. Enforcing sortedness in
+`Validate` closes the gap between what the honest code produces and
+what a hostile `Decode` input can smuggle in, with no known caller
+relying on an unsorted list.
+
+### Fix scope
+
+Inside:
+
+- `Checkpoint.Validate`, in `flow/checkpoint.go`, gains one check per
+  group: `sort.StringsAreSorted(g.ids)` (or equivalent), evaluated
+  after the existing per-ID duplicate scan for that group. A sorted
+  input with no duplicate passes unchanged.
+- Pin one message per group: `flow: checkpoint: %s is not sorted`,
+  where `%s` is the group name (`Done`, `Skipped`, or `Failed`).
+- `Checkpoint.Validate`'s doc comment gains one sentence stating it
+  now also rejects an unsorted `Done`, `Skipped`, or `Failed`.
+- A file-size check before the test file is chosen. Measured today,
+  `flow/flow_test/checkpoint_test.go` is 404 of the 500-line cap, and
+  its 15 existing test functions average roughly 27 lines each,
+  including their required doc comment. The six new tests are
+  simpler, single-assertion cases; the closest existing analogs,
+  `TestCheckpointValidateRejectsEmptyStatus` and
+  `TestCheckpointValidateRejectsDoneSkippedOverlap`, run 10 and 14
+  lines. A conservative per-test estimate of 12 to 15 lines, across
+  six tests plus their separating blank lines, projects 85 to 100
+  added lines: a file landing between 489 and 504 lines. That range
+  straddles the cap with only single-digit-to-low-double-digit margin,
+  and the file already carries the most test functions of any file in
+  this plan's Tests section, so no headroom remains for a future case.
+  This matches the precedent already in this plan set: the
+  `a2aclient` addendum moved new tests out of `client_test.go` at 429
+  of 500 for the same reason, with more headroom than this file has
+  today. The builder places the six new tests in a new file,
+  `flow/flow_test/checkpoint_sort_test.go`, not in
+  `flow/flow_test/checkpoint_test.go`. `checkpoint_test.go` gets no
+  new test function from this fix.
+
+Outside:
+
+- The within-group duplicate detection. It already works today,
+  through the shared `seen` map; this fix leaves that path and its
+  message text unchanged.
+- `doneFrom`, `skippedFrom`, `failedFrom`, and `fireCheckpoint`. They
+  already sort; no change needed.
+- `Resume`'s five-check entry order. `checkpoint.Validate()` is
+  already one of the five checks; this fix only widens what that one
+  check rejects.
+
+### Fix API
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/flow.txt`. No `policy/layers.json` change: `sort` is already
+imported by `flow/checkpoint.go`.
+
+### Fix tests
+
+In the new file `flow/flow_test/checkpoint_sort_test.go`, per the
+line-count decision in Fix scope above:
+
+- `TestCheckpointValidateRejectsUnsortedDone` — `Validate` on a
+  `Checkpoint` with `Done: []string{"b", "a"}` returns an error
+  matching `flow: checkpoint: Done is not sorted`. Fails against
+  today's code, which returns nil.
+- `TestCheckpointValidateRejectsUnsortedSkipped` — same shape for
+  `Skipped`. A distinct case: `Skipped`'s check is a separate loop
+  iteration from `Done`'s, so this case kills a mutation that only
+  checks the first group.
+- `TestCheckpointValidateRejectsUnsortedFailed` — same shape for
+  `Failed`, for the same reason.
+- `TestCheckpointValidateAcceptsSortedLists` — positive control: a
+  `Checkpoint` with `Done: []string{"a", "b"}`, `Skipped:
+  []string{"c"}`, `Failed: []string{"d"}` passes `Validate`. Proves
+  the new check does not reject the common, already-sorted case.
+- `TestCheckpointValidateAcceptsEmptyLists` — a second positive
+  control: a `Checkpoint` with every list nil passes `Validate`.
+  `sort.StringsAreSorted(nil)` is true, so this pins that the new
+  check does not regress the zero-list case Run's single-step
+  short-circuit produces.
+- `TestCheckpointDecodeRejectsUnsortedDone` — `Decode` on hand-built
+  JSON bytes encoding `{"status":"s","done":["b","a"]}` returns an
+  error. Proves the untrusted entry point, not only `Validate`
+  directly, now rejects the shape.
+
+`checkpoint_sort_test.go` stays well under the 500-line cap on its
+own: six single-assertion tests at the 12-to-15-line estimate above
+project 85 to 100 lines, plus a package declaration and imports.
+
+### Fix verification
+
+- `make verify` passes; `flow` holds the 85 coverage floor.
+- `python3 scripts/check_structure.py` passes: `checkpoint_test.go`
+  stays unchanged at 404 lines, and the new `checkpoint_sort_test.go`
+  lands under the 500-line cap.
+- `go test -race ./flow/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change.
+- `docs/packages/flow.md`'s `Checkpoint.Validate()` entry
+  (line 132) gains the sortedness rule, in the same commit as the
+  code.
+- No conformance-vector change: `Checkpoint` carries no signed or
+  threaded wire form.

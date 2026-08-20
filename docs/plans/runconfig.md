@@ -350,6 +350,87 @@ threshold or privilege check reads the wrapped tool's true published
 capability, not a stripped default. No standalone phase 76 plan file
 remains for this contract.
 
+## Correctness fix: declaredTools admits a whitespace-only name
+
+Status: planned, not yet built.
+
+### Fix goal
+
+`declaredTools`'s doc comment (`runconfig/loader.go:153`) says it
+"validates the tools array: no blank or duplicate name." The code
+(`:157`) checks `n == ""` only. A tool name of `" "` (a single space)
+is not empty, so it passes both the blank check and, if it appears
+once, the duplicate check. A document with a whitespace-only tool
+name loads, and any step naming that exact whitespace string as its
+`tool` field also resolves, since the lookup at `:246` (`declared[w.Tool]`)
+compares the same raw, untrimmed string on both sides. The result is
+silent: no error at `Load` time, and no error at `Runner` time, for a
+tool name that is almost certainly a padded config mistake.
+`tools/registry.go`, `dispatch/options.go`, and `agentloop/options.go`
+already reject the same shape by checking `strings.TrimSpace(name) ==
+""`; this fix matches that sibling pattern.
+
+### Fix scope
+
+Inside:
+
+- `declaredTools`, in `runconfig/loader.go`, changes its blank check
+  from `if n == ""` to `if strings.TrimSpace(n) == ""`. The map key
+  and the duplicate check stay on the raw `n`; only the blank test
+  trims. A name with meaningful surrounding whitespace, such as
+  `" grep"`, is unaffected by this fix and stays a separate scope
+  question, not addressed here.
+- `runconfig/loader.go` gains a `"strings"` import.
+- `declaredTools`'s doc comment stays "no blank or duplicate name":
+  the word "blank" already matches the corrected behavior once the
+  check trims. No comment reword needed beyond confirming this.
+
+Outside:
+
+- The `declared[w.Tool]` lookup at `:246`. It stays a raw-string map
+  lookup; a declared name with internal or leading/trailing
+  whitespace besides an all-whitespace name is out of scope.
+- Any change to how a step's `tool` field is matched against
+  `declared`.
+
+### Fix API
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/runconfig.txt`. No `policy/layers.json` change: `strings` is
+standard library, not an internal package edge.
+
+### Fix tests
+
+In `runconfig/runconfig_test/reject_test.go`:
+
+- `TestLoadRejectsWhitespaceOnlyToolName` — a document whose `tools`
+  array holds `" "` (a single space). `Load` must return an error
+  matching `ErrBadDocument`. Fails against today's code, which loads
+  the document successfully.
+- `TestLoadRejectsWhitespaceOnlyToolNameWithStep` — the same document,
+  with a step whose `tool` field is the same single-space string.
+  `Load` must return an error matching `ErrBadDocument`. This is the
+  case that shows the silent-resolve consequence: today this document
+  loads and the step's binding resolves, with no error anywhere.
+
+In `runconfig/runconfig_test/load_test.go`:
+
+- One positive control: a document whose `tools` array holds a normal
+  name (`"grep"`) still loads, and the resolved `Definition.Tools`
+  still contains it. Proves the trim only affects the all-whitespace
+  case.
+
+### Fix verification
+
+- `make verify` passes; `runconfig` holds the 85 coverage floor.
+- `go test -race ./runconfig/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change; the
+  `runconfig` row is unchanged.
+- `python3 scripts/check_docs.py` passes over `declaredTools`'s
+  unchanged doc comment.
+
 ## Addendum: WorkspaceListKind and WorkspaceStatKind fix (phase 77)
 
 Status: shipped. Phase 76's addendum above expected `WorkspaceListKind`

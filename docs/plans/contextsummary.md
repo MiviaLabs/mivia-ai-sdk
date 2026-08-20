@@ -189,3 +189,87 @@ client ships here.
   bullet, and an `AGENTS.md` Layout line for `contextsummary/`.
 - This package lands with or after the `provider` change that adds
   `Message.Name`; it does not compile before that field exists.
+
+## Correctness fix: duplicate detection keys on the raw item
+
+Status: planned, not yet built.
+
+### Fix goal
+
+`Summary.Validate`'s doc comment claims "no duplicate items". Its
+worker, `validateItemList` (`contextsummary/summary.go:69-77`),
+detects a blank item by comparing `strings.TrimSpace(item) == ""`
+(`:71`), but keys its duplicate-detection `seen` map on the raw,
+untrimmed `item` (`:69`, `:74`). `"ship it"` and `"ship it "` both
+pass as distinct, non-duplicate list items, even though the blank
+check already proves this package treats the trimmed form as the
+meaningful one for the same field. `skills.Skill.Validate`
+(`skills/skill.go:56-74`) already folds a duplicate check onto the
+trimmed form for the same kind of claim; this fix matches that
+pattern.
+
+### Fix scope
+
+Inside:
+
+- `validateItemList`, in `contextsummary/summary.go`, keys its `seen`
+  map on `strings.TrimSpace(item)` instead of the raw `item`. The
+  stored, returned, and rendered item stays exactly as the caller
+  supplied it: `Summary.Decisions`, `OpenWork`, and `Risks` keep their
+  original strings, including any surrounding whitespace on a
+  non-duplicate entry. Only the map key used to detect a duplicate
+  changes.
+- `Summary.Validate`'s doc comment stays "no duplicate items"; the
+  claim already matches the corrected behavior once the key trims.
+
+Outside:
+
+- `validateTextField`'s blank check on `Objective` and `State`. Those
+  two fields carry no duplicate-detection map; this fix does not
+  touch them.
+- Case folding. `skills.Skill.Validate` compares triggers with
+  `strings.EqualFold` after trim; this fix trims only, matching
+  `Summary.Validate`'s own existing blank check, which also does not
+  fold case. Adding fold here would be a scope increase this fix does
+  not make.
+- `Render`. It already renders the stored, untrimmed item; this fix
+  does not change what a caller sees in the rendered text.
+
+### Fix API
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/contextsummary.txt`. No `policy/layers.json` change: this
+fix adds no import; `strings` is already imported by
+`contextsummary/summary.go`.
+
+### Fix tests
+
+In `contextsummary/contextsummary_test/summary_test.go`:
+
+- `TestValidateRejectsDuplicateAfterTrim` — a `Summary` with
+  `Decisions: []string{"ship it", "ship it "}` fails `Validate` with
+  an error matching the duplicate-item message. Fails against today's
+  code, which treats the two strings as distinct and returns nil. One
+  table-driven case parameterizes the same shape over `Decisions`,
+  `OpenWork`, and `Risks`, since each list runs through the same
+  `validateItemList` call independently.
+- Positive control: a `Summary` with `Decisions: []string{"ship it",
+  "ship it now"}` (two items that share a prefix but differ after
+  trim) passes `Validate`. Proves the fix does not over-match on a
+  shared prefix.
+- Positive control: a `Summary` whose single `Decisions` entry carries
+  leading or trailing whitespace, with no second entry, still passes
+  `Validate` and the returned `Summary.Decisions[0]` still carries
+  that whitespace unchanged. Proves the fix does not rewrite stored
+  data.
+
+### Fix verification
+
+- `make verify` passes; `contextsummary` holds the 85 coverage floor.
+- `go test -race ./contextsummary/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change.
+- `docs/packages/contextsummary.md` line 44's `Summary.Validate()`
+  entry needs no wording change: "no duplicate items" already matches
+  the corrected code.

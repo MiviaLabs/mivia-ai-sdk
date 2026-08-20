@@ -1129,6 +1129,83 @@ Companion tests in `agentloop/agentloop_test/`, tracked by
 - This change lands with or after the `provider` `Message.Name`
   change; `Compact` reads that field.
 
+## Correctness fix: percent bound text says "(0, 100]", code accepts 0
+
+Status: planned, not yet built.
+
+### Fix goal
+
+`Compaction`'s doc comment (`contextplan/compaction.go:49-51`) and
+`validatePercents`'s two error strings (`:75`, `:78`) say Validate
+rejects a percent outside `(0, 100]`. The code checks
+`< 0 || > 100`, so zero passes. The code is correct; the text is
+wrong. `Compaction`'s own field doc (`:37-40`) states the zero value
+means the package default, never disabled: `TriggerPercent` zero
+means `DefaultTriggerPercent`, and the same holds for `TargetPercent`.
+Zero is a legal, meaningful input. This fix corrects the text to
+match the code. It changes no behavior.
+
+### Fix scope
+
+Inside:
+
+- `contextplan/compaction.go:49-51` — reword the `Compaction.Validate`
+  doc comment: replace `(0, 100]` with `[0, 100]`.
+- `contextplan/compaction.go:75` — reword the `TriggerPercent` error
+  format string: replace `outside (0, 100]` with `outside [0, 100]`.
+- `contextplan/compaction.go:78` — reword the `TargetPercent` error
+  format string, same replacement.
+- `docs/packages/contextplan.md:88` — reword the `Compaction.Validate()`
+  entry, same replacement.
+- `docs/plans/contextplan.md:698` — the `Compaction.Validate` doc
+  comment quoted in this plan's own "Change API" code block. Reword it
+  to match, so the plan does not contradict the shipped code.
+
+Outside:
+
+- Any change to `validatePercents`'s bound check. `< 0 || > 100`
+  already matches `[0, 100]`.
+- Any change to `TriggerPercent`, `TargetPercent`, or their default
+  constants.
+
+### Fix API
+
+No exported symbol changes. `make api-update` must produce no diff for
+`api/contextplan.txt`. No `policy/layers.json` change: this fix adds
+no import.
+
+### Fix tests
+
+In `contextplan/contextplan_test/compact_config_test.go` or a sibling
+under the 500-line limit:
+
+- `TestValidateRejectsNegativePercent` — `Validate` on a `Compaction`
+  with `TriggerPercent: -1` returns an error whose text contains
+  `outside [0, 100]`, not `outside (0, 100]`. This fails against
+  today's code, which still emits the old text.
+- `TestValidateAcceptsZeroTriggerPercent` — positive control:
+  `Validate` on a `Compaction` with every field at its zero value
+  returns nil. This proves the reworded text does not change the
+  passing case; it already passes today and must keep passing.
+- `TestValidateAcceptsZeroTargetPercent` — a `Compaction` with
+  `TriggerPercent: 50, TargetPercent: 0` passes `Validate`. A second
+  positive control, distinct from the trigger-percent case, since the
+  two fields have independent bound checks in `validatePercents`.
+
+### Fix verification
+
+- `make verify` passes; `contextplan` holds the 85 coverage floor.
+- `go test -race ./contextplan/...` passes.
+- `python3 scripts/check_api.py` passes with no `api/` diff.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass. No `policy/layers.json` change; the
+  `contextplan` row is unchanged.
+- `docs/packages/contextplan.md` changes in the same commit as the
+  code.
+- Grep confirms no remaining `(0, 100]` string anywhere in
+  `contextplan/`, `docs/packages/contextplan.md`, or
+  `docs/plans/contextplan.md` after the fix.
+
 ## Correctness fix: contextplan spools its own overflow
 
 Status: shipped. Folded from `docs/plans/agents/phase73_contextplan_spool.md`;

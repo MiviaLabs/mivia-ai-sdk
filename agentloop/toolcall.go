@@ -87,8 +87,8 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}
 
 	stopHeartbeat := l.startHeartbeat(ctx, EventToolCallHeartbeat, label)
+	defer stopHeartbeat()
 	t, out, runErr := l.decodeAndRun(ctx, call)
-	stopHeartbeat()
 
 	if l.hooksReg != nil {
 		_, _ = l.fireHook(ctx, hooks.PointPostTool, call)

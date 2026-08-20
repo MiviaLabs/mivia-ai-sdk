@@ -17,7 +17,7 @@ import (
 // The fixed timing convention every heartbeat test follows: a short
 // interval, scripted blocking work past two intervals, and a
 // generous, hard-failing timeout. See
-// docs/plans/agents/phase83_heartbeat_events.md.
+// docs/plans/agentloop.md's heartbeat and progress events addendum.
 const (
 	heartbeatTestInterval = 5 * time.Millisecond
 	heartbeatTestBlock    = 30 * time.Millisecond
@@ -261,6 +261,46 @@ func TestRunHeartbeatEmitSwallowsNoSubscriberError(t *testing.T) {
 	}
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+}
+
+// TestRunZeroIntervalSuppressesAllEvents proves emitEvent's documented
+// coupling: a zero HeartbeatInterval silences every event this
+// package defines, not only the ticking heartbeat events. A Bus is
+// wired and subscribed to every event name, and the run drives both
+// an iteration and a tool call, so a bug that gates only the
+// heartbeat ticks (leaving Start/End emitting regardless of
+// l.heartbeat) would still fail this test.
+func TestRunZeroIntervalSuppressesAllEvents(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	bus := events.New()
+	rec := &eventRecorder{}
+	subscribeEvents(t, bus, rec.handle,
+		agentloop.EventIterationStart, agentloop.EventIterationEnd,
+		agentloop.EventToolCallStart, agentloop.EventToolCallEnd,
+		agentloop.EventCompletionHeartbeat, agentloop.EventToolCallHeartbeat,
+	)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	if got := rec.names(); len(got) != 0 {
+		t.Fatalf("events = %v, want none: HeartbeatInterval == 0 must gate every event, not only heartbeat ticks", got)
 	}
 }
 

@@ -205,6 +205,108 @@ func TestRunHeartbeatGoroutineLeakAfterMultipleTicks(t *testing.T) {
 	assertNoGoroutineLeak(t, before)
 }
 
+// panickingCompleter panics after delay instead of returning, so a
+// caller must recover to keep the test process alive.
+type panickingCompleter struct {
+	delay time.Duration
+}
+
+func (p *panickingCompleter) Name() string { return "panicking" }
+
+func (p *panickingCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	<-time.After(p.delay)
+	panic("panickingCompleter: boom")
+}
+
+func (p *panickingCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return nil, errors.New("panickingCompleter: ChatStream not supported")
+}
+
+// runRecoveringPanic calls fn in a goroutine, recovers any panic, and
+// blocks until fn returns or panics.
+func runRecoveringPanic(t *testing.T, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = recover() }()
+		fn()
+	}()
+	timer := time.NewTimer(heartbeatTestTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+		t.Fatalf("timed out after %v waiting for the panicking call to return", heartbeatTestTimeout)
+	}
+}
+
+// TestRunHeartbeatGoroutineLeakOnCompleterPanic proves the completion-
+// heartbeat ticker goroutine does not leak when the Completer call it
+// brackets panics: stopHeartbeat must run via defer, not a plain
+// statement that a panic would skip.
+func TestRunHeartbeatGoroutineLeakOnCompleterPanic(t *testing.T) {
+	bus := events.New()
+	completer := &panickingCompleter{delay: heartbeatTestBlock}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: tools.New(), MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	before := countNumGoroutine(t)
+	runRecoveringPanic(t, func() {
+		_, _ = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	})
+	assertNoGoroutineLeak(t, before)
+}
+
+// panickingTool implements tools.SchemaTool. Run panics after delay
+// instead of returning, so a caller must recover to keep the test
+// process alive.
+type panickingTool struct {
+	name  string
+	delay time.Duration
+}
+
+func (t *panickingTool) Name() string { return t.name }
+
+func (t *panickingTool) ParameterSchema() []byte { return []byte(`{}`) }
+
+func (t *panickingTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	return tools.InOut{Value: string(raw)}, nil
+}
+
+func (t *panickingTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	<-time.After(t.delay)
+	panic("panickingTool: boom")
+}
+
+// TestRunHeartbeatGoroutineLeakOnToolCallPanic proves the tool-call-
+// heartbeat ticker goroutine does not leak when the tool call it
+// brackets panics: stopHeartbeat must run via defer, not a plain
+// statement that a panic would skip.
+func TestRunHeartbeatGoroutineLeakOnToolCallPanic(t *testing.T) {
+	tool := &panickingTool{name: "boom", delay: heartbeatTestBlock}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	bus := events.New()
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "boom", Arguments: []byte("{}")}),
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	before := countNumGoroutine(t)
+	runRecoveringPanic(t, func() {
+		_, _ = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	})
+	assertNoGoroutineLeak(t, before)
+}
+
 // drainAllBuffered reads every event currently buffered on ch without
 // blocking, returning them in arrival order.
 func drainAllBuffered(ch <-chan events.Event) []events.Event {

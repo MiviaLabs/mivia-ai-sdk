@@ -88,6 +88,42 @@ func TestRunIterationStartEndOrder(t *testing.T) {
 	}
 }
 
+// TestRunCtxCanceledBeforeFirstIterationEmitsNoEvents proves Run emits
+// zero EventIterationStart/EventIterationEnd events when ctx is
+// already canceled before the first iteration begins: the top-of-loop
+// ctx check in run returns before runIteration, the sole emitter of
+// those two events, ever runs. This is a different shape than
+// TestRunIterationEndHardFailPaths' "ctx cancellation mid-call" case,
+// which cancels ctx only after one iteration's Start already fired,
+// so that table always expects exactly one End. A build that emitted
+// Start/End around the top-of-loop check too, or that swallowed the
+// ctx.Err() check and let one runIteration slip through, would still
+// pass that table but would fail this test's zero-event assertion.
+func TestRunCtxCanceledBeforeFirstIterationEmitsNoEvents(t *testing.T) {
+	bus := events.New()
+	rec := &eventRecorder{}
+	subscribeEvents(t, bus, rec.handle, agentloop.EventIterationStart, agentloop.EventIterationEnd)
+	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	res, err := loop.Run(ctx, []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err == nil {
+		t.Fatalf("Run() error = nil, want context.Canceled")
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want zero: no iteration ever completed", res)
+	}
+	if got := rec.names(); len(got) != 0 {
+		t.Fatalf("events = %v, want none: runIteration must never run when ctx is already canceled", got)
+	}
+}
+
 // hardFailBuild constructs one hard-fail scenario's Loop, ctx, and
 // starting messages, wired to bus.
 type hardFailBuild func(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message)

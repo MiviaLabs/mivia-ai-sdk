@@ -151,6 +151,75 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 	}
 }
 
+// TestRunFiresPointStopWithResultPayload proves PointStop's handler
+// receives the same Result Run returns, not a zero value or a
+// different iteration's Result.
+func TestRunFiresPointStopWithResultPayload(t *testing.T) {
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: textMessage(provider.RoleAssistant, "hi")},
+	}}
+	hreg := hooks.New()
+	var got agentloop.Result
+	var gotOK bool
+	if err := hreg.Add(hooks.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
+		got, gotOK = payload.(agentloop.Result)
+		return true, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: tools.New(), MaxIterations: 5, Hooks: hreg,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if !gotOK {
+		t.Fatalf("PointStop payload type = %T, want agentloop.Result", got)
+	}
+	if got.Stop != res.Stop || got.Iterations != res.Iterations {
+		t.Fatalf("PointStop payload = %+v, want the same Result Run returned: %+v", got, res)
+	}
+}
+
+// TestRunToolDecisionReadsTopLevelToolCalls proves runToolStage
+// dispatches a tool call from Response.ToolCalls even when
+// Response.Message.ToolCalls disagrees (here, empty). provider.
+// Message.Validate does not require the two fields to match, so a
+// regression that reads Message.ToolCalls instead of the documented
+// top-level field would stop with StopNoToolCalls here instead of
+// dispatching the call.
+func TestRunToolDecisionReadsTopLevelToolCalls(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	call := provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{
+			Message:   textMessage(provider.RoleAssistant, "no calls here"),
+			ToolCalls: []provider.ToolCall{call},
+		},
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls (after the tool call dispatches and the model stops on the next turn)", res.Stop)
+	}
+	if res.Iterations != 2 {
+		t.Fatalf("Iterations = %d, want 2: the top-level ToolCalls must dispatch the tool, not stop on the first turn", res.Iterations)
+	}
+}
+
 // TestNewPropagatesDefinitionsError proves New returns Definitions's
 // ErrNoSchemas when the registry offers nothing the model can call.
 func TestNewPropagatesDefinitionsError(t *testing.T) {
@@ -186,6 +255,12 @@ func TestRunOpensTracerSpans(t *testing.T) {
 	spans := tracer.Spans()
 	if len(spans) != 3 {
 		t.Fatalf("Spans() len = %d, want 3 (two iterations, one tool call)", len(spans))
+	}
+	wantNames := []string{"agentloop.iteration", "agentloop.tool_call", "agentloop.iteration"}
+	for i, want := range wantNames {
+		if spans[i].Name != want {
+			t.Fatalf("Spans()[%d].Name = %q, want %q", i, spans[i].Name, want)
+		}
 	}
 }
 

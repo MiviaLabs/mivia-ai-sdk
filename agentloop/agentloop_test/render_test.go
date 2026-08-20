@@ -245,6 +245,26 @@ func TestRenderNonPositiveBudgetSkipsTruncation(t *testing.T) {
 	}
 }
 
+// TestRenderExactBudgetSkipsTruncation covers the render guard
+// len(content) > budget: content whose length equals the budget
+// exactly must pass through unchanged, with no marker appended. A
+// regression that widens the comparison to >= would truncate an
+// in-budget result and corrupt it needlessly.
+func TestRenderExactBudgetSkipsTruncation(t *testing.T) {
+	content := strings.Repeat("x", 30)
+	tool := &budgetedSchemaTool{
+		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: content},
+		maxBytes:       len(content),
+	}
+	got, err := renderedContent(t, tool)
+	if err != nil {
+		t.Fatalf("renderedContent error = %v, want nil", err)
+	}
+	if got != content {
+		t.Fatalf("content = %q, want the full %d-byte result with no truncation", got, len(content))
+	}
+}
+
 func TestRenderTruncatesOverBudget(t *testing.T) {
 	tool := &budgetedSchemaTool{
 		schemaEchoTool: schemaEchoTool{name: "t", schema: []byte(`{}`), result: strings.Repeat("x", 100)},

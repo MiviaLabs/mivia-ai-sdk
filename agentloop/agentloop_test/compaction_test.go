@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,15 @@ func (e scaleEstimator) EstimateTokens(req provider.Request) (int, error) {
 	return total / e.div, nil
 }
 
+// erroringEstimator always fails EstimateTokens with err, to drive
+// planHistory's estimate-error branch, which a real contextplan
+// estimator never takes for a valid history.
+type erroringEstimator struct{ err error }
+
+func (e erroringEstimator) EstimateTokens(req provider.Request) (int, error) {
+	return 0, e.err
+}
+
 // summaryScript backs one Summarizer: it counts calls, records every
 // request, and answers with one fixed valid summary reply, or one
 // configured error.
@@ -34,6 +44,8 @@ type summaryScript struct {
 	calls int
 	reqs  []provider.Request
 	err   error
+	// reply overrides summaryReplyJSON when non-empty.
+	reply string
 }
 
 func (s *summaryScript) Name() string { return "summary-script" }
@@ -46,8 +58,12 @@ func (s *summaryScript) Chat(ctx context.Context, req provider.Request) (provide
 	if s.err != nil {
 		return provider.Response{}, s.err
 	}
+	reply := s.reply
+	if reply == "" {
+		reply = summaryReplyJSON
+	}
 	return provider.Response{
-		Message: provider.Message{Role: provider.RoleAssistant, Content: summaryReplyJSON},
+		Message: provider.Message{Role: provider.RoleAssistant, Content: reply},
 	}, nil
 }
 
@@ -341,6 +357,93 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	}
 	if len(res.History) != len(msgs) {
 		t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+	}
+}
+
+// TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed proves an
+// EstimateTokens failure at the per-iteration planning step fails the
+// run with ErrPlanFailed, wrapping the estimator's own error, before
+// any Completer call.
+func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
+	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	estErr := errors.New("estimator boom")
+	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
+	completer := &scriptedCompleter{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         tools.New(),
+		MaxIterations: 2,
+		Window:        &w,
+		Summarizer:    sum,
+		Calibrated:    contextplan.Calibrate(erroringEstimator{err: estErr}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if !errors.Is(err, agentloop.ErrPlanFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrPlanFailed", err)
+	}
+	if !errors.Is(err, estErr) {
+		t.Fatalf("Run() error = %v, want the estimator's own error wrapped", err)
+	}
+	if got := completer.callCount(); got != 0 {
+		t.Fatalf("completer calls = %d, want 0: a planning failure must never reach Chat", got)
+	}
+}
+
+// TestRunCompactedHistoryStillOverBudgetFailsClosed proves
+// checkCompactedBudget's documented fail-closed invariant: when the
+// rebuilt history, summary included, still estimates over the
+// window's budget after a successful compaction, Run fails with
+// ErrCompactionFailed wrapping contextplan.ErrRetentionOverflow,
+// distinct from Compact's own overflow on the retained set alone
+// (TestRunRetentionOverflowFailsBeforeRequest). The oversized
+// summarizer reply is what pushes the rebuilt total over budget: the
+// Kept set alone fits under TargetTokens, but Compact never accounts
+// for the summary message agentloop injects afterward.
+func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 100)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	hugeField := strings.Repeat("x", 1024)
+	hugeReply := fmt.Sprintf(`{"Objective":%q,"State":%q,"Decisions":[],"OpenWork":[],"Risks":[]}`, hugeField, hugeField)
+	reg := tools.New()
+	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
+	sc := &scriptedCompleter{responses: []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}}
+	summarizer, err := contextsummary.NewSummarizer(&summaryScript{reply: hugeReply})
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     sc,
+		Tools:         reg,
+		MaxIterations: 4,
+		Window:        &w,
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	_, err = loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow: the post-injection re-check must fail closed", err)
+	}
+	if got := sc.callCount(); got != 0 {
+		t.Fatalf("completer calls = %d, want 0: nothing is sent once the rebuilt history still overflows", got)
 	}
 }
 

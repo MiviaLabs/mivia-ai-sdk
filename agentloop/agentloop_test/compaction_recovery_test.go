@@ -209,7 +209,7 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	rejection := fmt.Errorf("vendor: %w", provider.ErrPromptTooLong)
 	loop, f := newRecoveryFixture(t, w, 1, []error{rejection}, []provider.Response{provider.Response{}}, nil)
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, provider.ErrPromptTooLong) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrPromptTooLong", err)
 	}
@@ -218,6 +218,9 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry below one percent of the budget", got)
+	}
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
 	}
 }
 
@@ -232,12 +235,15 @@ func TestRunRecoverySecondRejectionPropagates(t *testing.T) {
 	loop, f := newRecoveryFixture(t, w, 1,
 		[]error{provider.ErrPromptTooLong, provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, provider.Response{}}, nil)
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, provider.ErrPromptTooLong) {
 		t.Fatalf("Run() error = %v, want the second rejection propagated", err)
 	}
 	if got := f.completer.callCount(); got != 2 {
 		t.Fatalf("completer calls = %d, want 2: no third call after a second rejection", got)
+	}
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
 	}
 }
 
@@ -252,12 +258,42 @@ func TestRunRecoverySummarizerFailureNoRetry(t *testing.T) {
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, final}, errors.New("summary boom"))
-	_, err := loop.Run(context.Background(), msgs)
+	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
 	if got := f.completer.callCount(); got != 1 {
 		t.Fatalf("completer calls = %d, want 1: no retry after a recovery summarizer failure", got)
+	}
+	if len(res.History) != len(msgs) || res.Iterations != 0 {
+		t.Fatalf("Result = {History: %d msgs, Iterations: %d}, want {%d, 0}: a recovery-path failure carries the pre-failure Result, not hardFail's zero value", len(res.History), res.Iterations, len(msgs))
+	}
+}
+
+// TestRunRecoveryInvalidWindowFailsClosed proves recoverPromptTooLong
+// fails with ErrCompactionFailed, wrapping the recovery window's own
+// Validate error, when the recovery window it derives is itself
+// invalid. A Budget of exactly one token forces recoveryWindow's
+// clamp to set TargetTokens equal to Budget: max(1, min(RecoveryTargetTokens,
+// Budget/4)) with Budget 1 evaluates to 1, and a Window with
+// TargetTokens at or above Budget fails Validate, even though the
+// original, pre-recovery Window (TargetTokens unset) validated fine
+// at New. TriggerPercent 100 with a near-zero-byte estimate keeps
+// planHistory from compacting before the first Chat call, so the run
+// reaches the Completer and its scripted ErrPromptTooLong rejection.
+func TestRunRecoveryInvalidWindowFailsClosed(t *testing.T) {
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("o", 50)}}
+	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
+	loop, f := newRecoveryFixture(t, w, 1_000_000, []error{provider.ErrPromptTooLong}, []provider.Response{{}}, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "at or above budget") {
+		t.Fatalf("Run() error = %v, want the recovery window's own compaction-target-at-or-above-budget Validate error wrapped", err)
+	}
+	if got := f.completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: an invalid recovery window must never retry", got)
 	}
 }
 

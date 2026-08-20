@@ -1603,3 +1603,759 @@ scripted `Completer` and one scripted `Summarizer` per case:
 - This addendum lands with or after the `contextplan` compaction
   change, the `contextsummary` package, and the `provider`
   `ErrPromptTooLong` sentinel; `agentloop` compiles against all three.
+
+## Planned phases (not yet built)
+
+Status: plan, not scheduled. A gap analysis compared `agentloop`
+against `internal/agent.Loop`, a production caller in a separate,
+external repository (`mivia-agent`). It found seven capabilities that
+repo's caller needs and `agentloop` lacks. Each gap below is its own
+phase, numbered 76 through 82, continuing the sequence in
+`docs/plans/agents/PHASES.md` after phase 75. None of the seven has
+code, a plan review, or a `policy/layers.json` row yet. Each phase
+needs its own plan review before a builder starts it. Do not build
+from this section without that review.
+
+The phases are ordered by priority, as ranked in the gap analysis.
+That order is not a dependency order. Phase 84 depends on phase 78.
+No other phase in this section depends on another.
+
+### Phase 78: steering and interruption
+
+Status: plan, not scheduled.
+
+#### Phase 78 goal
+
+Let a caller stop the current iteration's in-flight `Completer` call
+without hard-canceling the whole `Run`. A hard `ctx` cancellation
+today always ends in `Run`'s hard-fail path: `Final` and `Stop` stay
+the zero value. A steer request is graceful instead: it stops at the
+current iteration boundary with a named `Stop` reason, and it leaves
+every already-appended history entry, including a completed tool
+call's `RoleTool` message, untouched.
+
+#### Phase 78 scope
+
+Inside:
+
+- One new type, `Steer`, a caller-held handle that requests a
+  soft-cancel of the `Completer` call in flight for one `Run` call.
+- One new method, `RunSteerable`, alongside the existing `Run`. `Run`
+  keeps its current signature and behavior; `RunSteerable` adds the
+  `steer` parameter. `Run(ctx, msgs)` stays equivalent to
+  `RunSteerable(ctx, msgs, nil)`.
+- One new `StopReason`, `StopSteered`.
+- Scoping the soft-cancel to the `Completer.Chat` (or, after phase 84,
+  `ChatStream`) call for the current iteration only. A steer request
+  never touches `ctx` itself, and never affects a tool call already
+  dispatched.
+
+Outside:
+
+- Interrupting a running tool call. Today's tool calls run
+  sequentially, one at a time, strictly after the iteration's
+  `Completer` call returns; no tool call is ever "in flight" at the
+  moment a steer request can fire. A future concurrent-tool-call
+  design would need its own review of what "interrupt a tool call"
+  means.
+- Any change to `provider.Completer`'s interface. A `Completer`
+  already receives a `context.Context` first argument, by Go
+  convention; `RunSteerable` relies only on that convention, the same
+  way `Run` already relies on it for hard cancellation.
+- Any change to `Options`. `Steer` is a per-`Run`-call value, not a
+  per-`Loop` value: a `Loop` already supports concurrent `Run` calls,
+  and one `Options.Steer` field would let one caller's steer request
+  stop another caller's unrelated `Run` call sharing the same `Loop`.
+
+#### Phase 78 API
+
+```go
+// Steer is a caller-held handle that requests a soft-cancel of one
+// RunSteerable call's in-flight Completer call. Trigger is safe to
+// call from another goroutine. A Steer triggered before RunSteerable
+// starts, or after it already returned, is a no-op.
+type Steer struct {
+    // unexported: an internal cancel func and a sync.Once guard.
+}
+
+// NewSteer returns a ready Steer, unbound to any Run call until
+// passed to RunSteerable.
+func NewSteer() *Steer
+
+// Trigger requests the soft-cancel this Steer is bound to. Calling
+// Trigger more than once, or before RunSteerable binds this Steer,
+// has no additional effect.
+func (s *Steer) Trigger()
+
+// RunSteerable is Run with one addition: a non-nil steer lets the
+// caller request a soft-cancel of the current iteration's in-flight
+// Completer call from another goroutine. ctx cancellation still ends
+// the run as a hard failure, unchanged from Run. A triggered steer
+// ends the run gracefully instead, at the next iteration boundary,
+// with Stop == StopSteered and Final holding the last message
+// appended before the steer fired. Run(ctx, msgs) is equivalent to
+// RunSteerable(ctx, msgs, nil).
+func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
+```
+
+New `StopReason`:
+
+```go
+// StopSteered is Run's stop reason when a Steer.Trigger call requests
+// a soft-cancel of the in-flight Completer call. Graceful: nil error,
+// same Result-shape rule as every other graceful stop.
+const StopSteered StopReason = "steered"
+```
+
+`Steer`, `NewSteer`, `(*Steer).Trigger`, `RunSteerable`, and
+`StopSteered` land in `api/agentloop.txt` via `make api-update`, in
+the same change as the code.
+
+#### Phase 78 tests
+
+- A `Steer.Trigger` call from a second goroutine, mid-`Completer.Chat`
+  in a scripted `Completer` that blocks until its own ctx is canceled,
+  stops `RunSteerable` with `Stop == StopSteered` and a nil error.
+- The same setup with a prior iteration already completed asserts
+  `Result.History`, `Iterations`, and `Usage` carry that prior
+  iteration's state, matching the base plan's Result-shape rule for a
+  graceful stop.
+- A `Steer` never triggered runs `RunSteerable` to its normal stop,
+  identical to `Run`.
+- `ctx` canceled directly, with a `Steer` present but never triggered,
+  still hard-fails exactly like `Run`, proving `RunSteerable` does not
+  change hard-cancellation behavior.
+- `Trigger` called twice, and `Trigger` called before `RunSteerable`
+  starts, are both no-ops that do not panic.
+- A race sub-case: `N` goroutines call `Trigger` concurrently, under
+  `go test -race`.
+- A `Steer.Trigger` call fired mid-tool-batch, not mid-`Completer`, has
+  no effect until the next iteration boundary: a scripted multi-call
+  tool batch, with `Trigger` called while the second of three calls is
+  executing, still runs the third call before `RunSteerable` stops
+  with `Stop == StopSteered` on the following iteration.
+
+#### Phase 78 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change: this phase adds no new import.
+
+### Phase 79: graceful work-limit conclude
+
+Status: plan, not scheduled.
+
+#### Phase 79 goal
+
+Nudge the model to produce a usable final answer as `MaxIterations`
+approaches, instead of hard-stopping at `StopMaxIterations` with
+whatever partial, mid-task state the transcript happens to hold.
+
+#### Phase 79 scope
+
+Inside:
+
+- Two new `Options` fields, `ConcludeMargin` and `ConcludeNotice`.
+- One new `StopReason`, `StopConcluded`, for the case the nudge
+  worked: the model returned no tool call on the nudged iteration.
+- One new exported constant, `DefaultConcludeNotice`.
+
+Outside:
+
+- Nudging as `MaxTotalTokens` approaches. Estimating "one more turn's
+  headroom" against a token cap is a harder estimation problem than an
+  iteration count, and needs its own review once phase 79's
+  iteration-only nudge ships and its shape is proven.
+- Stripping `Request.Tools` on the nudged iteration to force a
+  text-only reply. This phase only appends a text nudge; a model that
+  still requests a tool call on the nudged iteration is not blocked,
+  and `Run` still ends with `StopMaxIterations`, unchanged, if the
+  limit is hit.
+- Retrying the nudge more than once. `ConcludeMargin` fires the notice
+  exactly once, on the first iteration it applies to.
+
+#### Phase 79 API
+
+```go
+// Options gains:
+
+// ConcludeMargin nudges the model to produce a final answer within
+// this many iterations of MaxIterations, appending ConcludeNotice
+// once, instead of hard-stopping at MaxIterations with no notice.
+// Zero disables nudging. A positive ConcludeMargin greater than or
+// equal to MaxIterations fires the nudge on Run's first iteration.
+ConcludeMargin int
+
+// ConcludeNotice is the RoleUser content Run appends once nudging
+// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
+// DefaultConcludeNotice.
+ConcludeNotice string
+```
+
+```go
+// DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
+const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
+
+// StopConcluded is Run's stop reason when the model returns no tool
+// call on an iteration ConcludeMargin nudged. Graceful, same
+// Result-shape rule as StopNoToolCalls.
+const StopConcluded StopReason = "concluded"
+```
+
+`Options.Validate` gains one rule: a negative `ConcludeMargin` fails
+validation with a new sentinel, `ErrConcludeMargin`.
+
+#### Phase 79 tests
+
+- `Options.Validate`: a negative `ConcludeMargin` fails with
+  `errors.Is(err, ErrConcludeMargin)`. A zero or positive
+  `ConcludeMargin` passes.
+- A scripted `Completer` set to run past `MaxIterations` without
+  `ConcludeMargin` stops at `StopMaxIterations`, unchanged from the
+  base plan.
+- The same `Completer`, with `ConcludeMargin` set to trigger on the
+  next-to-last allowed iteration, and scripted to return no tool call
+  on that nudged iteration, stops at `StopConcluded`, and the sent
+  request for that iteration carries the notice message.
+- A `ConcludeMargin` set, but the model still requests a tool call on
+  the nudged iteration and every iteration after, still stops at
+  `StopMaxIterations` once the limit is reached.
+- An empty `ConcludeNotice` with a positive `ConcludeMargin` sends
+  `DefaultConcludeNotice`. A caller-set `ConcludeNotice` sends that
+  text instead.
+- The nudge message appends exactly once across a multi-iteration run,
+  even when several iterations pass while inside the margin.
+- A `Trim` hook that drops every `RoleUser` message, run with
+  `ConcludeMargin` set: the notice appends to history, then the next
+  iteration's `Trim` call drops it before the following `Completer`
+  call sees it. `Run` still reaches `StopMaxIterations`, since the
+  model was never actually nudged. This is a documented, accepted
+  limit, not a guarantee this phase makes: `Options.Trim` already runs
+  on the full history before every `Completer` call and may drop any
+  message, per the base plan's `Trim` contract; `ConcludeNotice` gets
+  no special protection from that contract.
+
+#### Phase 79 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change.
+
+### Phase 80: per-batch tool-result size shaping
+
+Status: plan, not scheduled.
+
+#### Phase 80 goal
+
+Cap one turn's tool results as a set, by summed byte size, instead of
+capping only one call's result at a time. `tools.ResultBudgetOf`
+already caps one call's own rendered content; nothing today caps the
+combined size of several results returned in the same turn.
+
+#### Phase 80 scope
+
+Inside:
+
+- One new `Options` field, `TurnResultBudget`.
+- Shaping every call's already-rendered content, in `ToolCall.Index`
+  order, against the running total for the turn, after each call's own
+  `tools.ResultBudgetOf` bound already applied.
+- One new exported constant marking a batch-truncated result,
+  distinct from the existing `truncationMarker` a per-call truncation
+  uses.
+
+Outside:
+
+- Any change to `tools.ResultBudgetOf`, `tools.ResultBudgetTool`, or
+  any other `tools` symbol. This phase shapes already-rendered
+  `string` content inside `agentloop`; it adds no new `tools` API.
+- Skipping or refusing to run a call because the turn's budget is
+  already exhausted. Every call in the turn still runs, and every
+  call's hooks still fire, unchanged; only the rendered content that
+  reaches history is shaped.
+- Redistributing budget by call importance or size. The policy is
+  first-come: earlier calls, in `Index` order, keep their content
+  whole while budget remains; once the running total exhausts the
+  budget, each later call's content is replaced with a fixed notice.
+
+#### Phase 80 API
+
+```go
+// Options gains:
+
+// TurnResultBudget caps the summed byte size of one turn's rendered
+// tool results, across every call in that turn, before they append to
+// history. Zero means uncapped. Distinct from a Tool's own
+// tools.ResultBudgetOf bound, which caps one call's content alone;
+// TurnResultBudget shapes the batch as a set, after each call's own
+// bound already applied, in ToolCall.Index order.
+TurnResultBudget int
+```
+
+```go
+// BatchTruncationNotice replaces a tool result's content when
+// TurnResultBudget is exhausted before that call's turn in Index
+// order. Distinct from ToolErrorPrefix: a batch-shaped result is not
+// a tool-run error, and distinct from the per-call truncation marker,
+// which trims content in place instead of replacing it outright.
+const BatchTruncationNotice = "[batch-truncated] Turn tool-result budget exhausted; this result was omitted."
+```
+
+`Options.Validate` gains one rule: a negative `TurnResultBudget` fails
+validation with a new sentinel, `ErrTurnResultBudget`.
+
+#### Phase 80 tests
+
+- `Options.Validate`: a negative `TurnResultBudget` fails with
+  `errors.Is(err, ErrTurnResultBudget)`. Zero and positive values
+  pass.
+- A turn with two tool calls, a `TurnResultBudget` sized to fit the
+  first call's content but not both, keeps the first call's content
+  whole and replaces the second call's content with
+  `BatchTruncationNotice`.
+- The same setup with `TurnResultBudget` zero appends both calls'
+  content whole, unchanged from the base plan.
+- A turn where the first call's own `tools.ResultBudgetOf` bound
+  already truncates it proves the two truncation layers apply in the
+  documented order: the per-call bound first, the batch bound second.
+- `Options.Audit`'s `AuditKindToolCall` record for a batch-truncated
+  call carries the shaped `BatchTruncationNotice` content in
+  `ToolResult`, and a nil `Err`, since a batch truncation is not a
+  tool-run error.
+- A `PointPreTool` veto partway through a turn stops later calls from
+  running, unchanged from the base plan; the shaping pass only
+  considers the calls that ran before the veto.
+
+#### Phase 80 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change.
+
+### Phase 81: duplicate-call dedup within a turn
+
+Status: plan, not scheduled.
+
+#### Phase 81 goal
+
+Detect an identical `(tool name, arguments)` call already served
+earlier in the same turn, and serve a fixed notice instead of running
+the tool a second time. Avoid a duplicate side effect from a model
+that requests the same call twice in one turn's response.
+
+#### Phase 81 scope
+
+Inside:
+
+- One new `Options` field, `DedupWithinTurn`.
+- Comparing calls by tool name and a canonical form of `Arguments`,
+  scoped to one turn: the set resets every iteration. One new
+  unexported helper, `canonicalizeArgs(raw json.RawMessage) (string,
+  error)`, builds the canonical form: `json.Unmarshal` `raw` into an
+  `any`, then `json.Marshal` the result. `encoding/json` sorts object
+  keys on marshal, so this normalizes key order without a
+  repo-specific canonicalization utility; grep confirms this repo has
+  none today.
+- One new exported constant, `DuplicateCallNotice`, served as the
+  `RoleTool` content for a detected duplicate.
+- Pipeline order against phase 80's `TurnResultBudget`, when both are
+  enabled: dedup runs first, per call. A deduped call's
+  `DuplicateCallNotice` then counts toward `TurnResultBudget`'s
+  running total for the turn, like any other rendered content.
+
+Outside:
+
+- Cross-turn dedup: a call repeated on a later iteration is not
+  detected. `agentloop` holds no cross-iteration call history for this
+  purpose, and adding one is a larger design question about how long a
+  served call stays "recent" across a long-running loop.
+- True in-flight, concurrent dedup. Today's tool calls run
+  sequentially, one at a time; "already in flight" and "already
+  served" are the same condition. A future concurrent-tool-call design
+  needs its own dedup review.
+- Reusing the first call's actual result for the duplicate. The
+  duplicate always gets `DuplicateCallNotice`, a fixed notice, not the
+  original result replayed. Replaying a stale result risks the model
+  treating it as fresh, which is its own correctness problem outside
+  this phase's scope.
+
+#### Phase 81 API
+
+```go
+// Options gains:
+
+// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
+// already served earlier in the same turn, and serves
+// DuplicateCallNotice instead of running the tool again. False, the
+// zero value, runs every call, unchanged from the base plan.
+DedupWithinTurn bool
+```
+
+```go
+// DuplicateCallNotice replaces a tool result's content when
+// DedupWithinTurn detects the same (tool, canonical-argument) call
+// already served earlier in the same turn.
+const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
+```
+
+#### Phase 81 tests
+
+- `DedupWithinTurn` false runs two identical calls in one turn twice,
+  unchanged from the base plan.
+- `DedupWithinTurn` true, two identical calls (same name, byte-equal
+  `Arguments`) in one turn, runs the first and serves
+  `DuplicateCallNotice` for the second, without a second `RunScoped`
+  call reaching the underlying tool.
+- Two calls with the same tool name but semantically identical
+  `Arguments` in a different key order both compare equal under
+  canonicalization, and the second is deduped.
+- Two calls with the same tool name and genuinely different
+  `Arguments` both run; neither is treated as a duplicate.
+- `canonicalizeArgs` adversarial cases, each stating the expected
+  behavior:
+  - A numeric literal written as `1` in one call and `1.0` in the
+    other: `json.Unmarshal` decodes both into the same `float64`
+    value, so `canonicalizeArgs` treats them as equal and the second
+    call is deduped.
+  - Raw JSON with a duplicate key, for example `{"a":1,"a":2}`:
+    `encoding/json` keeps the last value on `Unmarshal`, so
+    `canonicalizeArgs` sees only `{"a":2}`. A caller that sends
+    ambiguous duplicate-key JSON gets that encoding/json behavior, not
+    a dedup guarantee; this phase does not detect or reject the
+    duplicate key itself.
+  - Two calls whose string values differ only by Unicode-escape form,
+    for example `"café"` versus `"café"`: `json.Unmarshal`
+    decodes both into the same Go string, so `canonicalizeArgs` treats
+    them as equal and the second call is deduped.
+- The synthesized `RoleTool` message for a deduped call carries the
+  duplicate call's own `ToolCallID`, not the first call's `ToolCallID`.
+  This is the single most likely implementation bug for this phase: a
+  naive dedup that copies the first call's message wholesale would
+  send back the wrong `ToolCallID` and break the model's tool-call/
+  tool-result pairing.
+- A `PointPreTool` veto on the first of two identical calls stops the
+  turn before the second call is ever reached; the second call is
+  never evaluated for dedup, since the veto ends the turn first.
+- The dedup set resets between iterations: a call repeated on a later
+  iteration runs again, proving no cross-turn dedup happens.
+- `Options.Audit`'s `AuditKindToolCall` record for a deduped call
+  carries a nil `Err`, since a served duplicate is not a tool-run
+  error.
+- `DedupWithinTurn` and phase 80's `TurnResultBudget` both set: a turn
+  with a duplicate call proves the documented order. The dedup check
+  runs first and serves `DuplicateCallNotice` for the duplicate; the
+  budget shaping pass then counts `DuplicateCallNotice`'s bytes toward
+  the turn's running total, and can still batch-truncate a later,
+  non-duplicate call's content once the total is exhausted.
+
+#### Phase 81 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change.
+
+### Phase 82: prompt-injection-safe hook and steer framing
+
+Status: plan, not scheduled. Part of this phase is blocked on a
+`hooks` package change; see the flagged item below.
+
+#### Phase 82 goal
+
+Give `agentloop` one documented, delimited way to mark text it injects
+into a model-visible message as injected guidance, not real tool
+output or real user content. Neutralize the delimiter inside any
+untrusted text before framing it, so a malicious tool result or hook
+string cannot forge the closing delimiter and escape the frame.
+
+#### Phase 82 scope
+
+Inside:
+
+- One new pair of exported constants, `InjectionOpenTag` and
+  `InjectionCloseTag`.
+- One new exported function, `WrapInjected`, the only sanctioned way
+  to build framed, injected text.
+- This phase ships the framing primitive alone. It applies
+  `WrapInjected` to no existing text. No other phase in this section
+  depends on this phase.
+
+Outside, flagged:
+
+- Injecting a `hooks.Handler` return value into the tool-result
+  stream. `hooks.Handler`'s current signature is
+  `func(ctx context.Context, payload any) (bool, error)`; it carries
+  no text channel back to the caller. Giving a hook a way to inject
+  text needs a `hooks.Handler` signature change, which needs its own
+  plan review against `docs/plans/hooks.md`, since `hooks` is a shared
+  package other callers depend on today. This phase does not propose
+  that change; it only defines the framing primitive a future
+  `hooks`-side change would use.
+- Rewriting the already-shipped `ToolErrorPrefix` or `CompactionNotice`
+  markers to use `WrapInjected`. Both ship today with their own
+  documented, accepted-risk rationale in this file's earlier
+  addenda. Migrating them is a separate decision, not a side effect of
+  adding a second marker scheme.
+- Applying `WrapInjected` to phase 81's `DuplicateCallNotice`, once
+  phase 81 ships. Migrating an already-shipped marker to a new framing
+  scheme is a separate decision for phase 81's own follow-up, not a
+  side effect of this phase.
+- Framing phase 79's `ConcludeNotice` or phase 80's
+  `BatchTruncationNotice`. Both are caller-authored, through `Options`,
+  not derived from untrusted tool or model text, so neither carries a
+  forgery risk and neither needs this phase's framing.
+
+#### Phase 82 API
+
+```go
+// InjectionOpenTag and InjectionCloseTag delimit text WrapInjected
+// frames as caller- or agentloop-injected guidance, distinct from
+// real tool output or real user content in the model-visible
+// transcript.
+const InjectionOpenTag = "<<mivia:injected>>"
+const InjectionCloseTag = "<<//mivia:injected>>"
+
+// WrapInjected frames text as injected guidance from the named
+// source, for example "example-source". WrapInjected strips any
+// literal occurrence of InjectionOpenTag or InjectionCloseTag already
+// inside label or text before framing, so neither can forge the
+// closing tag and escape the frame.
+func WrapInjected(label, text string) string
+```
+
+`InjectionOpenTag`, `InjectionCloseTag`, and `WrapInjected` land in
+`api/agentloop.txt` via `make api-update`, in the same change as the
+code.
+
+#### Phase 82 tests
+
+- `WrapInjected("steer", "stop and answer now")` returns text that
+  starts with `InjectionOpenTag`, ends with `InjectionCloseTag`, and
+  contains the label and the body between them.
+- `WrapInjected` on text that already contains a literal
+  `InjectionCloseTag` strips it before framing; the returned value
+  still has exactly one open tag and one close tag, at the start and
+  the end.
+- The same stripping case for `InjectionOpenTag` inside the label
+  argument.
+- An empty `text` argument still returns a well-formed, open-tag/
+  close-tag-delimited value.
+
+#### Phase 82 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change for the `agentloop`-only part. The
+`hooks`-side injection channel, if pursued later, needs its own
+`docs/plans/hooks.md` review and its own `policy/layers.json` check;
+it is not part of this phase.
+
+### Phase 83: heartbeat and progress events
+
+Status: plan, not scheduled.
+
+#### Phase 83 goal
+
+Emit periodic events on `Options.Bus`, wired since the base plan but
+never used, so a caller can show progress during a long `Completer`
+call or a long tool batch.
+
+#### Phase 83 scope
+
+Inside:
+
+- One new `Options` field, `HeartbeatInterval`.
+- A fixed set of new `events.Name` values, defined inside `agentloop`,
+  for iteration start/end, a periodic completion heartbeat, and a
+  periodic per-tool-call heartbeat.
+- Emitting on `l.bus` at each of those points when `HeartbeatInterval`
+  is positive. A `Bus.Emit` error is swallowed, the same way `Run`
+  already swallows a `hooks.Registry.Fire` error from `PointStop`:
+  a heartbeat is observability, not a control-flow gate.
+
+Outside:
+
+- Any change to the `events` package. `events.Name` is already
+  `type Name string`; `agentloop` defines its own constants of that
+  type, the same way any package can. `events.Bus`, `events.Event`,
+  and `events.Handler` need no change.
+- Carrying structured data richer than `events.Event.Data string`
+  allows. Every heartbeat event's `Data` is a short, human-readable
+  string; a caller that needs structured data parses it itself, the
+  same contract `events.Event` already documents.
+
+#### Phase 83 API
+
+```go
+// Options gains:
+
+// HeartbeatInterval emits a heartbeat Event on Bus every interval
+// while one Completer call or one tool call is in flight. Zero
+// disables heartbeats. A positive HeartbeatInterval requires a
+// non-nil Bus.
+HeartbeatInterval time.Duration
+```
+
+```go
+// The Event Names agentloop emits on Options.Bus when
+// HeartbeatInterval is positive.
+const (
+    EventIterationStart      events.Name = "agentloop.iteration.start"
+    EventCompletionHeartbeat events.Name = "agentloop.completion.heartbeat"
+    EventToolCallStart       events.Name = "agentloop.tool_call.start"
+    EventToolCallHeartbeat   events.Name = "agentloop.tool_call.heartbeat"
+    EventToolCallEnd         events.Name = "agentloop.tool_call.end"
+    EventIterationEnd        events.Name = "agentloop.iteration.end"
+)
+```
+
+`Options.Validate` gains one rule: a positive `HeartbeatInterval` with
+a nil `Bus` fails validation with a new sentinel,
+`ErrHeartbeatRequiresBus`.
+
+#### Phase 83 tests
+
+- `Options.Validate`: a positive `HeartbeatInterval` with a nil `Bus`
+  fails with `errors.Is(err, ErrHeartbeatRequiresBus)`. A zero
+  `HeartbeatInterval` passes regardless of `Bus`.
+- A scripted `Completer` that blocks past two heartbeat intervals, run
+  with a `Bus` subscribed to `EventCompletionHeartbeat`, receives at
+  least two heartbeat events before the call returns.
+- The same setup with `HeartbeatInterval` zero receives no heartbeat
+  event.
+- `EventIterationStart` and `EventIterationEnd` fire once per
+  iteration, in order, bracketing every other event that iteration
+  emits.
+- A `Bus.Emit` error from a failing subscriber does not fail `Run`; the
+  run completes normally.
+- A race sub-case: heartbeat emission from the ticking goroutine and
+  the main loop's own state changes run concurrently, under
+  `go test -race`, with no data race.
+
+#### Phase 83 verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
+`policy/layers.json` change: `events` is already an allowed import.
+
+### Phase 84: partial-recovery streaming
+
+Status: plan, not scheduled, blocked on a `provider` package decision.
+Depends on phase 78.
+
+#### Phase 84 goal
+
+When a completion is interrupted mid-stream, by a phase 78 steer
+request or by `ctx` cancellation, keep whatever partial text the model
+already produced, instead of discarding it. Today `agentloop` never
+streams: `runChat` calls `Completer.Chat`, never `ChatStream`, so no
+partial text exists to preserve.
+
+#### Phase 84 scope, and the shared-package flag
+
+This phase cannot land as an `agentloop`-only change. `provider`
+already ships `RunTurn` and its unexported helper `drainStream`, which
+consume `Completer.ChatStream` and merge `Chunk` values into one
+`Response`. `drainStream`'s cancellation branch discards every
+accumulated `Chunk` on `ctx.Done()`: `return Response{}, ctx.Err()`,
+with no partial content returned. Reusing `RunTurn` today would
+inherit that discard behavior, defeating this phase's goal.
+
+Two designs need a plan-review decision before a builder starts this
+phase:
+
+- Option A: extend `provider.RunTurn`'s cancellation path to return
+  the partial `Response` accumulated so far, alongside the `ctx`
+  error, instead of a zero `Response`. This changes `RunTurn`'s
+  already-locked, documented contract in `api/provider.txt` and needs
+  its own plan review against `docs/plans/provider.md`, weighed
+  against every other `RunTurn` caller's expectations.
+- Option B: `agentloop` drains `ChatStream` itself, without calling
+  `RunTurn`, duplicating `drainStream`'s merge logic
+  (`mergeToolCallDelta`, `buildResponse`) inside `agentloop`. Disfavored:
+  this forks logic `provider` already owns, against the Building
+  blocks rule against a copied type or a forked algorithm. It is named
+  here for completeness, not as an equal candidate.
+- Option C: export `provider`'s existing pure merge and accumulation
+  primitives, `buildResponse` and `mergeToolCallDelta` in
+  `provider/runturn.go`, unexported today only because no caller
+  outside `provider` has needed them. `RunTurn`'s behavior and its
+  locked, documented cancellation contract stay unchanged. `agentloop`
+  drains `ChatStream` itself and calls the exported merge helper
+  directly, so it reuses `provider`'s algorithm instead of forking it.
+
+Option A and Option C are both live candidates; Option B is not, under
+the Building blocks rule. The choice between A and C, and the final
+decision, is left to whoever reviews phase 84 when it is built.
+
+Inside, once the shared-package question is resolved:
+
+- One new `Options` field, `Stream`, opting an iteration into the
+  streaming path.
+- On an interrupted stream, whether by phase 78's `Steer` or by `ctx`
+  cancellation, `Result.Final` carries the partial text produced so
+  far, instead of the zero value.
+
+Outside:
+
+- Any change to `provider.Chunk`, `provider.Completer`, or
+  `mergeToolCallDelta`'s merge policy for tool-call fragments. This
+  phase's concern is preserving partial assistant text, not changing
+  how a tool-call fragment merges.
+- Resuming a stream after an interruption. Interruption ends the
+  iteration; `Run` does not attempt to resume mid-stream on the next
+  iteration.
+
+#### Phase 84 amendment to the Result-shape rule
+
+The base plan's Result-shape rule states `Final` and `Stop` "stay the
+zero value" on every hard-fail error return, including a `ctx`-
+cancellation mid-`Completer`-call. This phase amends that rule for the
+one case it targets: a `ctx` cancellation that lands mid-stream, with
+`Options.Stream` set, now carries a non-zero `Final.Content` holding
+the partial text produced before cancellation. `Stop` still stays the
+zero value, since a hard `ctx` cancellation is still a hard failure,
+not a graceful stop; only `Final.Content` changes. Every other
+hard-fail cause in the base plan's closed list is unaffected.
+
+#### Phase 84 API
+
+Depends on the Option A/C decision above; the exact shape of the
+streaming plumbing is not specified until that decision is made. The
+following is expected, not final:
+
+```go
+// Options gains:
+
+// Stream opts one Loop into streaming Completer calls through
+// ChatStream instead of Chat, so an interrupted completion (Steer or
+// ctx cancellation) can preserve partial text. False, the zero value,
+// keeps today's non-streaming Chat path.
+Stream bool
+```
+
+#### Phase 84 tests
+
+- A scripted streaming `Completer` that emits several `Delta` chunks,
+  then blocks, with `ctx` canceled mid-stream: `Result.Final.Content`
+  holds the concatenation of every `Delta` chunk emitted before
+  cancellation. `Result.Stop` stays `StopReason("")`, the zero value.
+  The returned error satisfies `errors.Is(err, context.Canceled)`.
+  `Result.History`, `Result.Iterations`, and `Result.Usage` stay at
+  their pre-call values, unchanged by the partial `Final.Content`.
+- The same setup with a phase 78 `Steer.Trigger` call instead of a
+  `ctx` cancellation: `Stop == StopSteered`, and `Result.Final.Content`
+  holds the same partial concatenation.
+- `Options.Stream` false runs unchanged from every existing base-plan
+  case: no `ChatStream` call happens.
+- A stream that completes normally, `Options.Stream` true, produces
+  the same `Result` shape a non-streaming `Chat` call would produce
+  for an equivalent scripted response.
+
+#### Phase 84 verification
+
+Blocked until the Option A/C decision lands its own plan review. Once
+resolved: `make verify` passes, including the deps gate against
+whatever `policy/layers.json` change, if any, that decision needs, and
+the API gate against the regenerated `api/agentloop.txt` and, under
+Option A, `api/provider.txt`. `go test -race ./agentloop/...` and,
+under Option A, `go test -race ./provider/...` pass.

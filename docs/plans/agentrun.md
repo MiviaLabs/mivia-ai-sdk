@@ -280,8 +280,13 @@ func DecodeArtifacts(data []byte) (*Artifacts, error)
 func (a *Artifacts) Validate() error
 ```
 
-No other exported symbol changes. `make api-update` lands these three
-lines in `api/agentrun.txt` in the same commit as the code.
+One exported symbol change beyond these three: a sentinel error
+`ErrArtifactsInconsistent`, alongside the package's existing sentinels
+(`ErrNoAgent`, `ErrArgumentDecode`). `Validate` wraps it for both
+invariant violations, so the two malformed-decode tests can assert
+which direction failed with `errors.Is` instead of a message
+substring. `make api-update` lands these four symbols in
+`api/agentrun.txt` in the same commit as the code.
 
 ### Addendum tests
 

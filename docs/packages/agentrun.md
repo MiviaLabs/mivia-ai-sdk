@@ -45,6 +45,17 @@ mirrors `api/agentrun.txt`.
   `step` held one.
 - `PayloadOf(step, a)` — builds a `flow.PayloadFrom` closure that reads
   `step`'s artifact from `a`.
+- `Artifacts.Encode()` — serializes `a`'s values and run history to
+  JSON. Validates first. Safe for concurrent use; a concurrent `Set`
+  or `SetRun` blocks until `Encode` returns.
+- `DecodeArtifacts(data)` — parses JSON produced by `Encode` and
+  validates the result. The returned `*Artifacts` is ready for `Get`,
+  `History`, `Set`, `SetRun`, and a later `Encode`.
+- `Artifacts.Validate()` — reports whether `a` holds internally
+  consistent state: every step named in its run history has a current
+  value equal to its last run's value, and every step holding a
+  current value has at least one recorded run. `Encode` and
+  `DecodeArtifacts` both call it.
 
 The agent accessors added in the same change:
 
@@ -87,6 +98,9 @@ Use `errors.Is` to test these.
   returns it when the resolved receiver signer is empty, whether from
   `Options.Receiver` or from `Options.Agent`. Pinned by
   `agentrun_test/options_test.go`.
+- `ErrArtifactsInconsistent` ("agentrun: artifacts values and run
+  history disagree") — `Validate` wraps it for either invariant
+  violation. Pinned by `agentrun_test/artifacts_wire_test.go`.
 
 `Runner.Run` also propagates two sentinels the `agent` package
 defines, through `errors.Is`: `agent.ErrNoThread`, when `threadID` is

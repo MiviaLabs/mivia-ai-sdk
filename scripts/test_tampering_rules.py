@@ -27,14 +27,23 @@ _FUNC_DECL = re.compile(r"^func\s+(?:\([^)]*\)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(
 def extract_functions(text: str) -> dict:
     """extract_functions maps a Go source's top-level function names to
     their (1-based start line, full body text) pairs, following
-    check_structure.py's own func-to-closing-brace-at-column-0 rule."""
+    check_structure.py's own func-to-closing-brace-at-column-0 rule. A
+    Go raw string (backtick-delimited) can legitimately contain a
+    line that is exactly `}`; a line inside one never counts as the
+    real closing brace, or as a new function declaration."""
     if not text:
         return {}
     lines = text.splitlines()
     funcs: dict = {}
     start = None
     name = None
+    in_raw_string = False
     for i, line in enumerate(lines):
+        was_in_raw_string = in_raw_string
+        if line.count("`") % 2 == 1:
+            in_raw_string = not in_raw_string
+        if was_in_raw_string:
+            continue
         m = _FUNC_DECL.match(line)
         if m:
             start, name = i, m.group(1)
@@ -204,6 +213,13 @@ _DISCARD_LINE = re.compile(r"^\s*_\s*,?\s*_?\s*=\s*(\w[\w.]*)\(")
 _ERR_CHECK_LINE = re.compile(r"\berr\b.*(!=|==)\s*nil")
 
 
+def _call_names(call: str) -> set:
+    """_call_names returns a call's raw text and its unqualified
+    suffix (after the last `.`), so `pkg.Foo(` captured and `Foo(`
+    discarded (or vice versa) still match as the same call."""
+    return {call, call.rsplit(".", 1)[-1]}
+
+
 def check_result_discarded(diffs: list) -> list:
     """TT06: a call whose result a removed line captured and checked
     now discarded with `_ = f()` / `_, _ = f()` in the same hunk."""
@@ -213,12 +229,15 @@ def check_result_discarded(diffs: list) -> list:
             continue
         for hunk in d.hunks:
             removed_calls = {m.group(2) for l in hunk.removed if (m := _CAPTURE_LINE.match(l))}
+            removed_names = set()
+            for call in removed_calls:
+                removed_names |= _call_names(call)
             err_checked = any(_ERR_CHECK_LINE.search(l) for l in hunk.removed)
             if not (removed_calls and err_checked):
                 continue
             for line in hunk.added:
                 m = _DISCARD_LINE.match(line)
-                if m and m.group(1) in removed_calls:
+                if m and _call_names(m.group(1)) & removed_names:
                     findings.append(
                         Finding("TT06", d.path, hunk.new_start, f"result of {m.group(1)}(...) now discarded")
                     )
@@ -236,21 +255,25 @@ def _first_number(line: str):
 
 def check_numeric_literal_increase(diffs: list) -> list:
     """TT07: a numeric literal near a sleep/timeout/tolerance keyword
-    that grew strictly larger at the same position in the same hunk."""
+    that grew strictly larger. Pairs a removed and an added line by
+    matching keyword occurrence order within the hunk, not by raw
+    line index: an unrelated insertion or deletion earlier in the
+    same hunk shifts index-based pairing and can hide a real
+    increase, or compare two unrelated lines."""
     findings = []
     for d in diffs:
         if not _is_test_file(d.path):
             continue
         for hunk in d.hunks:
-            for i in range(min(len(hunk.removed), len(hunk.added))):
-                rline, aline = hunk.removed[i], hunk.added[i]
-                if not any(k in rline and k in aline for k in _TOLERANCE_KEYWORDS):
-                    continue
-                rn, an = _first_number(rline), _first_number(aline)
-                if rn is not None and an is not None and an > rn:
-                    findings.append(
-                        Finding("TT07", d.path, hunk.new_start, f"numeric literal increased ({rn} -> {an})")
-                    )
+            for k in _TOLERANCE_KEYWORDS:
+                r_lines = [l for l in hunk.removed if k in l]
+                a_lines = [l for l in hunk.added if k in l]
+                for rline, aline in zip(r_lines, a_lines):
+                    rn, an = _first_number(rline), _first_number(aline)
+                    if rn is not None and an is not None and an > rn:
+                        findings.append(
+                            Finding("TT07", d.path, hunk.new_start, f"numeric literal increased ({rn} -> {an})")
+                        )
     return findings
 
 

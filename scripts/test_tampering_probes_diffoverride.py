@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from check_test_tampering import resolve_diff_source
-from test_tampering_diff import build_diff, commit_all, init_probe_repo, repo_root, stage_all
+from test_tampering_diff import build_diff, commit_all, diff_after_change, init_probe_repo, repo_root, stage_all
 from test_tampering_override import resolve_overrides
 from test_tampering_rules import Finding
 
@@ -125,6 +125,65 @@ def _probe_single_commit_skips_end_to_end(tmp):
     return []
 
 
+# --- diff-parsing edge cases -----------------------------------------
+
+
+def _probe_hunk_content_line_starting_with_dashes_preserved(tmp):
+    """A hunk content line whose own text starts with `--` (so the
+    diff-prefixed line reads `---...`) must still appear in
+    hunk.removed/added: it is not a file-level header line, since a
+    real one can only appear before the first `@@` marker, and this
+    is well inside a hunk body."""
+    repo = _new_repo(tmp, "diffparse_dashes")
+    (repo / "a_test.go").write_text(
+        'package a\n\nimport "testing"\n\n'
+        'func TestFoo(t *testing.T) {\n\tlabel := "old"\n\t_ = label\n}\n'
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "a_test.go").write_text(
+            'package a\n\nimport "testing"\n\n'
+            'func TestFoo(t *testing.T) {\n\tlabel := "-- a divider comment style"\n\t_ = label\n}\n'
+        ),
+    )
+    target = next((d for d in diffs if d.path == "a_test.go"), None)
+    if target is None or not target.hunks:
+        return ["diffparse dashes: expected a hunk for a_test.go"]
+    added_text = "\n".join(line for hunk in target.hunks for line in hunk.added)
+    if "-- a divider comment style" not in added_text:
+        return [f"diffparse dashes: content line starting with -- was dropped, got added lines: {added_text!r}"]
+    return []
+
+
+def _probe_split_by_file_path_containing_b_slash(tmp):
+    """A file path containing the literal substring " b/" must not
+    misattribute its hunks: build_diff pairs a raw-status entry with
+    its patch body by file order, not by parsing a `diff --git a/PATH
+    b/PATH` header, which is ambiguous for such a path."""
+    repo = _new_repo(tmp, "diffparse_bslash_path")
+    tricky_dir = repo / "weird b"
+    tricky_dir.mkdir()
+    (tricky_dir / "file_test.go").write_text(
+        'package weird\n\nimport "testing"\n\nfunc TestFoo(t *testing.T) {\n\tdoWork()\n}\n'
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "weird b" / "file_test.go").write_text(
+            'package weird\n\nimport "testing"\n\n'
+            'func TestFoo(t *testing.T) {\n\tt.Skip("slow")\n\tdoWork()\n}\n'
+        ),
+    )
+    target = next((d for d in diffs if d.path and d.path.endswith("file_test.go")), None)
+    if target is None or not target.hunks:
+        return ["diffparse b-slash path: expected a hunk for the tricky path"]
+    added_text = "\n".join(line for hunk in target.hunks for line in hunk.added)
+    if "t.Skip" not in added_text:
+        return [f"diffparse b-slash path: hunk body misattributed, got added lines: {added_text!r}"]
+    return []
+
+
 # --- override resolution --------------------------------------------------
 
 
@@ -143,6 +202,31 @@ def _probe_override_boilerplate_reason_unresolved(tmp):
     unresolved, _overridden = resolve_overrides(findings, message)
     if not unresolved:
         return ["override boilerplate: expected the finding to stay unresolved"]
+    return []
+
+
+def _probe_override_punctuation_only_reason_unresolved(tmp):
+    """A reason made only of punctuation tokens, with no real words at
+    all, must count as zero significant words, not slip past the
+    boilerplate filter because the stripped token happens to be
+    empty."""
+    findings = [Finding("TT02", "a_test.go", 1, "x")]
+    message = "subject\n\nAllow-Test-Change: TT02 ... !!! ,,, ;;; --- ???\n"
+    unresolved, _overridden = resolve_overrides(findings, message)
+    if not unresolved:
+        return ["override punctuation only: expected the finding to stay unresolved"]
+    return []
+
+
+def _probe_override_trailing_punctuation_after_id_resolves(tmp):
+    """A comma or colon immediately after the finding ID (a plausible
+    typo, e.g. `TT02, removed ...`) must not defeat the ID lookup: the
+    trailer still names TT02 and should still resolve it."""
+    findings = [Finding("TT02", "a_test.go", 1, "x")]
+    message = "subject\n\nAllow-Test-Change: TT02, removed obsolete retry after fixing root cause\n"
+    unresolved, overridden = resolve_overrides(findings, message)
+    if unresolved or not overridden:
+        return [f"override trailing punctuation: expected TT02 to resolve, got unresolved={unresolved}"]
     return []
 
 
@@ -297,8 +381,12 @@ def run_diffoverride_probes(tmp) -> list:
         _probe_staged_no_message_file_is_none,
         _probe_no_git_skips_end_to_end,
         _probe_single_commit_skips_end_to_end,
+        _probe_hunk_content_line_starting_with_dashes_preserved,
+        _probe_split_by_file_path_containing_b_slash,
         _probe_override_waives_only_its_id,
         _probe_override_boilerplate_reason_unresolved,
+        _probe_override_punctuation_only_reason_unresolved,
+        _probe_override_trailing_punctuation_after_id_resolves,
         _probe_override_word_count_boundary,
         _probe_gate_change_word_count_boundary,
         _probe_first_trailer_per_id_wins_even_if_invalid,

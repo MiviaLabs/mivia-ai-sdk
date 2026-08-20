@@ -15,7 +15,7 @@ GATE_CHANGE_IDS = frozenset({"TT11", "TT14"})
 _BOILERPLATE = {
     "fix", "cleanup", "refactor", "wip", "misc", "temp", "n/a", "na", "ok", "done",
 }
-_TRAILER_RE = re.compile(r"^(Allow-Test-Change|Allow-Gate-Change):\s*(\S+)\s*(.*)$")
+_TRAILER_RE = re.compile(r"^(Allow-Test-Change|Allow-Gate-Change):\s*(TT\d{2})[,:]?\s*(.*)$")
 
 _TEST_CHANGE_MIN_WORDS = 6
 _GATE_CHANGE_MIN_WORDS = 15
@@ -34,9 +34,11 @@ class Trailer:
 
 def _significant_word_count(reason: str) -> int:
     """_significant_word_count strips boilerplate filler words before
-    counting; a reason of only filler words counts as zero."""
+    counting; a reason of only filler words, or only punctuation with
+    no letters, counts as zero."""
     words = reason.split()
-    significant = [w for w in words if w.strip(".,;:!?").lower() not in _BOILERPLATE]
+    stripped = [w.strip(".,;:!?").lower() for w in words]
+    significant = [w for w in stripped if w and w not in _BOILERPLATE]
     return len(significant)
 
 

@@ -186,6 +186,26 @@ def _probe_tt13_clean_unrelated_edit(tmp):
     return []
 
 
+def _probe_tt13_violation_commented_out_invocation(tmp):
+    """Commenting out a gate invocation line, not deleting it, must
+    still fire TT13: the line's text is unchanged, so a naive
+    before/after comparison of invocation strings alone misses it."""
+    repo = _new_repo(tmp, "tt13_commented_invocation")
+    (repo / "Makefile").write_text(_MAKEFILE_BASE)
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "Makefile").write_text(
+            _MAKEFILE_BASE.replace(
+                "\tpython3 scripts/check_docs.py\n", "\t# python3 scripts/check_docs.py\n"
+            )
+        ),
+    )
+    if not _has(check_weakened_floor(diffs), "TT13"):
+        return ["tt13 commented-out invocation: expected TT13 for a commented-out gate invocation"]
+    return []
+
+
 def _probe_tt13_violation_coverage_floor(tmp):
     repo = _new_repo(tmp, "tt13_floor")
     (repo / "Makefile").write_text(_MAKEFILE_BASE)
@@ -379,6 +399,32 @@ def _probe_tt14_unreachable_code_removed_clean(tmp):
     return []
 
 
+def _probe_tt14_clean_multiline_string_return(tmp):
+    """A return statement whose value is a multi-line triple-quoted
+    string must not fire TT14: the string's own body lines are the
+    return's value, not dead code following it."""
+    repo = _new_repo(tmp, "tt14_multiline_string_clean")
+    (repo / "scripts").mkdir()
+    (repo / "scripts" / "test_tampering_rules_infra.py").write_text(
+        "def check_something(diffs):\n    return []\n"
+    )
+    commit_all(repo, "base")
+    diffs = diff_after_change(
+        repo,
+        lambda r: (r / "scripts" / "test_tampering_rules_infra.py").write_text(
+            'def check_something(diffs):\n'
+            '    return """\n'
+            '    a multi-line help string\n'
+            '    spanning several lines\n'
+            '    """\n'
+        ),
+    )
+    findings = check_self_preservation(diffs)
+    if _has(findings, "TT14"):
+        return [f"tt14 multiline string return: unexpected TT14 on a legitimate multi-line string: {findings}"]
+    return []
+
+
 def run_infra_probes(tmp) -> list:
     """run_infra_probes runs every TT11-TT14 case against tmp."""
     problems = []
@@ -394,6 +440,7 @@ def run_infra_probes(tmp) -> list:
         _probe_tt13_violation_coverage_floor,
         _probe_tt13_violation_mutation_floor,
         _probe_tt13_clean_mutation_floor_raise,
+        _probe_tt13_violation_commented_out_invocation,
         _probe_tt14_violation_hook_deleted,
         _probe_tt14_clean_hook_comment_added,
         _probe_tt14_hook_invocation_broken,
@@ -403,6 +450,7 @@ def run_infra_probes(tmp) -> list:
         _probe_tt14_id_vanished,
         _probe_tt14_unreachable_code_added,
         _probe_tt14_unreachable_code_removed_clean,
+        _probe_tt14_clean_multiline_string_return,
     ):
         problems.extend(fn(tmp))
     return problems

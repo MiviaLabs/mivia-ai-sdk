@@ -131,7 +131,13 @@ _HUNK_HEADER = re.compile(r"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
 def _parse_hunks(patch_text: str) -> list:
-    """_parse_hunks splits one file's unified-diff body into Hunks."""
+    """_parse_hunks splits one file's unified-diff body into Hunks. A
+    file-level `--- a/path` / `+++ b/path` header line can only appear
+    before the first `@@` hunk marker (unified-diff format never
+    repeats it inside a hunk), and that region is already skipped by
+    `current is None` below: a hunk-body content line that itself
+    happens to start with `--` or `++` must never be mistaken for one
+    and dropped."""
     hunks = []
     current = None
     for line in patch_text.splitlines():
@@ -143,36 +149,35 @@ def _parse_hunks(patch_text: str) -> list:
             continue
         if current is None:
             continue
-        if line.startswith("-") and not line.startswith("---"):
+        if line.startswith("-"):
             current.removed.append(line[1:])
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif line.startswith("+"):
             current.added.append(line[1:])
     if current is not None:
         hunks.append(current)
     return hunks
 
 
-_DIFF_GIT_HEADER = re.compile(r"^diff --git a/(.+) b/(.+)$")
-
-
-def _split_patch_by_file(patch_text: str) -> dict:
-    """_split_patch_by_file groups a multi-file unified diff's body
-    lines under each file's new (or old, for a delete) path."""
-    per_file: dict = {}
-    path = None
+def _split_patch_by_file(patch_text: str) -> list:
+    """_split_patch_by_file splits a multi-file unified diff into one
+    body per file, in file order. Order, not a `diff --git a/PATH
+    b/PATH` header regex, is what pairs a body with its raw-status
+    entry in build_diff: a path containing the literal substring
+    " b/" defeats any header regex, but --raw and this same `git
+    diff` invocation (same args, same pathspec) always enumerate
+    files in the same order."""
+    blocks: list = []
     buf: list = []
     for line in patch_text.splitlines(keepends=True):
         if line.startswith("diff --git "):
-            if path is not None:
-                per_file[path] = "".join(buf)
-            m = _DIFF_GIT_HEADER.match(line.strip())
-            path = m.group(2) if m else None
-            buf = []
+            if buf:
+                blocks.append("".join(buf))
+            buf = [line]
         else:
             buf.append(line)
-    if path is not None:
-        per_file[path] = "".join(buf)
-    return per_file
+    if buf:
+        blocks.append("".join(buf))
+    return blocks
 
 
 def build_diff(root: Path, diff_args: list) -> list:
@@ -184,15 +189,15 @@ def build_diff(root: Path, diff_args: list) -> list:
     raw = _run_git(["diff", "--no-renames", "--raw", "--full-index", *diff_args, "--"], root).stdout
     entries = _parse_raw(raw)
     patch = _run_git(["diff", "--no-renames", "--unified=3", *diff_args, "--"], root).stdout
-    per_file_patch = _split_patch_by_file(patch)
+    patch_blocks = _split_patch_by_file(patch)
 
     diffs = []
-    for old_sha, new_sha, status, raw_path in entries:
+    for (old_sha, new_sha, status, raw_path), block in zip(entries, patch_blocks):
         new_path = raw_path if status != "D" else None
         old_path = raw_path if status != "A" else None
         old_text = _show_blob(root, old_sha)
         new_text = _show_blob(root, new_sha)
-        hunks = _parse_hunks(per_file_patch.get(raw_path, ""))
+        hunks = _parse_hunks(block)
         diffs.append(FileDiff(old_path, new_path, status, old_text, new_text, hunks))
     return diffs
 

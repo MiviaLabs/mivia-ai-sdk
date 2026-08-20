@@ -72,7 +72,11 @@ def _makefile_floor(text: str):
 
 def _recipe_invocations(text: str, target: str) -> set:
     """_recipe_invocations returns the gate invocation lines found in
-    one Makefile target's recipe body (its indented lines)."""
+    one Makefile target's recipe body (its indented lines). A
+    commented-out recipe line (`#` as its first non-blank character)
+    never runs, so it does not count as a live invocation: otherwise
+    prefixing the real line with `#` would disable the gate while
+    leaving the invocation set unchanged."""
     if not text:
         return set()
     lines = text.splitlines()
@@ -85,6 +89,8 @@ def _recipe_invocations(text: str, target: str) -> set:
         if in_target:
             if line and not line[0].isspace():
                 break
+            if line.strip().startswith("#"):
+                continue
             m = _CHECK_INVOCATION_RE.search(line)
             if m:
                 out.add(m.group(0))
@@ -208,13 +214,31 @@ def _bracket_delta(line: str) -> int:
     return delta
 
 
+_TRIPLE_QUOTE = re.compile(r'"""|\'\'\'')
+
+
+def _in_open_triple_quote(lines: list, upto: int) -> bool:
+    """_in_open_triple_quote reports whether line `upto` ends inside an
+    unclosed triple-quoted string, counting `\"\"\"`/`'''` markers from
+    the start of `lines` through `upto`. `_bracket_delta`'s in-string
+    tracking resets every line and never sees a triple-quote body as
+    a continuation of the statement that opened it; without this, a
+    `return \"\"\"` followed by a multi-line string's own content lines
+    reads as dead code after the return, not as the return's value."""
+    count = sum(len(_TRIPLE_QUOTE.findall(lines[i])) for i in range(upto + 1))
+    return count % 2 == 1
+
+
 def _statement_end(lines: list, start: int) -> int:
     """_statement_end returns the index of the last line belonging to
-    the statement beginning at `start`, following open brackets and a
-    trailing backslash continuation across lines."""
+    the statement beginning at `start`, following open brackets, a
+    trailing backslash continuation, and an open triple-quoted string
+    across lines."""
     depth = _bracket_delta(lines[start])
     end = start
-    while (depth > 0 or lines[end].rstrip().endswith("\\")) and end + 1 < len(lines):
+    while (
+        depth > 0 or lines[end].rstrip().endswith("\\") or _in_open_triple_quote(lines, end)
+    ) and end + 1 < len(lines):
         end += 1
         depth += _bracket_delta(lines[end])
     return end

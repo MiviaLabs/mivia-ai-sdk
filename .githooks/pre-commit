@@ -18,4 +18,11 @@ git archive --format=tar "$tree" -o "$tmp/tree.tar"
 mkdir "$tmp/stage"
 tar -xf "$tmp/tree.tar" -C "$tmp/stage"
 
-make -C "$tmp/stage" verify-fast
+# git sets GIT_DIR/GIT_WORK_TREE (and friends) for every hook process,
+# so a plain subprocess git call inside this "isolated" stage still
+# resolves the real repository unless those vars are cleared first.
+# That leak defeats check_test_tampering.py's no-.git skip and lets it
+# run its full, message-blind check against the real diff.
+env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+	-u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_PREFIX \
+	make -C "$tmp/stage" verify-fast

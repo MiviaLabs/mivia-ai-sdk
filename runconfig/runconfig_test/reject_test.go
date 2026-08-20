@@ -195,6 +195,48 @@ func TestLoadRejects(t *testing.T) {
 	}
 }
 
+// whitespaceOnlyToolDoc is a minimal valid document whose single step
+// binds no tool and no internal, so the tools array's own blank check
+// is the only rule that can reject it. This isolates the check from
+// the "undeclared tool" rejection a bound step would otherwise trip.
+const whitespaceOnlyToolDoc = `{
+	"machine": {"initial": "q", "transitions": [
+		{"from": "q", "to": "d", "trigger": "r"}
+	]},
+	"plan": {"steps": [{"id": "s", "to": "d"}]},
+	"tools": [" "]
+}`
+
+// TestLoadRejectsWhitespaceOnlyToolName checks that a whitespace-only
+// tools array entry fails the same way a blank one does. Fails against
+// today's code, which loads the document successfully: no step binds
+// the padded name, so only the blank check can reject it.
+func TestLoadRejectsWhitespaceOnlyToolName(t *testing.T) {
+	_, err := runconfig.Load([]byte(whitespaceOnlyToolDoc))
+	if err == nil {
+		t.Fatal("Load succeeded, want rejection")
+	}
+	if !errors.Is(err, runconfig.ErrBadDocument) {
+		t.Fatalf("err = %v, want ErrBadDocument", err)
+	}
+}
+
+// TestLoadRejectsWhitespaceOnlyToolNameWithStep shows the silent-
+// resolve consequence a whitespace-only tool name causes: a step whose
+// tool field names the same padded string would otherwise resolve with
+// no error anywhere, since the lookup compares the same raw string on
+// both sides.
+func TestLoadRejectsWhitespaceOnlyToolNameWithStep(t *testing.T) {
+	doc := strings.Replace(whitespaceOnlyToolDoc, `"id": "s", "to": "d"`, `"id": "s", "to": "d", "tool": " "`, 1)
+	_, err := runconfig.Load([]byte(doc))
+	if err == nil {
+		t.Fatal("Load succeeded, want rejection")
+	}
+	if !errors.Is(err, runconfig.ErrBadDocument) {
+		t.Fatalf("err = %v, want ErrBadDocument", err)
+	}
+}
+
 // TestLoadAcceptsNegativeBudget checks that Load performs no range
 // check on options.budget: a negative field loads without error, and
 // its rejection surfaces later, from Runner (see runner_test.go's

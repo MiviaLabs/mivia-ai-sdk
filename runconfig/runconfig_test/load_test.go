@@ -32,6 +32,22 @@ func oneStepDoc(tool string) string {
 	}`
 }
 
+// TestLoadAcceptsNormalToolName is the positive control for the
+// whitespace-only tool name rejection: a normal name still loads, and
+// Definition.Tools still names it.
+func TestLoadAcceptsNormalToolName(t *testing.T) {
+	d := loadDoc(t, oneStepDoc("grep"))
+	found := false
+	for _, name := range d.Tools {
+		if name == "grep" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Tools = %v, want it to contain %q", d.Tools, "grep")
+	}
+}
+
 // TestLoadRoundTrip checks that every document section round-trips
 // into the resolved Definition.
 func TestLoadRoundTrip(t *testing.T) {

@@ -53,6 +53,13 @@ type Options struct {
 	// DefaultReplayCapacity. A negative value fails Validate. Ignored
 	// when Ledger is set; the caller-supplied Ledger owns its own
 	// Store's capacity.
+	//
+	// Replay protection is a bounded window, not a permanent
+	// guarantee: a key evicted under this cap is processed again if it
+	// arrives later, and the endpoint answers a fresh ack. The cap
+	// bounds the records that hold no live claim. A record claimed by
+	// an in-flight Handle call is never evicted, so a hard memory
+	// bound needs a request-rate limit in front of the endpoint.
 	ReplayCapacity int
 }
 
@@ -71,6 +78,9 @@ const DefaultReplayLease = 30 * time.Second
 // DefaultReplayCapacity caps the entry count of the ledger New builds
 // internally when Options.Ledger is nil. A caller-supplied Ledger is
 // not bounded by this constant; the caller owns its Store's capacity.
+// The cap makes replay protection a bounded window: an evicted key is
+// processed again if it arrives later. It bounds the records that
+// hold no live claim, not the records that do.
 const DefaultReplayCapacity = 100000
 
 // minReplayLease is a sanity floor, not a latency guess: Validate

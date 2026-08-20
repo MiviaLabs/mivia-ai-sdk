@@ -94,6 +94,22 @@ func TestAuditRecordsOneCompletionAndOneToolCallPerIteration(t *testing.T) {
 	if records[4].Response.Message.Content != "done" {
 		t.Fatalf("records[4].Response = %+v, want the final turn's own response", records[4].Response)
 	}
+
+	// The first completion's Request carries only the caller's
+	// starting message; the third completion's Request carries the
+	// accumulated history, including both tool results, proving
+	// Request is the iteration's own request, not a shared or
+	// zero-value snapshot.
+	if len(records[0].Request.Messages) != 1 || records[0].Request.Messages[0].Content != "hi" {
+		t.Fatalf("records[0].Request.Messages = %+v, want exactly the caller's starting message", records[0].Request.Messages)
+	}
+	lastReq := records[4].Request.Messages
+	if len(lastReq) != 5 {
+		t.Fatalf("records[4].Request.Messages len = %d, want 5 (user, assistant+tool, tool result, assistant+tool, tool result)", len(lastReq))
+	}
+	if lastReq[2].Role != provider.RoleTool || lastReq[2].Content != "r1" {
+		t.Fatalf("records[4].Request.Messages[2] = %+v, want the first tool result r1", lastReq[2])
+	}
 }
 
 // TestAuditToolCallErrCarriesUnrenderedDecodeError proves an

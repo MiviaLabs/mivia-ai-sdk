@@ -155,6 +155,11 @@ const (
 	// call on an iteration ConcludeMargin nudged. Graceful, same
 	// Result-shape rule as StopNoToolCalls.
 	StopConcluded StopReason = "concluded"
+	// StopSteered is Run's stop reason when a Steer.Trigger call requests
+	// a soft-cancel of the in-flight Completer.Chat call. Graceful: nil
+	// error, the same Result-shape rule as every other graceful stop that
+	// happens before a new response arrives.
+	StopSteered StopReason = "steered"
 )
 
 // Options declares the blocks one New call wires into a Loop.
@@ -200,7 +205,10 @@ type Options struct {
 	// Run emits nothing through a nil Bus otherwise. Optional.
 	Bus *events.Bus
 	// Budget caps one Completer call's message history by byte count
-	// and message count. A nil Budget means uncapped.
+	// and message count. A nil Budget means uncapped. When Window is
+	// also set, Budget checks the history after window compaction runs,
+	// so a history Window would compact under Budget never fails here.
+	// When Window is nil, Budget checks history exactly as sent.
 	Budget *contextbudget.Limits
 	// Trim runs before each Completer call on the full message
 	// history. A nil Trim passes the history through unchanged. See
@@ -213,7 +221,9 @@ type Options struct {
 	Audit AuditFunc
 	// Window plans every iteration against a token budget. A nil Window
 	// disables planning; the loop then runs exactly as before. A non-nil
-	// Window requires Summarizer and Calibrated, and excludes Trim.
+	// Window requires Summarizer and Calibrated, and excludes Trim. When
+	// Budget is also set, Window's compaction runs before the Budget
+	// check, so Budget sees the compacted history, not the raw one.
 	Window *contextplan.Window
 	// Summarizer runs the LLM summary every compaction requires.
 	// Required when Window is set.

@@ -363,7 +363,11 @@ flowchart LR
   exactly one retry. A positive `Options.HeartbeatInterval` paired
   with a non-nil `Options.Bus` makes `Run` emit iteration, tool-call,
   and heartbeat `events.Name` progress events; either one alone stays
-  silent. `agentloop` imports `provider`, `tools`,
+  silent. `RunSteerable` adds a caller-triggered soft-cancel of the
+  current iteration's in-flight `Completer.Chat` call, through a
+  `Steer` handle's `Trigger`, ending gracefully at the next iteration
+  boundary with `StopSteered`; `Run` stays `RunSteerable(ctx, msgs,
+  nil)`. `agentloop` imports `provider`, `tools`,
   `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
   `contextplan`, and `contextsummary`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).

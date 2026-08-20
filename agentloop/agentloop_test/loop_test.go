@@ -382,6 +382,34 @@ func TestRunTrimDropsToolReplyPassesValidation(t *testing.T) {
 	}
 }
 
+// TestRunUsageSumsAllFourFieldsAcrossIterations proves Result.Usage
+// sums every provider.Usage field, including CachedTokens, across every
+// completed iteration: a sumUsage that dropped a field would still
+// pass every other test in this package, since none of them assert
+// CachedTokens or a multi-iteration sum for the other three fields.
+func TestRunUsageSumsAllFourFieldsAcrossIterations(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	first := toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})
+	first.Usage = provider.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15, CachedTokens: 3}
+	second := provider.Response{Message: textMessage(provider.RoleAssistant, "final")}
+	second.Usage = provider.Usage{PromptTokens: 20, CompletionTokens: 8, TotalTokens: 28, CachedTokens: 7}
+	completer := &scriptedCompleter{responses: []provider.Response{first, second}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	want := provider.Usage{PromptTokens: 30, CompletionTokens: 13, TotalTokens: 43, CachedTokens: 10}
+	if res.Usage != want {
+		t.Fatalf("Usage = %+v, want %+v: every field must sum across both iterations", res.Usage, want)
+	}
+}
+
 // TestRunCompleterChatErrorFirstIteration proves a Completer.Chat error
 // on the very first call fails the run with the wrapped error and the
 // zero-value Result, since no iteration has completed yet.

@@ -418,6 +418,37 @@ func TestRunPromptTooLongWithoutWindowPropagates(t *testing.T) {
 	}
 }
 
+// TestRunRecoveryWindowValidateFailurePropagatesErrCompactionFailed
+// proves a caller Window whose Budget is small enough that
+// recoveryWindow's clamped TargetTokens lands at or above that same
+// Budget fails validation: a MaxTokens of one clamps the recovery
+// TargetTokens to one, which sits at, not under, a Budget of one.
+// recoverPromptTooLong's own rw.Validate() call catches this before
+// ever calling compactHistory; contextplan.Compact's own internal
+// Validate call is a second, redundant backstop reached only if the
+// first one is ever removed, so this test's ErrCompactionFailed
+// assertion holds either way. The starting message carries empty
+// Content so planHistory's own pre-call estimate (zero) stays under the
+// original window's TriggerPercent-100 trigger (one) and reaches
+// runChat unchanged; only the recovery path's own window computation
+// trips. The run fails with ErrCompactionFailed after the original
+// rejection's one call, with no retry.
+func TestRunRecoveryWindowValidateFailurePropagatesErrCompactionFailed(t *testing.T) {
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: ""}}
+	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
+	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}}, nil)
+	_, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrCompactionFailed) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
+	}
+	if !strings.Contains(err.Error(), "at or above budget") {
+		t.Fatalf("Run() error = %v, want it to carry the recovery window's own Validate reason", err)
+	}
+	if got := f.completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1: no retry once the recovery window itself fails to validate", got)
+	}
+}
+
 func TestRunConcurrentSharedLoopWithPlanning(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}

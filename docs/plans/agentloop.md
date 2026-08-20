@@ -2288,3 +2288,826 @@ budget" section for the full field description and failure mode.
 `api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
 `policy/layers.json` change.
 
+## Addendum: Budget checks the post-compaction history
+
+Status: shipped. This addendum fixes an ordering
+defect in `run.go`'s iteration loop. It changes `run.go` and
+`options.go`. It adds no new file, no new package, and no
+`policy/layers.json` row.
+
+### Addendum goal
+
+Make `Options.Budget` check the history a `Completer.Chat` call will
+actually receive. Today `checkBudget` runs before window compaction,
+so a caller who sets both `Budget` and `Window` can get `ErrOverBudget`
+on a pre-compaction history that `Window` would have compacted well
+under `Budget`. After this addendum, `checkBudget` runs after window
+compaction, on the same history the request carries.
+
+### Addendum bug
+
+`run`'s per-iteration order today is: `ctx.Err`, `MaxIterations`,
+`applyTrim`, `checkBudget`, then, only when `l.window` is non-nil,
+`planHistory`. `checkBudget` sums `history`'s content bytes and
+message count and checks them against `l.budget.Fits`, ahead of any
+compaction. `Options.Validate` does not exclude `Budget` and `Window`
+together, unlike `Trim` and `Window`, which fail `ErrTrimExcluded`
+when combined. A caller who wires both expects `Window` to run first:
+`Budget` bounds raw byte and message-count size, `Window` bounds token
+count through LLM-driven compaction, and compaction predictably
+shrinks both bytes and message count. Checking `Budget` first defeats
+that expectation and fails runs a caller configured `Window` to
+rescue.
+
+### Addendum decision: reorder, do not double-check
+
+Two shapes could fix this. Move `checkBudget` to run after
+`planHistory`, so it checks whatever history the request will carry,
+compacted or not. Or keep the existing pre-compaction check and add a
+second post-compaction check. The second shape adds a call site and a
+comment explaining why two checks exist, for no behavior a single
+post-compaction check does not already give: `contextbudget.Limits`
+has no concept of "pre-compaction" versus "post-compaction" budget, so
+a caller has no way to set different limits for the two checks, and a
+history that would fail before compaction but pass after is exactly
+the case `Window` exists to fix.
+
+A single post-compaction check does drop one thing: an early exit
+before compaction runs, for a pathologically large history that
+`Budget` alone can reject without ever calling the estimator, the
+summarizer, or the compaction sequence. This is not a correctness
+loss. `planHistory`'s own trigger check is cheap, one
+`Calibrated.EstimateTokens` call over the uncompacted history, and
+`Window`'s own `Compact` call fails closed with
+`ErrCompactionFailed`/`contextplan.ErrRetentionOverflow` when even the
+mandatory retention set cannot fit the window. A caller who wants a
+pre-compaction ceiling for cost control, not correctness, can size
+`Budget` for that purpose or add a `Trim` step; `Trim` and `Window`
+stay mutually exclusive, so this addendum does not reopen that
+question.
+
+Move `checkBudget` to run once, after `planHistory`. This is the
+smallest change: a call-site move in `run`, plus doc-comment
+corrections. No new sentinel, no new field, no new exported symbol.
+
+This reorder changes real behavior for one caller shape: a
+`Budget`-and-`Window` caller whose history stays over budget even
+after compaction. Today that caller fails fast with `ErrOverBudget`
+before compaction runs. After this addendum, that caller pays for one
+compaction attempt, including a summarizer call, before the same
+`ErrOverBudget` failure. A caller relying on the pre-compaction fail-
+fast path for cost control sees one extra LLM call before the run
+fails.
+
+### Addendum scope
+
+Inside:
+
+- Reordering `run`'s per-iteration body: `applyTrim`, then, when
+  `l.window` is non-nil, `planHistory`, then `checkBudget`, then
+  `runChat`. When `l.window` is nil, `checkBudget` runs directly after
+  `applyTrim`, exactly where it runs today; a caller who sets `Budget`
+  without `Window` sees no behavior change.
+- Correcting `Options.Budget`'s and `Options.Window`'s doc comments in
+  `options.go` to state the corrected order.
+- Rewriting `TestRunBudgetChecksBeforeWindowCompaction` in
+  `agentloop/agentloop_test/compaction_test.go` to assert the
+  corrected behavior, and adding one sibling test proving `Budget`
+  still trips when the post-compaction history remains over budget.
+
+Outside:
+
+- Any change to `contextbudget.Limits`, `Fits`, or `Validate`. The
+  fix is ordering only; the budget-check math does not change.
+- Any change to `checkCompactedBudget` in `compaction.go`. That
+  function already checks the window's own token budget against the
+  post-compaction history; it is unrelated to `Options.Budget` and
+  `contextbudget.Limits`, and this addendum does not touch it.
+- A second `Budget` check, pre- and post-compaction. Rejected above.
+- Any change to `MaxTotalTokens`, `MaxCallsPerTurn`, or any other
+  `Options` field's check order relative to `checkBudget`.
+
+### Addendum API
+
+No exported symbol changes. `Options.Budget` and `Options.Window` keep
+their field names, types, and positions; only their doc comments
+change text. `ErrOverBudget` keeps its meaning and trigger condition;
+only the history it inspects, when `Window` is set, changes.
+`api/agentloop.txt` locks field signatures, not doc comments (see the
+existing `Budget *contextbudget.Limits` and `Window
+*contextplan.Window` lines), so this addendum needs no
+`api/agentloop.txt` diff and no `make api-update` run.
+
+`Options.Budget`'s doc comment changes from:
+
+```go
+// Budget caps one Completer call's message history by byte count
+// and message count. A nil Budget means uncapped.
+Budget *contextbudget.Limits
+```
+
+to:
+
+```go
+// Budget caps one Completer call's message history by byte count
+// and message count. A nil Budget means uncapped. When Window is
+// also set, Budget checks the history after window compaction runs,
+// so a history Window would compact under Budget never fails here.
+// When Window is nil, Budget checks history exactly as sent.
+Budget *contextbudget.Limits
+```
+
+`Options.Window`'s doc comment changes from:
+
+```go
+// Window plans every iteration against a token budget. A nil Window
+// disables planning; the loop then runs exactly as before. A non-nil
+// Window requires Summarizer and Calibrated, and excludes Trim.
+Window *contextplan.Window
+```
+
+to:
+
+```go
+// Window plans every iteration against a token budget. A nil Window
+// disables planning; the loop then runs exactly as before. A non-nil
+// Window requires Summarizer and Calibrated, and excludes Trim. When
+// Budget is also set, Window's compaction runs before the Budget
+// check, so Budget sees the compacted history, not the raw one.
+Window *contextplan.Window
+```
+
+### Addendum mechanics, exact
+
+In `run.go`'s `run` function, move the `checkBudget` call from
+directly after `applyTrim` to directly after the `l.window != nil`
+block that calls `planHistory`. The moved call keeps its exact
+signature, `l.checkBudget(history, iterations)`, and keeps checking
+whatever `history` currently holds at that point in the loop: the
+trimmed and, when `l.window` is set, compacted history. No change to
+`checkBudget` itself in `compaction.go`'s sibling file or to
+`contextbudget.Limits`. The resulting order in `run`:
+
+1. `ctx.Err()` check.
+2. `MaxIterations` check.
+3. `applyTrim` (when `l.trim` is set).
+4. `planHistory` (when `l.window` is set), which may itself fail with
+   `ErrPlanFailed` or `ErrCompactionFailed` before `checkBudget` ever
+   runs.
+5. `checkBudget` (when `l.budget` is set), against the
+   post-`applyTrim`, post-`planHistory` history.
+6. `runChat`.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/compaction_test.go`:
+
+- Rename `TestRunBudgetChecksBeforeWindowCompaction` to
+  `TestRunBudgetChecksAfterWindowCompaction`. Keep the doc comment
+  above it, rewritten to describe the corrected assertion.
+  `newPlanningFixture` takes no `Budget` parameter (see
+  `compaction_test.go:76-98`). This test builds `agentloop.Options`
+  directly instead, the way the original test did
+  (`compaction_test.go:372-380`), wiring `Window`, `Summarizer`, and
+  `Calibrated` by hand alongside `Budget`. The test scripts one
+  completer response, `{Message: provider.Message{Role:
+  provider.RoleAssistant, Content: "done"}}`. That response lets the
+  run reach `StopNoToolCalls` right after the compacted, under-budget
+  history reaches the completer. Fixture:
+  `msgs` is four messages, in order: `{RoleSystem, "s"}`,
+  `{RoleUser, strings.Repeat("o", 5000)}`, `{RoleAssistant, "a"}`,
+  `{RoleUser, "l"}`. `w := contextplan.Window{MaxTokens: 400,
+  Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens:
+  20}}`, matching `TestRunOverTriggerCompactsThroughSummarizer`'s
+  proven shape so the same mandatory-retention and drop pattern
+  applies: the trigger trips, `Compact` drops only the 5000-byte user
+  message, keeps `system`, `assistant`, and the trailing `user`, and
+  the summarizer injects one `SummaryMessageName` message after the
+  system message. `Options.Budget = &contextbudget.Limits{MaxBytes:
+  200}` (`MaxEvents` left zero, uncapped: message count does not
+  change across compaction in this fixture, so only `MaxBytes`
+  isolates the pre/post difference). Pre-compaction content bytes sum
+  to 5003, over the 200-byte cap; post-compaction content bytes sum to
+  the fixed-size JSON summary reply (see `summaryReplyJSON`, 97 bytes)
+  plus the three one-byte messages, 100 bytes, under the cap. Assert:
+  `loop.Run` returns a nil error. `res.Stop ==
+  agentloop.StopNoToolCalls`. `completer.callCount() == 1`. The
+  summarizer's `stats()` call count is 1. The request the completer
+  received (`f.completer`'s recorded request) does not contain the
+  5000-byte message's content.
+- Add `TestRunBudgetTripsAfterCompactionStillOverBudget`. Same `msgs`
+  and `w` as the renamed test above, so the same compaction pattern
+  applies and the summarizer runs once. `Options.Budget =
+  &contextbudget.Limits{MaxBytes: 50}`: smaller than the 100-byte
+  post-compaction size, so the post-compaction history still exceeds
+  it. Assert: `errors.Is(err, agentloop.ErrOverBudget)`.
+  `completer.callCount() == 0`: the budget check must trip after
+  compaction runs but before any `Completer.Chat` call. The
+  summarizer's `stats()` call count is 1: proving compaction ran, and
+  the trip happens on the compacted history, not a bypass of
+  compaction. `isZeroResult(res)` is true, matching `hardFail`'s
+  zero-iterations rule.
+- No other existing test in this file changes. `TestRunUnderTriggerNoCompaction`,
+  `TestRunAtExactTriggerCompacts`,
+  `TestRunOverTriggerCompactsThroughSummarizer`,
+  `TestRunAtTriggerNothingDroppableSkipsSummarizer`,
+  `TestRunSummarizerFailureFailsBeforeRequest`, and
+  `TestRunRetentionOverflowFailsBeforeRequest` set no `Budget`, so
+  reordering `checkBudget` changes nothing they assert.
+- `TestRunBudgetExceededLaterIteration` in
+  `agentloop/agentloop_test/loop_bounds_test.go` sets `Budget` without
+  `Window`. The reorder is a no-op on that path: `checkBudget` still
+  runs directly after `applyTrim`, since the `l.window != nil` block
+  it now follows never executes. That test needs no change and must
+  keep passing unmodified, pinning that a `Budget`-only caller sees no
+  behavior change.
+
+### Addendum verification
+
+`make verify` passes. `go test -race ./agentloop/...` passes,
+including the rewritten and the added compaction test. No `api/`
+diff: `api/agentloop.txt` locks field signatures, not doc-comment
+text, and this addendum changes no signature. No `policy/layers.json`
+change: this addendum reorders two existing calls in `run.go` and
+adds no import. The coverage floor stays at 85 percent for `agentloop`
+and the module total.
+
+## Addendum: steering and interruption
+
+Status: shipped. This addendum
+ports phase 78,
+`docs/plans/agents/phase78_steering_and_interruption.md`, into this
+file. It adds one new file, `agentloop/steer.go`, and changes
+`run.go` and `options.go`. It adds no new package and no
+`policy/layers.json` row.
+
+### Addendum goal
+
+Let a caller stop the current iteration's in-flight `Completer.Chat`
+call without a hard `ctx` cancellation. A hard `ctx` cancellation ends
+`Run` at its hard-fail path: `Final` and `Stop` stay the zero value. A
+steer request ends the run at the next iteration boundary instead,
+with `Stop == StopSteered`, and it leaves every already-appended
+history entry untouched, including a completed tool call's `RoleTool`
+message.
+
+### Addendum scope
+
+Inside:
+
+- One new type, `Steer`, a caller-held handle that requests a
+  soft-cancel of the in-flight `Completer.Chat` call for one
+  `RunSteerable` call.
+- One new method, `RunSteerable`, alongside `Run`. `Run`'s signature
+  and behavior do not change: `Run` becomes a one-line call to
+  `RunSteerable` with a nil `steer`, so `Run(ctx, msgs)` stays
+  identical to `RunSteerable(ctx, msgs, nil)`.
+- One new `StopReason`, `StopSteered`.
+- Threading a `steer *Steer` parameter through `run` (the unexported
+  loop body) and `runChat` (the unexported per-iteration `Completer`
+  call), so the soft-cancel scopes to one iteration's
+  `l.completer.Chat` call.
+- Extracting the new steer-versus-hard-fail classification into its
+  own unexported helper, `isSteerStop`, and extracting enough of
+  `run`'s existing body into a second unexported helper so `run`
+  itself stays at or under the 80-line structure-gate ceiling. See
+  Addendum mechanics.
+
+Outside:
+
+- Interrupting a running tool call. `runToolCalls` runs calls
+  sequentially, strictly after `runChat` returns; no tool call is ever
+  in flight when a steer request can bind a cancel func. A future
+  concurrent-tool-call design needs its own review of what
+  "interrupt a tool call" means.
+- Any change to `provider.Completer`. `RunSteerable` relies only on
+  the existing convention that a `Completer.Chat` implementation
+  observes the `context.Context` it receives, the same reliance `Run`
+  already has for `ctx.Err()` to surface mid-call on a hard
+  cancellation.
+- Any change to `Options` or `New`. `Steer` is a per-`RunSteerable`-call
+  value, not a per-`Loop` value: a `Loop` already supports concurrent
+  `Run` calls, and an `Options.Steer` field would let one caller's
+  steer request stop another caller's unrelated call sharing the same
+  `Loop`.
+- A steer request during the prompt-too-long recovery retry.
+  `recoverPromptTooLong` issues its own second `Completer.Chat` call
+  on the plain outer `ctx`, not on a steer-derived context. A
+  `Trigger` call fired while that retry is in flight has no effect
+  until the next iteration boundary. This matches the already-adopted
+  mid-tool-batch rule: a `Trigger` call has no effect on work already
+  dispatched: it only binds at the start of the next
+  `l.completer.Chat` call. `compaction.go` needs no change; this
+  addendum only documents the limitation.
+- A runtime guard against sharing one `Steer` value across two
+  concurrent `RunSteerable` calls. The doc comment forbids it and a
+  test documents the forbidden case; see Addendum API and Addendum
+  tests. No mutex-based cross-call guard ships in this addendum.
+
+### Addendum mechanics
+
+`runChat(ctx, history, iterations)` gains a `steer *Steer` parameter.
+When `steer` is nil, `runChat` is unchanged: it calls
+`l.completer.Chat(ctx, req)` on the tracer-annotated `ctx` exactly as
+today. When `steer` is non-nil, `runChat` derives a per-call context,
+`chatCtx, cancel := context.WithCancel(ctx)`, arms `steer` with
+`cancel`, calls `l.completer.Chat(chatCtx, req)`, then disarms
+`steer` and calls `cancel()` before returning, so no derived context
+leaks past its `Completer.Chat` call. `chatAttempt.iterCtx` keeps
+carrying the tracer-annotated `ctx`, not `chatCtx`: a later tool call
+in this turn must not run under a context a completed
+`Completer.Chat` call already canceled. `recoverPromptTooLong`'s own
+retry call keeps using the plain `ctx` it already receives; `runChat`
+passes no `chatCtx` into it. That retry call is unreachable by a
+steer request, matching the Addendum scope's documented limitation.
+
+`Steer` tracks one boolean, `triggered`, and one `context.CancelFunc`,
+`cancel`, under a `sync.Mutex`. `Trigger` sets `triggered` true and
+calls `cancel` when non-nil; both effects are idempotent, so a second
+`Trigger` call, or a `Trigger` call with no bound `cancel`, changes
+nothing further. `runChat`'s arm step stores the derived `cancel` and
+returns whether `triggered` was already true; when it was, `runChat`
+calls the just-stored `cancel` immediately, before
+`l.completer.Chat` runs, so a steer request fired during the previous
+iteration's tool-call batch takes effect at the very start of the
+next iteration's `Completer.Chat` call, not only during it. `runChat`'s
+disarm step clears `cancel` back to nil; it never clears `triggered`.
+
+`Steer` also exposes an unexported accessor, `wasTriggered() bool`,
+that reads `triggered` under the same `sync.Mutex` `Trigger` uses.
+`isSteerStop` is the only caller. This accessor is what lets
+classification tell a genuine steer-triggered cancellation apart from
+a `Completer` that independently returns or wraps `context.Canceled`
+for its own reason while a `Steer` happens to be present but was
+never triggered.
+
+`RunSteerable` resets `steer` at the call's own start, before the loop
+begins: `triggered` false, `cancel` nil. This reset is what makes a
+`Trigger` call before `RunSteerable` starts, or one left over from a
+prior `RunSteerable` call on a reused `Steer`, a no-op: the run begins
+as if `Trigger` had never fired. `RunSteerable` does not reset `steer`
+again at return; a `Trigger` call after `RunSteerable` has already
+returned has nothing left to cancel, since no iteration is in flight
+and no future call will observe today's `triggered` value without
+first going through the same start-of-call reset.
+
+`isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool) bool`
+is the unexported helper `run` calls to classify a `runChat` error.
+It returns true only when all four conditions hold together:
+`steer` is non-nil; `steer.wasTriggered()` is true; `fromRecovery` is
+false; and `errors.Is(err, context.Canceled)` holds while `ctx.Err()`
+is still nil. The `wasTriggered` condition is what closes the finding
+this addendum's plan review raised: without it, any `Completer` that
+independently wraps `context.Canceled` while a non-triggered `Steer`
+happens to be present would be misclassified as a steer stop instead
+of a hard failure. The `ctx.Err() == nil` condition is what
+distinguishes a steer-triggered cancellation of the derived `chatCtx`
+from a caller's direct `ctx` cancellation, which also propagates into
+`chatCtx` since `context.WithCancel`'s child observes its parent's
+cancellation. A direct `ctx` cancellation always leaves `ctx.Err()`
+non-nil, so it keeps falling through to the existing hard-fail path,
+unchanged. On a classified steer stop, `run` returns
+`Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopSteered}, nil`
+— the same partial-state shape every other graceful stop before a new
+response arrives already uses, matching `StopHookVeto`.
+
+`run`'s loop body is already at the 80-line structure-gate ceiling
+before this addendum (`agentloop/run.go`, the `run` function). Calling
+`isSteerStop` from `run` adds a branch `run` has no line budget left
+for. The implementation must also extract a second unexported helper
+from `run`'s existing body to make room, sized so both `run` and the
+new helper stay at or under 80 lines each. The natural candidate is
+the tool-call dispatch and veto-check block at the end of the loop
+(the `runToolCalls` call, its `veto` check, and the `StopHookVeto`
+return), moved into an unexported helper such as
+`runToolPhase(ctx, history, resp, iterations, totalUsage) (Result, bool, error)`,
+where the returned `bool` reports whether the loop should return the
+`Result` as-is or continue. The builder chooses the exact extraction
+boundary; the requirement is `run` at or under 80 lines after adding
+the `isSteerStop` branch, verified by
+`python3 scripts/check_structure.py`.
+
+### Addendum API
+
+```go
+// Steer is a caller-held handle that requests a soft-cancel of one
+// RunSteerable call's in-flight Completer.Chat call. Trigger is safe
+// to call from another goroutine, any number of times, before,
+// during, or after the RunSteerable call it is passed to. A Steer
+// triggered before RunSteerable starts, or after it already returned,
+// is a no-op: RunSteerable resets Steer's internal state at the start
+// of its own call. One Steer value must not be passed to two
+// concurrent RunSteerable calls: both calls would arm and disarm the
+// same triggered flag and cancel func, and one caller's Trigger could
+// stop the other caller's unrelated run.
+type Steer struct {
+    // unexported: a sync.Mutex, a triggered bool, and a bound
+    // context.CancelFunc.
+}
+
+// NewSteer returns a ready Steer, unbound to any RunSteerable call
+// until passed to one.
+func NewSteer() *Steer
+
+// Trigger requests the soft-cancel this Steer is bound to for its
+// current RunSteerable call, if any. Trigger fired mid-tool-call-batch
+// has no effect on the calls already dispatched in that batch; it
+// takes effect at the start of the next iteration's Completer.Chat
+// call instead. A Trigger call fired during a prompt-too-long recovery
+// retry has no effect until the following iteration boundary, for the
+// same reason. Calling Trigger more than once, or with no
+// RunSteerable call in progress, has no additional effect.
+func (s *Steer) Trigger()
+
+// RunSteerable is Run with one addition: a non-nil steer lets the
+// caller request a soft-cancel of the current iteration's in-flight
+// Completer.Chat call from another goroutine, through steer.Trigger.
+// ctx cancellation still ends the run as a hard failure, unchanged
+// from Run. A triggered steer ends the run gracefully instead, at the
+// next iteration boundary, with Stop == StopSteered and Final holding
+// the zero value: the run stops before a new response arrives, the
+// same rule every other pre-response graceful stop already follows
+// (see Result-shape rule above). This is a deliberate correction of
+// the origin brief, docs/plans/agents/phase78_steering_and_interruption.md,
+// which stated Final would carry the last message appended before the
+// steer fired; that statement conflicted with the base Result-shape
+// rule and this addendum overrides it. History, Iterations, and Usage
+// carry every already-completed iteration's state. Run(ctx, msgs) is
+// equivalent to RunSteerable(ctx, msgs, nil).
+func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
+```
+
+New `StopReason` constant, in `options.go`'s existing `StopReason`
+block:
+
+```go
+// StopSteered is Run's stop reason when a Steer.Trigger call requests
+// a soft-cancel of the in-flight Completer.Chat call. Graceful: nil
+// error, the same Result-shape rule as every other graceful stop that
+// happens before a new response arrives.
+const StopSteered StopReason = "steered"
+```
+
+Changed in `agentloop`:
+
+- `Run`'s body becomes `return l.RunSteerable(ctx, msgs, nil)`. Its
+  doc comment gains one sentence pointing to `RunSteerable` for a
+  graceful, in-flight stop. Its exported signature does not change.
+- `run` (unexported) gains a `steer *Steer` parameter, threaded
+  through from `RunSteerable`. `Run` passes `nil`. `run` calls the new
+  `isSteerStop` helper and the extracted tool-phase helper named in
+  Addendum mechanics, to stay at or under 80 lines.
+- `runChat` (unexported) gains a `steer *Steer` parameter, per the
+  Addendum mechanics section above.
+- `Result.Final`'s doc comment in `agentloop/loop.go` gains
+  `StopSteered` to its list of stop reasons that leave `Final` at the
+  zero value, alongside `StopHookVeto` and `StopMaxIterations`.
+
+`Steer`, `NewSteer`, `(*Steer).Trigger`, `RunSteerable`, and
+`StopSteered` land in `api/agentloop.txt` via `make api-update`, in
+the same change as the code. The `run`, `runChat`, `isSteerStop`, and
+the extracted tool-phase helper are unexported and touch no lock file.
+
+### Addendum tests
+
+`Steer` lives in a new sibling file, `agentloop/steer.go`, because it
+is a caller-facing type with its own invariants, not loop-body logic;
+keeping it out of `run.go` keeps that file's growth in check under the
+500-line structure gate. `RunSteerable` lives in `run.go`, next to
+`Run`, since the two share one loop body and one doc-comment
+cross-reference. `isSteerStop` also lives in `run.go`, next to `run`,
+since it is loop-body classification logic with no caller-facing
+role.
+
+Tests live in a new file, `agentloop/agentloop_test/steer_test.go`,
+because they exercise a new type and a new entry point, not an
+existing suite's concern. A test-review and logic-review pass after
+the initial build split the suite across three files, once
+`steer_test.go` and its fixtures pushed past the 500-line structure
+gate: `steer_test.go` keeps the core cases below; the shared scripted
+`Completer`s, tools, and the `newSteerLoop` helper moved to
+`agentloop/agentloop_test/steer_fixtures_test.go`; the two
+prompt-too-long recovery-boundary cases moved to
+`agentloop/agentloop_test/steer_recovery_test.go`. That pass also
+added two cases beyond the list below:
+`TestSteerTriggeredButErrNotCanceled`, in `steer_test.go`, proves
+`isSteerStop` still hard-fails a triggered `Steer` whose `Completer`
+error does not wrap `context.Canceled`; and
+`TestSteerTriggeredDuringFailingRecoveryRetry`, in
+`steer_recovery_test.go`, proves the `fromRecovery` guard stops a
+triggered `Steer` from masking a failing prompt-too-long recovery
+retry as `StopSteered`.
+
+- `TestSteerTriggerMidCompleter`: a scripted `Completer` whose `Chat`
+  blocks on its own `ctx.Done()` before returning. A second goroutine
+  calls `steer.Trigger()` shortly after `RunSteerable` starts.
+  `RunSteerable` returns with `Stop == StopSteered`, a nil error, and
+  a zero-value `Final`.
+- `TestSteerTriggerAfterPriorIteration`: the same setup, but the
+  scripted `Completer` returns a normal tool-call response on its
+  first call and blocks on its second. `Trigger` fires mid-second-call.
+  `Result.History`, `Iterations`, and `Usage` carry the first
+  iteration's state; `Final` stays the zero value.
+- `TestSteerNeverTriggered`: a `Steer` passed to `RunSteerable` but
+  never triggered runs to its normal `StopNoToolCalls` stop, identical
+  to a plain `Run` call over the same scripted `Completer`.
+- `TestSteerCtxCanceledDirectly`: `ctx` canceled directly, with a
+  `Steer` present but never triggered, still hard-fails with the zero
+  `Final` and `Stop`, exactly like `Run`, proving `RunSteerable` does
+  not change hard-cancellation behavior.
+- `TestSteerNotTriggeredSpontaneousCancel`: a scripted `Completer`
+  whose `Chat` returns an error wrapping `context.Canceled` on its
+  own, for a reason unrelated to steering. `steer` is present, bound
+  to the call, but `Trigger` is never called, and the outer `ctx` is
+  never canceled. `RunSteerable` returns a non-nil error and
+  `Stop != StopSteered`, proving `isSteerStop` does not misclassify a
+  `Completer`'s own `context.Canceled` error as a steer stop just
+  because a `Steer` was passed in.
+- `TestSteerTriggerTwiceAndBeforeStart`: `Trigger` called twice in a
+  row does not panic and has the same single effect as one call.
+  `Trigger` called on a fresh `Steer`, before it is ever passed to
+  `RunSteerable`, then passed to a `RunSteerable` call that never
+  triggers it again, runs to its normal stop, proving the pre-start
+  trigger was a no-op.
+- `TestSteerTriggerConcurrent`: `N` goroutines call `Trigger`
+  concurrently on one `Steer` bound to one in-flight `RunSteerable`
+  call, under `go test -race`. No panic, no race, and `RunSteerable`
+  still returns `Stop == StopSteered` exactly once.
+- `TestSteerTriggerMidToolBatch`: a scripted multi-call tool batch
+  (three tool calls in one turn), with `steer.Trigger()` called while
+  the second call is executing. The third call still runs and its
+  `RoleTool` message still reaches `History`. The following iteration's
+  `Completer.Chat` call is steered immediately: `RunSteerable` returns
+  `Stop == StopSteered` without waiting on that call to block, proving
+  the "triggered before bind" carry-over inside one `RunSteerable`
+  call works.
+- `TestSteerTriggerMidPromptTooLongRecovery`: a scripted `Completer`
+  that rejects the first call with `provider.ErrPromptTooLong` and
+  blocks on the recovery retry's call. `steer.Trigger()` fires while
+  the retry is blocked. The retry still completes and its response
+  still reaches `History`; the following iteration is where the steer
+  takes effect, proving `Trigger` fired during a prompt-too-long retry
+  has no effect until the next iteration boundary, per the documented
+  limitation.
+- `TestSteerSharedAcrossConcurrentRuns` (documentation test, not a
+  guard test): one `Steer` passed to two concurrent `RunSteerable`
+  calls on the same `*Loop`, over scripted `Completer`s that both
+  block. Triggering the shared `Steer` stops one or both runs, and the
+  outcome is deliberately unspecified beyond "no panic, no race under
+  `go test -race`". The test's comment records that sharing one
+  `Steer` across concurrent `RunSteerable` calls is forbidden by the
+  `Steer` doc comment, and this test exists to pin the forbidden
+  behavior, not to certify it as supported.
+
+### Addendum verification
+
+`make verify` passes, including the API gate against the regenerated
+`api/agentloop.txt` and the structure gate against `run.go`'s new
+helpers. `go test -race ./agentloop/...` passes, including the
+concurrent-`Trigger` case and the shared-`Steer` documentation case.
+No `policy/layers.json` change: this addendum needs only `context`,
+already imported elsewhere in `agentloop`, and `sync`, which is new to
+`agentloop` but is a standard-library import, so it needs no
+`policy/layers.json` row; that file governs imports between packages
+of this module, not standard-library imports. The coverage floor
+stays at 85 percent for `agentloop` and the module total. `make
+api-update` runs, and the `api/agentloop.txt` diff lands in the same
+change as the code.
+
+## Addendum: planHistory failure routes through hardFail
+
+Status: shipped. This addendum fixes a Result-shape defect in
+`run.go`. It changes `run.go` and two test files. It adds no new
+file, no new package, and no `policy/layers.json` row.
+
+### Addendum goal
+
+Make the `planHistory` failure return in `run` follow the
+Result-shape rule the base plan and the window-compaction addendum
+both already state: at `iterations == 0`, a hard-fail return carries
+the zero-value `Result`, with no special case.
+
+### Addendum bug
+
+`run`'s `l.window != nil` block, at `run.go:76-82`, calls
+`l.planHistory` and, on error, returns:
+
+```go
+return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+```
+
+Every other hard-fail return in `run` and `runToolStage` calls
+`l.hardFail(history, iterations, totalUsage)` instead of building this
+literal by hand. `hardFail`, at `run.go:252-257`, degrades to
+`Result{}` when `iterations == 0`, matching its own doc comment: "when
+none has [completed], no partial state exists yet, and the rule
+degrades to the zero-value `Result` on its own, with no special case."
+The plan's base Result-shape paragraph states the same rule at
+`docs/plans/agentloop.md:145-149`, and the window-compaction addendum
+folds `ErrPlanFailed` and `ErrCompactionFailed` failures into the same
+closed hard-fail list at `docs/plans/agentloop.md:1512-1516`, "per the
+existing Result-shape rule."
+
+The bespoke literal at `run.go:79` does not call `hardFail`, so at
+`iterations == 0` it returns `Result{History: history}` — `History`
+set to the pre-compaction input messages, a non-nil slice, not the
+documented zero value. `Iterations` and `Usage` already read zero at
+`iterations == 0` regardless, since neither field has accumulated
+anything yet; only `History` diverges from `hardFail`'s output. At
+`iterations >= 1`, the literal and `l.hardFail(history, iterations,
+totalUsage)` build the identical `Result`, so the bug is confined to
+the `iterations == 0` case.
+
+### Addendum scope
+
+Inside:
+
+- Replacing the inline `Result{...}` literal at `run.go`'s
+  `planHistory` failure return with `l.hardFail(history, iterations,
+  totalUsage)`, keeping the same `err` as the second return value.
+- Correcting `TestRunSummarizerFailureFailsBeforeRequest` in
+  `agentloop/agentloop_test/compaction_test.go` to assert the
+  zero-value `Result`, replacing its current wrong assertion.
+- Strengthening `TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed`
+  in `agentloop/agentloop_test/compaction_estimator_test.go` to capture
+  and assert the returned `Result`, instead of discarding it.
+- Adding `TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`
+  to `agentloop/agentloop_test/compaction_reentry_test.go`, proving the
+  other side of the boundary: a `planHistory` failure after at least
+  one completed iteration still carries the partial `History`,
+  `Iterations`, and `Usage`, unaffected by this fix.
+
+Outside:
+
+- Any change to `hardFail` itself. Its behavior is already correct and
+  already documented; this addendum only routes one more call site
+  through it.
+- Any change to `ErrPlanFailed`, `ErrCompactionFailed`, or any other
+  sentinel, wrapping, or error message.
+- Any change to the runToolStage, runChat, or recovery hard-fail
+  paths. Every other hard-fail return in `run.go` already calls
+  `hardFail`; only the `planHistory` site was bespoke.
+- `TestRunRetentionOverflowFailsBeforeRequest`
+  (`compaction_test.go:451-468`) discards its `Result` with `_, err :=
+  loop.Run(...)` and is unaffected either way. This addendum does not
+  touch it; strengthening it is not required to close this gap, since
+  the two tests this addendum does change already cover both the
+  `ErrPlanFailed` and the `ErrCompactionFailed` hard-fail causes at
+  `iterations == 0`.
+
+### Addendum API
+
+No exported symbol changes. `hardFail` is unexported and already
+exists; `Result`'s fields and `Run`'s signature do not change. No
+`api/agentloop.txt` diff and no `make api-update` run.
+
+### Addendum mechanics, exact
+
+In `run.go`, inside the `if l.window != nil { ... }` block, change:
+
+```go
+planned, err := l.planHistory(ctx, history, iterations)
+if err != nil {
+	return Result{History: history, Iterations: iterations, Usage: totalUsage}, err
+}
+```
+
+to:
+
+```go
+planned, err := l.planHistory(ctx, history, iterations)
+if err != nil {
+	return l.hardFail(history, iterations, totalUsage), err
+}
+```
+
+One line changes. No other line in `run.go` changes.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/compaction_test.go`:
+
+- `TestRunSummarizerFailureFailsBeforeRequest` (currently at
+  `compaction_test.go:324-346`) keeps its `msgs`, `w`, fixture setup,
+  and its `ErrCompactionFailed`/`contextsummary.ErrCallFailed`/
+  `completer.callCount() == 0` assertions unchanged. Replace only its
+  final assertion:
+
+  ```go
+  if len(res.History) != len(msgs) {
+  	t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+  }
+  ```
+
+  with:
+
+  ```go
+  if !isZeroResult(res) {
+  	t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the summarizer failed", res)
+  }
+  ```
+
+  matching the pattern already proven at
+  `compaction_test.go:446-448`'s `TestRunBudgetTripsAfterCompactionStillOverBudget`.
+
+In `agentloop/agentloop_test/compaction_estimator_test.go`:
+
+- `TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed` (currently
+  at `compaction_estimator_test.go:64-95`) keeps its fixture unchanged.
+  Change its `Run` call from:
+
+  ```go
+  _, err = loop.Run(context.Background(), msgs)
+  ```
+
+  to:
+
+  ```go
+  res, err := loop.Run(context.Background(), msgs)
+  ```
+
+  and add, alongside the existing `ErrPlanFailed`/`estErr`/
+  `callCount() == 0` assertions:
+
+  ```go
+  if !isZeroResult(res) {
+  	t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the estimate failed", res)
+  }
+  ```
+
+In `agentloop/agentloop_test/compaction_reentry_test.go`, add
+`TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`. This
+test proves a `planHistory` failure on the second iteration, after the
+first iteration's compaction and `Completer.Chat` call already
+completed, carries the first iteration's partial state instead of the
+zero value. Fixture, built on
+`TestRunBudgetWindowSecondCompactionAcrossIterations`'s proven
+two-compaction shape (`compaction_reentry_test.go:173-225`), with the
+second compaction's summarizer call failing instead of succeeding:
+
+- `msgs`: the same four messages as
+  `TestRunBudgetWindowSecondCompactionAcrossIterations`: `{RoleSystem,
+  "s"}`, `{RoleUser, strings.Repeat("o", 80)}`, `{RoleAssistant, "a"}`,
+  `{RoleUser, "l"}`.
+- `w := contextplan.Window{MaxTokens: 500, Compaction:
+  contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}`, the
+  same window: `TriggerPercent: 1` trips compaction on every
+  iteration, proven to trigger twice across two iterations in the
+  sibling test.
+- A tool registry with one `schemaEchoTool{name: "search", schema:
+  []byte(`{"type":"object"}`), result: strings.Repeat("z", 80)}`, the
+  same tool that grows the history enough to trip the second
+  iteration's compaction in the sibling test.
+- A new unexported type, `summaryFailsOnSecondCall`, in this file,
+  modeled on `cancelDuringChat`'s shape (`compaction_reentry_test.go:151-162`):
+  a `contextsummary`-compatible `Completer` (`Name`, `Chat`,
+  `ChatStream`) with a mutex-guarded call counter. Its first `Chat`
+  call returns `provider.Response{Message: provider.Message{Role:
+  provider.RoleAssistant, Content: summaryReplyJSON}}` and a nil
+  error, the same success shape as `summaryScript`. Its second and
+  every later `Chat` call returns `provider.Response{}` and a fixed
+  sentinel error, `errors.New("summary boom second")`. `ChatStream`
+  returns an error, unsupported, the same as `summaryScript`.
+- `completer := &scriptedCompleter{responses: []provider.Response{
+  toolCallResponse(provider.ToolCall{ID: "c1", Name: "search",
+  Arguments: []byte("{}")}) with Usage: provider.Usage{TotalTokens:
+  30} set on that response's `Message`-carrying struct}}`. Exactly one
+  scripted response: the run must hard-fail on iteration two, before
+  a second `Completer.Chat` call, so a second scripted response is
+  never consumed.
+- `agentloop.Options{Completer: completer, Tools: reg, MaxIterations:
+  4, Window: &w, Summarizer: <NewSummarizer over
+  summaryFailsOnSecondCall>, Calibrated: contextplan.Calibrate(scaleEstimator{div:
+  1}, 1.0)}`. No `Budget`: irrelevant to this test's boundary.
+- Call `loop.Run(context.Background(), msgs)`.
+- Assert `errors.Is(err, agentloop.ErrCompactionFailed)`.
+- Assert `errors.Is(err, contextsummary.ErrCallFailed)`.
+- Assert `completer.callCount() == 1`: the first iteration's
+  `Completer.Chat` call ran; the second iteration hard-fails inside
+  `planHistory`, before any second `Completer.Chat` call.
+- Assert `res.Iterations == 1`: exactly one iteration completed before
+  the failure.
+- Assert `res.Usage == provider.Usage{TotalTokens: 30}`: the first
+  iteration's usage carries forward, unchanged by the failed second
+  iteration.
+- Assert `res.Final == provider.Message{}` and `res.Stop ==
+  agentloop.StopReason("")`: the run did not reach a stop condition;
+  it failed one, per the Result-shape rule's hard-fail case.
+- Assert `len(res.History) > 0` and `summaryNamed(res.History) == 1`:
+  the first iteration's compaction result, including its injected
+  summary message, survives into the failure `Result`, proving
+  `History` carries the accumulated partial state rather than the
+  zero value `hardFail` would return at `iterations == 0`.
+
+### Addendum verification
+
+`make verify` passes. `go test -race ./agentloop/...` passes,
+including the corrected `TestRunSummarizerFailureFailsBeforeRequest`,
+the strengthened
+`TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed`, and the new
+`TestRunPlanHistoryFailureLaterIterationPreservesPartialResult`. No
+`api/agentloop.txt` diff: no exported symbol changes. No
+`policy/layers.json` change: the fix reuses an existing unexported
+helper and adds no import. The coverage floor stays at 85 percent for
+`agentloop` and the module total.
+

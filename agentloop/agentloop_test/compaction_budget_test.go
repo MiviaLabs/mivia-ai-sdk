@@ -70,7 +70,11 @@ func (e failOnSummaryEstimator) EstimateTokens(req provider.Request) (int, error
 // TestRunPlanEstimateFailureFailsBeforeRequest proves an EstimateTokens
 // failure on planHistory's own pre-trigger estimate, before any
 // compaction runs, fails the iteration with ErrPlanFailed and the
-// wrapped estimator error, and never reaches the Completer.
+// wrapped estimator error, and never reaches the Completer. The
+// failure lands on Run's first iteration, so hardFail's iterations
+// == 0 rule degrades Result to its zero value; see
+// TestRunPlanHistoryFailureLaterIterationPreservesPartialResult for
+// the case where a completed prior iteration's state survives.
 func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
 	sum, err := contextsummary.NewSummarizer(&summaryScript{})
 	if err != nil {
@@ -101,8 +105,8 @@ func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
 	if completer.callCount() != 0 {
 		t.Fatalf("completer calls = %d, want 0: a planning estimate failure must never reach the Completer", completer.callCount())
 	}
-	if len(res.History) != 1 || res.History[0].Content != "hi" {
-		t.Fatalf("Result.History = %+v, want the pre-planning history unchanged", res.History)
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the estimate failed", res)
 	}
 }
 

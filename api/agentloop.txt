@@ -18,11 +18,15 @@ package agentloop
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
+  const StopSteered = "steered"
   const ToolErrorPrefix = "[tool-error] "
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
+  func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
   func (o Options) Validate() (error)
+  func (s *Steer) Trigger()
   func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)
   func New(opts Options) (*Loop, error)
+  func NewSteer() (*Steer)
   type AuditFunc func(ctx context.Context, rec AuditRecord) error
   type AuditKind string
   type AuditRecord struct {
@@ -69,6 +73,8 @@ package agentloop
   Iterations int
   Usage provider.Usage
   Stop StopReason
+}
+  type Steer struct {
 }
   type StopReason string
   var ErrArgumentValidation

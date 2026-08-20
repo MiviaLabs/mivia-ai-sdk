@@ -1,6 +1,10 @@
 # Phase 78: steering and interruption
 
-Status: plan, not scheduled.
+Status: shipped. The canonical contract for the shipped code is
+docs/plans/agentloop.md's "Addendum: steering and interruption",
+which ported and revised this brief after a hostile plan review. This
+file stays as the origin brief the addendum's API section corrects
+against.
 
 ## Why this plan exists
 
@@ -80,9 +84,11 @@ func (s *Steer) Trigger()
 // Completer call from another goroutine. ctx cancellation still ends
 // the run as a hard failure, unchanged from Run. A triggered steer
 // ends the run gracefully instead, at the next iteration boundary,
-// with Stop == StopSteered and Final holding the last message
-// appended before the steer fired. Run(ctx, msgs) is equivalent to
-// RunSteerable(ctx, msgs, nil).
+// with Stop == StopSteered and Final holding the zero value, since
+// the run stops before a new response arrives. See
+// docs/plans/agentloop.md's Addendum API for the corrected
+// Result-shape rule this doc comment follows. Run(ctx, msgs) is
+// equivalent to RunSteerable(ctx, msgs, nil).
 func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
 ```
 

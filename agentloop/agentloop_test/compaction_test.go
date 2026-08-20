@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -24,15 +25,6 @@ func (e scaleEstimator) EstimateTokens(req provider.Request) (int, error) {
 		total += len(m.Content)
 	}
 	return total / e.div, nil
-}
-
-// erroringEstimator always fails EstimateTokens with err, to drive
-// planHistory's estimate-error branch, which a real contextplan
-// estimator never takes for a valid history.
-type erroringEstimator struct{ err error }
-
-func (e erroringEstimator) EstimateTokens(req provider.Request) (int, error) {
-	return 0, e.err
 }
 
 // summaryScript backs one Summarizer: it counts calls, records every
@@ -354,42 +346,110 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	if got := f.completer.callCount(); got != 0 {
 		t.Fatalf("completer calls = %d, want 0: nothing is sent on a failed compaction", got)
 	}
-	if len(res.History) != len(msgs) {
-		t.Fatalf("Result.History = %d messages, want the pre-compaction %d", len(res.History), len(msgs))
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the summarizer failed", res)
 	}
 }
 
-// TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed proves an
-// EstimateTokens failure at the per-iteration planning step fails the
-// run with ErrPlanFailed, wrapping the estimator's own error, before
-// any Completer call.
-func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+// TestRunBudgetChecksAfterWindowCompaction proves checkBudget runs on
+// the post-compaction history, after planHistory: a Budget too tight
+// for the caller's four raw starting messages still succeeds, because
+// the configured Window compacts that history down to a size the
+// Budget allows before checkBudget ever inspects it.
+func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 5000)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	reg := tools.New()
+	sum := &summaryScript{}
+	summarizer, err := contextsummary.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
-	estErr := errors.New("estimator boom")
-	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
-	completer := &scriptedCompleter{}
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer:     completer,
-		Tools:         tools.New(),
-		MaxIterations: 2,
+		Tools:         reg,
+		MaxIterations: 3,
+		Budget:        &contextbudget.Limits{MaxBytes: 200},
 		Window:        &w,
-		Summarizer:    sum,
-		Calibrated:    contextplan.Calibrate(erroringEstimator{err: estErr}, 1.0),
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	_, err = loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
-	if !errors.Is(err, agentloop.ErrPlanFailed) {
-		t.Fatalf("Run() error = %v, want errors.Is ErrPlanFailed", err)
+	res, err := loop.Run(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Run() = %v, want nil: compaction must bring the history under Budget", err)
 	}
-	if !errors.Is(err, estErr) {
-		t.Fatalf("Run() error = %v, want the estimator's own error wrapped", err)
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
 	}
-	if got := completer.callCount(); got != 0 {
-		t.Fatalf("completer calls = %d, want 0: a planning failure must never reach Chat", got)
+	if got := completer.callCount(); got != 1 {
+		t.Fatalf("completer calls = %d, want 1", got)
+	}
+	sumCalls, _ := sum.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: compaction must run before the budget check", sumCalls)
+	}
+	_, reqs := completerRequests(completer)
+	for _, m := range reqs[0].Messages {
+		if strings.Contains(m.Content, strings.Repeat("o", 5000)) {
+			t.Fatalf("dropped message still in the sent history: %+v", m)
+		}
+	}
+}
+
+// TestRunBudgetTripsAfterCompactionStillOverBudget proves compaction is
+// not a bypass: when the post-compaction history still exceeds Budget,
+// checkBudget still trips with ErrOverBudget, after the summarizer ran
+// but before any Completer.Chat call for the turn.
+func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 5000)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	}
+	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	reg := tools.New()
+	sum := &summaryScript{}
+	summarizer, err := contextsummary.NewSummarizer(sum)
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	completer := &scriptedCompleter{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:     completer,
+		Tools:         reg,
+		MaxIterations: 3,
+		Budget:        &contextbudget.Limits{MaxBytes: 50},
+		Window:        &w,
+		Summarizer:    summarizer,
+		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := loop.Run(context.Background(), msgs)
+	if !errors.Is(err, agentloop.ErrOverBudget) {
+		t.Fatalf("Run() error = %v, want errors.Is ErrOverBudget", err)
+	}
+	if completer.callCount() != 0 {
+		t.Fatalf("completer calls = %d, want 0: the budget check must trip before any Completer call", completer.callCount())
+	}
+	sumCalls, _ := sum.stats()
+	if sumCalls != 1 {
+		t.Fatalf("summarizer calls = %d, want 1: compaction must run before the budget check trips", sumCalls)
+	}
+	if !isZeroResult(res) {
+		t.Fatalf("Result = %+v, want the zero Result: no iteration completed before the budget check tripped", res)
 	}
 }

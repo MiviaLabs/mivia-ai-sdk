@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -277,72 +276,6 @@ func TestWorkspaceWriteToolScopeDenied(t *testing.T) {
 		tools.InOut{Value: subagent.WorkspaceWriteArgs{Path: "a.txt", Content: "x"}}, scope)
 	if !errors.Is(err, tools.ErrScopeDenied) {
 		t.Fatalf("RunScoped() error = %v, want tools.ErrScopeDenied", err)
-	}
-}
-
-// TestWorkspaceListTool proves a directory listing decodes into
-// WorkspaceEntry rows matching the fixture tree.
-func TestWorkspaceListTool(t *testing.T) {
-	ft, root := openFileTools(t, nil)
-	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o600); err != nil {
-		t.Fatalf("seed file: %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(root, "sub"), 0o700); err != nil {
-		t.Fatalf("seed dir: %v", err)
-	}
-
-	tool := subagent.WorkspaceListTool("list", ft)
-	out, err := tool.Run(context.Background(), tools.InOut{Value: subagent.WorkspaceListArgs{Path: ""}})
-	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
-	}
-	entries, ok := out.Value.([]subagent.WorkspaceEntry)
-	if !ok {
-		t.Fatalf("Run() value type = %T, want []subagent.WorkspaceEntry", out.Value)
-	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-	want := []subagent.WorkspaceEntry{{Name: "a.txt", IsDir: false}, {Name: "sub", IsDir: true}}
-	if len(entries) != len(want) || entries[0] != want[0] || entries[1] != want[1] {
-		t.Fatalf("entries = %+v, want %+v", entries, want)
-	}
-}
-
-// TestWorkspaceStatTool proves a stat decodes into a WorkspaceFileInfo
-// matching the fixture file and directory.
-func TestWorkspaceStatTool(t *testing.T) {
-	ft, root := openFileTools(t, nil)
-	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("hello"), 0o600); err != nil {
-		t.Fatalf("seed file: %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(root, "sub"), 0o700); err != nil {
-		t.Fatalf("seed dir: %v", err)
-	}
-
-	tool := subagent.WorkspaceStatTool("stat", ft)
-	cases := []struct {
-		path      string
-		wantDir   bool
-		wantSize  int64
-		wantEmpty bool
-	}{
-		{"a.txt", false, 5, false},
-		{"sub", true, 0, false},
-	}
-	for _, c := range cases {
-		out, err := tool.Run(context.Background(), tools.InOut{Value: subagent.WorkspaceStatArgs{Path: c.path}})
-		if err != nil {
-			t.Fatalf("Run(%s) error = %v, want nil", c.path, err)
-		}
-		info, ok := out.Value.(subagent.WorkspaceFileInfo)
-		if !ok {
-			t.Fatalf("Run(%s) value type = %T, want subagent.WorkspaceFileInfo", c.path, out.Value)
-		}
-		if info.IsDir != c.wantDir {
-			t.Fatalf("Run(%s) IsDir = %v, want %v", c.path, info.IsDir, c.wantDir)
-		}
-		if !c.wantDir && info.Size != c.wantSize {
-			t.Fatalf("Run(%s) Size = %d, want %d", c.path, info.Size, c.wantSize)
-		}
 	}
 }
 

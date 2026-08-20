@@ -350,3 +350,19 @@ threshold or privilege check reads the wrapped tool's true published
 capability, not a stripped default. See
 `docs/plans/agents/phase76_agentrun_schema_tool_decode.md` for the
 full change contract.
+
+## Addendum: WorkspaceListKind and WorkspaceStatKind fix (phase 77)
+
+Status: shipped. Phase 76's addendum above expected `WorkspaceListKind`
+and `WorkspaceStatKind` to fail `Runner.Run` with `ErrResultNotText`,
+because their bound tools returned a typed struct, not a string, in
+`tools.Out.Value`. Phase 77 changed `subagent.WorkspaceListTool.Run`
+and `subagent.WorkspaceStatTool.Run` to return a JSON-encoded string
+instead, matching every other `subagent` tool. All six `Kind`
+constants `runconfig` publishes are now confirmed end to end through a
+real `Runner.Run`, by
+`TestRunnerResolvesWorkspaceListReal` and
+`TestRunnerResolvesWorkspaceStatReal` in
+`runconfig/runconfig_test/workspace_list_stat_test.go`. See
+`docs/plans/agents/phase77_workspace_list_stat_json_result.md` for
+the full change contract.

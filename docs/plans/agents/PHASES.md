@@ -400,6 +400,17 @@ wrapped tool, following `spool/tool.go`'s capability-composition
 pattern. It added no new package and no new `policy/layers.json`
 edge. See docs/plans/agents/phase76_agentrun_schema_tool_decode.md.
 
+Phase 77 (workspace list and stat tools return a JSON string result)
+has shipped. It fixed a confirmed gap phase 76's addendum left open:
+`subagent.WorkspaceListTool.Run` and `subagent.WorkspaceStatTool.Run`
+returned a typed struct in `tools.Out.Value`, not a string, so
+`agentrun`'s `chain` failed both `runconfig.WorkspaceListKind` and
+`runconfig.WorkspaceStatKind` with `ErrResultNotText` on every real
+`Runner.Run`. It changed both tools to return a JSON-encoded string,
+matching every other `subagent` tool's result convention. It added no
+new package and no new `policy/layers.json` edge. See
+docs/plans/agents/phase77_workspace_list_stat_json_result.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

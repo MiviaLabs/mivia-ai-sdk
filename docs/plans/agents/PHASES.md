@@ -493,10 +493,11 @@ Phases 82 and 84 are plan-only and not scheduled. Phases 78, 79, 80,
 `docs/plans/agentloop.md`'s "steering and interruption", "graceful
 work-limit conclude", "per-batch tool-result size shaping",
 "duplicate-call dedup within a turn", and "heartbeat and progress
-events" addenda, and no standalone phase 79, phase 80, phase 81, or
-phase 83 plan file remains. Phase 78's origin file,
-docs/plans/agents/phase78_steering_and_interruption.md, stays: the
-addendum corrects one Result-shape statement against it. A gap
+events" addenda, and no standalone phase 78, phase 79, phase 80,
+phase 81, or phase 83 plan file remains. The "steering and
+interruption" addendum's own text still notes it corrects one
+Result-shape statement against phase 78's now-deleted origin brief.
+A gap
 analysis compared `agentloop` against `internal/agent.Loop`, a
 production caller in a separate, external repository (`mivia-agent`),
 and found seven capabilities that caller needs and `agentloop` lacks.

@@ -374,6 +374,73 @@ func TestConsolidationSurvivorAbsorbedByCore(t *testing.T) {
 	}
 }
 
+func TestConsolidationSkipsBothCoreMerge(t *testing.T) {
+	s := longtermmemory.New(10)
+	keep, drop := mergePair([]string{"alpha"}, []string{"beta"})
+	ids := saveAll(t, s, keep, drop)
+	for i, id := range ids {
+		if err := s.PromoteToCore(context.Background(), id); err != nil {
+			t.Fatalf("PromoteToCore row %d: %v", i, err)
+		}
+	}
+	fillAndTrigger(t, s, 6)
+
+	entries, err := s.CoreEntries(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("CoreEntries: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("CoreEntries = %d rows, want 2: a both-core near-duplicate pair must never merge", len(entries))
+	}
+	n, err := s.Count(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if n != 9 {
+		t.Fatalf("Count = %d, want 9: two core rows, six fillers, and the trigger row, none merged", n)
+	}
+	for i, id := range ids {
+		if err := s.PromoteToCore(context.Background(), id); err != nil {
+			t.Fatalf("PromoteToCore row %d after consolidation = %v, want nil: the original id still exists", i, err)
+		}
+	}
+}
+
+func TestConsolidationSkipsBothCoreMergeTrio(t *testing.T) {
+	s := longtermmemory.New(10)
+	first := validEntry("Shared clique", "One shared clique summary")
+	first.Created = "2026-01-01"
+	first.Tags = []string{"one"}
+	second := nearDup(first, "second detail")
+	second.Created = "2026-01-02"
+	second.Tags = []string{"two"}
+	third := nearDup(first, "third detail")
+	third.Created = "2026-01-03"
+	third.Tags = []string{"three"}
+	ids := saveAll(t, s, first, second, third)
+	for i, id := range ids {
+		if err := s.PromoteToCore(context.Background(), id); err != nil {
+			t.Fatalf("PromoteToCore row %d: %v", i, err)
+		}
+	}
+	fillAndTrigger(t, s, 6)
+
+	entries, err := s.CoreEntries(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("CoreEntries: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("CoreEntries = %d rows, want 3: every core-core pair in the trio is skipped", len(entries))
+	}
+	n, err := s.Count(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if n != 10 {
+		t.Fatalf("Count = %d, want 10: three core rows, six fillers, and the trigger row, none merged", n)
+	}
+}
+
 func TestConsolidationLeavesUnmergedIDsStable(t *testing.T) {
 	s := longtermmemory.New(10)
 	keep, drop := mergePair([]string{"alpha"}, []string{"beta"})

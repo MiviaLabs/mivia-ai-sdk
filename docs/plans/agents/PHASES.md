@@ -389,6 +389,17 @@ sharing one fixture basename fail loudly instead of silently
 overwriting each other's expected entry. It adds no new package. No
 standalone phase 75 plan file remains.
 
+Phase 76 (agentrun schema-tool argument decode) has shipped. It fixed
+a confirmed gap `agentrun.Runner.chain` left open: a resolved tool
+implementing `tools.SchemaTool` never got its `DecodeArguments`
+called, so the five `subagent` file tools phase 72 bound to a `Kind`
+could not drive a real end-to-end `Runner.Run`. It also fixed
+`runconfig`'s `stepTool` wrapper, which dropped `tools.ProfiledTool`,
+`tools.ResultBudgetTool`, and `tools.PrivilegedTool` from every
+wrapped tool, following `spool/tool.go`'s capability-composition
+pattern. It added no new package and no new `policy/layers.json`
+edge. See docs/plans/agents/phase76_agentrun_schema_tool_decode.md.
+
 ## Gate interactions
 
 The plan gate scans top-level Go directories. A test subdirectory

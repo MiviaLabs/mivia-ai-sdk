@@ -148,22 +148,24 @@ func TestRunnerResolvesNewKindsStub(t *testing.T) {
 	}
 }
 
+// workspaceReadStepDoc names one step bound to WorkspaceReadKind, with
+// a payload holding the JSON-string-encoded subagent.WorkspaceReadArgs
+// form.
+const workspaceReadStepDoc = `{
+	"machine": {"initial": "queued", "transitions": [
+		{"from": "queued", "to": "done", "trigger": "run"}
+	]},
+	"plan": {"steps": [{"id": "s1", "to": "done", "internal": "workspaceread",
+		"payload": "{\"path\":\"notes.txt\"}"}]},
+	"tools": []
+}`
+
 // TestRunnerResolvesWorkspaceReadReal proves WorkspaceReadKind composes
-// with the real subagent and workspace types, not only a stub.
-//
-// agentrun's chain hands each gated step's declared string payload
-// straight to the resolved tool's Run (agentrun/wire.go's chain,
-// tools.InOut{Value: msg.Payload}); it never calls a tools.SchemaTool's
-// DecodeArguments. WorkspaceReadTool.Run requires the typed
-// subagent.WorkspaceReadArgs subagent's own DecodeArguments produces,
-// so driving this step through Runner.Run always fails
-// subagent.ErrBadArguments — a pre-existing constraint of the shipped
-// agentrun and subagent contracts, unrelated to this phase's scope.
-// This test proves the two facts the "not only a stub" claim needs
-// instead: Runner resolves the real tool without error, and the exact
-// tool instance bound under WorkspaceReadKind performs a real,
-// working workspace read when called the way a model-facing caller
-// would call it, through DecodeArguments.
+// with the real subagent and workspace types, driven end to end
+// through a real Runner.Run: agentrun's chain decodes the step's
+// JSON-string payload through the tool's own DecodeArguments before
+// it calls Run, so the resolved WorkspaceReadTool reads the seeded
+// file and the run reaches status done.
 func TestRunnerResolvesWorkspaceReadReal(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello workspace"), 0o644); err != nil {
@@ -180,11 +182,13 @@ func TestRunnerResolvesWorkspaceReadReal(t *testing.T) {
 	defer ft.Close()
 	tool := subagent.WorkspaceReadTool("s1", ft, 65536)
 
-	d := loadDoc(t, internalStepDoc("workspaceread"))
+	d := loadDoc(t, workspaceReadStepDoc)
 	blocks := runconfig.NewBlocks()
 	blocks.Set(runconfig.WorkspaceReadKind, tool)
 	d.Blocks = blocks
 	d.Options.Agent = agentOver(t, d)
+	art := &agentrun.Artifacts{}
+	d.Options.Artifacts = art
 
 	runner, err := d.Runner()
 	if err != nil {
@@ -194,20 +198,16 @@ func TestRunnerResolvesWorkspaceReadReal(t *testing.T) {
 		t.Fatal("Runner = nil, want a built Runner")
 	}
 
-	schemaTool, ok := tool.(tools.SchemaTool)
-	if !ok {
-		t.Fatal("tool does not implement tools.SchemaTool")
-	}
-	in, err := schemaTool.DecodeArguments([]byte(`{"path":"notes.txt"}`))
-	if err != nil {
-		t.Fatalf("DecodeArguments: %v", err)
-	}
-	out, err := tool.Run(context.Background(), in)
+	status, _, err := runner.Run(context.Background(), "thread-workspaceread", machine.InOut{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if out.Value != "hello workspace" {
-		t.Fatalf("Value = %q, want the seeded file content", out.Value)
+	if status != "done" {
+		t.Fatalf("status = %q, want done", status)
+	}
+	artifact, ok := art.Get("s1")
+	if !ok || artifact != "hello workspace" {
+		t.Fatalf("artifact = %q, ok = %v, want the seeded file content", artifact, ok)
 	}
 }
 

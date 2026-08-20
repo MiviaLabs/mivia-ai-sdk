@@ -316,3 +316,25 @@ Verification:
 - `docs/plans/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
+
+## Addendum: schema-decode and capability forwarding (phase 76)
+
+Phase 76 closed a gap phase 72 left open: the five file/diff internal
+Kinds (`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
+`WorkspaceStatKind`, `DiffKind`) now drive through a real
+`agentrun.Runner.Run`, not only through a direct `DecodeArguments`-
+then-`Run` call. `agentrun`'s `chain` decodes a step's payload through
+`tools.SchemaTool.DecodeArguments` before it calls the tool, when the
+resolved tool implements `tools.SchemaTool`.
+
+`runconfig/runner.go`'s `stepTool` wrapper, the type
+`Definition.Runner` puts around every resolved internal-Kind tool,
+moved into `runconfig/steptool.go` and gained an unexported
+`newStepTool` constructor. `newStepTool` composes exactly the optional
+`tools.Tool` capability interfaces (`tools.SchemaTool`,
+`tools.ProfiledTool`, `tools.ResultBudgetTool`, `tools.PrivilegedTool`)
+the wrapped tool implements, so a caller-set `tools.Scope` approval
+threshold or privilege check reads the wrapped tool's true published
+capability, not a stripped default. See
+`docs/plans/agents/phase76_agentrun_schema_tool_decode.md` for the
+full change contract.

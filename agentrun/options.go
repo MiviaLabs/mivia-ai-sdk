@@ -30,6 +30,10 @@ var (
 	ErrNoRecipient   = errors.New("agentrun: Ask needs AskTo")
 	ErrResultNotText = errors.New("agentrun: tool result is not a string")
 	ErrReceiverEmpty = errors.New("agentrun: Receiver signer is empty")
+	// ErrArgumentDecode is chain's error when the resolved tool's
+	// DecodeArguments rejects the step's payload bytes. Test with
+	// errors.Is.
+	ErrArgumentDecode = errors.New("agentrun: tool arguments failed to decode")
 )
 
 // Options declares the blocks one New call wires into a Runner. The

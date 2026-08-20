@@ -17,9 +17,14 @@ package runconfig
   const WorkspaceStatKind = "workspacestat"
   const WorkspaceWriteKind = "workspacewrite"
   func (b *Blocks) Set(kind Kind, t tools.Tool)
+  func (c stepBudgetCap) MaxResultBytes() (int)
+  func (c stepPrivilegedCap) Privileged() (bool)
+  func (c stepProfiledCap) ExecutionProfile() (tools.ExecutionProfile)
+  func (c stepSchemaCap) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (c stepSchemaCap) ParameterSchema() ([]byte)
   func (d *Definition) Runner() (*agentrun.Runner, error)
-  func (s stepTool) Name() (string)
-  func (s stepTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
+  func (s *stepTool) Name() (string)
+  func (s *stepTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func Load(data []byte) (*Definition, error)
   func NewBlocks() (*Blocks)
   type Binding struct {

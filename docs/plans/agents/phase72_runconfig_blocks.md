@@ -424,3 +424,18 @@ already cover.
   AGENTS.md's Layout list name only the package's concern, not its
   import edges, so the new `runconfig/` bullet follows that same
   one-clause shape.
+
+## Addendum: the five file/diff Kinds now drive through Runner.Run (phase 76)
+
+This phase shipped `agentrun/wire.go`'s `chain` always passing a raw
+string payload to a resolved tool, with no check for
+`tools.SchemaTool`. The five file/diff internal Kinds this plan added
+(`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
+`WorkspaceStatKind`, `DiffKind`) each require a typed args struct only
+their own `DecodeArguments` produces, so a step bound to one of them
+failed unconditionally through a real `Runner.Run`, a gap this plan's
+own tests worked around instead of closing. Phase 76 closed the gap:
+`chain` now decodes a `tools.SchemaTool` tool's payload before it
+calls the tool. This plan's own design and prose above stay unchanged;
+see `docs/plans/agents/phase76_agentrun_schema_tool_decode.md` for the
+fix.

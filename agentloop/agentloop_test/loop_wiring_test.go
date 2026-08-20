@@ -302,6 +302,108 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 	}
 }
 
+// newOrderRecordingHooks returns a *hooks.Registry whose PointPreTool
+// handler appends "pre" and returns preAllow, and whose PointPostTool
+// handler appends "post", both to the returned slice's backing array.
+func newOrderRecordingHooks(t *testing.T, preAllow bool) (*hooks.Registry, *[]string) {
+	t.Helper()
+	order := &[]string{}
+	hreg := hooks.New()
+	if err := hreg.Add(hooks.PointPreTool, "record", func(ctx context.Context, payload any) (bool, error) {
+		*order = append(*order, "pre")
+		return preAllow, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	if err := hreg.Add(hooks.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
+		*order = append(*order, "post")
+		return true, nil
+	}); err != nil {
+		t.Fatalf("hooks.Add error = %v, want nil", err)
+	}
+	return hreg, order
+}
+
+// TestRunPreAndPostToolHookOrderingSuccess and its two siblings below
+// prove the cross-call invariant runOneToolCall's own doc comment
+// claims: PointPreTool always fires before PointPostTool for one call,
+// and PointPostTool fires unconditionally after decodeAndRun runs,
+// including when the tool call itself errors.
+// TestRunPostToolErrorIsIgnored only exercises the success path, so a
+// regression that gated the PointPostTool fire behind runErr == nil
+// would still pass every other test in this package: the error-path
+// sibling pins that fire directly. The veto sibling pins the negative
+// space on the same recorder shape: a vetoed call never reaches
+// decodeAndRun, so PointPostTool must not fire for it, even though
+// PointPreTool did.
+func TestRunPreAndPostToolHookOrderingSuccess(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	hreg, order := newOrderRecordingHooks(t, true)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if got := *order; len(got) != 2 || got[0] != "pre" || got[1] != "post" {
+		t.Fatalf("hook fire order = %v, want [pre post]", got)
+	}
+}
+
+// TestRunPreAndPostToolHookOrderingToolError is
+// TestRunPreAndPostToolHookOrderingSuccess's error-path sibling; see
+// its doc comment.
+func TestRunPreAndPostToolHookOrderingToolError(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), runErr: errBoom}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	hreg, order := newOrderRecordingHooks(t, true)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if got := *order; len(got) != 2 || got[0] != "pre" || got[1] != "post" {
+		t.Fatalf("hook fire order = %v, want [pre post]: PointPostTool must fire even when the tool's own Run errors", got)
+	}
+}
+
+// TestRunPreAndPostToolHookOrderingVeto is
+// TestRunPreAndPostToolHookOrderingSuccess's veto-path sibling; see its
+// doc comment.
+func TestRunPreAndPostToolHookOrderingVeto(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	hreg, order := newOrderRecordingHooks(t, false)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if got := *order; len(got) != 1 || got[0] != "pre" {
+		t.Fatalf("hook fire order = %v, want [pre] only: a veto must skip PointPostTool", got)
+	}
+}
+
 // TestRunScopeDeniedToolName proves a model-requested call naming a
 // registered, schema-bearing tool that Options.Scope denies is
 // reported through RunScoped's ErrScopeDenied, the same as any other

@@ -9,9 +9,10 @@ import (
 
 // RetryPolicy is a step's retry rule for its Fire call.
 // MaxAttempts counts every attempt, including the first; a value of 1
-// disables retry. BaseDelay is the first retry's backoff. MaxDelay
-// clamps every computed backoff, so the exponential term cannot
-// overflow time.Duration's range. Retryable, when non-nil, gates each
+// disables retry. BaseDelay is the first retry's backoff and must not
+// be negative; zero means an immediate retry. MaxDelay clamps every
+// computed backoff, so the exponential term cannot overflow
+// time.Duration's range. Retryable, when non-nil, gates each
 // failure before the next attempt; a nil Retryable retries every
 // error. Jitter and Sleep are determinism hooks: Jitter perturbs
 // NextDelay's clamped result, and Sleep waits between attempts. A nil
@@ -26,9 +27,10 @@ type RetryPolicy struct {
 	Sleep       func(context.Context, time.Duration)
 }
 
-// Validate enforces MaxAttempts >= 1 and MaxDelay > 0. New calls the
-// same check, through retryValidateMessage, for every step whose
-// Retry is non-nil, folding the step's ID into the pinned message.
+// Validate enforces MaxAttempts >= 1, MaxDelay > 0, and
+// BaseDelay >= 0. New calls the same check, through
+// retryValidateMessage, for every step whose Retry is non-nil,
+// folding the step's ID into the pinned message.
 func (p RetryPolicy) Validate() error {
 	if msg := retryValidateMessage(p); msg != "" {
 		return errorf("retry: %s", msg)
@@ -47,6 +49,9 @@ func retryValidateMessage(p RetryPolicy) string {
 	if p.MaxDelay <= 0 {
 		return "max delay must be positive"
 	}
+	if p.BaseDelay < 0 {
+		return "base delay must not be negative"
+	}
 	return ""
 }
 
@@ -57,7 +62,9 @@ func retryValidateMessage(p RetryPolicy) string {
 // doubling would reach or overflow MaxDelay, so NextDelay sets delay
 // to MaxDelay and stops doubling, without ever performing the
 // overflow-prone multiply. A final clamp to MaxDelay covers the case
-// where BaseDelay itself already exceeds MaxDelay. Pure; no field
+// where BaseDelay itself already exceeds MaxDelay. The bound holds
+// only for a policy that passes Validate: a negative BaseDelay skips
+// both the pre-doubling guard and the final clamp. Pure; no field
 // mutation, no sleep, no randomness of its own. Jitter, when
 // non-nil, applies to the clamped result last; NextDelay does not
 // re-clamp Jitter's output, so a Jitter closure that returns a value

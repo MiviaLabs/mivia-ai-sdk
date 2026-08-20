@@ -70,7 +70,8 @@ The exported surface below mirrors `api/flow.txt`.
   `Step` names the failed step, `Err` is its recorded error.
 - `RetryPolicy` — a step's retry rule for its own `Fire` call:
   `MaxAttempts`, `BaseDelay`, `MaxDelay`, `Retryable`, `Jitter`, and
-  `Sleep`. See Retry below.
+  `Sleep`. `BaseDelay` must not be negative; zero means an immediate
+  retry. See Retry below.
 - `LoopPolicy` — a step's loop rule for its `Sub` child workflow:
   `Guard` (a `machine.Guard`; nil means always continue) and `Max` (the
   iteration cap; zero means unbounded). See Loop below.
@@ -141,8 +142,8 @@ The exported surface below mirrors `api/flow.txt`.
 - `FailureFrom(ctx)` — reads the `Failure` `Run` injects into a
   fallback step's own transition context. The boolean is false outside
   a fallback firing.
-- `RetryPolicy.Validate()` — rejects a `MaxAttempts` below 1 and a
-  `MaxDelay` at or below zero.
+- `RetryPolicy.Validate()` — rejects a `MaxAttempts` below 1, a
+  `MaxDelay` at or below zero, and a negative `BaseDelay`.
 - `RetryPolicy.NextDelay(attempt)` — the backoff before the given
   retry attempt, one-indexed from the first retry. Doubles from
   `BaseDelay`, clamped at `MaxDelay`, then applies `Jitter` when
@@ -203,9 +204,10 @@ The exported surface below mirrors `api/flow.txt`.
 - No panel names an `AdmissionOnFailed` step. A wave shares one `ctx`
   across every member, with no per-member home for the `Failure` a
   fallback would catch. `New` rejects the shape.
-- A non-nil `Retry` passes `RetryPolicy.Validate()`. `New` rejects a
-  `Retry` combined with a non-nil `Sub`, and a `Retry` on a panel
-  member. See Retry below.
+- A non-nil `Retry` passes `RetryPolicy.Validate()`: `MaxAttempts` at
+  or above 1, `MaxDelay` above zero, and `BaseDelay` at or above zero.
+  `New` rejects a `Retry` combined with a non-nil `Sub`, and a `Retry`
+  on a panel member. See Retry below.
 - A non-nil `Loop` passes `LoopPolicy.Validate()`. `New` rejects a
   `Loop` combined with a nil `Sub`, and a `Loop` on a panel member. See
   Loop below.
@@ -392,7 +394,9 @@ from the same pre-step status and record the first attempt used.
 `NextDelay` computes each backoff as a pure function of the attempt
 number: it doubles `BaseDelay` once per attempt above 1, clamped at
 `MaxDelay`, checking the bound before each doubling so the computation
-never overflows `time.Duration`'s range. `Jitter`, when non-nil,
+never overflows `time.Duration`'s range. That bound holds for a policy
+that passes `Validate`, which is why a negative `BaseDelay` fails
+validation. `Jitter`, when non-nil,
 perturbs the clamped result last; `NextDelay` does not re-clamp
 `Jitter`'s output. `Sleep` defaults to a context-aware wait when the
 field is nil: a canceled `ctx` returns at once, with the context's

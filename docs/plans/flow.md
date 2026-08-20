@@ -329,9 +329,10 @@ api-update`:
   deterministic; a nil `Sleep` uses a context-aware default sleep. A
   test supplies a recording or no-op `Sleep`, so a retry test never
   blocks on real wall-clock time.
-- `func (p RetryPolicy) Validate() error` — enforces `MaxAttempts >= 1`
-  and `MaxDelay > 0`. `New` calls this for every step whose `Retry` is
-  non-nil.
+- `func (p RetryPolicy) Validate() error` — enforces `MaxAttempts >= 1`,
+  `MaxDelay > 0`, and `BaseDelay >= 0`. `New` calls this for every step
+  whose `Retry` is non-nil. See the "Gap fix: a negative BaseDelay
+  fails validation" section below for the third rule.
 - `func (p RetryPolicy) NextDelay(attempt int) time.Duration` — the
   backoff before the given retry attempt, one-indexed from the first
   retry. Pure: no field mutation, no sleep. Clamps before doubling, so
@@ -855,7 +856,14 @@ wire form.
 
 ### Gap fix: a negative BaseDelay fails validation
 
-Status: planned, not yet built. The `RetryPolicy` doc
+Status: shipped. `retryValidateMessage` rejects a negative
+`BaseDelay`. `TestRetryPolicyRejectsNegativeBaseDelay`,
+`TestNewRejectsStepRetryWithNegativeBaseDelay`, and
+`TestRetryPolicyAcceptsZeroBaseDelay` in
+`flow/flow_test/retry_test.go` cover it. The text below records the
+gap the fix closed.
+
+The `RetryPolicy` doc
 (`flow/retry.go:12`) says `MaxDelay` clamps every computed backoff,
 so the exponential term cannot overflow. `retryValidateMessage`
 (`flow/retry.go:43`) checks `MaxAttempts` and `MaxDelay` only. A
@@ -876,19 +884,49 @@ clamp. No in-repo caller sets zero. The field doc calls `BaseDelay`
 the first retry's backoff, and zero is a valid backoff. Constrain the
 negative case only.
 
+#### Scope: one downstream behavior change
+
+`runconfig` parses `base_delay` through `time.ParseDuration`
+(`runconfig/loader.go:266`), which accepts `-1ms`. Such a document
+loads today and produces a negative backoff. After this fix the same
+document fails `Load` through `flow.New`. That is a deliberate
+behavior change and an improvement: the document was already broken
+at run time. No in-repo document or fixture sets a negative
+`base_delay`. `runconfig` needs no code change.
+
 #### Fix
 
 Add a third check to `retryValidateMessage`, after the `MaxDelay`
 check: return `"base delay must not be negative"` when
 `p.BaseDelay < 0`. Place it last. The two existing messages are
-pinned by `flow/flow_test/retry_test.go` at lines 29, 44, 201, and
-219, and a trailing check leaves them unchanged. `Validate`, `New`,
-and `validateRetry` pick the rule up through the one shared function.
+pinned by four cases in `flow/flow_test/retry_test.go`, at lines 24,
+39, 196, and 214. Each of the four sets `BaseDelay` to zero, so a
+trailing check cannot move them. `Validate`, `New`, and
+`validateRetry` pick the rule up through the one shared function.
 
 `NextDelay` stays pure and unchanged. Its bound holds for a policy
 that passes `Validate`. Add one sentence to the `NextDelay` comment
-that names that precondition. Update the `RetryPolicy` entry in
-`docs/packages/flow.md` with the new rule.
+that names that precondition.
+
+#### Doc sites
+
+Update every site that enumerates the retry rules. Each becomes
+incomplete without the new rule.
+
+- `flow/retry.go:12` — the `RetryPolicy` field doc.
+- `flow/retry.go:29` — the `RetryPolicy.Validate` comment, which
+  today names `MaxAttempts >= 1` and `MaxDelay > 0` only.
+- `flow/retry.go:66` — the `NextDelay` comment precondition sentence.
+- `docs/packages/flow.md:71` — the `RetryPolicy` entry.
+- `docs/packages/flow.md:144` — the `RetryPolicy.Validate()` entry.
+- `docs/packages/flow.md:206` — the non-nil `Retry` rule statement.
+- `docs/plans/flow.md:332` — this plan's own API entry for
+  `RetryPolicy.Validate`. It is corrected in this plan revision, so
+  the plan does not contradict itself.
+
+Seven sites is the whole set. `validateRetry` (`flow/retry.go:139`)
+needs no edit: it names `RetryPolicy.Validate`'s rule instead of
+restating it.
 
 #### Tests
 
@@ -910,8 +948,13 @@ against today's code.
 
 #### Verification for this gap fix
 
+Land this gap fix as its own commit, separate from the `subagent`
+mailbox gap fix in `docs/plans/subagent.md`. The two fixes share no
+file and no package. One commit per fix keeps a revert granular.
+
 No exported symbol changes. `make api-update` must produce no diff
 for `api/flow.txt`. `policy/layers.json` is unchanged: the `flow`
-row already covers every edge. Run `make verify` and
-`go test -race ./flow/...`. Hold `flow` coverage at or above 85. No
-conformance vector changes: `RetryPolicy` carries no wire form.
+row already covers every edge. Run `make verify`,
+`go test -race ./flow/...`, and `go test ./runconfig/...`. Hold
+`flow` coverage at or above 85. No conformance vector changes:
+`RetryPolicy` carries no wire form.

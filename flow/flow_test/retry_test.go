@@ -47,6 +47,34 @@ func TestRetryPolicyValidateRejectsZeroMaxDelay(t *testing.T) {
 	}
 }
 
+// TestRetryPolicyRejectsNegativeBaseDelay pins the exact message for
+// a RetryPolicy with a negative BaseDelay.
+func TestRetryPolicyRejectsNegativeBaseDelay(t *testing.T) {
+	t.Parallel()
+	p := flow.RetryPolicy{MaxAttempts: 3, BaseDelay: -time.Second, MaxDelay: time.Second}
+	err := p.Validate()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	want := "flow: retry: base delay must not be negative"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+// TestRetryPolicyAcceptsZeroBaseDelay proves the negative rule does
+// not reject a zero BaseDelay, which means an immediate retry.
+func TestRetryPolicyAcceptsZeroBaseDelay(t *testing.T) {
+	t.Parallel()
+	p := flow.RetryPolicy{MaxAttempts: 3, BaseDelay: 0, MaxDelay: time.Second}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	if got := p.NextDelay(4); got != 0 {
+		t.Fatalf("NextDelay(4) = %v, want 0", got)
+	}
+}
+
 // TestRetryPolicyValidateAcceptsValidPolicy proves Validate returns
 // nil for a policy that meets both rules.
 func TestRetryPolicyValidateAcceptsValidPolicy(t *testing.T) {
@@ -217,6 +245,26 @@ func TestNewRejectsStepRetryWithZeroMaxDelay(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 	want := `flow: step "a" retry: max delay must be positive`
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+// TestNewRejectsStepRetryWithNegativeBaseDelay pins the exact message
+// New returns when a step's RetryPolicy has a negative BaseDelay,
+// proving New enforces the rule itself, not only when a caller calls
+// Validate directly.
+func TestNewRejectsStepRetryWithNegativeBaseDelay(t *testing.T) {
+	t.Parallel()
+	_, err := flow.New([]flow.Step{
+		{ID: "a", To: "done", Retry: &flow.RetryPolicy{
+			MaxAttempts: 3, BaseDelay: -time.Second, MaxDelay: time.Second,
+		}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	want := `flow: step "a" retry: base delay must not be negative`
 	if err.Error() != want {
 		t.Fatalf("error = %q, want %q", err.Error(), want)
 	}

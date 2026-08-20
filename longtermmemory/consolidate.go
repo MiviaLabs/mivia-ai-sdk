@@ -7,8 +7,8 @@ const nearDuplicateThreshold = 0.82
 // consolidateLocked runs one fixed consolidation over a scope: one
 // merge pass over near-duplicate rows, then oldest-archive eviction in
 // a loop until the scope holds fewer than maxEntries rows or nothing
-// evictable remains. A core row is never the deleted side of a merge
-// and never evicted. Called with s.mu held.
+// evictable remains. With exactly one core side, the core row survives
+// the merge. A core row is never evicted. Called with s.mu held.
 func (s *Store) consolidateLocked(scope string) {
 	s.mergePassLocked(scope)
 	s.evictArchiveLocked(scope)
@@ -16,13 +16,17 @@ func (s *Store) consolidateLocked(scope string) {
 
 // mergePassLocked walks the scope's rows in created-then-id order and
 // merges each near-duplicate pair exactly once. The survivor keeps
-// the union of both tag lists, deduplicated, in first-seen order.
-// When exactly one side is core, that side survives regardless of
-// creation order; when both sides share a tier, the earlier Created
-// row survives, with the lower id breaking a tie.
+// the union of both tag lists, deduplicated, in first-seen order,
+// capped at maxTags. When exactly one side is core, that side survives
+// regardless of creation order; when both sides share a tier, the
+// earlier Created row survives, with the lower id breaking a tie. The
+// merged tags change the content address, so the pass re-keys every
+// survivor after the walk ends. A re-key inside the walk would leave
+// the walk's own id list pointing at deleted rows.
 func (s *Store) mergePassLocked(scope string) {
 	ids := s.scopeIDsLocked(scope, func(*row) bool { return true })
 	dead := make(map[string]struct{})
+	var merged []string
 	for i, idA := range ids {
 		if _, gone := dead[idA]; gone {
 			continue
@@ -40,22 +44,47 @@ func (s *Store) mergePassLocked(scope string) {
 				keepID, dropID = idB, idA
 			}
 			s.mergeRows(keepID, dropID)
+			merged = append(merged, keepID)
 			dead[dropID] = struct{}{}
 			if dropID == idA {
 				break
 			}
 		}
 	}
+	s.rekeyMergedLocked(merged)
 }
 
-// mergeRows folds dropID's tags into keepID's row and deletes
-// dropID. Called with s.mu held.
+// mergeRows folds dropID's tags into keepID's row, capped at maxTags,
+// and deletes dropID. Called with s.mu held.
 func (s *Store) mergeRows(keepID, dropID string) {
 	keep := s.rows[keepID]
 	drop := s.rows[dropID]
-	keep.entry.Tags = unionTags(keep.entry.Tags, drop.entry.Tags)
+	keep.entry.Tags = unionTags(keep.entry.Tags, drop.entry.Tags, maxTags)
 	s.removeFromScope(drop.entry.Scope, dropID)
 	delete(s.rows, dropID)
+}
+
+// rekeyMergedLocked moves each merged survivor to its new content
+// address, in pass order. It skips an id a later merge of the same
+// pass deleted, and an id whose recomputed value is unchanged. A
+// recomputed id that already exists holds identical content, so the
+// moved row replaces it. The row pointer moves whole, so the core flag
+// follows the survivor. Called with s.mu held.
+func (s *Store) rekeyMergedLocked(ids []string) {
+	for _, oldID := range ids {
+		r, ok := s.rows[oldID]
+		if !ok {
+			continue
+		}
+		newID := entryID(r.entry)
+		if newID == oldID {
+			continue
+		}
+		s.rows[newID] = r
+		s.addToScope(r.entry.Scope, newID)
+		delete(s.rows, oldID)
+		s.removeFromScope(r.entry.Scope, oldID)
+	}
 }
 
 // nearDuplicate reports whether two entries' title-plus-summary
@@ -66,12 +95,17 @@ func nearDuplicate(a, b Entry) bool {
 	return jaccard(tokensA, tokensB) >= nearDuplicateThreshold
 }
 
-// unionTags merges two tag lists, deduplicated, first-seen order.
-func unionTags(keep, drop []string) []string {
+// unionTags merges two tag lists, deduplicated, first-seen order,
+// and stops at limit tags. The keep list fills the result first, so
+// the drop list loses its tags when the union is over the cap.
+func unionTags(keep, drop []string, limit int) []string {
 	seen := make(map[string]struct{}, len(keep)+len(drop))
-	out := make([]string, 0, len(keep)+len(drop))
+	out := make([]string, 0, limit)
 	for _, tags := range [][]string{keep, drop} {
 		for _, tag := range tags {
+			if len(out) >= limit {
+				return out
+			}
 			if _, dup := seen[tag]; dup {
 				continue
 			}

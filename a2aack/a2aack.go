@@ -39,7 +39,8 @@ var (
 	ErrNoPoll = errors.New("a2aack: poll interval must be positive")
 	// ErrShortTimeout means the timeout does not cover one poll.
 	ErrShortTimeout = errors.New("a2aack: timeout must cover one poll")
-	// ErrRemoteFailed means the remote task ended failed or canceled.
+	// ErrRemoteFailed means the remote task ended failed, canceled,
+	// rejected, or in a state a2aack cannot resolve.
 	ErrRemoteFailed = errors.New("a2aack: remote task failed")
 	// ErrTimeout means the exchange outran its deadline or ctx.
 	ErrTimeout = errors.New("a2aack: remote task timed out")
@@ -77,7 +78,10 @@ func Wait(c Remote, opts Options) (agent.AckWait, error) {
 
 // poll owns the Status ticker until a terminal state, then resolves
 // the ack. It selects on the deadline ctx every tick, so cancellation
-// never waits out a full interval.
+// never waits out a full interval. Failed, canceled, and rejected end
+// the loop with ErrRemoteFailed, and so do auth-required and
+// input-required: both wait for client action a2aack never sends.
+// Unspecified and unknown keep the loop polling.
 func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, msg envelope.Message) (envelope.Ack, error) {
 	ticker := time.NewTicker(opts.Poll)
 	defer ticker.Stop()
@@ -98,7 +102,9 @@ func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, m
 					return envelope.Ack{}, timeoutWrap(err, last)
 				}
 				return ackFromResult(msg, result)
-			case a2aclient.StateFailed, a2aclient.StateCanceled:
+			case a2aclient.StateFailed, a2aclient.StateCanceled, a2aclient.StateRejected:
+				return envelope.Ack{}, fmt.Errorf("%w: %s", ErrRemoteFailed, state)
+			case a2aclient.StateAuthRequired, a2aclient.StateInputRequired:
 				return envelope.Ack{}, fmt.Errorf("%w: %s", ErrRemoteFailed, state)
 			default:
 				last = state

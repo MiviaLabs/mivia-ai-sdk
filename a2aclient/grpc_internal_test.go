@@ -91,12 +91,16 @@ func TestGRPCTransportSendRejectsNonTaskResult(t *testing.T) {
 
 func TestGRPCTransportStateMapsEachTaskState(t *testing.T) {
 	cases := map[a2acore.TaskState]State{
-		a2acore.TaskStateSubmitted: StateSubmitted,
-		a2acore.TaskStateWorking:   StateWorking,
-		a2acore.TaskStateCompleted: StateCompleted,
-		a2acore.TaskStateFailed:    StateFailed,
-		a2acore.TaskStateCanceled:  StateCanceled,
-		a2acore.TaskStateRejected:  StateUnspecified,
+		a2acore.TaskStateUnspecified:   StateUnspecified,
+		a2acore.TaskStateSubmitted:     StateSubmitted,
+		a2acore.TaskStateWorking:       StateWorking,
+		a2acore.TaskStateCompleted:     StateCompleted,
+		a2acore.TaskStateFailed:        StateFailed,
+		a2acore.TaskStateCanceled:      StateCanceled,
+		a2acore.TaskStateRejected:      StateRejected,
+		a2acore.TaskStateAuthRequired:  StateAuthRequired,
+		a2acore.TaskStateInputRequired: StateInputRequired,
+		a2acore.TaskStateUnknown:       StateUnknown,
 	}
 	for ts, want := range cases {
 		g := &grpcTransport{tr: &fakeSDKTransport{taskResp: &a2acore.Task{Status: a2acore.TaskStatus{State: ts}}}}
@@ -194,5 +198,28 @@ func TestGRPCTransportCloseForwardsToDestroy(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{destroyErr: errors.New("close failed")}}
 	if err := g.Close(); err == nil {
 		t.Fatal("Close swallowed the transport's Destroy error")
+	}
+}
+
+// TestStateTerminalMatchesUpstream proves the terminal set equals
+// a2a-go's own TaskState.Terminal for every upstream constant.
+func TestStateTerminalMatchesUpstream(t *testing.T) {
+	upstream := []a2acore.TaskState{
+		a2acore.TaskStateUnspecified,
+		a2acore.TaskStateSubmitted,
+		a2acore.TaskStateWorking,
+		a2acore.TaskStateCompleted,
+		a2acore.TaskStateFailed,
+		a2acore.TaskStateCanceled,
+		a2acore.TaskStateRejected,
+		a2acore.TaskStateAuthRequired,
+		a2acore.TaskStateInputRequired,
+		a2acore.TaskStateUnknown,
+	}
+	for _, ts := range upstream {
+		got := stateFromTaskState(ts).terminal()
+		if want := ts.Terminal(); got != want {
+			t.Fatalf("terminal(%s) = %t, want %t: the terminal set must equal upstream", ts, got, want)
+		}
 	}
 }

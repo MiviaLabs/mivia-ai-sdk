@@ -85,7 +85,9 @@ type State int
 
 // The states a remote task passes through. A2A tasks move from
 // submitted through working to one terminal state: completed,
-// failed, or canceled.
+// failed, canceled, or rejected. Auth-required and input-required
+// both wait for client action. Unspecified and unknown both mean the
+// state is not yet determined.
 const (
 	StateUnspecified State = iota
 	StateSubmitted
@@ -93,6 +95,10 @@ const (
 	StateCompleted
 	StateFailed
 	StateCanceled
+	StateRejected
+	StateAuthRequired
+	StateInputRequired
+	StateUnknown
 )
 
 // String returns the constant name for state, or "unknown" for a
@@ -860,3 +866,195 @@ client unmarshals into a typed-nil `*a2acore.Task` inside a non-nil
 `any` -- a case the SDK's own marshaling behavior, not this package's
 code, would have to be made to produce. `make mutation-gate` includes
 `a2aclient` at this floor.
+
+## Addendum: mirror the whole upstream task state enum
+
+This addendum is commit two of two. Commit one fixes
+`longtermmemory`; see `docs/plans/longtermmemory.md`. The two commits
+do not share a file. This commit changes `a2aclient` and `a2aack`
+together, because `a2aack` reads `a2aclient.State`.
+
+### Problem
+
+`state.go` says `State` mirrors the a2a-go task state enum. It maps
+five of the ten upstream values.
+
+`a2a-go@v0.3.15/a2a/core.go` declares ten `TaskState` constants. Its
+`TaskState.Terminal` returns true for completed, canceled, failed, and
+rejected. `stateFromTaskState` maps rejected, auth-required,
+input-required, and unknown to `StateUnspecified`.
+
+Two failures follow.
+
+- `Client.Result` returns `ErrNotTerminal` forever for a rejected
+  task, because `State.terminal` is false for `StateUnspecified`.
+- `a2aack.Wait` polls a rejected task until its own deadline. It then
+  returns `ErrTimeout after unspecified`. A rejected task and a hung
+  task look the same to the caller.
+
+A shipped test pins the defect. `a2aclient/grpc_internal_test.go`
+asserts `TaskStateRejected` maps to `StateUnspecified`.
+
+### Decision: add four State constants
+
+Add `StateRejected`, `StateAuthRequired`, `StateInputRequired`, and
+`StateUnknown`. Append them after `StateCanceled` so no existing iota
+value shifts.
+
+This is an exported API change. Run `make api-update` and commit the
+`api/a2aclient.txt` diff in the same commit. The lock gains four
+constant lines. `api/a2aack.txt` gains nothing.
+
+Rejected option: add `StateRejected` alone. It fixes the reported
+hang, and it leaves three upstream states mapped onto a value that
+means "no state". The doc claim about mirroring stays false, and a
+poller blocked on auth still reports "unspecified".
+
+- `State.terminal` returns true for completed, failed, canceled, and
+  rejected. That set equals upstream `TaskState.Terminal` exactly.
+- `stateFromTaskState` names all ten upstream constants. It maps
+  `TaskStateUnspecified` to `StateUnspecified`. Its default stays
+  `StateUnspecified`, for an upstream value added after this commit.
+- `String` gains "rejected", "auth-required", and "input-required".
+  Each is the upstream literal, so the vocabulary matches a2a-go.
+- `StateUnknown` returns "unknown", also the upstream literal. The
+  out-of-range default returns the same text. State the overlap in the
+  constant comment: a message reading "after unknown" means either the
+  upstream indeterminate state or a `State` outside the declared
+  range. Keep the default text as it is, because
+  `docs/packages/a2aclient.md` states it and a shipped test asserts
+  it.
+
+### Decision: a2aack fails fast on a state it cannot resolve
+
+`a2aack/a2aack.go`, the `poll` switch, gains two cases.
+
+- `StateRejected` joins `StateFailed` and `StateCanceled`. All three
+  are terminal and none carries a result. The call returns
+  `ErrRemoteFailed` wrapping the state name.
+- `StateAuthRequired` and `StateInputRequired` also return
+  `ErrRemoteFailed` wrapping the state name. Both states wait for
+  client action. `a2aack` sends one message and never sends more, so
+  polling can never resolve them.
+
+`StateUnspecified` and `StateUnknown` stay in the default branch. Both
+mean the state is not yet known, so the loop keeps polling and records
+the name for the timeout message.
+
+Tradeoff. A blocked task reuses `ErrRemoteFailed` instead of a new
+sentinel. A caller that must tell "rejected" from "needs auth" reads
+the wrapped state name. Add a separate sentinel only when a caller
+needs to branch on it.
+
+The sentinel's stated contract widens with its use. The
+`ErrRemoteFailed` doc comment and `docs/packages/a2aack.md` must read
+"failed, canceled, rejected, or a state `a2aack` cannot resolve".
+
+### Tests
+
+Each test below fails against today's code.
+
+- `a2aclient/grpc_internal_test.go`,
+  `TestGRPCTransportStateMapsEachTaskState` — extend the case map to
+  all ten upstream constants and correct the rejected row to
+  `StateRejected`. Today the rejected row expects `StateUnspecified`.
+  The case count grows, so the diff adds assertion sites and removes
+  none.
+- `a2aclient/grpc_internal_test.go`,
+  `TestStateTerminalMatchesUpstream` — new. For every upstream
+  `TaskState` constant, assert
+  `stateFromTaskState(ts).terminal() == ts.Terminal()`. Today it fails
+  on rejected. It also fails any fix that marks a non-terminal
+  upstream state terminal, so it is its own positive control.
+Put the three `Client` and `String` tests below in a new file,
+`a2aclient/state_test.go`, package `a2aclient`. `client_test.go` holds
+429 lines against the 500 limit, so it has no room.
+
+- `a2aclient/state_test.go`, `TestResultAcceptsRejectedTask` — new.
+  Script `stubTransport` with `StateRejected` and a valid signed
+  result. Assert `Result` returns the message. Today it returns
+  `ErrNotTerminal`.
+- `a2aclient/state_test.go`, `TestResultRejectsBlockedTask` — new.
+  Script `StateAuthRequired`, then `StateInputRequired`. Assert
+  `Result` returns `ErrNotTerminal` for each. It passes today, and it
+  blocks a fix that makes every state terminal.
+- `a2aclient/state_test.go`, `TestStateStringNamesNewStates` — new. A
+  table asserting `String` against literal text for `StateRejected`,
+  `StateAuthRequired`, `StateInputRequired`, and `StateUnknown`. A
+  subtest name is not an assertion, so a table is the only cover here.
+  Today the four constants do not exist.
+- `a2aack/a2aack_test/failed_test.go`,
+  `TestWaitFailsOnUnresolvableStates` — a new function holding a table
+  with three rows: `StateRejected`, `StateAuthRequired`,
+  `StateInputRequired`. For each row assert the `AckWait` error
+  satisfies `errors.Is(err, a2aack.ErrRemoteFailed)`, does not satisfy
+  `errors.Is(err, a2aack.ErrTimeout)`, and names the state. Today each
+  row polls to the deadline and returns `ErrTimeout`. Leave the
+  shipped `TestWaitFailsCorrectly` byte-identical. Do not fold it into
+  the new table.
+- `a2aack/a2aack_test/poll_invariants_test.go` — a new function
+  holding a table with `StateSubmitted`, `StateWorking`,
+  `StateUnspecified`, and `StateUnknown`. Assert each keeps polling
+  and ends in `ErrTimeout`. This blocks a fix that fails on any state
+  other than completed. Leave every shipped function in that file
+  unchanged.
+
+Positive controls already shipped: `wait_test.go` still resolves a
+confirmed ack from `StateCompleted`, and `integration_test.go` still
+runs the live loopback round trip.
+
+### Doc updates in the same commit
+
+Every site below lists the state set or the terminal set. The list
+comes from a grep over `.md` for the `State` constant names and for
+"terminal".
+
+- `a2aclient/state.go` — the `State` doc comment and the constant
+  block comment.
+- `a2aclient/grpc.go` — the `grpcTransport.State` doc comment.
+- `a2aack/a2aack.go` — the `ErrRemoteFailed` doc comment and the
+  `poll` doc comment.
+- `docs/packages/a2aclient.md` — the state list near line 18 and the
+  terminal list near line 66.
+- `docs/packages/a2aack.md` — the poll steps near line 41 and the
+  `ErrRemoteFailed` entry near line 67.
+- `docs/examples/a2aack.md` — the terminal state list near line 71.
+- `docs/plans/a2aclient.md` — the API code block near line 87.
+- `docs/plans/a2aack.md` — the poll contract in its Scope section.
+- `docs/architecture.md` — the `a2aclient` and `a2aack` module-map
+  bullets, near lines 288 and 307.
+
+Re-run the grep after the edits. No remaining site may list five
+states or three terminal states.
+
+The envelope wire format does not change, so
+`docs/architecture.md`'s envelope rationale section stays as it is.
+
+### Verification
+
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  `python3 scripts/check_prose.py`, and
+  `python3 scripts/check_labels.py` pass.
+- `make api-update` runs in this commit. `api/a2aclient.txt` gains
+  four constant lines and nothing else.
+- `go test -race ./a2aclient/... ./a2aack/...` passes.
+- `make verify` passes, including `scripts/check_test_tampering.py`.
+- `make mutation PKG=a2aclient` holds the stored floor of 95 in
+  `scripts/mutation_denylist/a2aclient.json`. `mutation_tokenize.py`
+  swaps operator tokens only, so a switch returning constants or
+  string literals carries no mutation site. The floor is not at risk.
+- Coverage floor of 85 holds for `a2aclient`, for `a2aack`, and for
+  the total.
+- `policy/layers.json` needs no change. `a2aack` already imports
+  `a2aclient`.
+- Do not add an `Allow-Test-Change` trailer. The one shipped
+  assertion this commit corrects is a wrong expectation, and the diff
+  adds assertion sites. If a rule still fires, report it as a finding
+  instead of waiving it.
+
+### Out of scope
+
+`a2aclient/grpc.go` dials every remote agent with
+`insecure.NewCredentials()`. Envelope payloads cross the network in
+plaintext. That needs an options struct and a product decision, so it
+is separate work. Do not change it here.

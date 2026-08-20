@@ -3,6 +3,7 @@ package longtermmemory_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/longtermmemory"
@@ -135,5 +136,52 @@ func TestUnknownIDFailures(t *testing.T) {
 	}
 	if err := s.Delete(context.Background(), "missing"); !errors.Is(err, longtermmemory.ErrEntryNotFound) {
 		t.Fatalf("Delete(unknown) = %v, want ErrEntryNotFound", err)
+	}
+}
+
+func TestSaveDedupesAgainstAMintedID(t *testing.T) {
+	s := longtermmemory.New(10)
+	for i := 0; i < 6; i++ {
+		e := distinct(fmt.Sprintf("Filler %d", i), fmt.Sprintf("2026-02-%02d", i+1))
+		if _, err := s.Save(context.Background(), e); err != nil {
+			t.Fatalf("Save filler %d: %v", i, err)
+		}
+	}
+	promoted := validEntry("Promoted note", "One shared summary")
+	promoted.Created = "2026-01-02"
+	promoted.Tags = []string{"alpha"}
+	res, err := s.Save(context.Background(), promoted)
+	if err != nil {
+		t.Fatalf("Save promoted: %v", err)
+	}
+	if err := s.PromoteToCore(context.Background(), res.ID); err != nil {
+		t.Fatalf("PromoteToCore: %v", err)
+	}
+	dup := nearDup(promoted, "older detail")
+	dup.Created = "2026-01-01"
+	dup.Tags = []string{"beta"}
+	if _, err := s.Save(context.Background(), dup); err != nil {
+		t.Fatalf("Save near-duplicate: %v", err)
+	}
+
+	colliding := promoted
+	colliding.Tags = []string{"alpha", "beta"}
+	got, err := s.Save(context.Background(), colliding)
+	if err != nil {
+		t.Fatalf("Save of the minted content: %v", err)
+	}
+	entries, err := s.CoreEntries(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("CoreEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("CoreEntries = %d rows, want 1: the save must not overwrite the merged core row", len(entries))
+	}
+	if entries[0].ID != got.ID {
+		t.Fatalf("core row id = %q, want the saved id %q", entries[0].ID, got.ID)
+	}
+	n, _ := s.Count(context.Background(), "proj")
+	if n != 7 {
+		t.Fatalf("Count after the colliding save = %d, want 7", n)
 	}
 }

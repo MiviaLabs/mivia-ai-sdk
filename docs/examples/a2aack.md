@@ -69,8 +69,10 @@ a tampered reply never reaches the confirmed ack.
 ## Terminal outcomes
 
 - `StateCompleted` resolves a confirmed ack.
-- `StateFailed` and `StateCanceled` return an error wrapping
-  `ErrRemoteFailed`.
+- `StateFailed`, `StateCanceled`, and `StateRejected` return an error
+  wrapping `ErrRemoteFailed`.
+- `StateAuthRequired` and `StateInputRequired` return the same wrapped
+  error. Both wait for client action `a2aack` never sends.
 - The `Timeout` deadline or `ctx` cancellation returns an error
   wrapping `ErrTimeout` with the last seen state.
 

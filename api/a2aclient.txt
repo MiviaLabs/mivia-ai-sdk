@@ -1,8 +1,12 @@
 package a2aclient
+  const StateAuthRequired
   const StateCanceled
   const StateCompleted
   const StateFailed
+  const StateInputRequired
+  const StateRejected
   const StateSubmitted
+  const StateUnknown
   const StateUnspecified = iota
   const StateWorking
   func (c *Client) Close() (error)

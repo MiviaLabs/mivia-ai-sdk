@@ -26,6 +26,68 @@ func nearDup(base longtermmemory.Entry, detail string) longtermmemory.Entry {
 	return e
 }
 
+// saveAll saves each entry in order and returns the stored ids.
+func saveAll(t *testing.T, s *longtermmemory.Store, entries ...longtermmemory.Entry) []string {
+	t.Helper()
+	ids := make([]string, 0, len(entries))
+	for i, e := range entries {
+		res, err := s.Save(context.Background(), e)
+		if err != nil {
+			t.Fatalf("Save entry %d (%s): %v", i, e.Title, err)
+		}
+		ids = append(ids, res.ID)
+	}
+	return ids
+}
+
+// fillAndTrigger saves n distinct filler rows, then one trigger row
+// that crosses the consolidation load factor. It returns the filler
+// ids, not the trigger id.
+func fillAndTrigger(t *testing.T, s *longtermmemory.Store, n int) []string {
+	t.Helper()
+	fillers := make([]longtermmemory.Entry, 0, n)
+	for i := 0; i < n; i++ {
+		fillers = append(fillers, distinct(fmt.Sprintf("Filler %d", i), fmt.Sprintf("2026-02-%02d", i+1)))
+	}
+	ids := saveAll(t, s, fillers...)
+	saveAll(t, s, distinct("Trigger", "2026-03-01"))
+	return ids
+}
+
+// searchOne runs one scope search and requires exactly one hit.
+func searchOne(t *testing.T, s *longtermmemory.Store, text string) longtermmemory.Result {
+	t.Helper()
+	hits, err := s.Search(context.Background(), longtermmemory.Query{Text: text, Scope: "proj"})
+	if err != nil {
+		t.Fatalf("Search %q: %v", text, err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("Search %q = %d hits, want 1 survivor", text, len(hits))
+	}
+	return hits[0]
+}
+
+// tagList builds n distinct tags sharing one prefix.
+func tagList(prefix string, n int) []string {
+	tags := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		tags = append(tags, fmt.Sprintf("%s%d", prefix, i))
+	}
+	return tags
+}
+
+// mergePair builds one near-duplicate archive pair: the earlier keep
+// row and the later drop row, each with its own tags.
+func mergePair(keepTags, dropTags []string) (longtermmemory.Entry, longtermmemory.Entry) {
+	keep := validEntry("Deploy guide", "Ship the service safely")
+	keep.Created = "2026-01-01"
+	keep.Tags = keepTags
+	drop := nearDup(keep, "drop detail")
+	drop.Created = "2026-01-02"
+	drop.Tags = dropTags
+	return keep, drop
+}
+
 func TestConsolidationMergesNearDuplicates(t *testing.T) {
 	s := longtermmemory.New(10)
 	a1 := validEntry("Deploy guide", "Ship the service safely")
@@ -178,5 +240,149 @@ func TestConsolidationCoreNeverDeleted(t *testing.T) {
 	entries, _ := s.CoreEntries(context.Background(), "proj")
 	if len(entries) != 1 || entries[0].Created != "2026-01-02" {
 		t.Fatalf("core rows = %+v, want the promoted survivor", entries)
+	}
+}
+
+func TestConsolidationCapsMergedTags(t *testing.T) {
+	s := longtermmemory.New(10)
+	keep, drop := mergePair(tagList("keep", 8), tagList("drop", 8))
+	saveAll(t, s, keep, drop)
+	fillAndTrigger(t, s, 6)
+
+	survivor := searchOne(t, s, "deploy")
+	if len(survivor.Tags) != 8 {
+		t.Fatalf("survivor tags = %d (%v), want 8: the union caps at the tag limit", len(survivor.Tags), survivor.Tags)
+	}
+	for i, want := range tagList("keep", 8) {
+		if survivor.Tags[i] != want {
+			t.Fatalf("survivor tag %d = %q, want %q: the keep row's tags fill the list first", i, survivor.Tags[i], want)
+		}
+	}
+	rebuilt := validEntry("Deploy guide", "Ship the service safely")
+	rebuilt.Tags = survivor.Tags
+	if err := rebuilt.Validate(); err != nil {
+		t.Fatalf("Validate on the survivor's tags = %v, want nil", err)
+	}
+}
+
+func TestConsolidationRekeysMergedEntry(t *testing.T) {
+	s := longtermmemory.New(10)
+	keep, drop := mergePair([]string{"alpha"}, []string{"beta"})
+	saveAll(t, s, keep, drop)
+	fillAndTrigger(t, s, 6)
+
+	survivor := searchOne(t, s, "deploy")
+	before, _ := s.Count(context.Background(), "proj")
+	again := keep
+	again.Tags = survivor.Tags
+	res, err := s.Save(context.Background(), again)
+	if err != nil {
+		t.Fatalf("re-save of the survivor's content: %v", err)
+	}
+	if res.ID != survivor.ID {
+		t.Fatalf("re-save id = %q, want the survivor id %q: the merged entry keeps its content address", res.ID, survivor.ID)
+	}
+	after, _ := s.Count(context.Background(), "proj")
+	if after != before {
+		t.Fatalf("Count after the re-save = %d, want %d: no duplicate row", after, before)
+	}
+}
+
+func TestConsolidationMergedIDDropsThePreMergeID(t *testing.T) {
+	s := longtermmemory.New(10)
+	keep, drop := mergePair([]string{"alpha"}, []string{"beta"})
+	ids := saveAll(t, s, keep, drop)
+	fillAndTrigger(t, s, 6)
+
+	survivor := searchOne(t, s, "deploy")
+	if survivor.ID == ids[0] {
+		t.Fatalf("survivor id = %q, want a new address: the merged tags changed the content", survivor.ID)
+	}
+	if err := s.Delete(context.Background(), ids[0]); !errors.Is(err, longtermmemory.ErrEntryNotFound) {
+		t.Fatalf("Delete on the pre-merge id = %v, want ErrEntryNotFound", err)
+	}
+}
+
+func TestConsolidationKeepsCoreFlagAcrossRekey(t *testing.T) {
+	s := longtermmemory.New(10)
+	core := validEntry("Core entry", "Shared summary text")
+	core.Created = "2026-01-02"
+	core.Tags = []string{"alpha"}
+	ids := saveAll(t, s, core)
+	if err := s.PromoteToCore(context.Background(), ids[0]); err != nil {
+		t.Fatalf("PromoteToCore: %v", err)
+	}
+	older := nearDup(core, "older detail")
+	older.Created = "2026-01-01"
+	older.Tags = []string{"beta"}
+	saveAll(t, s, older)
+	fillAndTrigger(t, s, 6)
+
+	entries, err := s.CoreEntries(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("CoreEntries: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("CoreEntries = %d rows, want 1: the re-key moves the core flag with the row", len(entries))
+	}
+	if entries[0].ID == ids[0] {
+		t.Fatalf("core row id = %q, want a new address after the merge", entries[0].ID)
+	}
+	if err := s.PromoteToCore(context.Background(), ids[0]); !errors.Is(err, longtermmemory.ErrEntryNotFound) {
+		t.Fatalf("PromoteToCore on the pre-merge id = %v, want ErrEntryNotFound", err)
+	}
+}
+
+func TestConsolidationSurvivorAbsorbedByCore(t *testing.T) {
+	s := longtermmemory.New(10)
+	first := validEntry("Shared cluster", "One shared summary")
+	first.Created = "2026-01-01"
+	first.Tags = []string{"one"}
+	second := nearDup(first, "second detail")
+	second.Created = "2026-01-02"
+	second.Tags = []string{"two"}
+	core := nearDup(first, "core detail")
+	core.Created = "2026-03-01"
+	core.Tags = []string{"three"}
+	ids := saveAll(t, s, first, second, core)
+	if err := s.PromoteToCore(context.Background(), ids[2]); err != nil {
+		t.Fatalf("PromoteToCore: %v", err)
+	}
+	fillAndTrigger(t, s, 5)
+
+	survivor := searchOne(t, s, "cluster")
+	entries, err := s.CoreEntries(context.Background(), "proj")
+	if err != nil {
+		t.Fatalf("CoreEntries: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != survivor.ID {
+		t.Fatalf("CoreEntries = %+v, want the one cluster survivor %q", entries, survivor.ID)
+	}
+	before, _ := s.Count(context.Background(), "proj")
+	again := core
+	again.Tags = survivor.Tags
+	res, err := s.Save(context.Background(), again)
+	if err != nil {
+		t.Fatalf("re-save of the survivor's content: %v", err)
+	}
+	if res.ID != survivor.ID {
+		t.Fatalf("re-save id = %q, want the survivor id %q", res.ID, survivor.ID)
+	}
+	after, _ := s.Count(context.Background(), "proj")
+	if after != before {
+		t.Fatalf("Count after the re-save = %d, want %d: no duplicate row", after, before)
+	}
+}
+
+func TestConsolidationLeavesUnmergedIDsStable(t *testing.T) {
+	s := longtermmemory.New(10)
+	keep, drop := mergePair([]string{"alpha"}, []string{"beta"})
+	saveAll(t, s, keep, drop)
+	fillers := fillAndTrigger(t, s, 6)
+
+	for i, id := range fillers {
+		if err := s.PromoteToCore(context.Background(), id); err != nil {
+			t.Fatalf("PromoteToCore on unmerged filler %d = %v, want nil: an unmerged row keeps its id", i, err)
+		}
 	}
 }

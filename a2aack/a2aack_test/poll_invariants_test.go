@@ -69,3 +69,35 @@ func TestPollInvariants(t *testing.T) {
 		}
 	})
 }
+
+// TestPollContinuesOnUnresolvedStates proves each state that carries
+// no verdict keeps the loop polling until the deadline, so the wait
+// ends in ErrTimeout, not ErrRemoteFailed.
+func TestPollContinuesOnUnresolvedStates(t *testing.T) {
+	opts := a2aack.Options{Poll: time.Millisecond, Timeout: 20 * time.Millisecond}
+	cases := []a2aclient.State{
+		a2aclient.StateSubmitted,
+		a2aclient.StateWorking,
+		a2aclient.StateUnspecified,
+		a2aclient.StateUnknown,
+	}
+	for _, state := range cases {
+		t.Run(state.String(), func(t *testing.T) {
+			fake := &fakeRemote{statusStates: []a2aclient.State{state}}
+			ackFn, err := a2aack.Wait(fake, opts)
+			if err != nil {
+				t.Fatalf("Wait returned validation error %v", err)
+			}
+			_, err = ackFn(context.Background(), signedMessage(t))
+			if !errors.Is(err, a2aack.ErrTimeout) {
+				t.Fatalf("error = %v, want errors.Is(ErrTimeout): %s must keep polling", err, state)
+			}
+			if errors.Is(err, a2aack.ErrRemoteFailed) {
+				t.Fatalf("error = %v, want no ErrRemoteFailed for %s", err, state)
+			}
+			if calls := fake.statusCalls.Load(); calls < 2 {
+				t.Fatalf("Status called %d times for %s, want repeated polls", calls, state)
+			}
+		})
+	}
+}

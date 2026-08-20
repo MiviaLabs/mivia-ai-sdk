@@ -290,7 +290,9 @@ flowchart LR
   `Result`. `Send` maps a signed message through `a2a.ToPart` and
   sends it as a remote task; `Status` polls the task's state; `Result`
   maps the output back through `a2a.FromPart` and re-verifies the
-  signature. `a2aclient` imports `a2a` and `envelope`. It is one of
+  signature. `State` mirrors all ten a2a-go task states, and its
+  terminal set (completed, failed, canceled, rejected) equals
+  a2a-go's own. `a2aclient` imports `a2a` and `envelope`. It is one of
   two packages in this module allowed to import the third-party
   `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
   dial dependency `a2a-go`'s gRPC transport needs; this is the
@@ -308,7 +310,9 @@ flowchart LR
   `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
   an `agent.AckWait` that sends a gated step as a remote task, polls
   `Status`, fetches `Result`, re-verifies its signature, and builds a
-  confirmed ack keyed off the sent message. `a2aack` imports
+  confirmed ack keyed off the sent message. A failed, canceled, or
+  rejected task ends the poll with `ErrRemoteFailed`, and so does a
+  state the loop cannot resolve. `a2aack` imports
   `a2aclient`, `agent`, and `envelope`. It carries no a2a-go import of
   its own. See [packages/a2aack.md](packages/a2aack.md).
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
@@ -559,9 +563,11 @@ flowchart LR
   `FrameOpenTag`, and `FrameCloseTag`, and the sentinels
   `ErrEntryNotFound`, `ErrCoreTierFull`, `ErrStoreFull`,
   `ErrQueryRequired`, and `ErrScopeRequired`. Entry ids are
-  content-addressed over every field; consolidation at the load
-  factor runs one near-duplicate merge pass (Jaccard at or above
-  0.82) and then oldest-archive eviction, never touching core rows;
+  content-addressed over every field, so a merge survivor takes a new
+  id; consolidation at the load factor runs one near-duplicate merge
+  pass (Jaccard at or above 0.82), which caps the merged tag union at
+  eight tags, and then oldest-archive eviction, never evicting a core
+  row;
   `CoreFrame` renders the core tier as a bounded block whose entry
   text is HTML-escaped against the frame tags, so agent-writable text
   cannot close the block early. A leaf: no internal imports, standard

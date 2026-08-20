@@ -852,3 +852,66 @@ accessors in the same change as the code.
 `AGENTS.md` updates its `flow/` layout bullet. No conformance-vector
 change: neither addition carries a signed or threaded
 wire form.
+
+### Gap fix: a negative BaseDelay fails validation
+
+Status: planned, not yet built. The `RetryPolicy` doc
+(`flow/retry.go:12`) says `MaxDelay` clamps every computed backoff,
+so the exponential term cannot overflow. `retryValidateMessage`
+(`flow/retry.go:43`) checks `MaxAttempts` and `MaxDelay` only. A
+negative `BaseDelay` passes validation.
+
+The guard is then dead. In `NextDelay` (`flow/retry.go:66`) the test
+`delay > p.MaxDelay>>1` is false for every negative delay. So
+`delay *= 2` runs on every pass and the final clamp never fires.
+`NextDelay` returns a negative duration, and a large attempt count
+overflows `time.Duration`. A negative duration makes `defaultSleep`
+return at once, which turns the backoff into a hot retry loop.
+
+#### Zero stays legal
+
+A zero `BaseDelay` yields a zero backoff and an immediate retry.
+`NextDelay` returns zero for every attempt, which is inside the
+clamp. No in-repo caller sets zero. The field doc calls `BaseDelay`
+the first retry's backoff, and zero is a valid backoff. Constrain the
+negative case only.
+
+#### Fix
+
+Add a third check to `retryValidateMessage`, after the `MaxDelay`
+check: return `"base delay must not be negative"` when
+`p.BaseDelay < 0`. Place it last. The two existing messages are
+pinned by `flow/flow_test/retry_test.go` at lines 29, 44, 201, and
+219, and a trailing check leaves them unchanged. `Validate`, `New`,
+and `validateRetry` pick the rule up through the one shared function.
+
+`NextDelay` stays pure and unchanged. Its bound holds for a policy
+that passes `Validate`. Add one sentence to the `NextDelay` comment
+that names that precondition. Update the `RetryPolicy` entry in
+`docs/packages/flow.md` with the new rule.
+
+#### Tests
+
+Add the cases to `flow/flow_test/retry_test.go`. The first two fail
+against today's code.
+
+- `TestRetryPolicyRejectsNegativeBaseDelay` — call `Validate` on
+  `RetryPolicy{MaxAttempts: 3, BaseDelay: -time.Second, MaxDelay:
+  time.Second}`. Assert the exact text
+  `flow: retry: base delay must not be negative`. Today `Validate`
+  returns nil, so the case fails now.
+- `TestNewRejectsStepRetryWithNegativeBaseDelay` — call `flow.New`
+  with that policy on step `"a"`. Assert the exact text
+  `flow: step "a" retry: base delay must not be negative`. Today
+  `New` succeeds, so the case fails now.
+- `TestRetryPolicyAcceptsZeroBaseDelay` — assert `Validate` returns
+  nil and `NextDelay(4)` returns zero. This case passes today. It
+  pins that the new rule does not over-reach.
+
+#### Verification for this gap fix
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/flow.txt`. `policy/layers.json` is unchanged: the `flow`
+row already covers every edge. Run `make verify` and
+`go test -race ./flow/...`. Hold `flow` coverage at or above 85. No
+conformance vector changes: `RetryPolicy` carries no wire form.

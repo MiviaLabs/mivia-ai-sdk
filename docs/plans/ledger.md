@@ -914,3 +914,128 @@ Phase 42c adds the `Actor` type and four `TaskState` audit fields
 every mutating `Ledger` method, plus a `SQLiteStore` startup migration
 for a
 pre-phase database file.
+
+### Gap fix: MaxEntries bounds the stored entry count
+
+Status: planned, not yet built.
+
+`evictOverCap` (`ledger/store.go:152`) never deletes a map key. It
+blanks four fields on the oldest terminal record and decrements
+`liveCount`. So `len(m.tasks)` only grows. The
+`MemStoreOptions.MaxEntries` doc (`ledger/store.go:58`) claims
+`MaxEntries` "caps the number of records MemStore holds". That claim
+is false today.
+
+The defect is reachable from outside the process. `dispatch` builds a
+capped `MemStore` for replay protection (`dispatch/options.go:174`).
+`Endpoint` is an HTTP surface. The replay key carries the sender's
+`ThreadID` and `ID` (`dispatch/ladder.go:20`). So a remote caller
+controls the key space and grows the map without a bound.
+
+#### The bound
+
+Keep the tombstone stage. Add a second stage that deletes.
+`MaxEntries` bounds two counts:
+
+- live records: at most `MaxEntries` records hold a `Task` payload;
+- tombstones: at most `MaxEntries` tombstoned records.
+
+So `len(m.tasks)` reaches at most twice `MaxEntries`, plus the
+unfinished records the store cannot evict. Eviction never removes a
+`StatusPending` or `StatusClaimed` record. That residual term is the
+honest part of the bound. State it in the field doc. For `dispatch`
+the residual term is the in-flight line count, because `taskrun.Run`
+always completes its key terminally.
+
+Two stages beat a plain delete. A tombstone keeps the idempotency
+guard for a key whose payload is gone. A tombstone costs one
+fixed-size record. A live record costs the caller's whole `Task`
+value. Two stages hold the cheap guard for twice as many keys as the
+expensive payload.
+
+#### Bookkeeping
+
+`MemStore` gains two unexported fields: `tombstoneQueue
+[]IdempotencyKey` and `tombstoned map[IdempotencyKey]bool`. The
+tombstone stage pushes the evicted key onto both. The delete stage
+pops the oldest queued key. It skips a key that `tombstoned` no
+longer holds. Otherwise it deletes the key from `tasks` and from
+`tombstoned`.
+
+`CompareAndSwap` over a key that `tombstoned` holds removes the key
+from `tombstoned` and increments `liveCount`. A record written back
+over a tombstone is live again. `Ledger` never makes that write,
+because `Admit` rejects a terminal key. `Store` is a public
+interface, so a direct caller can make it. Without this branch
+`liveCount` drifts below the true live count and the cap over-holds.
+
+Split `evictOverCap` into `tombstoneOverCap` and
+`deleteTombstonesOverCap`. Each stage stays one short loop. The
+caller holds `m.mu` for both.
+
+#### Idempotency becomes a window
+
+A deleted tombstone no longer rejects re-admission. `MaxEntries`
+buys a bounded replay window, not permanent idempotency. This
+contradicts the current text in the "Restore and eviction" section
+above and in `MemStoreOptions.MaxEntries`. Correct both in the same
+change. Correct the `MemStoreOptions` entry in
+`docs/packages/ledger.md` too. An unbounded `MemStore`, built by
+`NewMemStore`, keeps permanent idempotency and stays the default.
+
+The `Needs` limit recorded in "Restore and eviction" is unchanged. A
+deleted record hides an ancestor exactly as a tombstone hides it.
+The delete stage adds no new exposure to the transitive walk.
+
+#### Existing test to re-size
+
+`ledger/ledger_test/eviction_race_test.go` uses `MaxEntries: 4` with
+nine keys. Under the new bound the store holds at most eight records,
+so the seed tombstone is deleted and the re-admit assertion fails.
+Change one constant: raise the fixture cap to 8. Nine keys then leave
+one tombstone and no deletion, so every existing assertion holds
+unchanged. Weaken no assertion and delete no case. If
+`scripts/check_test_tampering.py` reports the constant change, use
+the documented `Allow-Test-Change:` commit trailer and name this
+section as the reason.
+
+#### Tests
+
+New file `ledger/ledger_test/eviction_cap_test.go`. The first three
+cases fail against today's code.
+
+- `TestMemStoreDeletesOldestTombstoneOverCap` — cap 2; admit, claim,
+  and complete six distinct keys; count records through `Range`.
+  Assert the count is at most 4. Assert `Load` reports the oldest key
+  absent and the newest key present. Today the count is 6 and the
+  oldest key is present, so the case fails now.
+- `TestMemStoreReAdmitsAfterTombstoneDelete` — same fill; assert
+  `Admit` at the deleted oldest key returns true. This pins the
+  documented replay window. Today the tombstone survives and `Admit`
+  returns false, so the case fails now.
+- `TestMemStoreRevivedTombstoneCountsLive` — tombstone one key
+  through the cap, write it back to `StatusPending` with a direct
+  `CompareAndSwap`, then complete more keys. Assert the `Range` count
+  stays at or below twice the cap. Today the count exceeds it, so the
+  case fails now. This case covers the `liveCount` repair branch the
+  mutation floor needs.
+- `TestMemStoreTombstoneSurvivesUnderTombstoneCap` — cap 4 with five
+  terminal keys; assert the oldest key is found, `Status` is
+  `StatusCompleted`, `Owner` is empty, `Task` is nil, and re-admission
+  returns false. This case passes today. It guards the tombstone stage
+  against a delete-only regression.
+- `TestMemStoreKeepsUnfinishedRecordsOverCap` — cap 1 with two
+  admitted, never-claimed keys; assert both are found. This case
+  passes today. It pins the residual term of the bound.
+
+#### Verification for this gap fix
+
+No exported symbol changes. `make api-update` must produce no diff
+for `api/ledger.txt`. `policy/layers.json` is unchanged: the row
+`"ledger": ["machine", "events"]` already covers every edge. Run
+`make verify`, `go test -race ./ledger/...`, and
+`make verify-ledger-sqlite`. `SQLiteStore` is untouched. Hold
+`ledger` coverage at or above 85 and the mutation floor at 91.
+`ledger/store.go` grows near 240 lines, under the 500-line limit;
+both eviction helpers stay far under 80 lines. No conformance vector
+changes.

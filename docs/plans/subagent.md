@@ -724,3 +724,115 @@ Status: shipped. `ErrInvalidCapacity` is declared in
 `api/subagent.txt`, and covered by
 `TestNewMailboxRejectsBadCapacity` in
 `subagent/subagent_test/mailbox_test.go`.
+
+### Gap fix: Deliver rejects an unsigned message
+
+Status: shipped. `Deliver` calls `VerifySignature` and wraps the
+failure in `ErrUnverified`, which `api/subagent.txt` locks.
+`TestDeliverRejectsUnsignedMessage`,
+`TestDeliverRejectsTamperedSignature`, and
+`TestDeliverKeepsSignedMessage` in
+`subagent/subagent_test/mailbox_test.go` cover it. The text below
+records the gap the fix closed.
+
+The `Mailbox` doc
+(`subagent/mailbox.go:26`) says "Mailbox holds signed messages".
+`Deliver` (`subagent/mailbox.go:43`) calls `msg.Validate()` only.
+`Message.validateSignature` (`envelope/message.go:186`) returns nil
+when `Signer` and `Signature` are both empty. So an unsigned message
+enters the mailbox. `InboxTool.Run` (`subagent/mailbox.go:127`) then
+hands the payload to a model with no provenance. AGENTS.md requires a
+`Validate`-enforced rule behind every documented rule, so enforce the
+doc.
+
+#### Callers checked
+
+Enforcement breaks no in-repo caller. Every call site delivers a
+signed message today.
+
+- `sendTool.Run` (`subagent/mailbox.go:101`) delivers a message it
+  signed with its `identity.Identity`.
+- `e2e/e2e_test/subagent_messaging_test.go:148` delivers a
+  human-signed message.
+- `subagent/subagent_test/mailbox_test.go` and
+  `subagent/subagent_test/metamorphic_test.go` deliver
+  `signedMessage` values. The one unsigned case
+  (`mailbox_test.go:21`) already asserts an error.
+
+#### Fix
+
+`Deliver` calls `msg.Validate()`, then `msg.VerifySignature()`.
+`VerifySignature` (`envelope/sign.go:35`) rejects an empty `Signer`
+or `Signature` and checks the ed25519 signature over the canonical
+bytes. The check needs no roster: the message carries its own public
+key. Trust policy, meaning which signers to accept, stays with the
+caller, as `envelope` documents. Run both checks before the lock and
+before the capacity check, so the existing `ErrMailboxFull` order is
+unchanged.
+
+#### API change
+
+This gap fix adds one exported symbol. `ErrUnverified` reports a
+`Deliver` whose message fails signature verification: no signature,
+or a signature that does not match.
+
+`envelope` exports no sentinel for this case: `VerifySignature`
+returns a bare `errors.New` (`envelope/sign.go:37`). So the new
+symbol is required and duplicates nothing.
+
+Pin the text and the wrapping. `ErrMailboxFull` and
+`ErrInvalidCapacity` (`subagent/mailbox.go:20,24`) each carry the
+`subagent: ` prefix in their own message. `ErrUnverified` follows that
+house style, and `Deliver` wraps without re-prefixing.
+
+```go
+// ErrUnverified reports a Deliver whose message fails envelope
+// signature verification. Test with errors.Is.
+var ErrUnverified = errors.New("subagent: mailbox rejects an unverified message")
+
+// inside Deliver:
+return fmt.Errorf("%w: %v", ErrUnverified, err)
+```
+
+A caller matches the sentinel with `errors.Is` and still reads the
+`envelope` detail. Run `make api-update` and commit the
+`api/subagent.txt` diff in the same change.
+
+Update the `Mailbox` and `Deliver` comments to name the enforced
+rule. Update the mailbox entries in `docs/packages/subagent.md` in
+the same change.
+
+#### Tests
+
+Add the cases to `subagent/subagent_test/mailbox_test.go`. The first
+two fail against today's code.
+
+- `TestDeliverRejectsUnsignedMessage` — build a message that passes
+  `Validate` with an empty `Signer` and an empty `Signature`. Assert
+  `Deliver` returns an error matching `ErrUnverified`. Assert `Take`
+  returns no message. Today `Deliver` returns nil and `Take` returns
+  one message, so the case fails now.
+- `TestDeliverRejectsTamperedSignature` — sign a message, then change
+  its `Payload`. Assert `Deliver` returns an error matching
+  `ErrUnverified`. Today the hex format stays valid, `Validate`
+  passes, and the mailbox accepts the tampered message, so the case
+  fails now.
+- `TestDeliverKeepsSignedMessage` — assert the signed path still
+  succeeds and `Take` returns the message. This case passes today. It
+  guards against an over-strict check.
+
+Both red cases assert the sentinel and the empty drain. So a mutation
+that drops the `VerifySignature` call is killed, and the mutation
+floor of 94 holds.
+
+#### Verification for this gap fix
+
+Land this gap fix as its own commit, separate from the `flow` retry
+gap fix in `docs/plans/flow.md`. The two fixes share no file and no
+package. One commit per fix keeps a revert granular.
+
+Run `make verify`, `go test -race ./subagent/...`, and
+`go test ./e2e/...`. `policy/layers.json` is unchanged: the
+`subagent` row already lists `envelope`. Hold `subagent` coverage at
+or above 85 and the mutation floor at 94. No conformance vector
+changes: `envelope` message semantics are untouched.

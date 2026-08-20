@@ -187,3 +187,4 @@ package subagent
   var ErrInvalidCapacity
   var ErrMailboxFull
   var ErrMaxDepth
+  var ErrUnverified

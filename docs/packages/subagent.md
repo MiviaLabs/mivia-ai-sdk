@@ -121,8 +121,10 @@ with an `Op` constant: `OpAdmit`, `OpRemove`, `OpPromote`,
 ## Message plane
 
 - `NewMailbox(capacity)` — a bounded inbox of signed messages for
-  one recipient. `Deliver` validates and appends, failing with
-  `ErrMailboxFull` at the bound; `Take` drains in delivery order.
+  one recipient. `Deliver` validates the message, verifies its
+  signature, and appends it. An unsigned or tampered message fails
+  with `ErrUnverified`. The bound fails with `ErrMailboxFull`. `Take`
+  drains in delivery order.
 - `SendTool(name, box, id)` — signs one message per call with the
   caller's identity and delivers it. Any sender uses the same
   surface: an orchestrator step, a sibling subagent, or human
@@ -163,6 +165,12 @@ separate planes, with `dispatch` carrying room messages over HTTP.
   `TestNewMailboxRejectsBadCapacity` in
   `subagent/subagent_test/mailbox_test.go` with `errors.Is`, for both
   a zero and a negative capacity.
+- `ErrUnverified` ("subagent: mailbox rejects an unverified message")
+  — `Mailbox.Deliver` wraps it, with the `envelope` detail in the
+  message, when `VerifySignature` fails. Pinned by
+  `TestDeliverRejectsUnsignedMessage` and
+  `TestDeliverRejectsTamperedSignature` in
+  `subagent/subagent_test/mailbox_test.go` with `errors.Is`.
 - `ErrBadArguments` ("subagent: bad arguments") — the five file tools
   wrap it when `DecodeArguments` cannot parse raw bytes, or when
   `Run`'s `tools.InOut.Value` does not carry the tool's typed argument

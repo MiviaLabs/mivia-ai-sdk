@@ -133,7 +133,8 @@
       "flow",
       "machine",
       "subagent",
-      "tools"
+      "tools",
+      "trace"
     ],
     "scheduler": [
       "events"

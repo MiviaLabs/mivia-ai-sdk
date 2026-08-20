@@ -11,6 +11,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
 // wireMachine is the JSON form of the machine section.
@@ -63,6 +64,7 @@ type wireOptions struct {
 	Room   string      `json:"room"`
 	AskTo  string      `json:"ask_to"`
 	Budget *wireBudget `json:"budget"`
+	Trace  bool        `json:"trace"`
 }
 
 // wireBudget is the JSON form of an agentrun.Options.Budget cap.
@@ -140,6 +142,9 @@ func Load(data []byte) (*Definition, error) {
 				MaxBytes:  doc.Options.Budget.MaxBytes,
 				MaxEvents: doc.Options.Budget.MaxEvents,
 			}
+		}
+		if doc.Options.Trace {
+			def.Options.Tracer = trace.New()
 		}
 	}
 	plan, bindings, err := buildPlan(doc.Plan, declared)

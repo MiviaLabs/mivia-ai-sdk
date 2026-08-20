@@ -240,6 +240,39 @@ func TestLoadOptionsBudget(t *testing.T) {
 	})
 }
 
+// TestLoadOptionsTrace checks that options.trace builds a Tracer on
+// true, and leaves it nil on false or absent.
+func TestLoadOptionsTrace(t *testing.T) {
+	doc := func(trace string) string {
+		return `{
+			"machine": {"initial": "q", "transitions": [
+				{"from": "q", "to": "d", "trigger": "r"}
+			]},
+			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"options": {` + trace + `},
+			"tools": []
+		}`
+	}
+	t.Run("true", func(t *testing.T) {
+		d := loadDoc(t, doc(`"trace": true`))
+		if d.Options.Tracer == nil {
+			t.Fatal("Tracer = nil, want non-nil")
+		}
+	})
+	t.Run("false", func(t *testing.T) {
+		d := loadDoc(t, doc(`"trace": false`))
+		if d.Options.Tracer != nil {
+			t.Fatalf("Tracer = %+v, want nil", d.Options.Tracer)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		d := loadDoc(t, doc(`"room": "team"`))
+		if d.Options.Tracer != nil {
+			t.Fatalf("Tracer = %+v, want nil", d.Options.Tracer)
+		}
+	})
+}
+
 // TestLoadUnknownFieldsIgnored checks that extra JSON fields are
 // ignored, matching envelope.Decode.
 func TestLoadUnknownFieldsIgnored(t *testing.T) {

@@ -282,18 +282,19 @@ var (
 - A scope is one caller-chosen key, not a project or org enum. The
   reference's org identity machinery carried its SQLite file layout.
 - Entry ids are content-addressed: SHA-256 over scope, title, and
-  field text. Identical re-saves dedupe on the id.
+  field text. Identical re-saves dedupe on the id. A merge rewrites
+  the survivor's tags, so the survivor takes a new id.
 - Consolidation order is fixed and single-pass on the merge: exactly
   one merge pass over near-duplicates, then oldest-archive eviction in
   a loop until under `MaxEntries` or nothing evictable remains. The
   merge never repeats inside one consolidation.
 - Near-duplicate means Jaccard similarity of title-plus-summary tokens
   at or above 0.82, matching the reference threshold.
-- A core row is never the deleted side of a merge. When exactly one
-  side is core, the core row survives regardless of creation order.
-  When both sides share a tier, the earlier `Created` row survives.
+- A core row is never evicted. When exactly one side is core, the core
+  row survives the merge regardless of creation order. When both sides
+  share a tier, the earlier `Created` row survives.
 - The merge survivor keeps the union of both tag lists, deduplicated,
-  first-seen order.
+  first-seen order, capped at eight tags.
 - Eviction order uses `Created`, then id, oldest first. A missing
   `Created` sorts as today's date, which `Save` fills at insert.
 - `CoreFrame` never emits a partial entry. It stops at the first entry
@@ -329,7 +330,8 @@ var (
     `ErrEntryNotFound`.
 - `consolidate_test.go` —
   - Crossing the load factor merges two near-duplicate archive
-    entries into one survivor carrying the union of tags.
+    entries into one survivor carrying the capped union of tags under
+    a recomputed id.
   - Two near-duplicates of the same tier keep the earlier `Created`
     row as the survivor.
   - Consolidation evicts the oldest archive row when merges leave the
@@ -337,7 +339,8 @@ var (
   - One merge pass per consolidation: a bucket with two disjoint
     near-duplicate pairs merges both in one pass and never re-merges
     a consumed row.
-  - A core row is never evicted and never the deleted side of a merge.
+  - A core row is never evicted, and it survives a merge against one
+    archive side.
   - An archive row older than a later-promoted near-duplicate core row
     is the deleted side.
   - A scope of only core rows past capacity reports `ErrStoreFull`
@@ -521,7 +524,7 @@ otherwise.
   survivor's tags. Assert the returned id equals the survivor's id and
   that `Count` did not grow. Today the save mints a second id and the
   scope holds a duplicate row.
-- `TestConsolidationMergedIDLeavesTheOldID` — capture the keep row's
+- `TestConsolidationMergedIDDropsThePreMergeID` — capture the keep row's
   id before consolidation. After the merge assert the survivor's id
   differs, and that `Delete` on the old id returns `ErrEntryNotFound`.
   Today the id is unchanged and `Delete` succeeds.

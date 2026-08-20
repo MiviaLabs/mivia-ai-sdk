@@ -45,9 +45,11 @@ internal imports. The exported surface below mirrors
   `maxEntries` means `DefaultMaxEntries`.
 - `Save(ctx, e)` — validates and stores one entry. An identical
   re-save is idempotent: same id, no duplicate. Entry ids are
-  content-addressed, SHA-256 over every field. At the consolidation
+  content-addressed, SHA-256 over every field. A merge rewrites the
+  survivor's tags, so the survivor takes a new id. At the consolidation
   load factor it consolidates first, then refuses with `ErrStoreFull`
-  when the scope is still full.
+  when the scope is still full. It repeats the idempotency check after
+  consolidation, because consolidation can mint the id it is saving.
 - `Search(ctx, q)` — returns one scope's entries in which every query
   token matches the title, summary, or detail, case-insensitive.
   Tokenizing lowercases, splits on non-alphanumerics, and drops the
@@ -96,12 +98,17 @@ Use `errors.Is` to test these.
   or above 0.82), then oldest-archive eviction in a loop until the
   scope holds fewer than `MaxEntries` rows or nothing evictable
   remains. The merge never repeats inside one consolidation.
-- A core row is never the deleted side of a merge and never evicted.
-  With exactly one core side, the core row survives regardless of
-  creation order; with both sides sharing a tier, the earlier
-  `Created` row survives, id breaking a tie.
+- A core row is never evicted. With exactly one core side, the core
+  row survives the merge regardless of creation order; with both sides
+  sharing a tier, the earlier `Created` row survives, id breaking a
+  tie.
 - The merge survivor keeps the union of both tag lists, deduplicated,
-  in first-seen order.
+  in first-seen order, capped at eight tags. The survivor's own tags
+  fill the list first, so the dropped row loses tags past the cap.
+- The merge survivor takes a new id, recomputed from its merged
+  content, after the merge pass ends. A caller holding a pre-merge id
+  gets `ErrEntryNotFound` from `Delete` and `PromoteToCore`, the same
+  failure an evicted row gives.
 - Eviction order is `Created`, then id, oldest first.
 - The frame counts the advisory line and both tags toward the byte
   cap and never emits a partial entry.

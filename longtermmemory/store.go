@@ -42,6 +42,8 @@ func New(maxEntries int) *Store {
 // Save validates and stores one entry. An identical re-save is
 // idempotent. At the consolidation load factor it consolidates first,
 // then refuses with ErrStoreFull when the scope is still full.
+// Consolidation can mint the id this call carries, so Save repeats the
+// idempotency check after it and never overwrites a live row.
 func (s *Store) Save(ctx context.Context, e Entry) (Result, error) {
 	if err := e.Validate(); err != nil {
 		return Result{}, err
@@ -59,6 +61,9 @@ func (s *Store) Save(ctx context.Context, e Entry) (Result, error) {
 	scope := e.Scope
 	if float64(len(s.scopes[scope]))/float64(s.maxEntries) >= ConsolidateLoadFactor {
 		s.consolidateLocked(scope)
+		if existing, ok := s.rows[id]; ok {
+			return resultOf(id, existing.entry), nil
+		}
 		if len(s.scopes[scope]) >= s.maxEntries {
 			return Result{}, ErrStoreFull
 		}

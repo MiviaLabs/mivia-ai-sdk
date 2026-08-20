@@ -559,9 +559,11 @@ flowchart LR
   `FrameOpenTag`, and `FrameCloseTag`, and the sentinels
   `ErrEntryNotFound`, `ErrCoreTierFull`, `ErrStoreFull`,
   `ErrQueryRequired`, and `ErrScopeRequired`. Entry ids are
-  content-addressed over every field; consolidation at the load
-  factor runs one near-duplicate merge pass (Jaccard at or above
-  0.82) and then oldest-archive eviction, never touching core rows;
+  content-addressed over every field, so a merge survivor takes a new
+  id; consolidation at the load factor runs one near-duplicate merge
+  pass (Jaccard at or above 0.82), which caps the merged tag union at
+  eight tags, and then oldest-archive eviction, never evicting a core
+  row;
   `CoreFrame` renders the core tier as a bounded block whose entry
   text is HTML-escaped against the frame tags, so agent-writable text
   cannot close the block early. A leaf: no internal imports, standard

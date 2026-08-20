@@ -220,3 +220,72 @@ func TestSummaryValidateListRules(t *testing.T) {
 		},
 	})
 }
+
+// TestValidateRejectsDuplicateAfterTrim fails against today's code,
+// which keys duplicate detection on the raw item, so "ship it" and
+// "ship it " pass as distinct. One case per list: each runs through
+// validateItemList independently.
+func TestValidateRejectsDuplicateAfterTrim(t *testing.T) {
+	cases := []struct {
+		name string
+		sum  contextsummary.Summary
+	}{
+		{
+			name: "decisions",
+			sum: contextsummary.Summary{
+				Objective: "o", State: "s",
+				Decisions: []string{"ship it", "ship it "},
+			},
+		},
+		{
+			name: "open work",
+			sum: contextsummary.Summary{
+				Objective: "o", State: "s",
+				OpenWork: []string{"ship it", "ship it "},
+			},
+		},
+		{
+			name: "risks",
+			sum: contextsummary.Summary{
+				Objective: "o", State: "s",
+				Risks: []string{"ship it", "ship it "},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := c.sum.Validate(); err == nil {
+				t.Fatal("Validate() = nil, want a duplicate-item error")
+			}
+		})
+	}
+}
+
+// TestValidateAcceptsSharedPrefixItems is a positive control: two
+// items that share a prefix but differ after trim are not duplicates.
+func TestValidateAcceptsSharedPrefixItems(t *testing.T) {
+	sum := contextsummary.Summary{
+		Objective: "o", State: "s",
+		Decisions: []string{"ship it", "ship it now"},
+	}
+	if err := sum.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
+
+// TestValidateKeepsStoredWhitespace is a positive control: a single
+// list entry with surrounding whitespace and no duplicate still
+// passes, and the returned Decisions[0] keeps that whitespace
+// unchanged, proving the fix does not rewrite stored data.
+func TestValidateKeepsStoredWhitespace(t *testing.T) {
+	sum := contextsummary.Summary{
+		Objective: "o", State: "s",
+		Decisions: []string{"ship it "},
+	}
+	if err := sum.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	if sum.Decisions[0] != "ship it " {
+		t.Fatalf("Decisions[0] = %q, want %q", sum.Decisions[0], "ship it ")
+	}
+}

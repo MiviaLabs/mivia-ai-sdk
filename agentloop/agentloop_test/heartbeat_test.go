@@ -189,7 +189,11 @@ func assertNoGoroutineLeak(t *testing.T, before int) {
 
 // TestRunCompletionHeartbeat proves a Completer call that blocks past
 // two heartbeat intervals emits at least two EventCompletionHeartbeat
-// events before Run returns.
+// events before Run returns, each one labeled for iteration 1. A
+// non-empty check alone would still pass a build that labeled the
+// heartbeat tick with the wrong iteration number, or any other
+// non-empty placeholder distinct from the Start/End events' own
+// label; pinning the exact string closes that gap.
 func TestRunCompletionHeartbeat(t *testing.T) {
 	bus := events.New()
 	ch, handler := eventChan()
@@ -214,8 +218,8 @@ func TestRunCompletionHeartbeat(t *testing.T) {
 		if e.Name != agentloop.EventCompletionHeartbeat {
 			t.Fatalf("event Name = %s, want EventCompletionHeartbeat", e.Name)
 		}
-		if e.Data == "" {
-			t.Fatalf("event Data is empty, want a non-empty label")
+		if e.Data != "iteration 1" {
+			t.Fatalf("event Data = %q, want %q", e.Data, "iteration 1")
 		}
 	}
 	<-done

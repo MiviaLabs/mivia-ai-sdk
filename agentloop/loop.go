@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -61,6 +62,7 @@ type Loop struct {
 	window          *contextplan.Window
 	summarizer      *contextsummary.Summarizer
 	calibrated      *contextplan.Calibrated
+	heartbeat       time.Duration
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -106,6 +108,7 @@ func New(opts Options) (*Loop, error) {
 		window:          opts.Window,
 		summarizer:      opts.Summarizer,
 		calibrated:      opts.Calibrated,
+		heartbeat:       opts.HeartbeatInterval,
 	}, nil
 }
 

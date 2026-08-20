@@ -15,10 +15,11 @@ or a bound trips. The exported surface below mirrors
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
   `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
-  `Window`, `Summarizer`, `Calibrated`. `Completer` and `Tools` are
-  required; the rest are optional. `Bus` is reserved for the loop's
-  own events, pending a future event vocabulary; `Run` does not yet
-  emit anything through it.
+  `Window`, `Summarizer`, `Calibrated`, `HeartbeatInterval`.
+  `Completer` and `Tools` are required; the rest are optional. `Bus`
+  receives `Run`'s iteration, completion-heartbeat, and tool-call
+  events. `HeartbeatInterval` requires a non-nil `Bus`; `Run` emits
+  nothing through a nil `Bus` otherwise.
 - `Result` — one `Run` call's outcome: `Final`, `History`,
   `Iterations`, `Usage`, `Stop`. See "Result shape" below for how
   each field behaves on a graceful stop versus a hard-fail error

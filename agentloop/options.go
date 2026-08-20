@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -92,6 +93,11 @@ var (
 	// ErrTrimExcluded is Options.Validate's error when both Window and
 	// Trim are set. Test with errors.Is.
 	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
+	// ErrHeartbeatRequiresBus is Options.Validate's error when
+	// HeartbeatInterval is positive and Bus is nil: a heartbeat with
+	// nowhere to emit is a caller mistake, not a silent no-op. Test
+	// with errors.Is.
+	ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -171,9 +177,9 @@ type Options struct {
 	// SessionID keys Usage's running total. Required when Usage is
 	// set.
 	SessionID string
-	// Bus is reserved for the loop's own events, pending a future
-	// event vocabulary. Run does not yet emit anything through it.
-	// Optional.
+	// Bus receives Run's iteration, completion-heartbeat, and
+	// tool-call events. Required when HeartbeatInterval is positive;
+	// Run emits nothing through a nil Bus otherwise. Optional.
 	Bus *events.Bus
 	// Budget caps one Completer call's message history by byte count
 	// and message count. A nil Budget means uncapped.
@@ -197,6 +203,11 @@ type Options struct {
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated
+	// HeartbeatInterval emits a heartbeat Event on Bus every interval
+	// while one Completer call or one tool call is in flight. Zero
+	// disables heartbeats. A positive HeartbeatInterval requires a
+	// non-nil Bus.
+	HeartbeatInterval time.Duration
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -249,8 +260,9 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // failure: Completer required, Tools required, MaxIterations
 // positive, Usage requires a non-blank SessionID, a non-nil Budget
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
-// negative, and a non-nil Window passes Window.Validate, requires
-// Summarizer, requires Calibrated, and excludes Trim.
+// negative, a non-nil Window passes Window.Validate, requires
+// Summarizer, requires Calibrated, and excludes Trim, and finally a
+// positive HeartbeatInterval requires a non-nil Bus.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -285,6 +297,9 @@ func (o Options) Validate() error {
 		if o.Trim != nil {
 			return ErrTrimExcluded
 		}
+	}
+	if o.HeartbeatInterval > 0 && o.Bus == nil {
+		return ErrHeartbeatRequiresBus
 	}
 	return nil
 }

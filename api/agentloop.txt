@@ -4,6 +4,12 @@ package agentloop
   const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
+  const EventCompletionHeartbeat = "agentloop.completion.heartbeat"
+  const EventIterationEnd = "agentloop.iteration.end"
+  const EventIterationStart = "agentloop.iteration.start"
+  const EventToolCallEnd = "agentloop.tool_call.end"
+  const EventToolCallHeartbeat = "agentloop.tool_call.heartbeat"
+  const EventToolCallStart = "agentloop.tool_call.start"
   const RecoveryTargetTokens = 16384
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
@@ -47,6 +53,7 @@ package agentloop
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer
   Calibrated *contextplan.Calibrated
+  HeartbeatInterval time.Duration
 }
   type Result struct {
   Final provider.Message
@@ -60,6 +67,7 @@ package agentloop
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
   var ErrEstimatorRequired
+  var ErrHeartbeatRequiresBus
   var ErrInvalidSchema
   var ErrMaxIterations
   var ErrNoCompleter

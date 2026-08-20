@@ -59,8 +59,17 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 // as the tool result and returns that error as reported;
 // ErrorPolicyFail returns the error, wrapped with call.ID and
 // iteration, as Run's own hard failure, with reported nil. reported
-// is also nil on a successful call.
+// is also nil on a successful call. EventToolCallStart fires before
+// the PointPreTool fire; EventToolCallEnd fires from a deferred
+// closure covering every return path, including a veto and a
+// PointPreTool hook error, so both bracket the whole call, not only
+// its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
+// starts only after the veto check passes.
 func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (msg provider.Message, veto bool, reported error, err error) {
+	label := toolCallLabel(iteration, call)
+	l.emitEvent(ctx, EventToolCallStart, label)
+	defer func() { l.emitEvent(ctx, EventToolCallEnd, label) }()
+
 	if l.tracer != nil {
 		var span *trace.Span
 		ctx, span = l.tracer.Start(ctx, "agentloop.tool_call")
@@ -77,7 +86,9 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		}
 	}
 
+	stopHeartbeat := l.startHeartbeat(ctx, EventToolCallHeartbeat, label)
 	t, out, runErr := l.decodeAndRun(ctx, call)
+	stopHeartbeat()
 
 	if l.hooksReg != nil {
 		_, _ = l.fireHook(ctx, hooks.PointPostTool, call)

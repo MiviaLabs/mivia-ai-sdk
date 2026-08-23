@@ -36,6 +36,13 @@ Review, in order:
    proof both ways, that correct behavior passes and a planted
    mispairing or race fails, under the same fixture. Name the
    assertion that discriminates between them.
+6. Doc-comment claims inside branching code paths: a comment in
+   `if`/`switch`/`for`/`select` that runs longer than one line of "what"
+   is a behavioral claim about that branch's control flow. Re-read the
+   actual branch on review; do not trust the comment's prose.
+7. Plan `## Tests` cross-reference: if the plan names test functions,
+   verify they exist in the package's test files in the same review
+   pass. A missing or renamed test is a finding, not a minor note.
 
 Verdict format:
 - `SHIP` — no confirmed findings.

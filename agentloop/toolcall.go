@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
+	"sync/atomic"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -61,32 +63,136 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		l.emitEvent(ctx, EventToolParallel, parallelLabel(len(ordered)))
 	}
 
-	seen := make(map[dedupKey]struct{})
-	runningTotal := 0
-	for _, call := range ordered {
-		if err := ctx.Err(); err != nil {
-			return history, false, err
-		}
+	if err := ctx.Err(); err != nil {
+		return history, false, err
+	}
+	plans := l.planCalls(ordered)
+	results := l.executeCalls(ctx, plans, iteration)
+	return l.collectCalls(ctx, history, plans, results, iteration)
+}
 
+// callPlan is one call's pre-dispatch decision: the call itself and,
+// when DedupWithinTurn already served an identical (name,
+// canonical-argument) pair earlier in this turn, the pre-computed
+// DuplicateCallNotice message. duplicate calls never dispatch.
+type callPlan struct {
+	call      provider.ToolCall
+	duplicate bool
+	msg       provider.Message
+}
+
+// planCalls makes the dedup decision for every call, serially and in
+// Index order, before any call dispatches. Under a parallel worker
+// pool the reservation must happen ahead of dispatch, otherwise two
+// byte-equal calls could both pass the check before either records
+// its pair and the tool would run twice.
+func (l *Loop) planCalls(ordered []provider.ToolCall) []callPlan {
+	plans := make([]callPlan, len(ordered))
+	seen := make(map[dedupKey]struct{})
+	for i, call := range ordered {
 		key, eligible := l.dedupKeyFor(call)
+		dup := false
 		if eligible {
-			if _, dup := seen[key]; dup {
-				msg := provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: DuplicateCallNotice}
-				history = append(history, msg)
-				if err := l.auditToolCall(ctx, iteration, call, msg, nil); err != nil {
-					return history, false, err
-				}
-				continue
+			_, dup = seen[key]
+			seen[key] = struct{}{}
+		}
+		plans[i] = callPlan{call: call, duplicate: dup,
+			msg: provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: DuplicateCallNotice}}
+	}
+	return plans
+}
+
+// callOutcome is one dispatched call's runOneToolCall result, stored
+// so the collect pass can walk calls in Index order whatever order
+// the workers finished in.
+type callOutcome struct {
+	msg      provider.Message
+	veto     bool
+	reported error
+	err      error
+}
+
+// executeCalls dispatches every non-duplicate plan's call, serially
+// when l.maxConcurrent < 2 and through a worker pool of size
+// l.maxConcurrent otherwise. Dispatch overlap is the only difference
+// between the two paths: per-call semantics are runOneToolCall's own.
+func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int) []callOutcome {
+	outcomes := make([]callOutcome, len(plans))
+	idx := make([]int, 0, len(plans))
+	for i, p := range plans {
+		if !p.duplicate {
+			idx = append(idx, i)
+		}
+	}
+	var aborted atomic.Bool
+	run := func(i int) {
+		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration)
+		if outcomes[i].err != nil || outcomes[i].veto {
+			aborted.Store(true)
+		}
+	}
+	if l.maxConcurrent < 2 || len(idx) < 2 {
+		for _, i := range idx {
+			run(i)
+			if aborted.Load() {
+				break
 			}
 		}
+		return outcomes
+	}
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < l.maxConcurrent && w < len(idx); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				if aborted.Load() {
+					return
+				}
+				n := int(next.Add(1)) - 1
+				if n >= len(idx) {
+					return
+				}
+				run(idx[n])
+			}
+		}()
+	}
+	wg.Wait()
+	return outcomes
+}
 
-		msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration)
-		if err != nil {
-			return history, false, err
+// oneCallOutcome runs runOneToolCall for one call and packs the
+// result into a callOutcome.
+func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, iteration int) callOutcome {
+	msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration)
+	return callOutcome{msg: msg, veto: veto, reported: reported, err: err}
+}
+
+// collectCalls walks the plans in Index order, appending each call's
+// message to history: a duplicate plan appends its pre-computed
+// DuplicateCallNotice; every other plan appends its dispatched
+// outcome, shaped against the turn's running byte budget. History
+// order, audit order, and the veto short-circuit therefore match the
+// serial path regardless of dispatch overlap.
+func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, bool, error) {
+	runningTotal := 0
+	for i, p := range plans {
+		if p.duplicate {
+			history = append(history, p.msg)
+			if err := l.auditToolCall(ctx, iteration, p.call, p.msg, nil); err != nil {
+				return history, false, err
+			}
+			continue
 		}
-		if veto {
+		out := outcomes[i]
+		if out.err != nil {
+			return history, false, out.err
+		}
+		if out.veto {
 			return history, true, nil
 		}
+		msg := out.msg
 		if l.turnResultBudget > 0 {
 			if runningTotal+len(msg.Content) <= l.turnResultBudget {
 				runningTotal += len(msg.Content)
@@ -95,10 +201,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 			}
 		}
 		history = append(history, msg)
-		if eligible {
-			seen[key] = struct{}{}
-		}
-		if err := l.auditToolCall(ctx, iteration, call, msg, reported); err != nil {
+		if err := l.auditToolCall(ctx, iteration, p.call, msg, out.reported); err != nil {
 			return history, false, err
 		}
 	}

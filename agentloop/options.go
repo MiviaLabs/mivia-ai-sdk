@@ -99,6 +99,11 @@ var (
 	// ErrConcludeMargin is Validate's error when ConcludeMargin is
 	// negative. Test with errors.Is.
 	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
+	// ErrMaxConcurrentTools is Options.Validate's error when
+	// MaxConcurrentTools is negative. Zero means serial (today's
+	// behavior); a positive value runs that many calls in parallel
+	// through a worker pool. Test with errors.Is.
+	ErrMaxConcurrentTools = errors.New("agentloop: MaxConcurrentTools must not be negative")
 	// ErrTurnResultBudget is Validate's error when TurnResultBudget is
 	// negative. Test with errors.Is.
 	ErrTurnResultBudget = errors.New("agentloop: TurnResultBudget must not be negative")
@@ -314,6 +319,15 @@ type Options struct {
 	// DuplicateCallNotice instead of running the tool again. False, the
 	// zero value, runs every call, unchanged from the base plan.
 	DedupWithinTurn bool
+	// MaxConcurrentTools bounds how many tool calls of one turn run
+	// in parallel through runToolCalls. Zero (the default) and 1 both
+	// mean serial: today's behavior. A value N >= 2 fans the turn's
+	// calls out through a worker pool of size N. History order, audit
+	// order, dedup semantics, the ctx.Err() pre-dispatch check, and
+	// the veto short-circuit all match the serial path; the pool only
+	// changes which calls overlap in time. Negative values fail
+	// Validate with ErrMaxConcurrentTools.
+	MaxConcurrentTools int
 	// HeartbeatInterval emits a heartbeat Event on Bus every interval
 	// while one Completer call or one tool call is in flight. Zero
 	// disables heartbeats. A positive HeartbeatInterval requires a
@@ -460,6 +474,9 @@ func (o Options) Validate() error {
 	}
 	if o.TurnResultBudget < 0 {
 		return ErrTurnResultBudget
+	}
+	if o.MaxConcurrentTools < 0 {
+		return ErrMaxConcurrentTools
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
 		return ErrHeartbeatRequiresBus

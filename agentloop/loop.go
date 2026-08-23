@@ -81,6 +81,7 @@ type Loop struct {
 	dedupWithinTurn  bool
 	heartbeat        time.Duration
 	turnResultBudget int
+	maxConcurrent    int
 	// streamSink is the caller's Options.StreamingWriter, nil when
 	// unset. Immutable after New, so concurrent runs share it safely.
 	// Each run's capture buffer is a local, threaded through run,
@@ -142,6 +143,7 @@ func New(opts Options) (*Loop, error) {
 		dedupWithinTurn:       opts.DedupWithinTurn,
 		heartbeat:             opts.HeartbeatInterval,
 		turnResultBudget:      opts.TurnResultBudget,
+		maxConcurrent:         opts.MaxConcurrentTools,
 		streamSink:            opts.StreamingWriter,
 	}, nil
 }

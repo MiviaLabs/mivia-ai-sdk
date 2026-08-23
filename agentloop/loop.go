@@ -43,29 +43,39 @@ type Result struct {
 // Loop is a bound, ready-to-run tool-calling loop. Built only through
 // New.
 type Loop struct {
-	completer        provider.Completer
-	reg              *tools.Registry
-	scope            *tools.Scope
-	model            string
-	maxIterations    int
-	maxCallsPerTurn  int
-	maxTotalTokens   int
-	onToolError      ErrorPolicy
-	hooksReg         *hooks.Registry
-	tracer           *trace.Tracer
-	usageAcc         *usage.Accumulator
-	sessionID        string
-	bus              *events.Bus
-	budget           *contextbudget.Limits
-	trim             func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
-	surfaceFn        func() *Surface
-	defs             []provider.ToolDefinition
-	schemas          map[string]*schema.Compiled
-	audit            AuditFunc
-	window           *contextplan.Window
-	summarizer       *contextsummary.Summarizer
-	calibrated       *contextplan.Calibrated
-	concludeMargin   int
+	completer             provider.Completer
+	reg                   *tools.Registry
+	scope                 *tools.Scope
+	model                 string
+	maxIterations         int
+	maxCallsPerTurn       int
+	maxTotalTokens        int
+	onToolError           ErrorPolicy
+	hooksReg              *hooks.Registry
+	tracer                *trace.Tracer
+	usageAcc              *usage.Accumulator
+	sessionID             string
+	bus                   *events.Bus
+	budget                *contextbudget.Limits
+	trim                  func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	surfaceFn             func() *Surface
+	defs                  []provider.ToolDefinition
+	schemas               map[string]*schema.Compiled
+	audit                 AuditFunc
+	window                *contextplan.Window
+	summarizer            *contextsummary.Summarizer
+	calibrated            *contextplan.Calibrated
+	concludeMargin        int
+	concludeDeadline      time.Duration
+	concludeToolCallsLeft int
+	concludeStepsLeft     int
+	// deadlineAt is StartTime.Add(ConcludeDeadline), computed once
+	// in New from opts.StartTime and opts.ConcludeDeadline. Zero
+	// when ConcludeDeadline is zero, which makes the deadline term
+	// in shouldConclude a no-op. Stored as a wall-clock instant
+	// rather than re-derived on every shouldConclude call so the
+	// comparison source is stable across the run.
+	deadlineAt       time.Time
 	concludeNotice   string
 	dedupWithinTurn  bool
 	heartbeat        time.Duration
@@ -99,34 +109,38 @@ func New(opts Options) (*Loop, error) {
 		return nil, err
 	}
 	return &Loop{
-		completer:        opts.Completer,
-		reg:              opts.Tools,
-		scope:            opts.Scope,
-		model:            opts.Model,
-		maxIterations:    unboundedOrSet(opts.MaxIterations),
-		maxCallsPerTurn:  opts.MaxCallsPerTurn,
-		maxTotalTokens:   opts.MaxTotalTokens,
-		onToolError:      opts.OnToolError,
-		hooksReg:         opts.Hooks,
-		tracer:           opts.Tracer,
-		usageAcc:         opts.Usage,
-		sessionID:        opts.SessionID,
-		bus:              opts.Bus,
-		budget:           opts.Budget,
-		trim:             opts.Trim,
-		surfaceFn:        opts.Surface,
-		defs:             defs,
-		schemas:          schemas,
-		audit:            opts.Audit,
-		window:           opts.Window,
-		summarizer:       opts.Summarizer,
-		calibrated:       opts.Calibrated,
-		concludeMargin:   opts.ConcludeMargin,
-		concludeNotice:   resolveConcludeNotice(opts.ConcludeNotice),
-		dedupWithinTurn:  opts.DedupWithinTurn,
-		heartbeat:        opts.HeartbeatInterval,
-		turnResultBudget: opts.TurnResultBudget,
-		streamSink:       opts.StreamingWriter,
+		completer:             opts.Completer,
+		reg:                   opts.Tools,
+		scope:                 opts.Scope,
+		model:                 opts.Model,
+		maxIterations:         unboundedOrSet(opts.MaxIterations),
+		maxCallsPerTurn:       opts.MaxCallsPerTurn,
+		maxTotalTokens:        opts.MaxTotalTokens,
+		onToolError:           opts.OnToolError,
+		hooksReg:              opts.Hooks,
+		tracer:                opts.Tracer,
+		usageAcc:              opts.Usage,
+		sessionID:             opts.SessionID,
+		bus:                   opts.Bus,
+		budget:                opts.Budget,
+		trim:                  opts.Trim,
+		surfaceFn:             opts.Surface,
+		defs:                  defs,
+		schemas:               schemas,
+		audit:                 opts.Audit,
+		window:                opts.Window,
+		summarizer:            opts.Summarizer,
+		calibrated:            opts.Calibrated,
+		concludeMargin:        opts.ConcludeMargin,
+		concludeDeadline:      opts.ConcludeDeadline,
+		concludeToolCallsLeft: opts.ConcludeToolCallsLeft,
+		concludeStepsLeft:     opts.ConcludeStepsLeft,
+		deadlineAt:            computeDeadlineAt(opts.StartTime, opts.ConcludeDeadline),
+		concludeNotice:        resolveConcludeNotice(opts.ConcludeNotice),
+		dedupWithinTurn:       opts.DedupWithinTurn,
+		heartbeat:             opts.HeartbeatInterval,
+		turnResultBudget:      opts.TurnResultBudget,
+		streamSink:            opts.StreamingWriter,
 	}, nil
 }
 
@@ -137,6 +151,23 @@ func resolveConcludeNotice(notice string) string {
 		return DefaultConcludeNotice
 	}
 	return notice
+}
+
+// computeDeadlineAt pins the wall-clock instant the time-based
+// ConcludeDeadline term measures against. A zero StartTime falls back
+// to time.Now() so the threshold fires ConcludeDeadline into the run
+// from the moment of construction. A zero ConcludeDeadline disables
+// the term: the returned time.Time is zero, and shouldConclude treats
+// it as a no-op. Negative ConcludeDeadline is rejected at Validate
+// time, so this helper never sees one.
+func computeDeadlineAt(start time.Time, d time.Duration) time.Time {
+	if d <= 0 {
+		return time.Time{}
+	}
+	if start.IsZero() {
+		start = time.Now()
+	}
+	return start.Add(d)
 }
 
 // compileSchemas compiles each defs entry's Schema through

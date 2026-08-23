@@ -262,6 +262,31 @@ type Options struct {
 	// first iteration. See docs/plans/agents/phase79_graceful_conclude.md
 	// for the worked table.
 	ConcludeMargin int
+	// StartTime is the wall-clock anchor the SDK uses for the
+	// time-based ConcludeDeadline term. The work deadline the loop
+	// measures against is StartTime.Add(ConcludeDeadline) when
+	// ConcludeDeadline is positive; zero StartTime falls back to the
+	// time of New, so the threshold fires ConcludeDeadline into the
+	// run from the moment of construction. Zero StartTime and zero
+	// ConcludeDeadline together disable the term entirely.
+	StartTime time.Time
+	// ConcludeDeadline, when > 0, fires the conclude nudge when
+	// time.Until(StartTime.Add(ConcludeDeadline)) is below the
+	// threshold at the iteration's shouldConclude check. A zero
+	// value disables this term. New computes the deadline once at
+	// construction and stores it on the Loop as deadlineAt; a zero
+	// StartTime resolves to time.Now() so the deadline is
+	// ConcludeDeadline from "now" at construction.
+	ConcludeDeadline time.Duration
+	// ConcludeToolCallsLeft, when > 0, fires the conclude nudge when
+	// maxCallsPerTurn-k is below the threshold. A zero value
+	// disables this term.
+	ConcludeToolCallsLeft int
+	// ConcludeStepsLeft, when > 0, fires the conclude nudge when
+	// MaxIterations-k is below the threshold. A zero value disables
+	// this term. Sits alongside ConcludeMargin; the smaller of the
+	// two decides.
+	ConcludeStepsLeft int
 	// ConcludeNotice is the RoleUser content Run appends once nudging
 	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
 	// DefaultConcludeNotice. Run appends the notice at the tail of
@@ -351,9 +376,20 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
 // negative, a non-nil Window passes Window.Validate, requires
 // Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
-// is not negative, TurnResultBudget is not negative, and finally a
-// positive HeartbeatInterval requires a non-nil Bus.
+// is not negative, ConcludeDeadline is not negative,
+// ConcludeToolCallsLeft is not negative, ConcludeStepsLeft is not
+// negative, TurnResultBudget is not negative, and finally a positive
+// HeartbeatInterval requires a non-nil Bus.
 func (o Options) Validate() error {
+	if o.ConcludeDeadline < 0 {
+		return errors.New("agentloop: ConcludeDeadline must be non-negative")
+	}
+	if o.ConcludeToolCallsLeft < 0 {
+		return errors.New("agentloop: ConcludeToolCallsLeft must be non-negative")
+	}
+	if o.ConcludeStepsLeft < 0 {
+		return errors.New("agentloop: ConcludeStepsLeft must be non-negative")
+	}
 	if o.Completer == nil {
 		return ErrNoCompleter
 	}

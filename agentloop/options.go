@@ -25,11 +25,13 @@ var (
 	ErrNoCompleter = errors.New("agentloop: completer is required")
 	// ErrNoTools is Validate's error when Tools is nil.
 	ErrNoTools = errors.New("agentloop: tools registry is required")
-	// ErrMaxIterations is Validate's error when MaxIterations is not
-	// positive. Reserved for construction-time validation; Run itself
+	// ErrMaxIterations is Validate's error when MaxIterations is
+	// negative. Reserved for construction-time validation; Run itself
 	// never returns it, since hitting MaxIterations at runtime is a
-	// graceful StopMaxIterations stop, not an error.
-	ErrMaxIterations = errors.New("agentloop: MaxIterations must be positive")
+	// graceful StopMaxIterations stop, not an error. A zero value is
+	// accepted and treated as uncapped (matches the legacy loop's
+	// MaxSteps <= 0 == unbounded contract); see New's defaulting.
+	ErrMaxIterations = errors.New("agentloop: MaxIterations must be non-negative")
 	// ErrUnrenderableResult is the render path's error when a tool
 	// result's Out.Value cannot be marshaled to JSON after failing the
 	// string and UTF-8-bytes cases.
@@ -348,7 +350,7 @@ func (o Options) Validate() error {
 	if o.Tools == nil {
 		return ErrNoTools
 	}
-	if o.MaxIterations <= 0 {
+	if o.MaxIterations < 0 {
 		return ErrMaxIterations
 	}
 	if o.Usage != nil && strings.TrimSpace(o.SessionID) == "" {

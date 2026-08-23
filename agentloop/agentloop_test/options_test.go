@@ -69,10 +69,10 @@ func TestOptionsValidate(t *testing.T) {
 			o.Tools = nil
 			return o
 		}, agentloop.ErrNoTools, false},
-		{"zero MaxIterations", func(o agentloop.Options) agentloop.Options {
+		{"zero MaxIterations passes (unbounded)", func(o agentloop.Options) agentloop.Options {
 			o.MaxIterations = 0
 			return o
-		}, agentloop.ErrMaxIterations, false},
+		}, nil, true},
 		{"negative MaxIterations", func(o agentloop.Options) agentloop.Options {
 			o.MaxIterations = -1
 			return o

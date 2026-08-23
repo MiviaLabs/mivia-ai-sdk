@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
@@ -96,7 +97,7 @@ func New(opts Options) (*Loop, error) {
 		reg:              opts.Tools,
 		scope:            opts.Scope,
 		model:            opts.Model,
-		maxIterations:    opts.MaxIterations,
+		maxIterations:    unboundedOrSet(opts.MaxIterations),
 		maxCallsPerTurn:  opts.MaxCallsPerTurn,
 		maxTotalTokens:   opts.MaxTotalTokens,
 		onToolError:      opts.OnToolError,
@@ -145,4 +146,17 @@ func compileSchemas(defs []provider.ToolDefinition) (map[string]*schema.Compiled
 		schemas[def.Name] = compiled
 	}
 	return schemas, nil
+}
+
+// unboundedOrSet maps the legacy MaxSteps <= 0 == unbounded contract
+// onto the SDK's maxIterations cap. Zero becomes math.MaxInt32: the
+// existing run loop's `iterations >= l.maxIterations` check at
+// run.go:86-88 then never trips within a realistic run. Negative
+// values are rejected at Validate time, so this helper never sees
+// one.
+func unboundedOrSet(n int) int {
+	if n == 0 {
+		return math.MaxInt32
+	}
+	return n
 }

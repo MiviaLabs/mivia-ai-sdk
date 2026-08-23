@@ -147,20 +147,23 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 			// Steered-stop branch. Two cases:
 			//
 			// (a) An injector is installed (SetInjector was called).
-			//     The run CONTINUES: a steer cancels only the in-
-			//     flight LLM call, the loop drains whatever the
-			//     injector has queued at the downgrade point, the
-			//     sticky triggered flag is cleared, and the next
-			//     iteration's Chat call arms un-triggered and
-			//     proceeds. The drain may be a non-empty return
-			//     (history grows by those messages) or an empty
-			//     return (no history change), and in BOTH cases
-			//     the loop continues. This mirrors the legacy
-			//     requestStep's soft-continue on errSteerInterrupt
-			//     so a bridge that polls continuously across
-			//     iterations (mivia-agent bridgeSteerSignals) can
-			//     deliver repeated steers within one RunSteerable
-			//     call without dropping the run.
+			//     Case (a) returns IMMEDIATELY after ackTriggered().
+			//     The downgrade path does NOT call drainInjected:
+			//     the iteration-top boundary at run.go:71-85 drains
+			//     the injector on the next loop iteration, so the
+			//     deliver-once shape holds across consecutive
+			//     payloads. The sticky triggered flag is cleared
+			//     here so the next iteration's Chat call arms
+			//     un-triggered and proceeds. This mirrors the
+			//     legacy requestStep's soft-continue on
+			//     errSteerInterrupt so a bridge that polls
+			//     continuously across iterations (mivia-agent
+			//     bridgeSteerSignals) can deliver repeated steers
+			//     within one RunSteerable call without dropping
+			//     the run. The drain at the next iteration top
+			//     may be a non-empty return (history grows by
+			//     those messages) or an empty return (no history
+			//     change), and in BOTH cases the loop continues.
 			//
 			// (b) No injector is installed. The run stops with
 			//     StopSteered, the existing single-shot behavior

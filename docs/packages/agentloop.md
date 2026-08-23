@@ -314,6 +314,39 @@ caller's unrelated run. See
 [../plans/agentloop.md](../plans/agentloop.md)'s "Addendum: steering
 and interruption" for the full mechanics.
 
+## Steer injector and soft-continue
+
+`Steer.SetInjector(f func() []provider.Message)` installs a pull-based
+message source the loop drains at the iteration-top boundary. A
+non-empty drain grows `history` by those messages; a nil or empty
+drain is a no-op. The injector runs on the loop goroutine, so `f`
+must not assume concurrency or call back into the loop. `Steer` is
+the place to install the injector: `SetInjector` is called once
+before the first `RunSteerable` and `reset()` preserves the
+injector across calls, so a caller can reuse one `Steer` across
+multiple `RunSteerable` calls.
+
+A `Steer` with an installed injector soft-continues every steer. A
+`Trigger` fired mid-`Completer.Chat` cancels only that one call; the
+run continues, the iteration-top boundary drains the next payload,
+and the next iteration's `Chat` call arms un-triggered. The split
+on `hasInjector()` is load-bearing: a host that installs an injector
+opts into the soft-continue shape; a host that does not keeps the
+original single-shot `StopSteered` shape every pre-injector `Steer`
+test pins.
+
+`Steer.HasActiveCall() bool` reports whether a `Completer.Chat` is
+currently in flight. Continuous-bridge triggers fire on every poll
+tick; a trigger fired when no call is in flight sets the trigger
+flag for the next arm to observe, which then immediately cancels
+that chat, which the bridge fires again, and the run never makes
+progress. A bridge that guards each `Trigger` on `HasActiveCall`
+closes that loop.
+
+See [../plans/agentloop.md](../plans/agentloop.md)'s "Addendum:
+pull-based steer injector (commit d914611)" for the full mechanics
+and the four follow-up items.
+
 ## Argument validation
 
 `New` compiles every `Scope`-offered `SchemaTool`'s

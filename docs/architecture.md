@@ -369,7 +369,15 @@ flowchart LR
   current iteration's in-flight `Completer.Chat` call, through a
   `Steer` handle's `Trigger`, ending gracefully at the next iteration
   boundary with `StopSteered`; `Run` stays `RunSteerable(ctx, msgs,
-  nil)`. `agentloop` imports `provider`, `tools`,
+  nil)`. A `Steer.SetInjector` installs a pull-based message source
+  the loop drains at the iteration-top boundary, and a `Steer` with
+  an installed injector soft-continues every steer (a pending
+  `StopSteered` is downgraded) so a bridge that polls across
+  iterations can deliver repeated steers within one `RunSteerable`
+  call. `Steer.HasActiveCall` lets such a bridge guard each `Trigger`
+  on whether a `Completer.Chat` is currently in flight, closing the
+  no-op-trigger loop a continuous bridge would otherwise create.
+  `agentloop` imports `provider`, `tools`,
   `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
   `contextplan`, and `contextsummary`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).

@@ -3466,3 +3466,127 @@ In `agentloop/agentloop_test/`:
   TotalTokens)` reference updates to the two-argument call, in the
   same commit as the code.
 
+## Addendum: pull-based steer injector (commit d914611)
+
+This addendum is the fix spec for the six review findings of commit
+d914611. The original commit is "feat(agentloop): add pull-based
+steer injector" (originally 8f86264). The code in commit d914611
+stays. The four follow-ups land together. Tests are
+added without removing any existing case. Cross-references: the
+architecture description in `docs/architecture.md` and the package
+reference in `docs/packages/agentloop.md`. The commit message
+cross-references this addendum so reviewers can find it.
+
+The four follow-ups are:
+
+- `HasActiveCall` export — `Steer.HasActiveCall` lands in
+  `api/agentloop.txt:26`. A bridge that polls continuously across
+  iterations guards each `Trigger` on this method, so a `Trigger`
+  fired when no `Completer.Chat` is in flight does not poison the
+  next arm.
+- Downgrade-point no-drain — the builder removes `drainInjected` from
+  the `hasInjector()` soft-continue branch in `runIteration` so the
+  downgrade path returns immediately after `ackTriggered()`. The
+  iteration-top boundary already drains on the next loop. Drain at
+  the downgrade point was redundant and made the deliver-once shape
+  ambiguous; the addendum's `TestInjectorDeliversOncePerIteration`
+  pins the new shape.
+- `RoleTool` `Name` addition — `runOneToolCall` and the dedup
+  short-circuit in `runToolCalls` both set `Message.Name` on the
+  appended `RoleTool` to the `call.Name` they served. A
+  model-supplied `RoleTool` message now carries the tool name the
+  model asked for, on the dedup path and on the success path.
+- Soft-continue split on `hasInjector()` — a `Steer` with an
+  installed injector soft-continues every steer, even on an empty
+  drain. A `Steer` with no injector keeps the original single-shot
+  `StopSteered` shape. The split is load-bearing for bridges that
+  poll across iterations.
+
+### Addendum goal
+
+Document the steer injector and its soft-continue shape so a future
+reviewer can confirm the contract without reading the implementation.
+
+### Addendum scope
+
+Inside:
+
+- The five test cases listed under "Addendum tests" below.
+- A doc-comment rewrite of `run.go`'s `// Steered-stop branch` block
+  at `agentloop/run.go:147-173`, matching the downgrade-point
+  no-drain property the four follow-ups describe. The rewritten
+  comment must say: case (a) returns immediately after
+  `ackTriggered()`, the downgrade path does not call `drainInjected`,
+  and the next iteration-top boundary at `run.go:71-85` drains the
+  injector. The rewritten comment must remove the false claim that
+  the downgrade point drains the injector.
+
+Outside:
+
+- Any new exported symbol. The lock at `api/agentloop.txt:26-27` is
+  correct.
+- Any change to `decodeAndRun`, `runOneToolCall`, or any other
+  tool-call dispatch path beyond adding the `Name` field on the
+  appended `RoleTool` message.
+- Any change to `Steer`'s mutex shape or `reset()` ordering.
+- The four code changes themselves. This addendum is the spec; the
+  builder implements them.
+
+### Addendum API
+
+No new exported symbol. `Steer.SetInjector` and `Steer.HasActiveCall`
+land in `api/agentloop.txt:26-27` already, in commit d914611.
+
+Reasoning: the lock is correct because the injector surface needs no
+  caller-built struct. A single `func() []provider.Message` closure
+  carries everything the loop needs.
+
+### Addendum tests
+
+A new file `agentloop/agentloop_test/steer_injector_review_test.go`
+holds these five cases. The file matches the existing
+`steer_injector_*_test.go` naming pattern.
+
+- `TestSteerHasActiveCallFalseBeforeArm` — builds a fresh `Steer`,
+  asserts `HasActiveCall()` returns `false` before any `RunSteerable`
+  call arms. Kills the mutation that returns true unconditionally.
+- `TestSteerHasActiveCallTrueDuringChat` — drives a `blockingCompleter`
+  through `RunSteerable`, asserts `HasActiveCall()` returns `true`
+  while the goroutine waits inside `Completer.Chat`. The case arms
+  the same way `TestInjectorTriggeredAndEmptyStopsSteered` does.
+- `TestHasActiveCallGuardsNoopBridgeTrigger` — installs an injector,
+  drives a `Trigger` between iterations. Asserts: (a) the bridge
+  goroutine calls `HasActiveCall()` in a loop and only `Trigger()`s
+  when the method returns true; (b) the run reaches
+  `StopNoToolCalls`, and the history does not contain a
+  "would-have-triggered" sentinel proving the no-op trigger did not
+  poison the next iteration's `Chat` arm; (c) the test counts
+  `HasActiveCall()` calls to prove the guard ran on each poll. The
+  bridge pattern guards each `Trigger` on `HasActiveCall`, proving the
+  guard closes the no-op-trigger loop the finding describes.
+- `TestRoleToolMessageCarriesToolName_Success` — drives a normal
+  tool call, asserts the appended `RoleTool` message carries
+  `Name == call.Name` on the success path.
+- `TestRoleToolMessageCarriesToolName_Dedup` — feeds a duplicate call
+  through `runToolCalls`, asserts the synthesized `RoleTool` message's
+  `Name` equals the duplicate call's name.
+- `TestInjectorDeliversOncePerIteration` — installs an injector whose
+  drain returns the queue `[nil, payload1, payload2]` across two
+  steered iterations. Asserts: (a) `payload1` appears in history
+  exactly once after the first steered iteration's top drain; (b)
+  `payload2` appears in history exactly once after the second steered
+  iteration's top drain; (c) the injector call count is exactly 3
+  (one per iter top), proving the downgrade path does not re-call
+  `drainInjected`. The case pins the deliver-once shape across
+  consecutive payloads.
+
+### Addendum verification
+
+- `make verify` passes.
+- `go test -race -count=1 ./agentloop/...` passes.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_prose.py` passes.
+
+No `make api-update`, no `policy/layers.json` change, no
+`api/agentloop.txt` diff, no coverage-floor change.
+

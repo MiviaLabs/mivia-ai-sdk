@@ -16,6 +16,13 @@ fenced blocks are still candidates for the cross-check, because a
 fence is the natural place to list the package's own test names. See
 `_strip_code_spans`.
 
+The same two checks apply to every `### Addendum tests` subsection
+that appears inside a plan's `## Addendum:` blocks. Each addendum
+test section is checked independently, with its own missing-test
+problems. The heading text is embedded in the problem string so a
+grep can distinguish addendum cross-check failures from top-level
+`## Tests` cross-check failures.
+
 A package tree with zero `*_test.go` files (including zero in
 `<pkg>/<pkg>_test/`) skips the cross-check: there is nothing to
 compare the section's claims against. The structural section check
@@ -37,7 +44,16 @@ REQUIRED = ["## Goal", "## Scope", "## API", "## Tests", "## Verification"]
 # contains "Test" mid-token) out of the gate.
 TEST_NAME = re.compile(r"\bTest[A-Z]\w+")
 TEST_FUNC = re.compile(r"^func\s+(Test[A-Z]\w+)\s*\(")
-TESTS_SECTION = re.compile(r"(?ms)^## Tests\s*$\n(.*?)(?=^## |\Z)")
+# Two narrow patterns beat one alternation: the body boundaries differ.
+# `## Tests` is a top-level section, so its body stops at the next
+# `## ` line. `### Addendum tests` is a sibling-level subsection, so
+# its body stops at the next `### ` line, the natural sibling break,
+# which avoids swallowing the following `### Addendum verification`
+# block into the tests body.
+_PATTERN_TOP_TESTS = re.compile(r"(?ms)^## Tests\s*$\n(.*?)(?=^## |\Z)")
+_PATTERN_ADDENDUM_TESTS = re.compile(
+    r"(?ms)^### Addendum tests\s*$\n(.*?)(?=^### |\Z)"
+)
 
 
 _FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})")
@@ -53,9 +69,8 @@ def _strip_code_spans(text: str) -> str:
 
     The walker splits the text on newline boundaries and tracks fence
     state. A line that opens a fence (matches ``^\\s*`{3,}`` or the
-    tilde form) flips the state to "open"; a line that closes it (any
-    non-empty line of three or more backticks or tildes while in
-    "open" state, or an empty line) flips it back to "closed". Lines
+    tilde form) flips the state to "open". A later line whose fence
+    marker matches the opener flips the state back to "closed". Lines
     emitted while the fence is open pass through verbatim, so test
     names listed inside a code block still reach TEST_NAME. Lines
     emitted while the fence is closed have paired single-backtick
@@ -107,12 +122,19 @@ def _scrub_inline_backticks(line: str) -> str:
     return "".join(out)
 
 
-def _tests_section_text(plan_text: str) -> str:
-    """_tests_section_text returns the body of the `## Tests` section,
-    or an empty string if the section header is missing. The regex
-    uses non-greedy capture up to the next `## ` line or end-of-text."""
-    match = TESTS_SECTION.search(plan_text)
-    return match.group(1) if match else ""
+def _collect_tests_sections(plan_text: str) -> list[tuple[str, str]]:
+    """_collect_tests_sections returns [(body, heading_label), ...] for
+    every cross-checked Tests section in the plan, in document order.
+    heading_label is the literal heading the problem string embeds,
+    e.g. `## Tests` or `### Addendum tests`. A plan with one top
+    section and N addendum subsections produces 1 + N entries; the
+    same package's `_test.go` set is checked against every entry."""
+    sections: list[tuple[str, str]] = []
+    for match in _PATTERN_TOP_TESTS.finditer(plan_text):
+        sections.append((match.group(1), "## Tests"))
+    for match in _PATTERN_ADDENDUM_TESTS.finditer(plan_text):
+        sections.append((match.group(1), "### Addendum tests"))
+    return sections
 
 
 def _declared_tests(pkg_dir: Path) -> set[str]:
@@ -159,22 +181,24 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
         for section in REQUIRED:
             if not re.search(rf"^{re.escape(section)}\s*$", text, re.M):
                 problems.append(f"{pkg}: plan lacks section {section!r}")
-        section = _tests_section_text(text)
-        if not section:
-            continue
-        scrubbed = _strip_code_spans(section)
-        named = sorted(set(TEST_NAME.findall(scrubbed)))
-        if not named:
+        sections = _collect_tests_sections(text)
+        if not sections:
             continue
         declared = _declared_tests(root / pkg)
         if not declared:
             continue
-        missing = [name for name in named if name not in declared]
-        for name in missing:
-            problems.append(
-                f"{pkg}: test {name!r} named in docs/plans/{pkg}.md ## Tests "
-                f"has no func declaration in any {pkg}/*_test.go"
-            )
+        for body, heading in sections:
+            scrubbed = _strip_code_spans(body)
+            named = sorted(set(TEST_NAME.findall(scrubbed)))
+            if not named:
+                continue
+            missing = [name for name in named if name not in declared]
+            for name in missing:
+                problems.append(
+                    f"{pkg}: test {name!r} named in docs/plans/{pkg}.md "
+                    f"{heading} has no func declaration in any "
+                    f"{pkg}/*_test.go"
+                )
     return problems
 
 
@@ -263,6 +287,89 @@ def _probe_no_test_files_skips(root: Path) -> list[str]:
     return []
 
 
+def _probe_addendum_tests_checked(root: Path) -> list[str]:
+    """A plan whose `## Tests` lists `TestDirectRef` and whose
+    `### Addendum tests` lists `TestAddendumClaim` must fire on the
+    addendum missing-test. `TestDirectRef` is declared in `_test.go`;
+    `TestAddendumClaim` is not. The probe proves the addendum
+    cross-check runs alongside the top-level check."""
+    _write_fixture(root)
+    go_packages.write_file(
+        root,
+        "flow/engine/engine_test.go",
+        "package engine\n\nfunc TestDirectRef(t *testing.T) {}\n",
+    )
+    plan = (
+        "# Plan\n\n"
+        "## Goal\n\nText.\n\n"
+        "## Scope\n\nText.\n\n"
+        "## API\n\nText.\n\n"
+        "## Tests\n\n"
+        "Names one test in this package: TestDirectRef.\n\n"
+        "## Verification\n\nText.\n\n"
+        "## Addendum: feature shipped\n\n"
+        "### Addendum tests\n\n"
+        "Names the addendum claim: TestAddendumClaim.\n\n"
+        "### Addendum verification\n\n"
+        "make verify passes.\n"
+    )
+    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    problems = check(root, go_packages.probe_env())
+    if not any(
+        "TestAddendumClaim" in p and "### Addendum tests" in p for p in problems
+    ):
+        return [
+            "probe_addendum_tests_checked: expected an addendum "
+            "missing-test problem for TestAddendumClaim, got "
+            f"{problems}"
+        ]
+    if any("TestDirectRef" in p for p in problems):
+        return [
+            "probe_addendum_tests_checked: TestDirectRef is declared "
+            "and must not appear in problems, got "
+            f"{problems}"
+        ]
+    return []
+
+
+def _probe_addendum_tests_passes_when_declared(root: Path) -> list[str]:
+    """Same fixture as `_probe_addendum_tests_checked`. Both tests
+    declared. The gate must produce zero problems, proving the
+    addendum cross-check passes when the claim matches reality."""
+    _write_fixture(root)
+    go_packages.write_file(
+        root,
+        "flow/engine/engine_test.go",
+        (
+            "package engine\n\n"
+            "func TestDirectRef(t *testing.T) {}\n\n"
+            "func TestAddendumClaim(t *testing.T) {}\n"
+        ),
+    )
+    plan = (
+        "# Plan\n\n"
+        "## Goal\n\nText.\n\n"
+        "## Scope\n\nText.\n\n"
+        "## API\n\nText.\n\n"
+        "## Tests\n\n"
+        "Names one test in this package: TestDirectRef.\n\n"
+        "## Verification\n\nText.\n\n"
+        "## Addendum: feature shipped\n\n"
+        "### Addendum tests\n\n"
+        "Names the addendum claim: TestAddendumClaim.\n\n"
+        "### Addendum verification\n\n"
+        "make verify passes.\n"
+    )
+    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    problems = check(root, go_packages.probe_env())
+    if problems:
+        return [
+            "probe_addendum_tests_passes_when_declared: expected pass, "
+            f"got {problems}"
+        ]
+    return []
+
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = check(root)
@@ -282,6 +389,8 @@ def run_probe() -> bool:
             _probe_missing_section_fails,
             _probe_backticked_cross_ref_passes,
             _probe_no_test_files_skips,
+            _probe_addendum_tests_checked,
+            _probe_addendum_tests_passes_when_declared,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()

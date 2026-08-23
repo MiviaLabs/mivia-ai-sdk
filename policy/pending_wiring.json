@@ -22,9 +22,9 @@
       "permanent": false
     },
     "skills": {
-      "reason": "Skill registry leaf, shipped ahead of the subagent wiring that will expose it as an internal tool.",
-      "target": "not yet planned",
-      "permanent": false
+      "reason": "Skill registry leaf; mivia-agent's B.0.5 internal/sdkadapter/skill.go bridges it as the first consumer, but no SDK-internal package imports it yet.",
+      "target": "external application code (mivia-agent)",
+      "permanent": true
     },
     "agentloop": {
       "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found mivia-agent's loop covers steering, per-batch tool-result shaping, dedup, work-limit budgets with graceful conclude, and hook-injection framing that agentloop has no equivalent for; agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller.",

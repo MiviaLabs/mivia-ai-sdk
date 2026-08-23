@@ -4,7 +4,22 @@ sections from docs/plans/TEMPLATE.md. The path is the package path
 relative to the module root, so a nested package needs a nested plan
 file. The plan is where an agent declares the package's goal, scope,
 API, tests, and verification BEFORE or WITH the code; the gate makes the
-structure non-optional."""
+structure non-optional.
+
+The Tests section is checked twice. First, the section header is
+present (the structural rule). Second, every Test-named token written
+in plain prose in the section names a Go test function declared in the
+package's own `*_test.go` files (the commitment rule). Tokens written
+inside single-backtick inline spans are references, not claims: the
+gate does not look for them as live tests. Tokens inside triple-backtick
+fenced blocks are still candidates for the cross-check, because a
+fence is the natural place to list the package's own test names. See
+`_strip_code_spans`.
+
+A package tree with zero `*_test.go` files (including zero in
+`<pkg>/<pkg>_test/`) skips the cross-check: there is nothing to
+compare the section's claims against. The structural section check
+still applies."""
 import argparse
 import re
 import sys
@@ -16,11 +31,125 @@ import go_packages  # noqa: E402
 
 REQUIRED = ["## Goal", "## Scope", "## API", "## Tests", "## Verification"]
 
+# TEST_NAME matches a whole Go test function identifier: the `Test`
+# prefix followed by an uppercase letter and one or more word
+# characters. The `\b` anchors keep partial matches (e.g. a word that
+# contains "Test" mid-token) out of the gate.
+TEST_NAME = re.compile(r"\bTest[A-Z]\w+")
+TEST_FUNC = re.compile(r"^func\s+(Test[A-Z]\w+)\s*\(")
+TESTS_SECTION = re.compile(r"(?ms)^## Tests\s*$\n(.*?)(?=^## |\Z)")
+
+
+_FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})")
+
+
+def _strip_code_spans(text: str) -> str:
+    """_strip_code_spans scrubs single-backtick inline spans from the
+    prose, leaving triple-backtick fenced blocks untouched.
+
+    Fence behavior: triple-backtick fences are preserved as-is so tokens
+    inside triple-fence lines remain candidates for the cross-check.
+    Single-backtick inline spans are scrubbed.
+
+    The walker splits the text on newline boundaries and tracks fence
+    state. A line that opens a fence (matches ``^\\s*`{3,}`` or the
+    tilde form) flips the state to "open"; a line that closes it (any
+    non-empty line of three or more backticks or tildes while in
+    "open" state, or an empty line) flips it back to "closed". Lines
+    emitted while the fence is open pass through verbatim, so test
+    names listed inside a code block still reach TEST_NAME. Lines
+    emitted while the fence is closed have paired single-backtick
+    spans removed by `_scrub_inline_backticks`.
+
+    An unmatched trailing single backtick on a non-fence line is
+    harmless: nothing follows it to pair with, so the rest of the
+    line is left as-is.
+    """
+    out: list[str] = []
+    in_fence = False
+    fence_marker: str | None = None
+    for line in text.splitlines(keepends=True):
+        m = _FENCE_LINE.match(line)
+        if in_fence:
+            if m and m.group(1)[0] == fence_marker:
+                out.append(line)
+                in_fence = False
+                fence_marker = None
+            else:
+                out.append(line)
+            continue
+        if m:
+            fence_marker = m.group(1)[0]
+            in_fence = True
+            out.append(line)
+            continue
+        out.append(_scrub_inline_backticks(line))
+    return "".join(out)
+
+
+def _scrub_inline_backticks(line: str) -> str:
+    """_scrub_inline_backticks removes the contents of every paired
+    single-backtick span on one line, leaving the surrounding prose.
+    Pairing is left-to-right, so `` `a` `b` `` becomes `` ` ` `` with
+    both spans scrubbed."""
+    out: list[str] = []
+    i = 0
+    while i < len(line):
+        if line[i] == "`":
+            j = line.find("`", i + 1)
+            if j == -1:
+                out.append(line[i:])
+                return "".join(out)
+            i = j + 1
+            continue
+        out.append(line[i])
+        i += 1
+    return "".join(out)
+
+
+def _tests_section_text(plan_text: str) -> str:
+    """_tests_section_text returns the body of the `## Tests` section,
+    or an empty string if the section header is missing. The regex
+    uses non-greedy capture up to the next `## ` line or end-of-text."""
+    match = TESTS_SECTION.search(plan_text)
+    return match.group(1) if match else ""
+
+
+def _declared_tests(pkg_dir: Path) -> set[str]:
+    """_declared_tests returns the names of every Go test function
+    declared in the package's own `*_test.go` files, plus any test
+    function declared in the matching `<pkg>/<pkg>_test/` subpackage.
+    `go list` enumerates that subpackage as its own package, but it
+    is the canonical home for the package's white-box integration
+    tests: every package in this module follows the `<pkg>/<pkg>_test/`
+    naming convention, so the gate accepts a token named in the plan
+    when it lives in either place.
+    """
+    names: set[str] = set()
+    candidates = [pkg_dir]
+    test_subpkg = pkg_dir / f"{pkg_dir.name}_test"
+    if test_subpkg.is_dir():
+        candidates.append(test_subpkg)
+    for dir_ in candidates:
+        if not dir_.is_dir():
+            continue
+        for path in dir_.glob("*_test.go"):
+            for line in path.read_text().splitlines():
+                match = TEST_FUNC.match(line)
+                if match:
+                    names.add(match.group(1))
+    return names
+
 
 def check(root: Path, env_extra: dict | None = None) -> list[str]:
     """check runs the plan gate against one repo root. Returns problem
-    strings; empty means the gate passes."""
-    problems = []
+    strings; empty means the gate passes.
+
+    A package tree with zero `*_test.go` files (including zero in
+    `<pkg>/<pkg>_test/`) means the cross-check has nothing to compare
+    against. The gate skips the cross-check for that package; the
+    structural section check still applies."""
+    problems: list[str] = []
     for pkg in go_packages.package_paths(root, env_extra):
         plan = root / "docs" / "plans" / f"{pkg}.md"
         if not plan.exists():
@@ -30,6 +159,22 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
         for section in REQUIRED:
             if not re.search(rf"^{re.escape(section)}\s*$", text, re.M):
                 problems.append(f"{pkg}: plan lacks section {section!r}")
+        section = _tests_section_text(text)
+        if not section:
+            continue
+        scrubbed = _strip_code_spans(section)
+        named = sorted(set(TEST_NAME.findall(scrubbed)))
+        if not named:
+            continue
+        declared = _declared_tests(root / pkg)
+        if not declared:
+            continue
+        missing = [name for name in named if name not in declared]
+        for name in missing:
+            problems.append(
+                f"{pkg}: test {name!r} named in docs/plans/{pkg}.md ## Tests "
+                f"has no func declaration in any {pkg}/*_test.go"
+            )
     return problems
 
 
@@ -72,6 +217,52 @@ def _probe_missing_section_fails(root: Path) -> list[str]:
     return []
 
 
+def _probe_backticked_cross_ref_passes(root: Path) -> list[str]:
+    """A `## Tests` body that lists `` `TestCrossPkgRef` `` (in backticks)
+    and `TestDirectRef` (plain prose), with the package declaring only
+    `TestDirectRef`, must pass: the backticked token is a reference,
+    not a claim, and the plain-prose token names a real test."""
+    _write_fixture(root)
+    go_packages.write_file(root, "flow/engine/engine_test.go", "package engine\n\nfunc TestDirectRef(t *testing.T) {}\n")
+    plan = (
+        "# Plan\n\n"
+        "## Goal\n\nText.\n\n"
+        "## Scope\n\nText.\n\n"
+        "## API\n\nText.\n\n"
+        "## Tests\n\n"
+        "Names one test in this package: TestDirectRef.\n"
+        "Cross-package reference: `TestCrossPkgRef`.\n\n"
+        "## Verification\n\nText.\n"
+    )
+    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    problems = check(root, go_packages.probe_env())
+    if problems:
+        return [f"probe_backticked_cross_ref_passes: expected pass, got {problems}"]
+    return []
+
+
+def _probe_no_test_files_skips(root: Path) -> list[str]:
+    """A package with no `*_test.go` files anywhere in its tree and a
+    plan that names a Test function in its `## Tests` section must not
+    raise a missing-declaration problem: there is nothing to compare
+    against, so the cross-check has nothing to do."""
+    _write_fixture(root)
+    plan = (
+        "# Plan\n\n"
+        "## Goal\n\nText.\n\n"
+        "## Scope\n\nText.\n\n"
+        "## API\n\nText.\n\n"
+        "## Tests\n\n"
+        "Names one test that has no source file: TestNeverLanded.\n\n"
+        "## Verification\n\nText.\n"
+    )
+    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    problems = check(root, go_packages.probe_env())
+    if problems:
+        return [f"probe_no_test_files_skips: expected pass, got {problems}"]
+    return []
+
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = check(root)
@@ -89,6 +280,8 @@ def run_probe() -> bool:
             _probe_nested_without_plan_fails,
             _probe_nested_with_plan_passes,
             _probe_missing_section_fails,
+            _probe_backticked_cross_ref_passes,
+            _probe_no_test_files_skips,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()

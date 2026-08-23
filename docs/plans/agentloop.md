@@ -2059,10 +2059,17 @@ Inside:
 - Six new `events.Name` constants for iteration start/end, a periodic
   completion heartbeat, a tool-call start/end, and a periodic
   per-tool-call heartbeat.
-- Emitting on `Bus` at each of those points when `HeartbeatInterval`
-  is positive. A `Bus.Emit` error is swallowed, the same way `Run`
-  already swallows a `hooks.Registry.Fire` error from `PointStop`: a
-  heartbeat is observability, not a control-flow gate.
+- Emitting on `Bus` at each of those points. A `Bus.Emit` error is
+  swallowed, the same way `Run` already swallows a
+  `hooks.Registry.Fire` error from `PointStop`: a heartbeat is
+  observability, not a control-flow gate. The gate is decoupled
+  per event class: the four lifecycle names (iteration start/end,
+  tool-call start/end) fire whenever `Bus` is non-nil, while the
+  two heartbeat names tick only when `HeartbeatInterval` is
+  positive. The original revision gated every name on a positive
+  `HeartbeatInterval`; that forced lifecycle-only consumers to
+  pick a large-but-finite interval purely to keep the ticks quiet,
+  a cadence value doing gating work it does not name.
 - `Options.Validate` gains one rule, appended after the `Window`
   block: a positive `HeartbeatInterval` with a nil `Bus` fails with
   `ErrHeartbeatRequiresBus`.

@@ -272,10 +272,13 @@ func TestRunHeartbeatEmitSwallowsNoSubscriberError(t *testing.T) {
 // coupling: a zero HeartbeatInterval silences every event this
 // package defines, not only the ticking heartbeat events. A Bus is
 // wired and subscribed to every event name, and the run drives both
-// an iteration and a tool call, so a bug that gates only the
-// heartbeat ticks (leaving Start/End emitting regardless of
-// l.heartbeat) would still fail this test.
-func TestRunZeroIntervalSuppressesAllEvents(t *testing.T) {
+// an iteration and a tool call. The contract this pins (revised from
+// the original all-events gate): a zero HeartbeatInterval keeps both
+// heartbeat names silent while the four lifecycle names fire for the
+// wired Bus - so a bug that gates the lifecycle names on the
+// interval, or one that starts a ticker at zero, fails this test.
+// Full silence remains the nil-Bus contract, unchanged.
+func TestRunZeroIntervalTicksOffLifecycleOn(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
@@ -303,8 +306,21 @@ func TestRunZeroIntervalSuppressesAllEvents(t *testing.T) {
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
 	}
-	if got := rec.names(); len(got) != 0 {
-		t.Fatalf("events = %v, want none: HeartbeatInterval == 0 must gate every event, not only heartbeat ticks", got)
+	for _, e := range rec.events() {
+		if e.Name == agentloop.EventCompletionHeartbeat || e.Name == agentloop.EventToolCallHeartbeat {
+			t.Fatalf("heartbeat event %s fired at zero HeartbeatInterval", e.Name)
+		}
+	}
+	for _, want := range []events.Name{agentloop.EventIterationStart, agentloop.EventIterationEnd, agentloop.EventToolCallStart, agentloop.EventToolCallEnd} {
+		found := false
+		for _, e := range rec.events() {
+			if e.Name == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("lifecycle event %s missing at zero HeartbeatInterval", want)
+		}
 	}
 }
 

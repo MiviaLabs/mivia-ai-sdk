@@ -9,8 +9,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
-// The Event Names agentloop emits on Options.Bus when
-// Options.HeartbeatInterval is positive.
+// The Event Names agentloop emits on Options.Bus. The four
+// lifecycle names fire once at their boundary whenever Bus is
+// non-nil; the two heartbeat names tick at HeartbeatInterval only.
 const (
 	// EventIterationStart fires once at the start of every iteration.
 	EventIterationStart events.Name = "agentloop.iteration.start"
@@ -34,12 +35,14 @@ const (
 )
 
 // emitEvent emits name on l.bus with data as the payload when
-// l.heartbeat is positive. Silent otherwise: HeartbeatInterval gates
-// every event this file defines, not only the ticking ones. Bus.Emit
-// errors, including "no subscriber for name", are swallowed, matching
-// the fireStop/hooks.Registry.Fire-swallow precedent in run.go.
+// l.bus is non-nil. Lifecycle events therefore fire for any caller
+// that wires a Bus, without also arming a heartbeat cadence;
+// HeartbeatInterval gates only the ticking names, through
+// startHeartbeat. Bus.Emit errors, including "no subscriber for
+// name", are swallowed, matching the fireStop/hooks.Registry.
+// Fire-swallow precedent in run.go.
 func (l *Loop) emitEvent(ctx context.Context, name events.Name, data string) {
-	if l.heartbeat <= 0 || l.bus == nil {
+	if l.bus == nil {
 		return
 	}
 	_ = l.bus.Emit(ctx, events.Event{Name: name, Data: data})

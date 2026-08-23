@@ -191,6 +191,18 @@ type Options struct {
 	MaxTotalTokens int
 	// OnToolError governs what Run does with a tool-run error.
 	OnToolError ErrorPolicy
+	// OnToolCallError runs only on the ErrorPolicyReport path after a
+	// decodeAndRun or render failure, between the policy's
+	// report-to-model branch and the [tool-error] body construction. It
+	// lets a host synthesize a RoleTool message to append in place of
+	// the default body, or skip the call entirely by returning a
+	// non-nil error. Return (msg, nil) with a non-zero msg to append
+	// msg; return (nil, err) to skip the call and fail the run with
+	// err; return the zero Message and nil to fall through to the
+	// default [tool-error] body, preserving the pre-hook contract.
+	// Never fires under ErrorPolicyFail: that path hard-fails Run
+	// before consulting the hook.
+	OnToolCallError ErrorFunc
 	// Hooks fires PointPreTool and PointPostTool per tool call, and
 	// PointStop once at the end. Optional.
 	Hooks *hooks.Registry
@@ -379,6 +391,15 @@ type AuditRecord struct {
 // with the iteration count and returns it exactly like a Trim error,
 // per the Result-shape rule.
 type AuditFunc func(ctx context.Context, rec AuditRecord) error
+
+// ErrorFunc is the type of Options.OnToolCallError. The SDK invokes
+// it on the ErrorPolicyReport path after a decodeAndRun or render
+// failure. Returning a non-zero Message with nil error appends msg in
+// place of the [tool-error] body. Returning an error fails the run
+// with err wrapped under iteration and call.ID, with no RoleTool
+// message appended. Returning the zero Message and nil preserves the
+// default body. The function never runs under ErrorPolicyFail.
+type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)
 
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, MaxIterations

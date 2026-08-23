@@ -189,8 +189,11 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		if l.onToolError == ErrorPolicyFail {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, runErr)
 		}
-		content := errorReportContent(runErr)
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: content}, false, runErr, nil
+		msg, merr := l.toolErrorReportMessage(ctx, call, iteration, runErr, errorReportContent(runErr))
+		if merr != nil {
+			return provider.Message{}, false, nil, merr
+		}
+		return msg, false, runErr, nil
 	}
 
 	content, renderErr := l.render(t, out)
@@ -198,9 +201,37 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		if l.onToolError == ErrorPolicyFail {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, renderErr)
 		}
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: ToolErrorPrefix + renderErr.Error()}, false, renderErr, nil
+		msg, merr := l.toolErrorReportMessage(ctx, call, iteration, renderErr, ToolErrorPrefix+renderErr.Error())
+		if merr != nil {
+			return provider.Message{}, false, nil, merr
+		}
+		return msg, false, renderErr, nil
 	}
 	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: content}, false, nil, nil
+}
+
+// toolErrorReportMessage builds the RoleTool message for a reported
+// tool-run error, consulting Options.OnToolCallError between the
+// policy's report-to-model branch and the default body construction.
+// A hook's non-zero Message replaces the default body; a hook error
+// fails the call with no append; the zero Message and nil fall
+// through to the marked default body.
+func (l *Loop) toolErrorReportMessage(ctx context.Context, call provider.ToolCall, iteration int, runErr error, defaultContent string) (provider.Message, error) {
+	if l.onToolCallError != nil {
+		msg, herr := l.onToolCallError(ctx, call, runErr)
+		if herr != nil {
+			return provider.Message{}, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, herr)
+		}
+		if !isZeroMessage(msg) {
+			return msg, nil
+		}
+	}
+	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: defaultContent}, nil
+}
+
+// isZeroMessage reports whether m is the zero provider.Message.
+func isZeroMessage(m provider.Message) bool {
+	return m.Role == "" && m.Content == "" && m.ToolCallID == "" && m.Name == ""
 }
 
 // errorReportContent renders a decodeAndRun error's ErrorPolicyReport

@@ -49,6 +49,7 @@ package agentloop
   ThinkingContent string
   CacheUsage provider.CacheUsage
 }
+  type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)
   type ErrorPolicy string
   type Loop struct {
 }
@@ -61,6 +62,7 @@ package agentloop
   MaxCallsPerTurn int
   MaxTotalTokens int
   OnToolError ErrorPolicy
+  OnToolCallError ErrorFunc
   Hooks *hooks.Registry
   Tracer *trace.Tracer
   Usage *usage.Accumulator

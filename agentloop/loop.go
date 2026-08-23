@@ -51,6 +51,7 @@ type Loop struct {
 	maxCallsPerTurn       int
 	maxTotalTokens        int
 	onToolError           ErrorPolicy
+	onToolCallError       ErrorFunc
 	hooksReg              *hooks.Registry
 	tracer                *trace.Tracer
 	usageAcc              *usage.Accumulator
@@ -117,6 +118,7 @@ func New(opts Options) (*Loop, error) {
 		maxCallsPerTurn:       opts.MaxCallsPerTurn,
 		maxTotalTokens:        opts.MaxTotalTokens,
 		onToolError:           opts.OnToolError,
+		onToolCallError:       opts.OnToolCallError,
 		hooksReg:              opts.Hooks,
 		tracer:                opts.Tracer,
 		usageAcc:              opts.Usage,

@@ -68,7 +68,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		key, eligible := l.dedupKeyFor(call)
 		if eligible {
 			if _, dup := seen[key]; dup {
-				msg := provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: DuplicateCallNotice}
+				msg := provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: DuplicateCallNotice}
 				history = append(history, msg)
 				if err := l.auditToolCall(ctx, iteration, call, msg, nil); err != nil {
 					return history, false, err
@@ -187,7 +187,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, runErr)
 		}
 		content := errorReportContent(runErr)
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: content}, false, runErr, nil
+		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: content}, false, runErr, nil
 	}
 
 	content, renderErr := l.render(t, out)
@@ -195,9 +195,9 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		if l.onToolError == ErrorPolicyFail {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, renderErr)
 		}
-		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: ToolErrorPrefix + renderErr.Error()}, false, renderErr, nil
+		return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: ToolErrorPrefix + renderErr.Error()}, false, renderErr, nil
 	}
-	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Content: content}, false, nil, nil
+	return provider.Message{Role: provider.RoleTool, ToolCallID: call.ID, Name: call.Name, Content: content}, false, nil, nil
 }
 
 // errorReportContent renders a decodeAndRun error's ErrorPolicyReport

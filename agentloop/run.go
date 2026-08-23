@@ -68,6 +68,21 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 		if err := ctx.Err(); err != nil {
 			return l.hardFail(history, iterations, totalUsage), err
 		}
+		// Pull-based injector boundary: drain the installer's messages
+		// BEFORE the MaxIterations check, exactly the "before trim"
+		// placement the legacy context.go:15-19 use of BeforeStep
+		// picked. A nil or empty return is a no-op; a non-empty return
+		// grows history by those messages without counting against
+		// MaxIterations (the cap is on Completer calls, not on the
+		// number of injected frames). A nil steer is the Run
+		// (non-steerable) path; the Run contract pre-dates the
+		// injector so it never installs one, and we skip the call to
+		// avoid a nil-deref on the empty interface.
+		if steer != nil {
+			if injected := steer.drainInjected(); len(injected) > 0 {
+				history = append(history, injected...)
+			}
+		}
 		if iterations >= l.maxIterations {
 			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopMaxIterations}, nil
 		}
@@ -129,6 +144,37 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
+			// Steered-stop branch. Two cases:
+			//
+			// (a) An injector is installed (SetInjector was called).
+			//     The run CONTINUES: a steer cancels only the in-
+			//     flight LLM call, the loop drains whatever the
+			//     injector has queued at the downgrade point, the
+			//     sticky triggered flag is cleared, and the next
+			//     iteration's Chat call arms un-triggered and
+			//     proceeds. The drain may be a non-empty return
+			//     (history grows by those messages) or an empty
+			//     return (no history change), and in BOTH cases
+			//     the loop continues. This mirrors the legacy
+			//     requestStep's soft-continue on errSteerInterrupt
+			//     so a bridge that polls continuously across
+			//     iterations (mivia-agent bridgeSteerSignals) can
+			//     deliver repeated steers within one RunSteerable
+			//     call without dropping the run.
+			//
+			// (b) No injector is installed. The run stops with
+			//     StopSteered, the existing single-shot behavior
+			//     every pre-injector Steer test pins.
+			//
+			// The sticky-trigger fix (Part A.4) lives in the
+			// case-(a) path: ackTriggered must run BEFORE the next
+			// iteration's Chat call arms, otherwise arm sees
+			// triggered=true and cancels instantly, the next drain
+			// is empty, and the run spins between two empty drains.
+			if steer.hasInjector() {
+				steer.ackTriggered()
+				return Result{}, nil, false
+			}
 			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage, Stop: StopSteered}, nil, true
 		}
 		if at.fromRecovery {

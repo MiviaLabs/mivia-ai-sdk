@@ -359,21 +359,32 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
 	req.StreamingWriter = streamMirror(l.streamSink, stream)
 	estimated := l.estimateTokens(req)
+	// WorkBudget call points (agentloop/budget.go): reserve before the
+	// call on the exact request (a reserve error fails the run before
+	// the call runs), refund the never-consumed reservation when the
+	// call fails, settle with the real Usage when it succeeds.
+	if rerr := l.reserveWork(ctx, req, iterations+1); rerr != nil {
+		return chatAttempt{err: rerr, iterCtx: ctx}
+	}
 	resp, err := l.steerableChat(ctx, req, steer)
 	if span != nil {
 		span.End()
 	}
 	if err == nil {
+		l.settleWork(ctx, req, resp.Usage)
 		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
 			estimatedTokens: estimated}
 	}
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
+		l.refundWork(ctx, req)
 		return chatAttempt{err: err, iterCtx: ctx}
 	}
 	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations)
 	if rerr != nil {
+		l.refundWork(ctx, req)
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
+	l.settleWork(ctx, req, recovered.Usage)
 	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
 		estimatedTokens: l.estimateTokens(retryReq)}
 }

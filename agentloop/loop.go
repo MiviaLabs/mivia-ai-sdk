@@ -87,6 +87,10 @@ type Loop struct {
 	// Each run's capture buffer is a local, threaded through run,
 	// runIteration, and runChat; see agentloop/streaming.go.
 	streamSink io.Writer
+	// workBudget is the caller's Options.WorkBudget, nil when unset.
+	// Immutable after New; see agentloop/budget.go for the call
+	// contract the loop honors around each Completer call.
+	workBudget *WorkBudget
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -145,6 +149,7 @@ func New(opts Options) (*Loop, error) {
 		turnResultBudget:      opts.TurnResultBudget,
 		maxConcurrent:         opts.MaxConcurrentTools,
 		streamSink:            opts.StreamingWriter,
+		workBudget:            opts.WorkBudget,
 	}, nil
 }
 

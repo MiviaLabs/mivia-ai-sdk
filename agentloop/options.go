@@ -348,6 +348,18 @@ type Options struct {
 	// Applies to every appended RoleTool content, including a reported
 	// tool-run error under ErrorPolicyReport.
 	TurnResultBudget int
+	// WorkBudget, when non-nil, is a host-callable token-reservation
+	// surface the loop invokes around each Completer call: Reserve
+	// runs with the exact request before the call (a non-nil return
+	// hard-fails the run before the call), and Refund runs after the
+	// outcome is known (zero Usage for a never-consumed reservation on
+	// a failed call; the response's real Usage on a successful one).
+	// The zero value (nil) disables the hook entirely: no Reserve, no
+	// Refund, no behavior change. A non-nil WorkBudget requires both
+	// functions; Validate rejects a half-wired one with
+	// ErrIncompleteWorkBudget. See WorkBudget's doc for the full call
+	// contract.
+	WorkBudget *WorkBudget
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -480,6 +492,9 @@ func (o Options) Validate() error {
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
 		return ErrHeartbeatRequiresBus
+	}
+	if err := o.WorkBudget.validate(); err != nil {
+		return err
 	}
 	return nil
 }

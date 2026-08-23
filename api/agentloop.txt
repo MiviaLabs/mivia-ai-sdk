@@ -86,6 +86,7 @@ package agentloop
   MaxConcurrentTools int
   HeartbeatInterval time.Duration
   TurnResultBudget int
+  WorkBudget *WorkBudget
 }
   type Result struct {
   Final provider.Message
@@ -102,12 +103,17 @@ package agentloop
   Registry *tools.Registry
   Scope *tools.Scope
 }
+  type WorkBudget struct {
+  Reserve func(ctx context.Context, req provider.Request) error
+  Refund func(ctx context.Context, req provider.Request, used provider.Usage)
+}
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
   var ErrConcludeMargin
   var ErrEstimatorRequired
   var ErrHeartbeatRequiresBus
+  var ErrIncompleteWorkBudget
   var ErrInvalidSchema
   var ErrMaxConcurrentTools
   var ErrMaxIterations

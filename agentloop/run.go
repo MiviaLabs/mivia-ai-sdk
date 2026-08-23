@@ -87,6 +87,23 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopMaxIterations}, nil
 		}
 
+		// Surface rotation (step 2+): the host hook replaces this
+		// iteration's advertised definitions, call-resolution
+		// registry, and scope AFTER the injector drain so an
+		// injected frame lands on the previous surface, mirroring
+		// mivia-agent's legacy applySurfaceHook skip-step-1 rule.
+		// A nil return keeps the prior surface; a hook panic fails
+		// the run closed rather than half-rotating.
+		if l.surfaceFn != nil && iterations >= 1 {
+			surface, serr := safeSurface(l.surfaceFn)
+			if serr != nil {
+				return l.hardFail(history, iterations, totalUsage), serr
+			}
+			if aerr := l.apply(surface); aerr != nil {
+				return l.hardFail(history, iterations, totalUsage), aerr
+			}
+		}
+
 		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent, steer)
 		if done {
 			return res, err

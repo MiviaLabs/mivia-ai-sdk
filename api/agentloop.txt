@@ -59,6 +59,7 @@ package agentloop
   Bus *events.Bus
   Budget *contextbudget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+  Surface func() *Surface
   Audit AuditFunc
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer
@@ -79,6 +80,11 @@ package agentloop
   type Steer struct {
 }
   type StopReason string
+  type Surface struct {
+  Advertised []provider.ToolDefinition
+  Registry *tools.Registry
+  Scope *tools.Scope
+}
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed

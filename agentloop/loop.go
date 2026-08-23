@@ -56,6 +56,7 @@ type Loop struct {
 	bus              *events.Bus
 	budget           *contextbudget.Limits
 	trim             func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	surfaceFn        func() *Surface
 	defs             []provider.ToolDefinition
 	schemas          map[string]*schema.Compiled
 	audit            AuditFunc
@@ -106,6 +107,7 @@ func New(opts Options) (*Loop, error) {
 		bus:              opts.Bus,
 		budget:           opts.Budget,
 		trim:             opts.Trim,
+		surfaceFn:        opts.Surface,
 		defs:             defs,
 		schemas:          schemas,
 		audit:            opts.Audit,

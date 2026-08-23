@@ -215,6 +215,15 @@ type Options struct {
 	// docs/plans/agentloop.md for its contract with
 	// contextplan.Planner.Plan.
 	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	// Surface, when non-nil, is consulted at the top of every
+	// iteration from the second one onward (after the steer
+	// injector drain, before the Completer call). The returned
+	// Surface replaces the iteration's advertised definitions,
+	// call-resolution registry, and scope; a nil return keeps the
+	// previous surface. A panic inside the hook fails the run.
+	// Optional; the default (nil) runs every iteration on the
+	// Options-level Tools and Scope unchanged.
+	Surface func() *Surface
 	// Audit receives one AuditRecord per completed Completer turn and
 	// per tool call whose result reaches history. A nil Audit means
 	// Run performs no audit call, at no added cost.

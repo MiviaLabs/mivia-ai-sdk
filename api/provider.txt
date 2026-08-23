@@ -69,6 +69,7 @@ package provider
   Messages []Message
   Tools []ToolDefinition
   Stream bool
+  StreamingWriter io.Writer
   Temperature *float64
   MaxTokens *int
   ToolChoice ToolChoice

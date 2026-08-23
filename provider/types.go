@@ -2,6 +2,7 @@ package provider
 
 import (
 	"errors"
+	"io"
 	"time"
 	"unicode/utf8"
 )
@@ -218,10 +219,19 @@ type Usage struct {
 // completer's own default dialect. See Request.Validate for the
 // ToolChoice rule.
 type Request struct {
-	Model                 string
-	Messages              []Message
-	Tools                 []ToolDefinition
-	Stream                bool
+	Model    string
+	Messages []Message
+	Tools    []ToolDefinition
+	Stream   bool
+	// StreamingWriter, when non-nil, receives every byte the
+	// Completer emits during the call: streamed deltas in ChatStream,
+	// or aggregated content in Chat. The SDK captures the writer's
+	// buffer on Steered stop so a partial reply survives the
+	// cancel (plan v3 Item 1). A nil writer leaves the buffer
+	// empty and Result.Final is empty on Steered stop, which
+	// preserves the pre-Item-1 contract for callers that do not
+	// opt in.
+	StreamingWriter       io.Writer
 	Temperature           *float64
 	MaxTokens             *int
 	ToolChoice            ToolChoice

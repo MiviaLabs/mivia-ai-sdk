@@ -31,7 +31,9 @@ func Load(path string) (map[string]string, error) {
 // single-quoted, or double-quoted; a double-quoted value decodes \n,
 // \t, \\, and \". Only the first '=' on a line splits key from value,
 // so a literal '=' in an unquoted or quoted value passes through. A
-// duplicate key keeps its last value. LoadBytes(nil) returns an empty
+// duplicate key keeps its last value. A line may also start with the
+// lowercase keyword 'export' followed by whitespace; the keyword is
+// stripped before key validation. LoadBytes(nil) returns an empty
 // map and a nil error. No returned error ever contains a parsed
 // value.
 func LoadBytes(data []byte) (map[string]string, error) {
@@ -63,7 +65,17 @@ func parseLine(line string, lineNo int) (string, string, error) {
 	if idx < 0 {
 		return "", "", fmt.Errorf("envfile: line %d: missing '='", lineNo)
 	}
-	key := strings.TrimSpace(line[:idx])
+	// A line may start with the lowercase keyword "export" followed
+	// by a space or tab; strip it when the candidate key after the
+	// strip is valid, otherwise leave "export" as the key (bkeepers
+	// and joho behavior).
+	key := line[:idx]
+	if len(key) >= 7 && key[0:6] == "export" && (key[6] == ' ' || key[6] == '\t') {
+		if stripped := strings.TrimSpace(line[7:idx]); keyPattern.MatchString(stripped) {
+			key = line[7:idx]
+		}
+	}
+	key = strings.TrimSpace(key)
 	if !keyPattern.MatchString(key) {
 		return "", "", fmt.Errorf("envfile: line %d: invalid key", lineNo)
 	}

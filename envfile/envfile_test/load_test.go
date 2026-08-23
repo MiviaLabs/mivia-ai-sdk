@@ -58,6 +58,9 @@ func TestLoadBytesParseCases(t *testing.T) {
 		{"no trailing newline", []byte("FOO=bar"), map[string]string{"FOO": "bar"}},
 		{"value is only a comment", []byte("FOO=# comment\n"), map[string]string{"FOO": ""}},
 		{"tab before trailing comment", []byte("FOO=bar\t# comment\n"), map[string]string{"FOO": "bar"}},
+		{"export keyword stripped", []byte("export FOO=bar\n"), map[string]string{"FOO": "bar"}},
+		{"export with no key after strip", []byte("export =bar\n"), map[string]string{"export": "bar"}},
+		{"export prefix with double quotes and escapes", []byte("export FOO=\"a\\nb\"\n"), map[string]string{"FOO": "a\nb"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -208,6 +211,8 @@ func FuzzLoad(f *testing.F) {
 		"FOOBAR\n",
 		"FOO=\"bar\"baz\n",
 		"FOO=\"a\\xb\"\n",
+		"export FOO=bar\n",
+		"export =bar\n",
 		"",
 	}
 	for _, s := range seeds {

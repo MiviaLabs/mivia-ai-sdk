@@ -7,12 +7,19 @@ package agentloop
   const DuplicateCallNotice = "[duplicate-call] This exact tool call was already served earlier in this turn; skipped to avoid a repeated side effect."
   const ErrorPolicyFail = "fail"
   const ErrorPolicyReport = ""
+  const EventAssistant = "agentloop.assistant"
+  const EventCacheUsage = "agentloop.cache_usage"
+  const EventCalibrationDelta = "agentloop.calibration_delta"
   const EventCompletionHeartbeat = "agentloop.completion.heartbeat"
   const EventIterationEnd = "agentloop.iteration.end"
   const EventIterationStart = "agentloop.iteration.start"
+  const EventThinkingDelta = "agentloop.thinking.delta"
+  const EventThinkingEnd = "agentloop.thinking.end"
+  const EventThinkingStart = "agentloop.thinking.start"
   const EventToolCallEnd = "agentloop.tool_call.end"
   const EventToolCallHeartbeat = "agentloop.tool_call.heartbeat"
   const EventToolCallStart = "agentloop.tool_call.start"
+  const EventToolParallel = "agentloop.tool_parallel"
   const RecoveryTargetTokens = 16384
   const StopConcluded = "concluded"
   const StopHookVeto = "hook_veto"
@@ -39,6 +46,8 @@ package agentloop
   ToolCall provider.ToolCall
   ToolResult provider.Message
   Err error
+  ThinkingContent string
+  CacheUsage provider.CacheUsage
 }
   type ErrorPolicy string
   type Loop struct {

@@ -362,6 +362,16 @@ type AuditRecord struct {
 	// Err is the tool-run error runOneToolCall reported, or nil on a
 	// successful call. Set only when Kind == AuditKindToolCall.
 	Err error
+	// ThinkingContent is the response's ReasoningContent, copied out
+	// so a renderer can sign or audit it independently of Response.
+	// Empty on a completion whose assistant turn produced no reasoning
+	// and on every tool-call record.
+	ThinkingContent string
+	// CacheUsage is the response's prompt-cache accounting, copied out
+	// for the same reason. Reported is false on every completion whose
+	// Completer did not report cache usage and on every tool-call
+	// record.
+	CacheUsage provider.CacheUsage
 }
 
 // AuditFunc receives one AuditRecord per audited event, in the order

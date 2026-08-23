@@ -74,6 +74,18 @@ func renderValue(v any) (string, error) {
 	return string(b), nil
 }
 
+// encodeEventData renders v as the Data string for a Bus event whose
+// payload is structured, the one marshal path outside renderValue.
+// Returns ok false when v cannot be marshaled; callers then skip the
+// emission, matching the fire-and-forward Bus contract.
+func encodeEventData(v any) (string, bool) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
+}
+
 // truncateContent cuts content to fit within budget bytes, reserving
 // room for truncationMarker when budget is large enough to hold it.
 // render calls this only when 0 < budget < len(content), so both

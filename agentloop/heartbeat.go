@@ -32,6 +32,28 @@ const (
 	// EventIterationEnd fires once at the end of every iteration,
 	// covering every exit path: a graceful stop or a hard-fail error.
 	EventIterationEnd events.Name = "agentloop.iteration.end"
+	// EventAssistant fires once per completed Completer turn whose
+	// Message role is assistant, with the message content as Data.
+	EventAssistant events.Name = "agentloop.assistant"
+	// EventThinkingStart fires at the start of the thinking bracket
+	// for one assistant turn that produced ReasoningContent.
+	EventThinkingStart events.Name = "agentloop.thinking.start"
+	// EventThinkingDelta carries one assistant turn's ReasoningContent
+	// as Data, between EventThinkingStart and EventThinkingEnd.
+	EventThinkingDelta events.Name = "agentloop.thinking.delta"
+	// EventThinkingEnd closes the thinking bracket for one assistant
+	// turn that produced ReasoningContent.
+	EventThinkingEnd events.Name = "agentloop.thinking.end"
+	// EventCacheUsage fires after a Completer turn whose response
+	// reported prompt-cache accounting; Data is the JSON-encoded
+	// provider.CacheUsage.
+	EventCacheUsage events.Name = "agentloop.cache_usage"
+	// EventCalibrationDelta fires after every Calibrated.Observe call;
+	// Data is the JSON-encoded calibrationPayload.
+	EventCalibrationDelta events.Name = "agentloop.calibration_delta"
+	// EventToolParallel fires once per turn dispatched with more than
+	// one tool call, before the calls run; Data names the call count.
+	EventToolParallel events.Name = "agentloop.tool_parallel"
 )
 
 // emitEvent emits name on l.bus with data as the payload when
@@ -87,4 +109,34 @@ func iterationLabel(n int) string {
 // toolCallLabel builds the Data string for a tool-call-scoped event.
 func toolCallLabel(iteration int, call provider.ToolCall) string {
 	return fmt.Sprintf("iteration %d: tool call %s (%s)", iteration, call.ID, call.Name)
+}
+
+// parallelLabel builds the Data string for EventToolParallel: the
+// turn's tool-call count, the number a renderer highlights as the
+// parallel-dispatch width.
+func parallelLabel(n int) string {
+	return fmt.Sprintf("parallel tool calls: %d", n)
+}
+
+// emitThinkingEvents fires the Start/Delta/End bracket for one
+// assistant turn whose ReasoningContent is non-empty. A turn with
+// an empty ReasoningContent fires nothing, so the bracket remains a
+// faithful signal of "this turn produced chain-of-thought" without
+// also tagging turns whose chain-of-thought was off.
+func (l *Loop) emitThinkingEvents(ctx context.Context, reasoning string) {
+	if reasoning == "" {
+		return
+	}
+	l.emitEvent(ctx, EventThinkingStart, reasoning)
+	l.emitEvent(ctx, EventThinkingDelta, reasoning)
+	l.emitEvent(ctx, EventThinkingEnd, reasoning)
+}
+
+// calibrationPayload is the JSON shape EventCalibrationDelta's Data
+// carries. Estimated is the value l.calibrated.EstimateTokens
+// returned for this iteration's request; Actual is the response's
+// provider.Usage.TotalTokens.
+type calibrationPayload struct {
+	Estimated int `json:"estimated"`
+	Actual    int `json:"actual"`
 }

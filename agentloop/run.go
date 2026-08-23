@@ -224,14 +224,33 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 	if l.usageAcc != nil {
 		_ = l.usageAcc.Record(l.sessionID, resp.Usage)
 	}
+	if resp.Message.Role == provider.RoleAssistant {
+		l.emitEvent(ctx, EventAssistant, resp.Message.Content)
+	}
+	l.emitThinkingEvents(ctx, resp.Message.ReasoningContent)
+	if resp.CacheUsage.Reported {
+		if data, ok := encodeEventData(resp.CacheUsage); ok {
+			l.emitEvent(ctx, EventCacheUsage, data)
+		}
+	}
 	if l.audit != nil {
-		if aerr := l.audit(ctx, AuditRecord{Iteration: *iterations, Kind: AuditKindCompletion, Request: req, Response: resp}); aerr != nil {
+		if aerr := l.audit(ctx, AuditRecord{
+			Iteration:       *iterations,
+			Kind:            AuditKindCompletion,
+			Request:         req,
+			Response:        resp,
+			ThinkingContent: resp.Message.ReasoningContent,
+			CacheUsage:      resp.CacheUsage,
+		}); aerr != nil {
 			return l.hardFail(*history, *iterations, *totalUsage),
 				fmt.Errorf("agentloop: iteration %d: audit: %w", *iterations, aerr), true
 		}
 	}
 	if l.calibrated != nil {
 		l.calibrated.Observe(at.estimatedTokens, resp.Usage.TotalTokens)
+		if data, ok := encodeEventData(calibrationPayload{Estimated: at.estimatedTokens, Actual: resp.Usage.TotalTokens}); ok {
+			l.emitEvent(ctx, EventCalibrationDelta, data)
+		}
 	}
 	*runningTokens += billedTokens(resp.Usage)
 	if l.maxTotalTokens > 0 && *runningTokens > l.maxTotalTokens {

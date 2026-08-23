@@ -57,6 +57,9 @@ type dedupKey struct {
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int) ([]provider.Message, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
+	if len(ordered) > 1 {
+		l.emitEvent(ctx, EventToolParallel, parallelLabel(len(ordered)))
+	}
 
 	seen := make(map[dedupKey]struct{})
 	runningTotal := 0

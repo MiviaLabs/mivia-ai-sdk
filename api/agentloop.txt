@@ -60,6 +60,7 @@ package agentloop
   Budget *contextbudget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
   Surface func() *Surface
+  StreamingWriter io.Writer
   Audit AuditFunc
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer

@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"time"
 
@@ -69,6 +70,11 @@ type Loop struct {
 	dedupWithinTurn  bool
 	heartbeat        time.Duration
 	turnResultBudget int
+	// streamSink is the caller's Options.StreamingWriter, nil when
+	// unset. Immutable after New, so concurrent runs share it safely.
+	// Each run's capture buffer is a local, threaded through run,
+	// runIteration, and runChat; see agentloop/streaming.go.
+	streamSink io.Writer
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -120,6 +126,7 @@ func New(opts Options) (*Loop, error) {
 		dedupWithinTurn:  opts.DedupWithinTurn,
 		heartbeat:        opts.HeartbeatInterval,
 		turnResultBudget: opts.TurnResultBudget,
+		streamSink:       opts.StreamingWriter,
 	}, nil
 }
 

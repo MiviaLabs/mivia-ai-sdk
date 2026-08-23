@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -226,6 +227,15 @@ type Options struct {
 	// Optional; the default (nil) runs every iteration on the
 	// Options-level Tools and Scope unchanged.
 	Surface func() *Surface
+	// StreamingWriter, when non-nil, mirrors what the Completer
+	// writes through Request.StreamingWriter during a call. The
+	// loop buffers the same bytes; on a Steered stop the buffered
+	// bytes become Result.Final.Content, so a partial reply
+	// survives the cancel. The Completer must finish all writes
+	// before its Chat or ChatStream call ends. A nil writer keeps
+	// Result.Final empty on Steered stop. Concurrent runs on one
+	// Loop share this writer; it must be safe for concurrent use.
+	StreamingWriter io.Writer
 	// Audit receives one AuditRecord per completed Completer turn and
 	// per tool call whose result reaches history. A nil Audit means
 	// Run performs no audit call, at no added cost.

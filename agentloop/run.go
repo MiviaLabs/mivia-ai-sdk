@@ -1,6 +1,7 @@
 package agentloop
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -26,9 +27,10 @@ func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
 // Completer.Chat call from another goroutine, through steer.Trigger.
 // ctx cancellation still ends the run as a hard failure, unchanged
 // from Run. A triggered steer ends the run gracefully instead, at the
-// next iteration boundary, with Stop == StopSteered and Final holding
-// the zero value: the run stops before a new response arrives, the
-// same rule every other pre-response graceful stop already follows.
+// next iteration boundary, with Stop == StopSteered. Final holds the
+// zero value, except when Options.StreamingWriter is set: then Final
+// carries the bytes the Completer wrote before the steer, the same
+// rule every other pre-response graceful stop already follows.
 // History, Iterations, and Usage carry every already-completed
 // iteration's state. Run(ctx, msgs) is equivalent to
 // RunSteerable(ctx, msgs, nil).
@@ -58,6 +60,7 @@ func (l *Loop) fireStop(ctx context.Context, res Result) {
 // single-iteration body. A nil steer behaves exactly as before
 // RunSteerable existed.
 func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error) {
+	stream := newStreamBuffer(l.streamSink)
 	history := append([]provider.Message(nil), msgs...)
 	var totalUsage provider.Usage
 	var runningTokens int
@@ -104,7 +107,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 			}
 		}
 
-		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent, steer)
+		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent, steer, stream)
 		if done {
 			return res, err
 		}
@@ -124,7 +127,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 // checkBudget runs after planHistory: window-based compaction can
 // bring an over-budget history back under budget, so the check must
 // see the post-compaction history, not the pre-compaction one.
-func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeSent *bool, steer *Steer) (res Result, err error, done bool) {
+func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeSent *bool, steer *Steer, stream *bytes.Buffer) (res Result, err error, done bool) {
 	label := iterationLabel(*iterations + 1)
 	l.emitEvent(ctx, EventIterationStart, label)
 	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
@@ -157,7 +160,7 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
 	at := func() chatAttempt {
 		defer stopHeartbeat()
-		return l.runChat(ctx, *history, *iterations, steer)
+		return l.runChat(ctx, *history, *iterations, steer, stream)
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
@@ -195,7 +198,7 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 				steer.ackTriggered()
 				return Result{}, nil, false
 			}
-			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage, Stop: StopSteered}, nil, true
+			return steeredStopResult(*history, *iterations, *totalUsage, stream), nil, true
 		}
 		if at.fromRecovery {
 			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage}, at.err, true
@@ -357,12 +360,13 @@ type chatAttempt struct {
 // completed Completer.Chat call already canceled. recoverPromptTooLong
 // keeps using ctx too, so a Trigger fired during that retry has no
 // effect until the next iteration boundary.
-func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer) chatAttempt {
+func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer) chatAttempt {
 	var span *trace.Span
 	if l.tracer != nil {
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
 	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+	req.StreamingWriter = streamMirror(l.streamSink, stream)
 	estimated := l.estimateTokens(req)
 	resp, err := l.steerableChat(ctx, req, steer)
 	if span != nil {

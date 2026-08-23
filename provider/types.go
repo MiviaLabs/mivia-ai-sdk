@@ -223,14 +223,11 @@ type Request struct {
 	Messages []Message
 	Tools    []ToolDefinition
 	Stream   bool
-	// StreamingWriter, when non-nil, receives every byte the
-	// Completer emits during the call: streamed deltas in ChatStream,
-	// or aggregated content in Chat. The SDK captures the writer's
-	// buffer on Steered stop so a partial reply survives the
-	// cancel (plan v3 Item 1). A nil writer leaves the buffer
-	// empty and Result.Final is empty on Steered stop, which
-	// preserves the pre-Item-1 contract for callers that do not
-	// opt in.
+	// StreamingWriter, when non-nil, receives bytes a Completer
+	// chooses to emit during the call. This SDK writes nothing to
+	// it yet; it is an opt-in pass-through for a completer that
+	// mirrors its stream. The zero value is nil and changes no
+	// behavior.
 	StreamingWriter       io.Writer
 	Temperature           *float64
 	MaxTokens             *int

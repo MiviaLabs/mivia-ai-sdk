@@ -817,3 +817,49 @@ files, since existing files already hold each type's tests.
   change to compile. The `Completer` interface's method set is
   unchanged, so no implementer or caller of `Completer` needs a change
   either.
+
+## Change: `StreamingWriter` pass-through field
+
+Status: shipped. This change supersedes one sentence of the streaming
+decision above. The `<-chan Chunk` shape stays. This change adds an
+optional `io.Writer` beside it, not a replacement.
+
+### Change goal
+
+Let a caller attach a writer to a `Request` so a completer can mirror
+its stream during the call. A later change will use this field for
+partial-reply capture on a steered stop in `agentloop`.
+
+### Change scope
+
+Inside: one field, `Request.StreamingWriter io.Writer`, in
+`provider/types.go`. Nothing else. This SDK writes nothing to the
+field in this change. `RunTurn`, `Chat`, and `ChatStream` behave the
+same for a nil and a non-nil writer.
+
+The earlier decision "no `io.Writer`" rejected a writer as the
+streaming transport in place of the channel. This field is not a
+transport. It is an optional mirror a completer may write to beside
+the channel it already returns.
+
+### Change API
+
+- `api/provider.txt` gains the `StreamingWriter` field on `Request`,
+  via `make api-update` in the same change as the code.
+- No new type, method, constant, or sentinel.
+
+### Change tests
+
+- `TestRequestZeroValue` gains an assertion: a zero `Request` holds a
+  nil `StreamingWriter`.
+- `TestRunTurnIgnoresStreamingWriter` pins the current truth: `RunTurn`
+  writes nothing to a non-nil writer and returns the same response it
+  returns for a nil writer.
+
+### Change verification
+
+- `make verify` passes.
+- `docs/packages/provider.md` names the field in the `Request` bullet,
+  in the same change as the code.
+- No conformance vector: the field carries an in-process writer, not
+  wire data.

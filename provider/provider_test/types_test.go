@@ -1,7 +1,10 @@
 package provider_test
 
 import (
+	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +45,34 @@ func TestRequestZeroValue(t *testing.T) {
 	}
 	if req.ReasoningDialect != "" {
 		t.Fatalf("zero Request.ReasoningDialect = %q, want empty", req.ReasoningDialect)
+	}
+	if req.StreamingWriter != nil {
+		t.Fatal("zero Request.StreamingWriter is not nil")
+	}
+}
+
+// TestRunTurnIgnoresStreamingWriter pins the current contract: RunTurn
+// writes nothing to a non-nil StreamingWriter and returns the response
+// the completer gives. A later change that writes to the field must
+// replace this test, not weaken it.
+func TestRunTurnIgnoresStreamingWriter(t *testing.T) {
+	want := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "hi"}}
+	f := &fakeCompleter{name: "fake", chatResp: want}
+	var b strings.Builder
+	req := provider.Request{
+		Messages:        []provider.Message{{Role: provider.RoleUser, Content: "hello"}},
+		StreamingWriter: &b,
+	}
+
+	got, err := provider.RunTurn(context.Background(), f, req)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v, want nil", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("RunTurn() = %+v, want %+v", got, want)
+	}
+	if b.Len() != 0 {
+		t.Fatalf("RunTurn() wrote %q to StreamingWriter, want no writes", b.String())
 	}
 }
 

@@ -24,7 +24,9 @@ below mirrors `api/provider.txt`.
 - `Request` — the input to every `Completer` method. Adds `Temperature`
   and `MaxTokens` (`*float64`/`*int`; nil means "use the completer's
   own default"), `ToolChoice`, `Timeout`, `SessionID`,
-  `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
+  `DisableProviderReplay`, `ReasoningEffort`, `ReasoningDialect`, and
+  `StreamingWriter` (`io.Writer`; nil changes no behavior; no code in
+  this SDK writes to it yet).
 - `ToolChoice` — controls whether and how a completion may call a
   tool. Constants: `ToolChoiceAuto`, `ToolChoiceNone`. The empty value
   means unspecified.

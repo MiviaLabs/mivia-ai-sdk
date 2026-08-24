@@ -286,6 +286,9 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 		return l.hardFail(history, iterations, totalUsage), true,
 			fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
 	}
+	if err := l.reserveTools(ctx, len(resp.ToolCalls), iterations); err != nil {
+		return l.hardFail(history, iterations, totalUsage), true, err
+	}
 
 	newHistory, veto, err := l.runToolCalls(ctx, history, resp.ToolCalls, iterations, surface)
 	if err != nil {

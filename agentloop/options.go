@@ -356,6 +356,10 @@ type Options struct {
 	// ErrIncompleteWorkBudget. See WorkBudget's doc for the full call
 	// contract.
 	WorkBudget *WorkBudget
+	// ToolBudget, when non-nil, is a host-callable cumulative tool-call
+	// budget invoked once per turn before dispatch. The zero value
+	// (nil) disables it. See ToolBudget's doc for the full contract.
+	ToolBudget *ToolBudget
 }
 
 // AuditKind names which of Run's two audit-relevant events an

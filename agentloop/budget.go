@@ -92,3 +92,42 @@ func (l *Loop) settleWork(ctx context.Context, req provider.Request, used provid
 	}
 	l.workBudget.Refund(ctx, req, used)
 }
+
+// ToolBudget is a host-callable cumulative tool-call budget the loop
+// invokes once per turn, before that turn's tool calls dispatch. The
+// SDK holds no budget policy of its own here, mirroring WorkBudget:
+// Reserve runs host code (for example a shared call ceiling across
+// concurrent subagent turns), and the loop only supplies the call
+// point.
+//
+// The loop calls Reserve exactly once per turn that has tool calls to
+// run, with the number of calls about to dispatch (resp.ToolCalls
+// before per-call filtering, dedup, or any MaxCallsPerTurn clamp), and
+// BEFORE any of them run. A non-nil return hard-fails the run before
+// dispatch, with none of the turn's tool calls executed.
+//
+// There is no Refund: unlike a Completer call, a dispatched tool call
+// is always consumed once Reserve admits the batch, so there is
+// nothing to give back.
+//
+// Reserve must be safe for concurrent use when callers share one Loop
+// across concurrent Run calls.
+type ToolBudget struct {
+	// Reserve runs once per turn before its tool calls dispatch, with
+	// the count about to run. A non-nil return fails the run.
+	Reserve func(ctx context.Context, calls int) error
+}
+
+// reserveTools runs the ToolBudget's Reserve for one turn's tool-call
+// count. A nil l.toolBudget is a no-op; a hook error is wrapped with
+// the 1-based iteration count so the hard fail names its cause,
+// mirroring reserveWork.
+func (l *Loop) reserveTools(ctx context.Context, calls int, iteration int) error {
+	if l.toolBudget == nil {
+		return nil
+	}
+	if err := l.toolBudget.Reserve(ctx, calls); err != nil {
+		return fmt.Errorf("agentloop: iteration %d: tool budget reserve: %w", iteration, err)
+	}
+	return nil
+}

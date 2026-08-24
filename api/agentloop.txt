@@ -87,6 +87,7 @@ package agentloop
   HeartbeatInterval time.Duration
   TurnResultBudget int
   WorkBudget *WorkBudget
+  ToolBudget *ToolBudget
 }
   type Result struct {
   Final provider.Message
@@ -102,6 +103,9 @@ package agentloop
   Advertised []provider.ToolDefinition
   Registry *tools.Registry
   Scope *tools.Scope
+}
+  type ToolBudget struct {
+  Reserve func(ctx context.Context, calls int) error
 }
   type WorkBudget struct {
   Reserve func(ctx context.Context, req provider.Request) error

@@ -12,6 +12,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
+	"github.com/MiviaLabs/mivia-ai-sdk/toolcallctx"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
@@ -258,18 +259,20 @@ func (l *Loop) auditToolCall(ctx context.Context, iteration int, call provider.T
 // its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
 // starts only after the veto check passes.
 func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (msg provider.Message, veto bool, reported error, err error) {
+	callCtx := toolcallctx.WithToolCall(ctx, call)
 	label := toolCallLabel(iteration, call)
-	l.emitEvent(ctx, EventToolCallStart, label)
-	defer func() { l.emitEvent(ctx, EventToolCallEnd, label) }()
+	l.emitEvent(callCtx, EventToolCallStart, label)
+	defer func() { l.emitEvent(callCtx, EventToolCallEnd, label) }()
 
 	if l.tracer != nil {
 		var span *trace.Span
-		ctx, span = l.tracer.Start(ctx, "agentloop.tool_call")
+		callCtx, span = l.tracer.Start(callCtx, "agentloop.tool_call")
+		span.SetAttribute("tool.call.id", call.ID)
 		defer span.End()
 	}
 
 	if l.hooksReg != nil {
-		allowed, hookErr := l.fireHook(ctx, hooks.PointPreTool, call)
+		allowed, hookErr := l.fireHook(callCtx, hooks.PointPreTool, call)
 		if hookErr != nil {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, hookErr)
 		}
@@ -278,21 +281,21 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		}
 	}
 
-	stopHeartbeat := l.startHeartbeat(ctx, EventToolCallHeartbeat, label)
+	stopHeartbeat := l.startHeartbeat(callCtx, EventToolCallHeartbeat, label)
 	t, out, runErr := func() (tools.Tool, tools.Out, error) {
 		defer stopHeartbeat()
-		return l.decodeAndRun(ctx, call)
+		return l.decodeAndRun(callCtx, call)
 	}()
 
 	if l.hooksReg != nil {
-		_, _ = l.fireHook(ctx, hooks.PointPostTool, call)
+		_, _ = l.fireHook(callCtx, hooks.PointPostTool, call)
 	}
 
 	if runErr != nil {
 		if l.onToolError == ErrorPolicyFail {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, runErr)
 		}
-		msg, merr := l.toolErrorReportMessage(ctx, call, iteration, runErr, errorReportContent(runErr))
+		msg, merr := l.toolErrorReportMessage(callCtx, call, iteration, runErr, errorReportContent(runErr))
 		if merr != nil {
 			return provider.Message{}, false, nil, merr
 		}
@@ -304,7 +307,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 		if l.onToolError == ErrorPolicyFail {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, renderErr)
 		}
-		msg, merr := l.toolErrorReportMessage(ctx, call, iteration, renderErr, ToolErrorPrefix+renderErr.Error())
+		msg, merr := l.toolErrorReportMessage(callCtx, call, iteration, renderErr, ToolErrorPrefix+renderErr.Error())
 		if merr != nil {
 			return provider.Message{}, false, nil, merr
 		}

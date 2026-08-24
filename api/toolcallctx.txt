@@ -1,0 +1,3 @@
+package toolcallctx
+  func ToolCallFromContext(ctx context.Context) (provider.ToolCall, bool)
+  func WithToolCall(ctx context.Context, call provider.ToolCall) (context.Context)

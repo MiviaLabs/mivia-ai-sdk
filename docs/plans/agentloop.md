@@ -3590,3 +3590,68 @@ holds these five cases. The file matches the existing
 No `make api-update`, no `policy/layers.json` change, no
 `api/agentloop.txt` diff, no coverage-floor change.
 
+## Addendum: loop extensions and concurrency hardening
+
+Status: shipped. This addendum documents the loop extensions: WorkBudget,
+Surface rotation, ConcludeDeadline and ConcludeStepsLeft, OnToolCallError,
+MaxConcurrentTools, and toolcallctx context propagation.
+
+### Addendum goal
+
+Provide host control over token budgets, dynamic tool surfaces, conclude
+deadlines, concurrent tool execution, and reported tool errors.
+
+### Addendum scope
+
+Inside:
+
+- `WorkBudget` token reservation hooks before and after completion calls.
+- `Surface` rotation hook from iteration two onward.
+- Conclude thresholds: `ConcludeDeadline` and `ConcludeStepsLeft`.
+- `OnToolCallError` custom error-response shaping hook.
+- `MaxConcurrentTools` worker pool for parallel tool execution.
+- `StreamingWriter` capture for partial replies on steered stop.
+- `toolcallctx` integration for attaching tool calls to contexts.
+- Events for assistant turns, thinking brackets, cache usage, calibration, and parallel dispatches.
+
+Outside:
+
+- Any change to `flow`, `agent`, or `agentrun`.
+- Any external third-party dependency.
+
+### Addendum API
+
+Exported symbols added to `api/agentloop.txt`:
+
+- `WorkBudget` struct and `ErrIncompleteWorkBudget`.
+- `Surface` struct.
+- `ErrorFunc` type.
+- `Options` fields: `WorkBudget`, `Surface`, `ConcludeDeadline`, `ConcludeStepsLeft`, `ConcludeToolCallsLeft`, `StartTime`, `OnToolCallError`, `MaxConcurrentTools`, and `StreamingWriter`.
+- Event constants: `EventAssistant`, `EventThinkingStart`, `EventThinkingDelta`, `EventThinkingEnd`, `EventCacheUsage`, `EventCalibrationDelta`, and `EventToolParallel`.
+
+### Addendum tests
+
+- TestWorkBudgetReserveThenRefundOnSuccessfulTurn proves reserve and refund sequencing.
+- TestWorkBudgetNilHookStillRuns proves a nil budget hook does not fail.
+- TestWorkBudgetReserveErrorFailsClosed proves a reserve error aborts the run.
+- TestWorkBudgetRefundsZeroUsageOnChatError proves refund on failed completion.
+- TestWorkBudgetValidateRequiresBothFuncs validates hook completeness.
+- TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery proves recovery reserve and refund.
+- TestSurfaceHookRotatesAdvertisedSetFromSecondIteration proves tool rotation.
+- TestSurfaceHookNilReturnKeepsPrior proves nil hook retains prior surface.
+- TestSurfaceHookPanicFailsRunClosed proves panic recovery.
+- TestSurfaceConcurrentRunDoesNotRace proves concurrent surface safety.
+- TestRunConcludeDeadlineThresholdFires proves deadline expiration conclude nudge.
+- TestRunConcludeDeadlineFutureDoesNotFire proves future deadline does not nudge.
+- TestRunConcludeToolCallsLeftThresholdFires proves turn cap isolation.
+- TestRunConcludeStepsLeftThresholdFires proves steps-left conclude nudge.
+- TestRunConcludeTermsOREDTogether proves combination of conclude triggers.
+- TestOptionsValidateCompleterBeforeConclude proves option validation ordering.
+
+### Addendum verification
+
+- `make verify` passes.
+- `go test -race -count=1 ./agentloop/...` passes.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_prose.py` passes.
+

@@ -66,6 +66,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 	var runningTokens int
 	iterations := 0
 	noticeSent := false
+	surface := l.initialSurface()
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -98,16 +99,18 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 		// A nil return keeps the prior surface; a hook panic fails
 		// the run closed rather than half-rotating.
 		if l.surfaceFn != nil && iterations >= 1 {
-			surface, serr := safeSurface(l.surfaceFn)
+			s, serr := safeSurface(l.surfaceFn)
 			if serr != nil {
 				return l.hardFail(history, iterations, totalUsage), serr
 			}
-			if aerr := l.apply(surface); aerr != nil {
+			var aerr error
+			surface, aerr = applySurface(surface, s)
+			if aerr != nil {
 				return l.hardFail(history, iterations, totalUsage), aerr
 			}
 		}
 
-		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent, steer, stream)
+		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &noticeSent, steer, stream, surface)
 		if done {
 			return res, err
 		}
@@ -127,7 +130,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 // checkBudget runs after planHistory: window-based compaction can
 // bring an over-budget history back under budget, so the check must
 // see the post-compaction history, not the pre-compaction one.
-func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeSent *bool, steer *Steer, stream *bytes.Buffer) (res Result, err error, done bool) {
+func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeSent *bool, steer *Steer, stream *bytes.Buffer, surface runSurface) (res Result, err error, done bool) {
 	label := iterationLabel(*iterations + 1)
 	l.emitEvent(ctx, EventIterationStart, label)
 	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
@@ -160,7 +163,7 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
 	at := func() chatAttempt {
 		defer stopHeartbeat()
-		return l.runChat(ctx, *history, *iterations, steer, stream)
+		return l.runChat(ctx, *history, *iterations, steer, stream, surface)
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
@@ -205,7 +208,7 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 		}
 		return l.hardFail(*history, *iterations, *totalUsage), at.err, true
 	}
-	return l.afterChat(ctx, at, history, iterations, totalUsage, runningTokens, noticeInRequest)
+	return l.afterChat(ctx, at, history, iterations, totalUsage, runningTokens, noticeInRequest, surface)
 }
 
 // afterChat holds the second half of one iteration's body: recording
@@ -215,7 +218,7 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 // computed by runIteration, picks StopConcluded over StopNoToolCalls
 // when this iteration's Completer request carried the ConcludeMargin
 // nudge.
-func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeInRequest bool) (Result, error, bool) {
+func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, noticeInRequest bool, surface runSurface) (Result, error, bool) {
 	resp, req := at.resp, at.req
 	*history = at.history
 	*history = append(*history, resp.Message)
@@ -258,7 +261,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 			fmt.Errorf("agentloop: iteration %d: %w", *iterations, ErrTokenBudgetExceeded), true
 	}
 
-	res, done, terr := l.runToolStage(at.iterCtx, *history, resp, *iterations, *totalUsage, noticeInRequest)
+	res, done, terr := l.runToolStage(at.iterCtx, *history, resp, *iterations, *totalUsage, noticeInRequest, surface)
 	if done {
 		return res, terr, true
 	}
@@ -271,7 +274,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 // none. The returned bool reports whether the caller must return res
 // (and err) as the iteration's own result; when false, res.History
 // carries the loop's next history and the loop continues.
-func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, noticeInRequest bool) (Result, bool, error) {
+func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, noticeInRequest bool, surface runSurface) (Result, bool, error) {
 	if len(resp.ToolCalls) == 0 {
 		stop := StopNoToolCalls
 		if noticeInRequest {
@@ -284,7 +287,7 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 			fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
 	}
 
-	newHistory, veto, err := l.runToolCalls(ctx, history, resp.ToolCalls, iterations)
+	newHistory, veto, err := l.runToolCalls(ctx, history, resp.ToolCalls, iterations, surface)
 	if err != nil {
 		return l.hardFail(newHistory, iterations, totalUsage), true, err
 	}
@@ -298,19 +301,10 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 // reacting to steer's Trigger-derived cancellation, rather than a
 // hard failure. All four conditions must hold: steer is non-nil, err
 // did not come from the prompt-too-long recovery path, ctx itself was
-// not directly canceled, and err wraps context.Canceled while
-// steer.wasTriggered reports true. wasTriggered rules out a Completer
-// that independently wraps context.Canceled while a Steer happens to
-// be present but was never triggered. The ctx.Err() check tells a
-// steer-triggered cancellation of runChat's derived context apart
-// from a caller's direct ctx cancellation, which also propagates into
-// that derived context since context.WithCancel's child observes its
-// parent.
+// not already canceled ahead of the call, and steer's wasTriggered
+// reports true.
 func isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool) bool {
-	if steer == nil || fromRecovery {
-		return false
-	}
-	if ctx.Err() != nil {
+	if steer == nil || fromRecovery || ctx.Err() != nil {
 		return false
 	}
 	if !errors.Is(err, context.Canceled) {
@@ -325,8 +319,11 @@ func isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool
 
 // chatAttempt carries one iteration's Completer outcome. iterCtx is
 // the span-annotated context the iteration ran under, for the turn's
-// later tool calls. When err is set, fromRecovery distinguishes the
-// recovery path's carrying Result rule from the base hard-fail rule.
+// subsequent tool calls. fromRecovery distinguishes an
+// ErrPromptTooLong-recovered completion from a primary one so the
+// error branch can skip the isSteerStop downgrade for a steer that
+// arrived mid-recovery. estimatedTokens is what Calibrated.EstimateTokens
+// returned for this iteration's request, before Chat ran.
 type chatAttempt struct {
 	resp            provider.Response
 	req             provider.Request
@@ -337,26 +334,15 @@ type chatAttempt struct {
 	estimatedTokens int
 }
 
-// runChat performs one iteration's Completer call under the iteration
-// span, recovering exactly once from a prompt-too-long rejection when
-// a window is set. A non-nil steer derives a per-call context, arms
-// steer with that context's cancel func before the call, and disarms
-// it after, so Trigger can soft-cancel this one Completer.Chat call
-// without canceling ctx itself. A steer already triggered before this
-// call arms fires the derived cancel immediately, before
-// l.completer.Chat runs, carrying a Trigger fired during the previous
-// iteration's tool-call batch into this call's start. The returned
-// chatAttempt.iterCtx always carries ctx, never the derived context: a
-// later tool call in this turn must not run under a context a
-// completed Completer.Chat call already canceled. recoverPromptTooLong
-// keeps using ctx too, so a Trigger fired during that retry has no
-// effect until the next iteration boundary.
-func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer) chatAttempt {
+// runChat builds this iteration's Request, reserves budget, calls
+// Completer.Chat, and catches ErrPromptTooLong to attempt one-shot
+// compaction recovery when Options.Window is set.
+func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer, surface runSurface) chatAttempt {
 	var span *trace.Span
 	if l.tracer != nil {
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
-	req := provider.Request{Model: l.model, Messages: history, Tools: l.defs}
+	req := provider.Request{Model: l.model, Messages: history, Tools: surface.defs}
 	req.StreamingWriter = streamMirror(l.streamSink, stream)
 	estimated := l.estimateTokens(req)
 	// WorkBudget call points (agentloop/budget.go): reserve before the
@@ -375,16 +361,15 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
 			estimatedTokens: estimated}
 	}
+	l.refundWork(ctx, req)
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
-		l.refundWork(ctx, req)
 		return chatAttempt{err: err, iterCtx: ctx}
 	}
-	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations)
+	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations, surface)
 	if rerr != nil {
-		l.refundWork(ctx, req)
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
-	l.settleWork(ctx, req, recovered.Usage)
+	l.settleWork(ctx, retryReq, recovered.Usage)
 	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
 		estimatedTokens: l.estimateTokens(retryReq)}
 }

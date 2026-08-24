@@ -27,34 +27,22 @@ func noticePresent(history []provider.Message, notice string) bool {
 
 // shouldConclude reports whether the upcoming Completer call, the
 // 1-based iteration k = iterations+1, qualifies for the conclude
-// nudge. Four terms are OR-ed: any one firing triggers the nudge.
+// nudge. Three terms are OR-ed: any one firing triggers the nudge.
 //
 //   - ConcludeMargin: maxIterations-k < concludeMargin. The original
-//     phase-79 step-count term. A zero concludeMargin never fires.
-//   - ConcludeDeadline: time.Until(deadlineAt) < concludeDeadline.
+//     step-count term. A zero concludeMargin never fires.
+//   - ConcludeDeadline: time.Until(deadlineAt) <= 0.
 //     A zero concludeDeadline (and so a zero deadlineAt) never
 //     fires.
-//   - ConcludeToolCallsLeft: maxCallsPerTurn-k < concludeToolCallsLeft.
-//     A zero concludeToolCallsLeft never fires; a zero
-//     maxCallsPerTurn (uncapped) also never fires, since subtracting
-//     a positive k from zero yields a non-positive number that is
-//     not below the threshold.
 //   - ConcludeStepsLeft: maxIterations-k < concludeStepsLeft. A zero
 //     concludeStepsLeft never fires.
-//
-// See docs/plans/agents/phase79_graceful_conclude.md for the worked
-// ConcludeMargin table.
 func (l *Loop) shouldConclude(iterations int) bool {
 	k := iterations + 1
 	if l.concludeMargin > 0 && l.maxIterations-k < l.concludeMargin {
 		return true
 	}
 	if !l.deadlineAt.IsZero() && l.concludeDeadline > 0 &&
-		time.Until(l.deadlineAt) < l.concludeDeadline {
-		return true
-	}
-	if l.concludeToolCallsLeft > 0 && l.maxCallsPerTurn > 0 &&
-		l.maxCallsPerTurn-k < l.concludeToolCallsLeft {
+		time.Until(l.deadlineAt) <= 0 {
 		return true
 	}
 	if l.concludeStepsLeft > 0 && l.maxIterations-k < l.concludeStepsLeft {

@@ -57,7 +57,7 @@ type dedupKey struct {
 // the true per-call outcome, independent of this shaping. The running
 // total resets to zero once per runToolCalls call, at the start of
 // this turn's batch. l.turnResultBudget zero skips the check entirely.
-func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int) ([]provider.Message, bool, error) {
+func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 	if len(ordered) > 1 {
@@ -68,7 +68,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		return history, false, err
 	}
 	plans := l.planCalls(ordered)
-	results := l.executeCalls(ctx, plans, iteration)
+	results := l.executeCalls(ctx, plans, iteration, surface)
 	return l.collectCalls(ctx, history, plans, results, iteration)
 }
 
@@ -117,7 +117,7 @@ type callOutcome struct {
 // when l.maxConcurrent < 2 and through a worker pool of size
 // l.maxConcurrent otherwise. Dispatch overlap is the only difference
 // between the two paths: per-call semantics are runOneToolCall's own.
-func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int) []callOutcome {
+func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int, surface runSurface) []callOutcome {
 	outcomes := make([]callOutcome, len(plans))
 	idx := make([]int, 0, len(plans))
 	for i, p := range plans {
@@ -127,7 +127,7 @@ func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int
 	}
 	var aborted atomic.Bool
 	run := func(i int) {
-		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration)
+		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration, surface)
 		if outcomes[i].err != nil || outcomes[i].veto {
 			aborted.Store(true)
 		}
@@ -165,8 +165,8 @@ func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int
 
 // oneCallOutcome runs runOneToolCall for one call and packs the
 // result into a callOutcome.
-func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, iteration int) callOutcome {
-	msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration)
+func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, iteration int, surface runSurface) callOutcome {
+	msg, veto, reported, err := l.runOneToolCall(ctx, call, iteration, surface)
 	return callOutcome{msg: msg, veto: veto, reported: reported, err: err}
 }
 
@@ -258,7 +258,7 @@ func (l *Loop) auditToolCall(ctx context.Context, iteration int, call provider.T
 // PointPreTool hook error, so both bracket the whole call, not only
 // its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
 // starts only after the veto check passes.
-func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int) (msg provider.Message, veto bool, reported error, err error) {
+func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int, surface runSurface) (msg provider.Message, veto bool, reported error, err error) {
 	callCtx := toolcallctx.WithToolCall(ctx, call)
 	label := toolCallLabel(iteration, call)
 	l.emitEvent(callCtx, EventToolCallStart, label)
@@ -284,7 +284,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	stopHeartbeat := l.startHeartbeat(callCtx, EventToolCallHeartbeat, label)
 	t, out, runErr := func() (tools.Tool, tools.Out, error) {
 		defer stopHeartbeat()
-		return l.decodeAndRun(callCtx, call)
+		return l.decodeAndRun(callCtx, call, surface)
 	}()
 
 	if l.hooksReg != nil {
@@ -366,34 +366,22 @@ func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.To
 	return false, err
 }
 
-// decodeAndRun resolves call.Name, checks l.scope, validates
-// call.Arguments against l.schemas[call.Name], decodes them through
-// the resolved tool's DecodeArguments, and calls RunScoped. It
-// returns an error wrapping tools.ErrUnknownName for an unresolved
-// name and tools.ErrScopeDenied for a name l.scope excludes, both
-// before ever calling schema.Compiled.Validate, DecodeArguments, or
-// RunScoped: a scope-denied tool's decoder must never see
-// model-supplied bytes. l.schemas[call.Name] hits whenever call.Name
-// was in the Scope-offered set New compiled from. A miss means a
-// tool the caller registered on the shared *tools.Registry after New
-// ran: reg.Get and l.scope.Allowed both read the live registry and
-// the live scope, so the call still reaches this point, but l.schemas,
-// frozen at New, carries no entry for it. decodeAndRun returns
-// ErrToolNotOffered in that case, instead of indexing a nil
-// *schema.Compiled.
-func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.Tool, tools.Out, error) {
-	t, ok := l.reg.Get(call.Name)
+// decodeAndRun resolves call.Name, checks surface.scope, validates
+// call.Arguments against surface.schemas[call.Name], decodes them through
+// the resolved tool's DecodeArguments, and calls RunScoped.
+func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall, surface runSurface) (tools.Tool, tools.Out, error) {
+	t, ok := surface.reg.Get(call.Name)
 	if !ok {
 		return nil, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrUnknownName)
 	}
-	if l.scope != nil && !l.scope.Allowed(call.Name, t) {
+	if surface.scope != nil && !surface.scope.Allowed(call.Name, t) {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrScopeDenied)
 	}
 	st, ok := t.(tools.SchemaTool)
 	if !ok {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool %q publishes no schema", call.Name)
 	}
-	compiled, ok := l.schemas[call.Name]
+	compiled, ok := surface.schemas[call.Name]
 	if !ok {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, ErrToolNotOffered)
 	}
@@ -404,6 +392,6 @@ func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall) (tools.
 	if err != nil {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: decode arguments: %w", call.ID, err)
 	}
-	out, err := l.reg.RunScoped(ctx, call.Name, in, l.scope)
+	out, err := surface.reg.RunScoped(ctx, call.Name, in, surface.scope)
 	return t, out, err
 }

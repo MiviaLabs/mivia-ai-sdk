@@ -13,17 +13,20 @@ or a bound trips. The exported surface below mirrors
   not usable; create one with `New`.
 - `Options` — the config struct `New` validates and wires:
   `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
-  `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `Hooks`,
-  `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`, `Audit`,
-  `Window`, `Summarizer`, `Calibrated`, `ConcludeMargin`,
-  `ConcludeNotice`, `DedupWithinTurn`, `HeartbeatInterval`,
-  `TurnResultBudget`. `Completer` and `Tools` are required; the rest
-  are optional. `Bus` receives `Run`'s iteration, completion-heartbeat,
-  and tool-call events, gated on a positive `HeartbeatInterval`: a zero
-  `HeartbeatInterval` emits nothing, even through a non-nil `Bus`.
-  `HeartbeatInterval` requires a non-nil `Bus` in turn;
-  `Options.Validate` rejects the opposite pairing with
-  `ErrHeartbeatRequiresBus`. See "Events" below.
+  `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `OnToolCallError`,
+  `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
+  `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
+  `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
+  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `ConcludeNotice`,
+  `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
+  `TurnResultBudget`, `WorkBudget`. `Completer` and `Tools` are required;
+  the rest are optional. `Bus` receives lifecycle and heartbeat events.
+  See "Events" below.
+- `Surface` — one iteration's tool surface from `Options.Surface`:
+  `Advertised`, `Registry`, `Scope`.
+- `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
+- `ErrorFunc` — `func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)`,
+  custom tool-error message constructor for `Options.OnToolCallError`.
 - `Result` — one `Run` or `RunSteerable` call's outcome: `Final`,
   `History`, `Iterations`, `Usage`, `Stop`. See "Result shape" below
   for how each field behaves on a graceful stop versus a hard-fail
@@ -60,7 +63,8 @@ or a bound trips. The exported surface below mirrors
 - `New(opts)` — validates `opts`, calls
   `Definitions(opts.Tools, opts.Scope)` once, and binds the result
   onto a `Loop`. `Run` reuses that same `[]provider.ToolDefinition`
-  slice for `provider.Request.Tools` on every iteration.
+  slice for `provider.Request.Tools` on every iteration unless rotated
+  by `Surface`.
 - `(*Loop) Run(ctx, msgs)` — calls `Registry.RunScoped`, never
   `Registry.Run`, so a model-chosen call always passes through the
   `Loop`'s `Scope`. Returns the final `Result` and the first error.
@@ -76,12 +80,13 @@ or a bound trips. The exported surface below mirrors
   for its current `RunSteerable` call, if any. Safe to call from
   another goroutine, any number of times.
 - `Options.Validate()` — checks, in order: `Completer` and `Tools` are
-  set, `MaxIterations` is positive, `Usage` requires a non-blank
+  set, `MaxIterations` is non-negative, `Usage` requires a non-blank
   `SessionID`, a non-nil `Budget` passes `contextbudget.Limits.
   Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
-  `Calibrated`, and excludes `Trim`, `ConcludeMargin` is not negative,
-  and `TurnResultBudget` is not negative.
+  `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
+  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `TurnResultBudget`, and
+  `MaxConcurrentTools` are not negative, and `HeartbeatInterval` requires `Bus`.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. The second return holds the names skipped for a missing
@@ -378,14 +383,10 @@ outside the `flow` block it wraps.
 
 ## Events
 
-A positive `Options.HeartbeatInterval` paired with a non-nil
-`Options.Bus` makes `Run` emit progress events on `Bus`. Either one
-alone emits nothing: a zero `HeartbeatInterval` disables every event
-below, even with `Bus` set, and `Options.Validate` rejects a positive
-`HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`.
+A non-nil `Options.Bus` receives lifecycle and progress events emitted by
+`Run`. Heartbeat events require a positive `Options.HeartbeatInterval`.
 
-`Run` emits six `events.Name` constants, each carrying a
-human-readable label in `Event.Data`:
+`Run` emits the following `events.Name` constants:
 
 - `EventIterationStart` — fires once at the start of every iteration.
 - `EventCompletionHeartbeat` — fires every `HeartbeatInterval` while
@@ -393,13 +394,16 @@ human-readable label in `Event.Data`:
 - `EventToolCallStart` — fires once at the start of every tool call,
   before the `PointPreTool` hook fires.
 - `EventToolCallHeartbeat` — fires every `HeartbeatInterval` while one
-  tool call is in flight. Never fires for a `PointPreTool`-vetoed
-  call, since a vetoed call never reaches the blocking work a
-  heartbeat reports progress on.
-- `EventToolCallEnd` — fires once at the end of every tool call,
-  including a `PointPreTool` veto or hook-error return.
-- `EventIterationEnd` — fires once at the end of every iteration,
-  covering every exit path: a graceful stop or a hard-fail error.
+  tool call is in flight.
+- `EventToolCallEnd` — fires once at the end of every tool call.
+- `EventIterationEnd` — fires once at the end of every iteration.
+- `EventAssistant` — fires once per completed assistant turn.
+- `EventThinkingStart` — fires before assistant reasoning content.
+- `EventThinkingDelta` — carries assistant reasoning content.
+- `EventThinkingEnd` — fires after assistant reasoning content.
+- `EventCacheUsage` — fires with prompt cache usage JSON payload.
+- `EventCalibrationDelta` — fires with token calibration JSON payload.
+- `EventToolParallel` — fires when multiple tools dispatch in parallel.
 
 `Run` swallows every `Bus.Emit` error, including "no subscriber for
 name", matching the `PointStop`-fire swallow precedent elsewhere in

@@ -165,6 +165,42 @@ func TestSurfaceHookPanicFailsRunClosed(t *testing.T) {
 	}
 }
 
+// TestSurfaceConcurrentRunDoesNotRace proves that sharing one Loop with
+// Surface hook across concurrent Run calls does not race or corrupt Loop fields.
+func TestSurfaceConcurrentRunDoesNotRace(t *testing.T) {
+	alphaDef := provider.ToolDefinition{Name: "alpha", Schema: []byte(`{"type":"object"}`)}
+	reg := tools.New()
+	for _, name := range []string{"alpha", "beta"} {
+		if err := reg.Add(&schemaEchoTool{name: name, schema: []byte(`{"type":"object"}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loop, err := sdkagentloop.New(sdkagentloop.Options{
+		Completer:     &surfaceRotationCompleter{},
+		Tools:         reg,
+		Model:         "m",
+		MaxIterations: 4,
+		Surface: func() *sdkagentloop.Surface {
+			return &sdkagentloop.Surface{Advertised: []provider.ToolDefinition{alphaDef}}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, rerr := loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+			if rerr != nil {
+				t.Errorf("Run error: %v", rerr)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && (haystack == needle || len(needle) == 0 || indexContains(haystack, needle))
 }

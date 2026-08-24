@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -155,5 +157,57 @@ func TestWorkBudgetValidateRequiresBothFuncs(t *testing.T) {
 	noRefund.WorkBudget = &agentloop.WorkBudget{Reserve: func(context.Context, provider.Request) error { return nil }}
 	if err := noRefund.Validate(); err == nil || !strings.Contains(err.Error(), "WorkBudget") {
 		t.Fatalf("err = %v, want WorkBudget validation error", err)
+	}
+}
+
+// TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery proves that
+// PromptTooLong recovery refunds the initial failed request and reserves
+// for the retry request.
+func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
+	usage := provider.Usage{PromptTokens: 8, CompletionTokens: 4, TotalTokens: 12}
+	completer := &scriptedCompleter{
+		errs: []error{provider.ErrPromptTooLong, nil},
+		responses: []provider.Response{
+			{},
+			{Message: textMessage(provider.RoleAssistant, "recovered"), Usage: usage},
+		},
+	}
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
+	log := &budgetLog{}
+	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	sum := &summaryScript{}
+	summarizer, err := contextsummary.NewSummarizer(sum)
+	if err != nil {
+		t.Fatalf("NewSummarizer: %v", err)
+	}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  completer,
+		Tools:      reg,
+		WorkBudget: log.hook(),
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: strings.Repeat("o", 2000)},
+		{Role: provider.RoleAssistant, Content: "a"},
+		{Role: provider.RoleUser, Content: "l"},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	if len(log.events) != 4 || log.events[0] != "reserve" || log.events[1] != "refund" || log.events[2] != "reserve" || log.events[3] != "refund" {
+		t.Fatalf("events = %v, want [reserve refund reserve refund]", log.events)
+	}
+	if len(log.usages) != 2 || log.usages[0] != (provider.Usage{}) || log.usages[1] != usage {
+		t.Fatalf("usages = %+v, want [zero %+v]", log.usages, usage)
 	}
 }

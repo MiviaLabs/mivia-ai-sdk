@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -27,26 +28,48 @@ type Surface struct {
 	Scope *tools.Scope
 }
 
-// apply installs s onto the loop: swaps defs/schemas/scope for the
-// values s carries. A nil s is a caller-signaled keep of the prior
-// surface. Schema compilation errors surface as Run failures.
-func (l *Loop) apply(s *Surface) error {
+// runSurface holds the active tool definitions, schemas, registry, and
+// scope for one run iteration. Loop holds the immutable baseline.
+type runSurface struct {
+	defs    []provider.ToolDefinition
+	schemas map[string]*schema.Compiled
+	reg     *tools.Registry
+	scope   *tools.Scope
+}
+
+// initialSurface returns the baseline runSurface from l's immutable fields.
+func (l *Loop) initialSurface() runSurface {
+	return runSurface{
+		defs:    l.defs,
+		schemas: l.schemas,
+		reg:     l.reg,
+		scope:   l.scope,
+	}
+}
+
+// applySurface creates a new runSurface by applying s over current.
+// A nil s returns current unchanged.
+func applySurface(current runSurface, s *Surface) (runSurface, error) {
 	if s == nil {
-		return nil
+		return current, nil
 	}
 	schemas, err := compileSchemas(s.Advertised)
 	if err != nil {
-		return err
+		return current, err
 	}
-	l.defs = s.Advertised
-	l.schemas = schemas
+	next := runSurface{
+		defs:    s.Advertised,
+		schemas: schemas,
+		reg:     current.reg,
+		scope:   current.scope,
+	}
 	if s.Registry != nil {
-		l.reg = s.Registry
+		next.reg = s.Registry
 	}
 	if s.Scope != nil {
-		l.scope = s.Scope
+		next.scope = s.Scope
 	}
-	return nil
+	return next, nil
 }
 
 // safeSurface invokes fn, converting a panic into a plain error so a

@@ -180,3 +180,17 @@ func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 		t.Fatalf("Validate() error wraps ErrHeartbeatRequiresBus, want the earlier check to win")
 	}
 }
+
+// TestOptionsValidateCompleterBeforeConclude proves nil Completer wins
+// over negative ConcludeDeadline/StepsLeft/ToolCallsLeft.
+func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
+	o := validOptions()
+	o.Completer = nil
+	o.ConcludeDeadline = -time.Second
+	o.ConcludeStepsLeft = -1
+	o.ConcludeToolCallsLeft = -1
+	err := o.Validate()
+	if !errors.Is(err, agentloop.ErrNoCompleter) {
+		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)
+	}
+}

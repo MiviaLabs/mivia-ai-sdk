@@ -75,6 +75,8 @@ flowchart LR
     agentloop --> schema
     agentloop --> contextplan
     agentloop --> contextsummary
+    agentloop --> toolcallctx
+    toolcallctx --> provider
     usage --> provider
     providerregistry --> provider
     scheduler --> events
@@ -379,7 +381,7 @@ flowchart LR
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
   `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
-  `contextplan`, and `contextsummary`; it never imports
+  `contextplan`, `contextsummary`, and `toolcallctx`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A

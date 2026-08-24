@@ -170,7 +170,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 // compactHistory's own contextplan.Compact call, wrapping the same
 // window error recoverPromptTooLong would have; no separate check is
 // needed here.
-func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int) (provider.Response, []provider.Message, provider.Request, error) {
+func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int, surface runSurface) (provider.Response, []provider.Message, provider.Request, error) {
 	rw := recoveryWindow(*l.window)
 	rebuilt, compacted, err := l.compactHistory(ctx, history, rw, iteration, true)
 	if err != nil {
@@ -179,9 +179,13 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 	if !compacted {
 		return provider.Response{}, nil, provider.Request{}, orig
 	}
-	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: l.defs}
+	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: surface.defs}
+	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {
+		return provider.Response{}, nil, provider.Request{}, rerr
+	}
 	resp, err := l.completer.Chat(ctx, req)
 	if err != nil {
+		l.refundWork(ctx, req)
 		return provider.Response{}, nil, provider.Request{}, err
 	}
 	return resp, rebuilt, req, nil

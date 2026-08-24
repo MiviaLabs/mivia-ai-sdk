@@ -288,16 +288,12 @@ type Options struct {
 	// ConcludeDeadline together disable the term entirely.
 	StartTime time.Time
 	// ConcludeDeadline, when > 0, fires the conclude nudge when
-	// time.Until(StartTime.Add(ConcludeDeadline)) is below the
-	// threshold at the iteration's shouldConclude check. A zero
-	// value disables this term. New computes the deadline once at
-	// construction and stores it on the Loop as deadlineAt; a zero
-	// StartTime resolves to time.Now() so the deadline is
-	// ConcludeDeadline from "now" at construction.
+	// the wall-clock deadline StartTime.Add(ConcludeDeadline) has
+	// passed. A zero value disables this term. New computes the
+	// deadline once at construction as deadlineAt. A zero StartTime
+	// resolves to time.Now().
 	ConcludeDeadline time.Duration
-	// ConcludeToolCallsLeft, when > 0, fires the conclude nudge when
-	// maxCallsPerTurn-k is below the threshold. A zero value
-	// disables this term.
+	// ConcludeToolCallsLeft is reserved for tool-call conclude thresholds.
 	ConcludeToolCallsLeft int
 	// ConcludeStepsLeft, when > 0, fires the conclude nudge when
 	// MaxIterations-k is below the threshold. A zero value disables
@@ -438,15 +434,6 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // negative, TurnResultBudget is not negative, and finally a positive
 // HeartbeatInterval requires a non-nil Bus.
 func (o Options) Validate() error {
-	if o.ConcludeDeadline < 0 {
-		return errors.New("agentloop: ConcludeDeadline must be non-negative")
-	}
-	if o.ConcludeToolCallsLeft < 0 {
-		return errors.New("agentloop: ConcludeToolCallsLeft must be non-negative")
-	}
-	if o.ConcludeStepsLeft < 0 {
-		return errors.New("agentloop: ConcludeStepsLeft must be non-negative")
-	}
 	if o.Completer == nil {
 		return ErrNoCompleter
 	}
@@ -483,6 +470,15 @@ func (o Options) Validate() error {
 	}
 	if o.ConcludeMargin < 0 {
 		return ErrConcludeMargin
+	}
+	if o.ConcludeDeadline < 0 {
+		return errors.New("agentloop: ConcludeDeadline must be non-negative")
+	}
+	if o.ConcludeToolCallsLeft < 0 {
+		return errors.New("agentloop: ConcludeToolCallsLeft must be non-negative")
+	}
+	if o.ConcludeStepsLeft < 0 {
+		return errors.New("agentloop: ConcludeStepsLeft must be non-negative")
 	}
 	if o.TurnResultBudget < 0 {
 		return ErrTurnResultBudget

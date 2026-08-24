@@ -37,7 +37,8 @@
       "contextbudget",
       "schema",
       "contextplan",
-      "contextsummary"
+      "contextsummary",
+      "toolcallctx"
     ],
     "agentrun": [
       "agent",
@@ -168,6 +169,9 @@
     ],
     "taskrun": [
       "ledger"
+    ],
+    "toolcallctx": [
+      "provider"
     ],
     "tools": [],
     "trace": [],

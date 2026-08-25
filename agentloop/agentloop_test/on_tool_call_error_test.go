@@ -199,3 +199,78 @@ func TestOnToolCallErrorFailPolicyBypassesHook(t *testing.T) {
 		t.Fatalf("OnToolCallError was called under ErrorPolicyFail, want it bypassed")
 	}
 }
+
+// TestOnToolCallErrorPartiallyPopulatedMessage proves any non-empty field on the
+// synthesized Message makes it non-zero and replaces the default body.
+func TestOnToolCallErrorPartiallyPopulatedMessage(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  provider.Message
+	}{
+		{"only Role set", provider.Message{Role: provider.RoleTool}},
+		{"only Content set", provider.Message{Content: "custom"}},
+		{"only ToolCallID set", provider.Message{ToolCallID: "custom-id"}},
+		{"only Name set", provider.Message{Name: "custom-name"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+			reg := tools.New()
+			mustAdd(t, reg, tool)
+			completer := &scriptedCompleter{responses: []provider.Response{
+				toolCallResponse(provider.ToolCall{ID: "call-1", Name: "", Arguments: []byte("{}")}),
+				{Message: textMessage(provider.RoleAssistant, "final")},
+			}}
+			loop, err := agentloop.New(agentloop.Options{
+				Completer: completer, Tools: reg, MaxIterations: 5,
+				OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+					return tc.msg, nil
+				},
+			})
+			if err != nil {
+				t.Fatalf("New() error = %v, want nil", err)
+			}
+			res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+			if err != nil {
+				t.Fatalf("Run() error = %v, want nil", err)
+			}
+			if len(res.History) < 3 {
+				t.Fatalf("history len = %d, want at least 3", len(res.History))
+			}
+			got := res.History[2]
+			if got.Role != tc.msg.Role || got.Content != tc.msg.Content || got.ToolCallID != tc.msg.ToolCallID || got.Name != tc.msg.Name {
+				t.Fatalf("history message = %+v, want %+v", got, tc.msg)
+			}
+		})
+	}
+}
+
+// TestOnToolCallErrorZeroMessageFallsBack proves returning provider.Message{} with nil
+// error falls through to the default [tool-error] body.
+func TestOnToolCallErrorZeroMessageFallsBack(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5,
+		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+			return provider.Message{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	content := findToolContent(t, res.History, "call-1")
+	if !strings.HasPrefix(content, agentloop.ToolErrorPrefix) {
+		t.Fatalf("content = %q, want prefix %q", content, agentloop.ToolErrorPrefix)
+	}
+}

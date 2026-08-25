@@ -109,10 +109,30 @@ func TestToolBudgetReserveErrorFailsClosedBeforeAnyToolRuns(t *testing.T) {
 	if err == nil || !errors.Is(err, errRefused) {
 		t.Fatalf("err = %v, want wrap of errRefused", err)
 	}
+	if !contains(err.Error(), "iteration 1: tool budget reserve:") {
+		t.Fatalf("err = %v, want iteration 1 wrapping", err)
+	}
 	if got := a.callCount(); got != 0 {
 		t.Fatalf("tool a Run calls = %d, want 0 (reserve fails before any dispatch)", got)
 	}
 	if got := b.callCount(); got != 0 {
 		t.Fatalf("tool b Run calls = %d, want 0 (reserve fails before any dispatch)", got)
+	}
+}
+
+// TestToolBudgetValidateRequiresReserve proves Options.Validate rejects a
+// non-nil ToolBudget when Reserve is nil.
+func TestToolBudgetValidateRequiresReserve(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
+	completer := &scriptedCompleter{}
+	opts := agentloop.Options{
+		Completer:  completer,
+		Tools:      reg,
+		ToolBudget: &agentloop.ToolBudget{Reserve: nil},
+	}
+	err := opts.Validate()
+	if !errors.Is(err, agentloop.ErrIncompleteToolBudget) {
+		t.Fatalf("Validate() error = %v, want ErrIncompleteToolBudget", err)
 	}
 }

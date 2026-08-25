@@ -186,7 +186,7 @@ type Options struct {
 	// means the Completer's own default.
 	Model string
 	// MaxIterations bounds the number of Completer calls one Run
-	// makes. Must be positive.
+	// makes. Must be non-negative.
 	MaxIterations int
 	// MaxCallsPerTurn bounds the number of tool calls one turn's
 	// response may request. Zero means unbounded.
@@ -248,10 +248,8 @@ type Options struct {
 	// writes through Request.StreamingWriter during a call. The
 	// loop buffers the same bytes; on a Steered stop the buffered
 	// bytes become Result.Final.Content, so a partial reply
-	// survives the cancel. The Completer must finish all writes
-	// before its Chat or ChatStream call ends. A nil writer keeps
-	// Result.Final empty on Steered stop. Concurrent runs on one
-	// Loop share this writer; it must be safe for concurrent use.
+	// survives the cancel. A nil writer keeps Result.Final empty on
+	// Steered stop. Must be safe for concurrent use.
 	StreamingWriter io.Writer
 	// Audit receives one AuditRecord per completed Completer turn and
 	// per tool call whose result reaches history. A nil Audit means
@@ -272,12 +270,7 @@ type Options struct {
 	// ConcludeMargin nudges the model to produce a final answer as
 	// MaxIterations approaches, appending ConcludeNotice once, instead of
 	// hard-stopping at MaxIterations with no notice. Zero disables
-	// nudging. Run appends the notice before the Completer call at
-	// 1-based iteration k the first time MaxIterations-k < ConcludeMargin
-	// holds; k ranges from 1 to MaxIterations, so a positive ConcludeMargin
-	// greater than or equal to MaxIterations fires the nudge on Run's
-	// first iteration. See docs/plans/agents/phase79_graceful_conclude.md
-	// for the worked table.
+	// nudging. See docs/plans/agentloop.md for the worked table.
 	ConcludeMargin int
 	// StartTime is the wall-clock anchor the SDK uses for the
 	// time-based ConcludeDeadline term. The work deadline the loop
@@ -302,13 +295,7 @@ type Options struct {
 	ConcludeStepsLeft int
 	// ConcludeNotice is the RoleUser content Run appends once nudging
 	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
-	// DefaultConcludeNotice. Run appends the notice at the tail of
-	// history, as the last message in the nudged iteration's
-	// Request.Messages, not spliced near the system message the way
-	// CompactionNotice is. A tail append puts the "final answer now"
-	// instruction directly before the model's next response. The append
-	// runs after this iteration's Trim, Budget, and Window steps,
-	// immediately before the Completer call.
+	// DefaultConcludeNotice.
 	ConcludeNotice string
 	// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
 	// already served earlier in the same turn, and serves
@@ -331,34 +318,18 @@ type Options struct {
 	HeartbeatInterval time.Duration
 	// TurnResultBudget caps the summed byte size of one turn's rendered
 	// tool results, across every call in that turn, before they append to
-	// history. Zero means uncapped: the budget comparison and any shaping
-	// are skipped entirely, and every call's content passes through
-	// whole. Distinct from a Tool's own tools.ResultBudgetOf bound, which
-	// caps one call's content alone; TurnResultBudget shapes the batch as
-	// a set, after each call's own bound already applied, in
-	// ToolCall.Index order. Hard cap when positive: a call's content
-	// stays whole only when the running total plus that content's byte
-	// length does not exceed TurnResultBudget; otherwise the content is
-	// replaced with BatchTruncationNotice and the running total does not
-	// grow for it. The running total never exceeds TurnResultBudget.
-	// Applies to every appended RoleTool content, including a reported
-	// tool-run error under ErrorPolicyReport.
+	// history. Zero means uncapped. Distinct from a Tool's own
+	// tools.ResultBudgetOf bound, which caps one call's content alone.
+	// Negative values fail Validate with ErrTurnResultBudget.
 	TurnResultBudget int
 	// WorkBudget, when non-nil, is a host-callable token-reservation
-	// surface the loop invokes around each Completer call: Reserve
-	// runs with the exact request before the call (a non-nil return
-	// hard-fails the run before the call), and Refund runs after the
-	// outcome is known (zero Usage for a never-consumed reservation on
-	// a failed call; the response's real Usage on a successful one).
-	// The zero value (nil) disables the hook entirely: no Reserve, no
-	// Refund, no behavior change. A non-nil WorkBudget requires both
-	// functions; Validate rejects a half-wired one with
-	// ErrIncompleteWorkBudget. See WorkBudget's doc for the full call
-	// contract.
+	// surface the loop invokes around each Completer call. A non-nil
+	// WorkBudget requires both functions; Validate rejects a half-wired
+	// one with ErrIncompleteWorkBudget. See WorkBudget for details.
 	WorkBudget *WorkBudget
 	// ToolBudget, when non-nil, is a host-callable cumulative tool-call
 	// budget invoked once per turn before dispatch. The zero value
-	// (nil) disables it. See ToolBudget's doc for the full contract.
+	// (nil) disables it. See ToolBudget for details.
 	ToolBudget *ToolBudget
 }
 
@@ -429,7 +400,7 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, MaxIterations
-// positive, Usage requires a non-blank SessionID, a non-nil Budget
+// non-negative, Usage requires a non-blank SessionID, a non-nil Budget
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
 // negative, a non-nil Window passes Window.Validate, requires
 // Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
@@ -494,6 +465,9 @@ func (o Options) Validate() error {
 		return ErrHeartbeatRequiresBus
 	}
 	if err := o.WorkBudget.validate(); err != nil {
+		return err
+	}
+	if err := o.ToolBudget.validate(); err != nil {
 		return err
 	}
 	return nil

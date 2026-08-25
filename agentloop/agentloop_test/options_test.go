@@ -1,6 +1,7 @@
 package agentloop_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -60,6 +61,12 @@ func runValidateCases(t *testing.T, cases []validateCase) {
 
 // TestOptionsValidate covers one case per invariant Validate claims.
 func TestOptionsValidate(t *testing.T) {
+	testOptionsValidateBasics(t)
+	testOptionsValidateConclude(t)
+	testOptionsValidateBudgetsAndLimits(t)
+}
+
+func testOptionsValidateBasics(t *testing.T) {
 	cases := []validateCase{
 		{"nil Completer", func(o agentloop.Options) agentloop.Options {
 			o.Completer = nil
@@ -109,6 +116,12 @@ func TestOptionsValidate(t *testing.T) {
 		{"fully valid options pass", func(o agentloop.Options) agentloop.Options {
 			return o
 		}, nil, true},
+	}
+	runValidateCases(t, cases)
+}
+
+func testOptionsValidateConclude(t *testing.T) {
+	cases := []validateCase{
 		{"negative ConcludeMargin fails", func(o agentloop.Options) agentloop.Options {
 			o.ConcludeMargin = -1
 			return o
@@ -121,6 +134,48 @@ func TestOptionsValidate(t *testing.T) {
 			o.ConcludeMargin = 3
 			return o
 		}, nil, true},
+		{"negative ConcludeDeadline fails", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeDeadline = -time.Second
+			return o
+		}, nil, false},
+		{"zero ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeDeadline = 0
+			return o
+		}, nil, true},
+		{"positive ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeDeadline = time.Minute
+			return o
+		}, nil, true},
+		{"negative ConcludeToolCallsLeft fails", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeToolCallsLeft = -1
+			return o
+		}, nil, false},
+		{"zero ConcludeToolCallsLeft passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeToolCallsLeft = 0
+			return o
+		}, nil, true},
+		{"positive ConcludeToolCallsLeft passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeToolCallsLeft = 2
+			return o
+		}, nil, true},
+		{"negative ConcludeStepsLeft fails", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeStepsLeft = -1
+			return o
+		}, nil, false},
+		{"zero ConcludeStepsLeft passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeStepsLeft = 0
+			return o
+		}, nil, true},
+		{"positive ConcludeStepsLeft passes", func(o agentloop.Options) agentloop.Options {
+			o.ConcludeStepsLeft = 2
+			return o
+		}, nil, true},
+	}
+	runValidateCases(t, cases)
+}
+
+func testOptionsValidateBudgetsAndLimits(t *testing.T) {
+	cases := []validateCase{
 		{"negative TurnResultBudget fails", func(o agentloop.Options) agentloop.Options {
 			o.TurnResultBudget = -1
 			return o
@@ -131,6 +186,26 @@ func TestOptionsValidate(t *testing.T) {
 		}, nil, true},
 		{"positive TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
 			o.TurnResultBudget = 10
+			return o
+		}, nil, true},
+		{"negative MaxConcurrentTools fails", func(o agentloop.Options) agentloop.Options {
+			o.MaxConcurrentTools = -1
+			return o
+		}, agentloop.ErrMaxConcurrentTools, false},
+		{"zero MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
+			o.MaxConcurrentTools = 0
+			return o
+		}, nil, true},
+		{"positive MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
+			o.MaxConcurrentTools = 4
+			return o
+		}, nil, true},
+		{"incomplete ToolBudget fails", func(o agentloop.Options) agentloop.Options {
+			o.ToolBudget = &agentloop.ToolBudget{Reserve: nil}
+			return o
+		}, agentloop.ErrIncompleteToolBudget, false},
+		{"valid ToolBudget passes", func(o agentloop.Options) agentloop.Options {
+			o.ToolBudget = &agentloop.ToolBudget{Reserve: func(ctx context.Context, calls int) error { return nil }}
 			return o
 		}, nil, true},
 	}

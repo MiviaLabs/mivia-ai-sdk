@@ -117,6 +117,7 @@ package agentloop
   var ErrConcludeMargin
   var ErrEstimatorRequired
   var ErrHeartbeatRequiresBus
+  var ErrIncompleteToolBudget
   var ErrIncompleteWorkBudget
   var ErrInvalidSchema
   var ErrMaxConcurrentTools

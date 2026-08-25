@@ -93,6 +93,10 @@ func (l *Loop) settleWork(ctx context.Context, req provider.Request, used provid
 	l.workBudget.Refund(ctx, req, used)
 }
 
+// ErrIncompleteToolBudget is Options.Validate's error when ToolBudget
+// is non-nil but Reserve is missing. Test with errors.Is.
+var ErrIncompleteToolBudget = errors.New("agentloop: ToolBudget requires Reserve")
+
 // ToolBudget is a host-callable cumulative tool-call budget the loop
 // invokes once per turn, before that turn's tool calls dispatch. The
 // SDK holds no budget policy of its own here, mirroring WorkBudget:
@@ -118,12 +122,24 @@ type ToolBudget struct {
 	Reserve func(ctx context.Context, calls int) error
 }
 
+// validate reports whether a ToolBudget is either nil (disabled) or
+// fully wired.
+func (b *ToolBudget) validate() error {
+	if b == nil {
+		return nil
+	}
+	if b.Reserve == nil {
+		return ErrIncompleteToolBudget
+	}
+	return nil
+}
+
 // reserveTools runs the ToolBudget's Reserve for one turn's tool-call
 // count. A nil l.toolBudget is a no-op; a hook error is wrapped with
 // the 1-based iteration count so the hard fail names its cause,
 // mirroring reserveWork.
 func (l *Loop) reserveTools(ctx context.Context, calls int, iteration int) error {
-	if l.toolBudget == nil {
+	if l.toolBudget == nil || l.toolBudget.Reserve == nil {
 		return nil
 	}
 	if err := l.toolBudget.Reserve(ctx, calls); err != nil {

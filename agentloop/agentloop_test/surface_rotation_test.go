@@ -201,6 +201,169 @@ func TestSurfaceConcurrentRunDoesNotRace(t *testing.T) {
 	wg.Wait()
 }
 
+// TestSurfaceHookScopeOverrideAndRetain proves that Surface{Scope: newScope} overrides
+// the previous scope, while Surface{Scope: nil} retains the previous scope.
+func TestSurfaceHookScopeOverrideAndRetain(t *testing.T) {
+	reg := tools.New()
+	for _, name := range []string{"alpha", "beta"} {
+		if err := reg.Add(&schemaEchoTool{name: name, schema: []byte(`{"type":"object"}`), result: name + "-out"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	alphaDef := provider.ToolDefinition{Name: "alpha", Schema: []byte(`{"type":"object"}`)}
+	betaDef := provider.ToolDefinition{Name: "beta", Schema: []byte(`{"type":"object"}`)}
+
+	// Initial scope allows both.
+	initScope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"alpha", "beta"}})
+
+	// New scope denies alpha.
+	denyAlphaScope := tools.NewScope(tools.ScopeOptions{ExtraDenylist: []string{"alpha"}})
+
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "alpha", Index: 0, Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "alpha", Index: 0, Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "done")},
+	}}
+
+	var step int
+	loop, err := sdkagentloop.New(sdkagentloop.Options{
+		Completer:     completer,
+		Tools:         reg,
+		Scope:         initScope,
+		Model:         "m",
+		MaxIterations: 4,
+		Surface: func() *sdkagentloop.Surface {
+			step++
+			if step == 1 {
+				// Step 1 of Surface hook (iteration 2): deny alpha via new scope.
+				return &sdkagentloop.Surface{
+					Advertised: []provider.ToolDefinition{alphaDef, betaDef},
+					Scope:      denyAlphaScope,
+				}
+			}
+			// Step 2: nil Scope retains denyAlphaScope.
+			return &sdkagentloop.Surface{
+				Advertised: []provider.ToolDefinition{alphaDef, betaDef},
+				Scope:      nil,
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stop != sdkagentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	// res.History:
+	// 0: User "hi"
+	// 1: Assistant call-1
+	// 2: Tool call-1 result ("alpha-out")
+	// 3: Assistant call-2
+	// 4: Tool call-2 result (error because scope denied alpha)
+	// 5: Assistant "done"
+	if len(res.History) < 5 {
+		t.Fatalf("history length = %d, want at least 5", len(res.History))
+	}
+	if res.History[2].Content != "alpha-out" {
+		t.Fatalf("iter 1 tool result = %q, want alpha-out", res.History[2].Content)
+	}
+	if !contains(res.History[4].Content, sdkagentloop.ToolErrorPrefix) {
+		t.Fatalf("iter 2 tool result = %q, want tool error due to scope denial", res.History[4].Content)
+	}
+}
+
+// TestSurfaceHookRegistryOverrideAndRetain proves that Surface{Registry: newReg}
+// replaces the registry, and Surface{Registry: nil} retains the previous registry.
+func TestSurfaceHookRegistryOverrideAndRetain(t *testing.T) {
+	reg1 := tools.New()
+	if err := reg1.Add(&schemaEchoTool{name: "alpha", schema: []byte(`{"type":"object"}`), result: "reg1-alpha"}); err != nil {
+		t.Fatal(err)
+	}
+
+	reg2 := tools.New()
+	if err := reg2.Add(&schemaEchoTool{name: "alpha", schema: []byte(`{"type":"object"}`), result: "reg2-alpha"}); err != nil {
+		t.Fatal(err)
+	}
+
+	alphaDef := provider.ToolDefinition{Name: "alpha", Schema: []byte(`{"type":"object"}`)}
+
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "alpha", Index: 0, Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "alpha", Index: 0, Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "done")},
+	}}
+
+	loop, err := sdkagentloop.New(sdkagentloop.Options{
+		Completer:     completer,
+		Tools:         reg1,
+		Model:         "m",
+		MaxIterations: 4,
+		Surface: func() *sdkagentloop.Surface {
+			return &sdkagentloop.Surface{
+				Advertised: []provider.ToolDefinition{alphaDef},
+				Registry:   reg2,
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Stop != sdkagentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	if len(res.History) < 5 {
+		t.Fatalf("history length = %d, want at least 5", len(res.History))
+	}
+	if res.History[2].Content != "reg1-alpha" {
+		t.Fatalf("iter 1 tool result = %q, want reg1-alpha", res.History[2].Content)
+	}
+	if res.History[4].Content != "reg2-alpha" {
+		t.Fatalf("iter 2 tool result = %q, want reg2-alpha", res.History[4].Content)
+	}
+}
+
+// TestSurfaceHookInvalidSchemaFailsRun proves that advertising a tool definition with
+// an invalid schema in Surface causes schema compilation error (ErrInvalidSchema).
+func TestSurfaceHookInvalidSchemaFailsRun(t *testing.T) {
+	reg := tools.New()
+	if err := reg.Add(&schemaEchoTool{name: "alpha", schema: []byte(`{"type":"object"}`)}); err != nil {
+		t.Fatal(err)
+	}
+
+	comp := &surfaceRotationCompleter{}
+	loop, err := sdkagentloop.New(sdkagentloop.Options{
+		Completer:     comp,
+		Tools:         reg,
+		Model:         "m",
+		MaxIterations: 4,
+		Surface: func() *sdkagentloop.Surface {
+			return &sdkagentloop.Surface{
+				Advertised: []provider.ToolDefinition{
+					{Name: "bad", Schema: []byte("not-valid-json")},
+				},
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = loop.Run(context.Background(), []provider.Message{{Role: provider.RoleUser, Content: "hi"}})
+	if err == nil || !errors.Is(err, sdkagentloop.ErrInvalidSchema) {
+		t.Fatalf("err = %v, want ErrInvalidSchema", err)
+	}
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && (haystack == needle || len(needle) == 0 || indexContains(haystack, needle))
 }

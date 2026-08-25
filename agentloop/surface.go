@@ -23,8 +23,8 @@ type Surface struct {
 	// Registry resolves model-chosen calls this iteration. Nil keeps
 	// the previous iteration's registry.
 	Registry *tools.Registry
-	// Scope narrows Registry lookups this iteration. Nil means
-	// unscoped.
+	// Scope narrows Registry lookups this iteration. Nil keeps the
+	// previous iteration's scope.
 	Scope *tools.Scope
 }
 

@@ -3593,26 +3593,27 @@ No `make api-update`, no `policy/layers.json` change, no
 ## Addendum: loop extensions and concurrency hardening
 
 Status: shipped. This addendum documents the loop extensions: WorkBudget,
-Surface rotation, ConcludeDeadline and ConcludeStepsLeft, OnToolCallError,
-MaxConcurrentTools, and toolcallctx context propagation.
+ToolBudget, Surface rotation, ConcludeDeadline, and ConcludeStepsLeft.
+It also documents OnToolCallError, MaxConcurrentTools, and toolcallctx.
 
 ### Addendum goal
 
-Provide host control over token budgets, dynamic tool surfaces, conclude
-deadlines, concurrent tool execution, and reported tool errors.
+Provide host control over token budgets, tool budgets, dynamic surfaces,
+and concurrent execution.
 
 ### Addendum scope
 
 Inside:
 
 - `WorkBudget` token reservation hooks before and after completion calls.
+- `ToolBudget` tool-call reservation hook before tool-call execution.
 - `Surface` rotation hook from iteration two onward.
 - Conclude thresholds: `ConcludeDeadline` and `ConcludeStepsLeft`.
 - `OnToolCallError` custom error-response shaping hook.
 - `MaxConcurrentTools` worker pool for parallel tool execution.
 - `StreamingWriter` capture for partial replies on steered stop.
 - `toolcallctx` integration for attaching tool calls to contexts.
-- Events for assistant turns, thinking brackets, cache usage, calibration, and parallel dispatches.
+- Events for assistant turns, thinking brackets, cache usage, and parallel dispatches.
 
 Outside:
 
@@ -3624,9 +3625,10 @@ Outside:
 Exported symbols added to `api/agentloop.txt`:
 
 - `WorkBudget` struct and `ErrIncompleteWorkBudget`.
+- `ToolBudget` struct and `ErrIncompleteToolBudget`.
 - `Surface` struct.
 - `ErrorFunc` type.
-- `Options` fields: `WorkBudget`, `Surface`, `ConcludeDeadline`, `ConcludeStepsLeft`, `ConcludeToolCallsLeft`, `StartTime`, `OnToolCallError`, `MaxConcurrentTools`, and `StreamingWriter`.
+- `Options` fields: `WorkBudget`, `ToolBudget`, `Surface`, `ConcludeDeadline`, `ConcludeStepsLeft`, `ConcludeToolCallsLeft`, `StartTime`, `OnToolCallError`, `MaxConcurrentTools`, and `StreamingWriter`.
 - Event constants: `EventAssistant`, `EventThinkingStart`, `EventThinkingDelta`, `EventThinkingEnd`, `EventCacheUsage`, `EventCalibrationDelta`, and `EventToolParallel`.
 
 ### Addendum tests
@@ -3637,6 +3639,10 @@ Exported symbols added to `api/agentloop.txt`:
 - TestWorkBudgetRefundsZeroUsageOnChatError proves refund on failed completion.
 - TestWorkBudgetValidateRequiresBothFuncs validates hook completeness.
 - TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery proves recovery reserve and refund.
+- TestToolBudgetReserveRunsWithFullRawCountBeforeDispatch proves tool budget reservation count.
+- TestToolBudgetNilHookStillRuns proves a nil tool budget hook does not fail.
+- TestToolBudgetReserveErrorFailsClosedBeforeAnyToolRuns proves tool reserve failure aborts.
+- TestToolBudgetValidateRequiresReserve proves validation requires Reserve hook.
 - TestSurfaceHookRotatesAdvertisedSetFromSecondIteration proves tool rotation.
 - TestSurfaceHookNilReturnKeepsPrior proves nil hook retains prior surface.
 - TestSurfaceHookPanicFailsRunClosed proves panic recovery.
@@ -3654,4 +3660,5 @@ Exported symbols added to `api/agentloop.txt`:
 - `go test -race -count=1 ./agentloop/...` passes.
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_prose.py` passes.
+
 

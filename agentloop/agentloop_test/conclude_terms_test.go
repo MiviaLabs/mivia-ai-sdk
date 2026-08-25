@@ -256,3 +256,132 @@ func TestRunConcludeTermsOREDTogether(t *testing.T) {
 		t.Fatalf("notice count in request 2 = %d, want 1: OR-ed terms must not double-append", n)
 	}
 }
+
+// TestRunConcludeZeroTermsDoNotFire proves that zero ConcludeMargin, zero
+// ConcludeDeadline, and zero ConcludeStepsLeft never trigger the conclude nudge.
+func TestRunConcludeZeroTermsDoNotFire(t *testing.T) {
+	reg := newNoopRegistry(t)
+	completer := newTwoIterCompleter()
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:         completer,
+		Tools:             reg,
+		MaxIterations:     5,
+		ConcludeMargin:    0,
+		ConcludeDeadline:  0,
+		ConcludeStepsLeft: 0,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, "hi"),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	req2 := completer.requestAt(1)
+	if hasNotice(req2.Messages, agentloop.DefaultConcludeNotice) {
+		t.Fatalf("request 2 has notice, want none when all conclude terms are zero")
+	}
+}
+
+// TestRunConcludeStepsLeftBoundary proves that MaxIterations-k < ConcludeStepsLeft
+// is strict: when MaxIterations=5 and ConcludeStepsLeft=3, on k=1 (5-1=4 < 3 is false)
+// and on k=2 (5-2=3 < 3 is false), the term does not fire on iteration 2.
+func TestRunConcludeStepsLeftBoundary(t *testing.T) {
+	reg := newNoopRegistry(t)
+	completer := newTwoIterCompleter()
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:         completer,
+		Tools:             reg,
+		MaxIterations:     5,
+		ConcludeStepsLeft: 3,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, "hi"),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	req2 := completer.requestAt(1)
+	if hasNotice(req2.Messages, agentloop.DefaultConcludeNotice) {
+		t.Fatalf("request 2 has notice, want none when 5-2=3 is not strictly less than 3")
+	}
+}
+
+// TestRunConcludeZeroTermsKExceedsMaxIterations proves that when conclude terms are zero,
+// iterations past maxIterations (where maxIterations-k < 0) still never trigger nudging.
+func TestRunConcludeZeroTermsKExceedsMaxIterations(t *testing.T) {
+	reg := newNoopRegistry(t)
+	// Completer asks for tool call up to MaxIterations (3 times)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(provider.ToolCall{ID: "c1", Name: "noop", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "c2", Name: "noop", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "c3", Name: "noop", Arguments: []byte("{}")}),
+		{Message: textMessage(provider.RoleAssistant, "done")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:         completer,
+		Tools:             reg,
+		MaxIterations:     3,
+		ConcludeMargin:    0,
+		ConcludeDeadline:  0,
+		ConcludeStepsLeft: 0,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, "hi"),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopMaxIterations {
+		t.Fatalf("Stop = %v, want StopMaxIterations (no conclude nudge)", res.Stop)
+	}
+	for _, msg := range res.History {
+		if msg.Role == provider.RoleUser && msg.Content == agentloop.DefaultConcludeNotice {
+			t.Fatalf("history has conclude notice, want none")
+		}
+	}
+}
+
+// TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire proves that ConcludeDeadline: 0
+// with a past StartTime still disables the deadline term (deadlineAt is zero time).
+func TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire(t *testing.T) {
+	reg := newNoopRegistry(t)
+	completer := newTwoIterCompleter()
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:        completer,
+		Tools:            reg,
+		MaxIterations:    5,
+		ConcludeDeadline: 0,
+		StartTime:        time.Now().Add(-2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{
+		textMessage(provider.RoleUser, "hi"),
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	req2 := completer.requestAt(1)
+	if hasNotice(req2.Messages, agentloop.DefaultConcludeNotice) {
+		t.Fatalf("request 2 has notice, want none when ConcludeDeadline is 0")
+	}
+}

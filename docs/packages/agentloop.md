@@ -19,12 +19,13 @@ or a bound trips. The exported surface below mirrors
   `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
   `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `ConcludeNotice`,
   `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
-  `TurnResultBudget`, `WorkBudget`. `Completer` and `Tools` are required;
+  `TurnResultBudget`, `WorkBudget`, `ToolBudget`. `Completer` and `Tools` are required;
   the rest are optional. `Bus` receives lifecycle and heartbeat events.
   See "Events" below.
 - `Surface` — one iteration's tool surface from `Options.Surface`:
   `Advertised`, `Registry`, `Scope`.
 - `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
+- `ToolBudget` — host cumulative tool-call budget hook: `Reserve`.
 - `ErrorFunc` — `func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)`,
   custom tool-error message constructor for `Options.OnToolCallError`.
 - `Result` — one `Run` or `RunSteerable` call's outcome: `Final`,
@@ -102,10 +103,16 @@ Use `errors.Is` to test these.
   `Options.Validate` returns it when `Completer` is nil.
 - `ErrNoTools` ("agentloop: tools registry is required") —
   `Options.Validate` returns it when `Tools` is nil.
-- `ErrMaxIterations` ("agentloop: MaxIterations must be positive") —
-  `Options.Validate` returns it for a non-positive `MaxIterations`.
+- `ErrMaxIterations` ("agentloop: MaxIterations must be non-negative") —
+  `Options.Validate` returns it for a negative `MaxIterations`.
   `Run` never returns it; hitting `MaxIterations` at run time is a
   graceful `StopMaxIterations` stop, not an error.
+- `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
+  `Options.Validate` returns it when `WorkBudget` is set but either
+  `Reserve` or `Refund` is nil.
+- `ErrIncompleteToolBudget` ("agentloop: ToolBudget requires Reserve") —
+  `Options.Validate` returns it when `ToolBudget` is set but
+  `Reserve` is nil.
 - `ErrNoSchemas` ("agentloop: registry offers no schema-bearing tool
   the scope allows") — `Definitions` returns it when the registry is
   non-empty and the offered tool set ends up empty.
@@ -519,7 +526,7 @@ loop, err := agentloop.New(agentloop.Options{
     MaxIterations: 10,
 })
 if err != nil {
-    // Completer or Tools missing, or MaxIterations not positive
+    // Completer or Tools missing, or MaxIterations negative
 }
 
 res, err := loop.Run(context.Background(), []provider.Message{

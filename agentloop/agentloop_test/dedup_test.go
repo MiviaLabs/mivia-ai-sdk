@@ -74,6 +74,9 @@ func TestDedupWithinTurnByteEqualArguments(t *testing.T) {
 	if got := toolResultContent(t, res.History, "call-2"); got != agentloop.DuplicateCallNotice {
 		t.Fatalf("call-2 content = %q, want DuplicateCallNotice", got)
 	}
+	if len(res.History) != 5 {
+		t.Fatalf("history length = %d, want exactly 5 (user, assistant, tool1, tool2-dedup, assistant)", len(res.History))
+	}
 }
 
 // TestDedupWithinTurnKeyOrderIndependent proves two calls whose

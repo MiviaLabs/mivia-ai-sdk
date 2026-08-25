@@ -334,3 +334,36 @@ func TestMaxConcurrentToolsParallelAllCallsRun(t *testing.T) {
 		}
 	}
 }
+
+// TestMaxConcurrentToolsMoreCallsThanWorkers proves that when the turn has more tool
+// calls than the worker pool size, all tool calls are processed across worker iterations.
+func TestMaxConcurrentToolsMoreCallsThanWorkers(t *testing.T) {
+	var runs int64
+	tool := &overlapTool{name: "sleeper", runs: &runs}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	completer := &scriptedCompleter{responses: []provider.Response{
+		toolCallResponse(
+			provider.ToolCall{ID: "c1", Name: "sleeper", Index: 0, Arguments: []byte("{}")},
+			provider.ToolCall{ID: "c2", Name: "sleeper", Index: 1, Arguments: []byte("{}")},
+			provider.ToolCall{ID: "c3", Name: "sleeper", Index: 2, Arguments: []byte("{}")},
+			provider.ToolCall{ID: "c4", Name: "sleeper", Index: 3, Arguments: []byte("{}")},
+			provider.ToolCall{ID: "c5", Name: "sleeper", Index: 4, Arguments: []byte("{}")},
+		),
+		{Message: textMessage(provider.RoleAssistant, "final")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer, Tools: reg, MaxIterations: 5, MaxConcurrentTools: 2,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if got := atomic.LoadInt64(&runs); got != 5 {
+		t.Fatalf("runs = %d, want 5", got)
+	}
+	assertIndexOrder(t, historyToolIDs(res), []string{"c1", "c2", "c3", "c4", "c5"})
+}

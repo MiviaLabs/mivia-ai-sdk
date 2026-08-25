@@ -211,3 +211,105 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 		t.Fatalf("usages = %+v, want [zero %+v]", log.usages, usage)
 	}
 }
+
+// TestWorkBudgetSettleSkipsZeroUsageRefund proves a successful completion with
+// all-zero Usage skips Refund, keeping the reservation consumed.
+func TestWorkBudgetSettleSkipsZeroUsageRefund(t *testing.T) {
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: textMessage(provider.RoleAssistant, "done"), Usage: provider.Usage{}},
+	}}
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
+	log := &budgetLog{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  completer,
+		Tools:      reg,
+		WorkBudget: log.hook(),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	}
+	if len(log.events) != 1 || log.events[0] != "reserve" {
+		t.Fatalf("events = %v, want [reserve] (no refund for zero usage)", log.events)
+	}
+	if len(log.usages) != 0 {
+		t.Fatalf("usages = %v, want empty", log.usages)
+	}
+}
+
+// TestWorkBudgetSettleUsageTable tests that any non-zero token field triggers Refund
+// while all-zero token fields skip Refund.
+func TestWorkBudgetSettleUsageTable(t *testing.T) {
+	tests := []struct {
+		name       string
+		usage      provider.Usage
+		wantRefund bool
+	}{
+		{
+			name:       "all zero",
+			usage:      provider.Usage{PromptTokens: 0, CompletionTokens: 0, TotalTokens: 0},
+			wantRefund: false,
+		},
+		{
+			name:       "prompt tokens only",
+			usage:      provider.Usage{PromptTokens: 5, CompletionTokens: 0, TotalTokens: 0},
+			wantRefund: true,
+		},
+		{
+			name:       "completion tokens only",
+			usage:      provider.Usage{PromptTokens: 0, CompletionTokens: 5, TotalTokens: 0},
+			wantRefund: true,
+		},
+		{
+			name:       "total tokens only",
+			usage:      provider.Usage{PromptTokens: 0, CompletionTokens: 0, TotalTokens: 5},
+			wantRefund: true,
+		},
+		{
+			name:       "all non-zero",
+			usage:      provider.Usage{PromptTokens: 3, CompletionTokens: 4, TotalTokens: 7},
+			wantRefund: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			completer := &scriptedCompleter{responses: []provider.Response{
+				{Message: textMessage(provider.RoleAssistant, "done"), Usage: tt.usage},
+			}}
+			reg := tools.New()
+			mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
+			log := &budgetLog{}
+			loop, err := agentloop.New(agentloop.Options{
+				Completer:  completer,
+				Tools:      reg,
+				WorkBudget: log.hook(),
+			})
+			if err != nil {
+				t.Fatalf("New() error = %v, want nil", err)
+			}
+			if _, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}); err != nil {
+				t.Fatalf("Run() error = %v, want nil", err)
+			}
+			if tt.wantRefund {
+				if len(log.events) != 2 || log.events[1] != "refund" {
+					t.Fatalf("events = %v, want [reserve refund]", log.events)
+				}
+				if len(log.usages) != 1 || log.usages[0] != tt.usage {
+					t.Fatalf("refund usage = %+v, want %+v", log.usages, tt.usage)
+				}
+			} else {
+				if len(log.events) != 1 || log.events[0] != "reserve" {
+					t.Fatalf("events = %v, want [reserve]", log.events)
+				}
+			}
+		})
+	}
+}

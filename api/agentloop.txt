@@ -22,6 +22,7 @@ package agentloop
   const EventToolParallel = "agentloop.tool_parallel"
   const RecoveryTargetTokens = 16384
   const StopConcluded = "concluded"
+  const StopEmptyResponse = "empty_response"
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"

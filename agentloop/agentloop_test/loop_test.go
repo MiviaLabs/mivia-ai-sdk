@@ -455,3 +455,25 @@ func TestRunCompleterChatErrorLaterIteration(t *testing.T) {
 		t.Fatalf("History is empty, want the prior iteration's accumulated state")
 	}
 }
+
+// TestRunEmptyResponseEndsWithStopEmptyResponse proves a response with
+// no tool calls and blank content stops with StopEmptyResponse.
+func TestRunEmptyResponseEndsWithStopEmptyResponse(t *testing.T) {
+	completer := &scriptedCompleter{responses: []provider.Response{
+		{Message: textMessage(provider.RoleAssistant, "   ")},
+	}}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopEmptyResponse {
+		t.Fatalf("Stop = %v, want StopEmptyResponse", res.Stop)
+	}
+	if res.Iterations != 1 {
+		t.Fatalf("Iterations = %d, want 1", res.Iterations)
+	}
+}

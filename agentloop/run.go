@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -269,13 +270,16 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 	return Result{}, nil, false
 }
 
-// runToolStage dispatches resp's tool calls, or reports StopNoToolCalls
-// (or StopConcluded, when noticeInRequest holds) when resp carries
-// none. The returned bool reports whether the caller must return res
-// (and err) as the iteration's own result; when false, res.History
-// carries the loop's next history and the loop continues.
+// runToolStage dispatches resp's tool calls, or reports StopNoToolCalls,
+// StopEmptyResponse, or StopConcluded when resp carries none. The returned
+// bool reports whether the caller must return res (and err) as the
+// iteration's own result; when false, res.History carries the loop's next
+// history and the loop continues.
 func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, noticeInRequest bool, surface runSurface) (Result, bool, error) {
 	if len(resp.ToolCalls) == 0 {
+		if strings.TrimSpace(resp.Message.Content) == "" {
+			return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: StopEmptyResponse}, true, nil
+		}
 		stop := StopNoToolCalls
 		if noticeInRequest {
 			stop = StopConcluded

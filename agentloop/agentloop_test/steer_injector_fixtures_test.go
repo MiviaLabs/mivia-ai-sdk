@@ -155,8 +155,12 @@ func (c *injectorGateCompleter) Chat(ctx context.Context, req provider.Request) 
 		<-ctx.Done()
 		return provider.Response{}, ctx.Err()
 	}
-	if idx < len(c.responses) {
-		return c.responses[idx], nil
+	respIdx := idx
+	if idx > c.mid {
+		respIdx = idx - 1
+	}
+	if respIdx < len(c.responses) {
+		return c.responses[respIdx], nil
 	}
 	return provider.Response{}, ctx.Err()
 }

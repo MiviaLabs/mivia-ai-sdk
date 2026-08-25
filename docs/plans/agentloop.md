@@ -3624,6 +3624,7 @@ Outside:
 
 Exported symbols added to `api/agentloop.txt`:
 
+- `StopEmptyResponse` constant.
 - `WorkBudget` struct and `ErrIncompleteWorkBudget`.
 - `ToolBudget` struct and `ErrIncompleteToolBudget`.
 - `Surface` struct.
@@ -3633,6 +3634,7 @@ Exported symbols added to `api/agentloop.txt`:
 
 ### Addendum tests
 
+- TestRunEmptyResponseEndsWithStopEmptyResponse proves blank content stops with StopEmptyResponse.
 - TestWorkBudgetReserveThenRefundOnSuccessfulTurn proves reserve and refund sequencing.
 - TestWorkBudgetNilHookStillRuns proves a nil budget hook does not fail.
 - TestWorkBudgetReserveErrorFailsClosed proves a reserve error aborts the run.

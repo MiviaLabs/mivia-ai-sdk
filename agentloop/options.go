@@ -151,8 +151,11 @@ type StopReason string
 // The declared StopReason values.
 const (
 	// StopNoToolCalls is Run's stop reason when the model's response
-	// carries no tool call.
+	// carries no tool call and carries text content.
 	StopNoToolCalls StopReason = "no_tool_calls"
+	// StopEmptyResponse is Run's stop reason when the model returns no
+	// tool call and no non-blank assistant text content.
+	StopEmptyResponse StopReason = "empty_response"
 	// StopMaxIterations is Run's stop reason when the iteration count
 	// reaches Options.MaxIterations. Not an error.
 	StopMaxIterations StopReason = "max_iterations"

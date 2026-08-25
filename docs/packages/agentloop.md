@@ -33,10 +33,10 @@ or a bound trips. The exported surface below mirrors
   for how each field behaves on a graceful stop versus a hard-fail
   error return.
 - `StopReason` — a string enum naming why `Run` or `RunSteerable`
-  stopped gracefully: `StopNoToolCalls`, `StopMaxIterations`,
-  `StopHookVeto`, `StopConcluded`, `StopSteered`. No `StopToolError`
-  constant exists: a tool error under `ErrorPolicyFail` is a hard
-  failure, not a graceful stop.
+  stopped gracefully: `StopNoToolCalls`, `StopEmptyResponse`,
+  `StopMaxIterations`, `StopHookVeto`, `StopConcluded`, `StopSteered`.
+  No `StopToolError` constant exists: a tool error under `ErrorPolicyFail`
+  is a hard failure, not a graceful stop.
 - `Steer` — a caller-held handle that requests a soft-cancel of one
   `RunSteerable` call's in-flight `Completer.Chat` call. Create one
   with `NewSteer` and call `Trigger` from another goroutine. One

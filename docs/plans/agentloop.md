@@ -3663,4 +3663,52 @@ Exported symbols added to `api/agentloop.txt`:
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_prose.py` passes.
 
+## Addendum: repeated tool failures early stop
+
+Stop runs early when consecutive tool-calling turns repeatedly fail all tool calls.
+
+### Addendum goal
+
+Provide defense-in-depth against models stuck in repeated tool-calling failure loops.
+
+### Addendum scope
+
+Inside:
+
+- `MaxConsecutiveToolFailures` option in `Options`.
+- `StopRepeatedToolFailures` graceful stop reason.
+- `ErrMaxConsecutiveToolFailures` validation error.
+- Failure counting across consecutive turns where all dispatched calls fail with unknown tool errors.
+- Counter reset on mixed turns or successful tool dispatches.
+
+Outside:
+
+- Any change to `flow`, `agent`, or `agentrun`.
+- Counting argument validation failures or tool execution errors toward the counter.
+
+### Addendum API
+
+Exported symbols added to `api/agentloop.txt`:
+
+- `StopRepeatedToolFailures` constant.
+- `ErrMaxConsecutiveToolFailures` error variable.
+- `MaxConsecutiveToolFailures` field on `Options`.
+
+### Addendum tests
+
+- `TestRepeatedToolFailuresStopsEarly` proves consecutive unknown-tool turns stop at threshold.
+- `TestRepeatedToolFailuresResetsOnSuccess` proves successful calls reset the failure counter.
+- `TestRepeatedToolFailuresResetsOnMixedTurn` proves mixed turns reset the failure counter.
+- `TestRepeatedToolFailuresExcludesArgValidationAndToolError` proves other errors do not count.
+- `TestRepeatedToolFailuresDefaultZeroUnbounded` proves zero preserves unbounded behavior.
+- `TestRepeatedToolFailuresValidateNegative` proves negative bound fails validation.
+
+### Addendum verification
+
+- `make verify` passes.
+- `go test -race -count=1 ./agentloop/...` passes.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_prose.py` passes.
+
+
 

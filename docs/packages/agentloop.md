@@ -19,9 +19,9 @@ or a bound trips. The exported surface below mirrors
   `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
   `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `ConcludeNotice`,
   `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
-  `TurnResultBudget`, `WorkBudget`, `ToolBudget`. `Completer` and `Tools` are required;
-  the rest are optional. `Bus` receives lifecycle and heartbeat events.
-  See "Events" below.
+  `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`.
+  `Completer` and `Tools` are required; the rest are optional.
+  `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Surface` — one iteration's tool surface from `Options.Surface`:
   `Advertised`, `Registry`, `Scope`.
 - `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
@@ -34,9 +34,9 @@ or a bound trips. The exported surface below mirrors
   error return.
 - `StopReason` — a string enum naming why `Run` or `RunSteerable`
   stopped gracefully: `StopNoToolCalls`, `StopEmptyResponse`,
-  `StopMaxIterations`, `StopHookVeto`, `StopConcluded`, `StopSteered`.
-  No `StopToolError` constant exists: a tool error under `ErrorPolicyFail`
-  is a hard failure, not a graceful stop.
+  `StopMaxIterations`, `StopHookVeto`, `StopConcluded`, `StopSteered`,
+  `StopRepeatedToolFailures`. No `StopToolError` constant exists: a
+  tool error under `ErrorPolicyFail` is a hard failure, not a graceful stop.
 - `Steer` — a caller-held handle that requests a soft-cancel of one
   `RunSteerable` call's in-flight `Completer.Chat` call. Create one
   with `NewSteer` and call `Trigger` from another goroutine. One
@@ -86,8 +86,9 @@ or a bound trips. The exported surface below mirrors
   Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
   `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
-  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `TurnResultBudget`, and
-  `MaxConcurrentTools` are not negative, and `HeartbeatInterval` requires `Bus`.
+  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `TurnResultBudget`,
+  `MaxConcurrentTools`, and `MaxConsecutiveToolFailures` are not negative,
+  and `HeartbeatInterval` requires `Bus`.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. The second return holds the names skipped for a missing
@@ -107,6 +108,8 @@ Use `errors.Is` to test these.
   `Options.Validate` returns it for a negative `MaxIterations`.
   `Run` never returns it; hitting `MaxIterations` at run time is a
   graceful `StopMaxIterations` stop, not an error.
+- `ErrMaxConsecutiveToolFailures` — `Options.Validate` returns it
+  for a negative `MaxConsecutiveToolFailures`.
 - `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
   `Options.Validate` returns it when `WorkBudget` is set but either
   `Reserve` or `Refund` is nil.
@@ -276,7 +279,8 @@ the same turn is deduped either way.
 ## Result shape
 
 On every graceful stop (`StopNoToolCalls`, `StopMaxIterations`,
-`StopHookVeto`, `StopConcluded`, `StopSteered`), `Run` or
+`StopHookVeto`, `StopConcluded`, `StopSteered`,
+`StopRepeatedToolFailures`), `Run` or
 `RunSteerable` returns a fully populated `Result` and a nil error:
 `History` carries every message appended so far, `Iterations` carries
 the completed iteration count, and `Usage` carries the tokens summed

@@ -76,12 +76,13 @@ type Loop struct {
 	// in shouldConclude a no-op. Stored as a wall-clock instant
 	// rather than re-derived on every shouldConclude call so the
 	// comparison source is stable across the run.
-	deadlineAt       time.Time
-	concludeNotice   string
-	dedupWithinTurn  bool
-	heartbeat        time.Duration
-	turnResultBudget int
-	maxConcurrent    int
+	deadlineAt             time.Time
+	concludeNotice         string
+	dedupWithinTurn        bool
+	heartbeat              time.Duration
+	turnResultBudget       int
+	maxConcurrent          int
+	maxConsecutiveFailures int
 	// streamSink is the caller's Options.StreamingWriter, nil when
 	// unset. Immutable after New, so concurrent runs share it safely.
 	// Each run's capture buffer is a local, threaded through run,
@@ -119,42 +120,43 @@ func New(opts Options) (*Loop, error) {
 		return nil, err
 	}
 	return &Loop{
-		completer:             opts.Completer,
-		reg:                   opts.Tools,
-		scope:                 opts.Scope,
-		model:                 opts.Model,
-		maxIterations:         unboundedOrSet(opts.MaxIterations),
-		maxCallsPerTurn:       opts.MaxCallsPerTurn,
-		maxTotalTokens:        opts.MaxTotalTokens,
-		onToolError:           opts.OnToolError,
-		onToolCallError:       opts.OnToolCallError,
-		hooksReg:              opts.Hooks,
-		tracer:                opts.Tracer,
-		usageAcc:              opts.Usage,
-		sessionID:             opts.SessionID,
-		bus:                   opts.Bus,
-		budget:                opts.Budget,
-		trim:                  opts.Trim,
-		surfaceFn:             opts.Surface,
-		defs:                  defs,
-		schemas:               schemas,
-		audit:                 opts.Audit,
-		window:                opts.Window,
-		summarizer:            opts.Summarizer,
-		calibrated:            opts.Calibrated,
-		concludeMargin:        opts.ConcludeMargin,
-		concludeDeadline:      opts.ConcludeDeadline,
-		concludeToolCallsLeft: opts.ConcludeToolCallsLeft,
-		concludeStepsLeft:     opts.ConcludeStepsLeft,
-		deadlineAt:            computeDeadlineAt(opts.StartTime, opts.ConcludeDeadline),
-		concludeNotice:        resolveConcludeNotice(opts.ConcludeNotice),
-		dedupWithinTurn:       opts.DedupWithinTurn,
-		heartbeat:             opts.HeartbeatInterval,
-		turnResultBudget:      opts.TurnResultBudget,
-		maxConcurrent:         opts.MaxConcurrentTools,
-		streamSink:            opts.StreamingWriter,
-		workBudget:            opts.WorkBudget,
-		toolBudget:            opts.ToolBudget,
+		completer:              opts.Completer,
+		reg:                    opts.Tools,
+		scope:                  opts.Scope,
+		model:                  opts.Model,
+		maxIterations:          unboundedOrSet(opts.MaxIterations),
+		maxCallsPerTurn:        opts.MaxCallsPerTurn,
+		maxTotalTokens:         opts.MaxTotalTokens,
+		onToolError:            opts.OnToolError,
+		onToolCallError:        opts.OnToolCallError,
+		hooksReg:               opts.Hooks,
+		tracer:                 opts.Tracer,
+		usageAcc:               opts.Usage,
+		sessionID:              opts.SessionID,
+		bus:                    opts.Bus,
+		budget:                 opts.Budget,
+		trim:                   opts.Trim,
+		surfaceFn:              opts.Surface,
+		defs:                   defs,
+		schemas:                schemas,
+		audit:                  opts.Audit,
+		window:                 opts.Window,
+		summarizer:             opts.Summarizer,
+		calibrated:             opts.Calibrated,
+		concludeMargin:         opts.ConcludeMargin,
+		concludeDeadline:       opts.ConcludeDeadline,
+		concludeToolCallsLeft:  opts.ConcludeToolCallsLeft,
+		concludeStepsLeft:      opts.ConcludeStepsLeft,
+		deadlineAt:             computeDeadlineAt(opts.StartTime, opts.ConcludeDeadline),
+		concludeNotice:         resolveConcludeNotice(opts.ConcludeNotice),
+		dedupWithinTurn:        opts.DedupWithinTurn,
+		heartbeat:              opts.HeartbeatInterval,
+		turnResultBudget:       opts.TurnResultBudget,
+		maxConcurrent:          opts.MaxConcurrentTools,
+		maxConsecutiveFailures: opts.MaxConsecutiveToolFailures,
+		streamSink:             opts.StreamingWriter,
+		workBudget:             opts.WorkBudget,
+		toolBudget:             opts.ToolBudget,
 	}, nil
 }
 

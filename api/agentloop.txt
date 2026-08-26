@@ -26,6 +26,7 @@ package agentloop
   const StopHookVeto = "hook_veto"
   const StopMaxIterations = "max_iterations"
   const StopNoToolCalls = "no_tool_calls"
+  const StopRepeatedToolFailures = "repeated_tool_failures"
   const StopSteered = "steered"
   const ToolErrorPrefix = "[tool-error] "
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
@@ -87,6 +88,7 @@ package agentloop
   MaxConcurrentTools int
   HeartbeatInterval time.Duration
   TurnResultBudget int
+  MaxConsecutiveToolFailures int
   WorkBudget *WorkBudget
   ToolBudget *ToolBudget
 }
@@ -122,6 +124,7 @@ package agentloop
   var ErrIncompleteWorkBudget
   var ErrInvalidSchema
   var ErrMaxConcurrentTools
+  var ErrMaxConsecutiveToolFailures
   var ErrMaxIterations
   var ErrNoCompleter
   var ErrNoSchemas

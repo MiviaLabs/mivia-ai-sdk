@@ -58,7 +58,7 @@ type dedupKey struct {
 // the true per-call outcome, independent of this shaping. The running
 // total resets to zero once per runToolCalls call, at the start of
 // this turn's batch. l.turnResultBudget zero skips the check entirely.
-func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, error) {
+func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
 	if len(ordered) > 1 {
@@ -66,7 +66,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 	}
 
 	if err := ctx.Err(); err != nil {
-		return history, false, err
+		return history, false, false, err
 	}
 	plans := l.planCalls(ordered)
 	results := l.executeCalls(ctx, plans, iteration, surface)
@@ -177,22 +177,28 @@ func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, itera
 // outcome, shaped against the turn's running byte budget. History
 // order, audit order, and the veto short-circuit therefore match the
 // serial path regardless of dispatch overlap.
-func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, bool, error) {
+func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, bool, bool, error) {
 	runningTotal := 0
+	dispatched := 0
+	failed := 0
 	for i, p := range plans {
 		if p.duplicate {
 			history = append(history, p.msg)
 			if err := l.auditToolCall(ctx, iteration, p.call, p.msg, nil); err != nil {
-				return history, false, err
+				return history, false, false, err
 			}
 			continue
 		}
+		dispatched++
 		out := outcomes[i]
 		if out.err != nil {
-			return history, false, out.err
+			return history, false, false, out.err
 		}
 		if out.veto {
-			return history, true, nil
+			return history, true, false, nil
+		}
+		if errors.Is(out.reported, tools.ErrUnknownName) {
+			failed++
 		}
 		msg := out.msg
 		if l.turnResultBudget > 0 {
@@ -204,10 +210,11 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 		}
 		history = append(history, msg)
 		if err := l.auditToolCall(ctx, iteration, p.call, msg, out.reported); err != nil {
-			return history, false, err
+			return history, false, false, err
 		}
 	}
-	return history, false, nil
+	allFailed := dispatched > 0 && dispatched == failed
+	return history, false, allFailed, nil
 }
 
 // dedupKeyFor builds call's dedup key when l.dedupWithinTurn is true

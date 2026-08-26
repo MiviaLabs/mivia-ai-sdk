@@ -104,6 +104,9 @@ var (
 	// behavior); a positive value runs that many calls in parallel
 	// through a worker pool. Test with errors.Is.
 	ErrMaxConcurrentTools = errors.New("agentloop: MaxConcurrentTools must not be negative")
+	// ErrMaxConsecutiveToolFailures is Validate's error when
+	// MaxConsecutiveToolFailures is negative. Test with errors.Is.
+	ErrMaxConsecutiveToolFailures = errors.New("agentloop: MaxConsecutiveToolFailures must not be negative")
 	// ErrTurnResultBudget is Validate's error when TurnResultBudget is
 	// negative. Test with errors.Is.
 	ErrTurnResultBudget = errors.New("agentloop: TurnResultBudget must not be negative")
@@ -171,6 +174,11 @@ const (
 	// error, the same Result-shape rule as every other graceful stop that
 	// happens before a new response arrives.
 	StopSteered StopReason = "steered"
+	// StopRepeatedToolFailures is Run's stop reason when consecutive
+	// turns each fail all dispatched tool calls with unknown tool
+	// errors, reaching MaxConsecutiveToolFailures. Graceful, same
+	// Result-shape rule as StopMaxIterations.
+	StopRepeatedToolFailures StopReason = "repeated_tool_failures"
 )
 
 // Options declares the blocks one New call wires into a Loop.
@@ -325,6 +333,11 @@ type Options struct {
 	// tools.ResultBudgetOf bound, which caps one call's content alone.
 	// Negative values fail Validate with ErrTurnResultBudget.
 	TurnResultBudget int
+	// MaxConsecutiveToolFailures bounds how many consecutive turns
+	// where every tool call fails with an unknown tool error may run
+	// before stopping early. Zero (the default) means unbounded.
+	// Negative values fail Validate with ErrMaxConsecutiveToolFailures.
+	MaxConsecutiveToolFailures int
 	// WorkBudget, when non-nil, is a host-callable token-reservation
 	// surface the loop invokes around each Completer call. A non-nil
 	// WorkBudget requires both functions; Validate rejects a half-wired
@@ -409,8 +422,9 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
 // is not negative, ConcludeDeadline is not negative,
 // ConcludeToolCallsLeft is not negative, ConcludeStepsLeft is not
-// negative, TurnResultBudget is not negative, and finally a positive
-// HeartbeatInterval requires a non-nil Bus.
+// negative, TurnResultBudget is not negative, MaxConcurrentTools is
+// not negative, MaxConsecutiveToolFailures is not negative, and finally
+// a positive HeartbeatInterval requires a non-nil Bus.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -463,6 +477,9 @@ func (o Options) Validate() error {
 	}
 	if o.MaxConcurrentTools < 0 {
 		return ErrMaxConcurrentTools
+	}
+	if o.MaxConsecutiveToolFailures < 0 {
+		return ErrMaxConsecutiveToolFailures
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
 		return ErrHeartbeatRequiresBus

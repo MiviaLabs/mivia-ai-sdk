@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -366,13 +367,38 @@ func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.To
 	return false, err
 }
 
+// offeredToolNames renders the comma-separated, sorted list of tool names
+// actually advertised to the model this iteration (surface.defs - what the
+// model was TOLD it could call), for an unknown-tool-name error's corrective
+// text. surface.reg is deliberately not used here: Surface's own doc comment
+// states Advertised and Registry are independent sets, and defs is what the
+// model saw, which is the only list a retry can usefully be told about.
+func offeredToolNames(surface runSurface) string {
+	if len(surface.defs) == 0 {
+		return "(none offered)"
+	}
+	names := make([]string, len(surface.defs))
+	for i, d := range surface.defs {
+		names[i] = d.Name
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 // decodeAndRun resolves call.Name, checks surface.scope, validates
 // call.Arguments against surface.schemas[call.Name], decodes them through
 // the resolved tool's DecodeArguments, and calls RunScoped.
 func (l *Loop) decodeAndRun(ctx context.Context, call provider.ToolCall, surface runSurface) (tools.Tool, tools.Out, error) {
 	t, ok := surface.reg.Get(call.Name)
 	if !ok {
-		return nil, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrUnknownName)
+		// Name the attempted call and what WAS offered. Without this the
+		// model's only signal was the opaque call ID and
+		// tools.ErrUnknownName's static text - no attempted name, no valid
+		// names - so a model that confabulated or mangled a name had
+		// nothing to correct against and kept guessing variants until its
+		// step budget ran out.
+		return nil, tools.Out{}, fmt.Errorf("agentloop: tool call %s: unknown tool %q (valid tools: %s): %w",
+			call.ID, call.Name, offeredToolNames(surface), tools.ErrUnknownName)
 	}
 	if surface.scope != nil && !surface.scope.Allowed(call.Name, t) {
 		return t, tools.Out{}, fmt.Errorf("agentloop: tool call %s: %w", call.ID, tools.ErrScopeDenied)

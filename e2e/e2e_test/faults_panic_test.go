@@ -32,33 +32,26 @@ func (panicCompleter) ChatStream(ctx context.Context, req provider.Request) (<-c
 	panic(fmt.Errorf("e2e: provider completer fault: %w", e2e.ErrFault))
 }
 
-// TestFaultCompleterPanicPropagatesOutOfRun proves a provider that
-// panics on its first call is not caught by flow's or agentrun's
-// sequential path. The one-step, non-panel plan runs the panicking
-// tool call in the same goroutine as the test's own call to
-// Runner.Run, so the panic propagates out of Run uncaught. This pins
-// the documented contract: neither flow.Run nor agentrun.Runner.Run
-// recovers a panic from a Fire call on the sequential path. See
-// docs/plans/e2e.md's "Disclosed limits" section for the separate,
-// goroutine-wave case this test deliberately does not cover.
-func TestFaultCompleterPanicPropagatesOutOfRun(t *testing.T) {
+// TestFaultCompleterPanicFailsClosed proves a provider that panics on
+// its first call fails the run closed through the registry's bounded
+// dispatch: Run returns an error keeping the fault's identity, never
+// a crash. The registered-tool seam changed with the run timeout
+// backstop; see docs/packages/tools.md's "Run timeout backstop"
+// section. The stream half below still pins the unregistered path,
+// where a direct call panics its own caller. See docs/plans/e2e.md's
+// "Disclosed limits" section for the goroutine-wave case this
+// scenario deliberately does not cover.
+func TestFaultCompleterPanicFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	runner := faultMemberRunner(t, "panic-agent",
 		subagent.ProviderTool("chat", panicCompleter{}))
 
-	var recovered any
-	func() {
-		defer func() { recovered = recover() }()
-		_, _, _ = runner.Run(ctx, "thread-panic", machine.InOut{})
-		t.Fatal("Run returned normally, want a panic")
-	}()
-
-	err, ok := recovered.(error)
-	if !ok {
-		t.Fatalf("recovered value = %#v, want an error", recovered)
+	_, _, err := runner.Run(ctx, "thread-panic", machine.InOut{})
+	if err == nil {
+		t.Fatal("Run error = nil, want the completer fault surfaced fail-closed")
 	}
 	if !errors.Is(err, e2e.ErrFault) {
-		t.Fatalf("recovered error = %v, want e2e.ErrFault", err)
+		t.Fatalf("error = %v, want e2e.ErrFault", err)
 	}
 }
 

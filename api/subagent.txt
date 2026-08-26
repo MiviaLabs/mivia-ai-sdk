@@ -15,6 +15,7 @@ package subagent
   const OpRemove = "remove"
   const OpRun = "run"
   const OpState = "state"
+  func (f *flowTool) ExecutionProfile() (tools.ExecutionProfile)
   func (f *flowTool) Name() (string)
   func (f *flowTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (m *Mailbox) Deliver(msg envelope.Message) (error)
@@ -41,6 +42,7 @@ package subagent
   func (t *schedulerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *sendTool) Name() (string)
   func (t *sendTool) Run(_ context.Context, in tools.InOut) (tools.Out, error)
+  func (t *subTool) ExecutionProfile() (tools.ExecutionProfile)
   func (t *subTool) Name() (string)
   func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *triggerTool) Name() (string)

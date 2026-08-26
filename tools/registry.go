@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Sentinel errors for Registry operations; test with errors.Is.
@@ -48,11 +49,21 @@ type ToolCall struct {
 type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
+	// defaultRunTimeout is the fallback bound for tools whose profile
+	// declares no Timeout; zero means DefaultRunTimeout at resolution.
+	// Immutable after New applies its options left to right.
+	defaultRunTimeout time.Duration
 }
 
-// New creates an empty Registry.
-func New() *Registry {
-	return &Registry{tools: make(map[string]Tool)}
+// New creates an empty Registry and applies opts left to right. With
+// no options every run is bounded by DefaultRunTimeout unless the
+// tool's profile declares its own Timeout.
+func New(opts ...Option) *Registry {
+	r := &Registry{tools: make(map[string]Tool)}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // Add registers t under t.Name(). Rejects a nil t (t == nil) with
@@ -116,18 +127,20 @@ func (r *Registry) Tools() []Tool {
 	return out
 }
 
-// Run resolves name through Get and calls the tool's Run. Returns
+// Run resolves name through Get and calls the tool's Run under the
+// effective run-timeout bound; see registry_timeout.go. Returns
 // ErrUnknownName when Get reports false.
 func (r *Registry) Run(ctx context.Context, name string, in InOut) (Out, error) {
 	t, ok := r.Get(name)
 	if !ok {
 		return Out{}, ErrUnknownName
 	}
-	return t.Run(ctx, in)
+	return r.runBounded(ctx, name, t, in)
 }
 
 // RunScoped resolves name through Get, checks scope.Allowed when
-// scope is non-nil, then calls the tool the same way Run does.
+// scope is non-nil, then calls the tool the same way Run does, under
+// the effective run-timeout bound.
 // Returns ErrUnknownName for an unresolved name and ErrScopeDenied
 // for a name the scope excludes. A nil scope allows every resolved
 // tool, matching Run's behavior. After scope.Allowed passes, when
@@ -144,7 +157,7 @@ func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *
 		return Out{}, ErrUnknownName
 	}
 	if scope == nil {
-		return t.Run(ctx, in)
+		return r.runBounded(ctx, name, t, in)
 	}
 	if !scope.Allowed(name, t) {
 		return Out{}, ErrScopeDenied
@@ -159,5 +172,6 @@ func (r *Registry) RunScoped(ctx context.Context, name string, in InOut, scope *
 			return Out{}, ErrToolDeclined
 		}
 	}
-	return t.Run(ctx, in)
+	// The timeout budget starts here, after Approve returns.
+	return r.runBounded(ctx, name, t, in)
 }

@@ -116,18 +116,22 @@ value passes through `ExecutionProfileOf` unchanged and never blocks
 `ExecutionProfile` by hand and wants to check it before registering the
 tool.
 
-### Timeout, ResourceKey, and MaxResultBytes: published, not enforced
+### ResourceKey and MaxResultBytes: published, not enforced
 
-This phase publishes `ExecutionProfile.Timeout`, `ExecutionProfile.
-ResourceKey`, and `ResultBudgetTool.MaxResultBytes` as metadata only.
-No function in this phase reads `Timeout` to set a context deadline.
-No function reads `ResourceKey` to dedup a call. Neither `Run` nor
-`RunScoped` reads `ResultBudgetOf` to truncate or reject an oversized
-result. `RunScoped` runs the tool the same way `Run` does; it checks
-only `Scope.Allowed`. Enforcement is deferred to the future
+This phase publishes `ExecutionProfile.ResourceKey` and
+`ResultBudgetTool.MaxResultBytes` as metadata only. No function reads
+`ResourceKey` to dedup a call. Neither `Run` nor `RunScoped` reads
+`ResultBudgetOf` to truncate or reject an oversized result.
+`RunScoped` runs the tool the same way `Run` does; it checks only
+`Scope.Allowed`. Enforcement is deferred to the future
 agent-binding caller named in the roadmap's "Precedent for shipping
 with no caller yet" section, the same caller that will wire a
 `Registry` into `agent.Run`.
+
+`ExecutionProfile.Timeout` left this trio. The registry now enforces
+it: every `Run` and `RunScoped` dispatch carries a per-call deadline.
+See docs/packages/tools.md's "Run timeout backstop" section, and
+docs/plans/tools-run-backstop.md for the plan that added it.
 
 ## API
 

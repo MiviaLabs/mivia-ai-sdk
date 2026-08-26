@@ -63,6 +63,12 @@ type subTool struct {
 // Name returns the registry name.
 func (t *subTool) Name() string { return t.name }
 
+// ExecutionProfile declares TimeoutNone: a spawned runner turn runs
+// open-ended inside its own stop conditions, so no registry cap.
+func (t *subTool) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Timeout: tools.TimeoutNone}
+}
+
 // Run spawns the wrapped runner once, guarding the depth bound.
 func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	max := t.opts.Depth

@@ -21,9 +21,15 @@ unknown name fails. The exported surface below mirrors
   `ExecutionClassWrite`, `ExecutionClassExternal`. `Validate` rejects
   any other value.
 - `ExecutionProfile` — execution-risk metadata for one tool call:
-  `Class`, `ResourceKey` (a per-turn dedup key), and `Timeout`. This
-  package publishes these fields; it does not enforce them. See
-  "Published, not enforced" below.
+  `Class`, `ResourceKey` (a per-turn dedup key), and `Timeout`. The
+  registry enforces `Timeout`; see "Run timeout backstop" below. It
+  still never enforces `ResourceKey`; see "Published, not enforced"
+  below.
+- `Option` — a construction option for `Registry`. `New` applies
+  options left to right; the configuration is immutable afterward.
+  One option exists: `WithDefaultRunTimeout`.
+- `DefaultRunTimeout` — ten minutes, the built-in run bound.
+- `TimeoutNone` — minus one, the canonical "never cap" value.
 - `ProfiledTool` — optional interface. A `Tool` implements
   `ExecutionProfile() ExecutionProfile` to publish its profile.
 - `ResultBudgetTool` — optional interface. A `Tool` implements
@@ -49,7 +55,13 @@ unknown name fails. The exported surface below mirrors
 
 ## Functions and methods
 
-- `New()` — creates an empty `Registry`.
+- `New(opts ...Option)` — creates an empty `Registry` and applies
+  the options left to right. With no options, every run is bounded by
+  `DefaultRunTimeout` unless the tool declares its own profile
+  `Timeout`.
+- `WithDefaultRunTimeout(d)` — returns the option that sets one
+  registry's fallback bound. Positive binds verbatim; zero selects
+  `DefaultRunTimeout`; any negative restores unbounded runs.
 - `Registry.Add(t)` — registers `t` under `t.Name()`.
 - `Registry.Get(name)` — resolves `name` to a `Tool`. Returns false
   for an unknown name.
@@ -59,10 +71,10 @@ unknown name fails. The exported surface below mirrors
   `Tool`, sorted by name. Mutating the slice does not affect the
   `Registry`.
 - `Registry.Run(ctx, name, in)` — resolves `name` through `Get` and
-  runs the tool.
+  runs the tool under the effective run-timeout bound.
 - `Registry.RunScoped(ctx, name, in, scope)` — resolves `name` through
   `Get`, checks `scope.Allowed` when `scope` is non-nil, then runs the
-  tool. A nil `scope` behaves like `Run`. After `scope.Allowed` passes,
+  tool under the same bound. A nil `scope` behaves like `Run`. After `scope.Allowed` passes,
   when the scope has an `Approve` function and the resolved tool's
   rank meets or exceeds `ApprovalThreshold`, `RunScoped` calls
   `Approve` with a `ToolCall` before it runs the tool. See "Approval
@@ -106,6 +118,10 @@ Use `errors.Is` to test these.
   `ExecutionClass.Validate` returns it for a value outside the four
   known classes. Pinned by `TestExecutionClassValidate` in
   `tools/tools_test/execution_profile_test.go` with `errors.Is`.
+- `ErrRunTimeout` ("tools: tool run exceeded its timeout") — `Run`
+  and `RunScoped` return it wrapped on expiry, with the tool name and
+  the bound in the message. Test with `errors.Is`. Pinned by
+  `tools/tools_test/registry_run_timeout_test.go`.
 
 ## Invariants
 
@@ -134,9 +150,15 @@ Use `errors.Is` to test these.
 - `RunScoped` returns `ErrUnknownName` for an unresolved name and
   `ErrScopeDenied` for a name the scope excludes. A nil `scope` allows
   every resolved tool, matching `Run`.
-- `RunScoped` never reads `Timeout`, `ResourceKey`, or
-  `MaxResultBytes`. It checks only `scope.Allowed`, then runs the tool
-  the way `Run` does. See "Published, not enforced" below.
+- `RunScoped` never reads `ResourceKey` or `MaxResultBytes`. It
+  checks only `scope.Allowed`, then approves if gated, then hands the
+  tool to the same bounded dispatch as `Run`.
+- Every bounded run that expires returns an error wrapping
+  `ErrRunTimeout`, carrying the tool name and the bound. A parent
+  already past done returns its own cause instead, so
+  cancel-versus-expire never flips on select fairness.
+- If the tool finishes first, its result passes through unchanged,
+  including any cancellation-shaped error it produced on its own.
 - `RunScoped` calls `scope.Approve` only after `scope.Allowed` passes,
   only when `Approve` is non-nil, and only when the resolved tool's
   rank meets or exceeds `ApprovalThreshold`'s rank. See "Approval
@@ -169,21 +191,69 @@ calls opt in explicitly.
 
 ### Published, not enforced
 
-`Timeout`, `ResourceKey`, and `MaxResultBytes` are metadata this
-package publishes and never enforces. No function sets a context
-deadline from `Timeout`. No function dedups a call by `ResourceKey`.
-Neither `Run` nor `RunScoped` truncates or rejects a result using
-`ResultBudgetOf`. `RunScoped` runs the tool the same way `Run` does; it
-checks only `Scope.Allowed`. A future agent-binding caller enforces
-these fields when it wires a `Registry` into `agent.Run`.
+`ResourceKey` and `MaxResultBytes` are metadata this package
+publishes and never enforces. No function dedups a call by
+`ResourceKey`. Neither `Run` nor `RunScoped` truncates or rejects a
+result using `ResultBudgetOf`. A future agent-binding caller may
+enforce them when it wires a `Registry` into `agent.Run`. `Timeout`
+left this group: the registry enforces it; see the next section.
+
+### Run timeout backstop
+
+Every `Run` and `RunScoped` dispatch carries a deadline. The bound
+resolves in one pass. A positive `Timeout` in the tool's profile wins
+verbatim, longer or shorter than anything configured. Otherwise a
+positive configured default applies. Otherwise `DefaultRunTimeout`,
+ten minutes, applies.
+
+| Value | Positive | Zero | Negative |
+| --- | --- | --- | --- |
+| `ExecutionProfile.Timeout` | Enforced verbatim | Undeclared; fall through | None; never cap this tool |
+| `WithDefaultRunTimeout(d)` | Registry-wide bound | Use `DefaultRunTimeout` | None; restore unbounded |
+
+Any negative means "never cap"; `TimeoutNone` names the canonical
+constant. The escape hatches point both ways. A negative profile
+exempts one tool under any registry configuration.
+`WithDefaultRunTimeout(tools.TimeoutNone)` restores unbounded runs
+for one whole registry.
+
+The budget starts when the tool's `Run` starts. It never covers
+`Scope.Allowed` or `Approve`. A human approval that answers hours
+later consumes none of it.
+
+An expiry returns an error wrapping `ErrRunTimeout`; the message
+carries the tool name and the bound. Test with
+`errors.Is(err, tools.ErrRunTimeout)`. Never compare against the
+naked sentinel value: callers receive the wrapped form only.
+
+Two outcomes pass through untouched. First, a tool that finishes
+first keeps its exact result, including any cancellation-shaped
+error it produced on its own; the backstop reclassifies nothing.
+Second, when the deadline case fires while the parent context is
+already done, the parent cause returns instead of `ErrRunTimeout`.
+The wrap re-checks the parent before synthesizing, so the race
+resolves deterministically and never trusts select fairness.
+
+A tool that panics yields an error carrying its name and panic
+value; the bounded dispatch recovers instead of crashing the
+process, matching `agentloop`'s surface-hook precedent. A panic
+value that is an `error` keeps its unwrap chain, so callers match
+the seam through `errors.Is`; any other value renders as text.
+
+Go cannot kill a goroutine. An expired tool keeps running until it
+observes the canceled child context or leaks; this mirrors the
+standard `context` contract. The cost of expiry is that goroutine
+plus whatever it holds open. The agent loop continues the turn and
+reuses the freed worker slot, so repeated stalls do not starve the
+pool.
 
 ### Approval gating
 
 `Approve` is `func(ctx context.Context, call ToolCall) (bool, error)`.
-`RunScoped` calls it in place and blocks until it returns; `tools`
-adds no goroutine or channel model of its own. A caller that needs an
-out-of-band answer, for example a human replying hours later, builds
-that flow itself outside `tools`.
+`RunScoped` calls it in place and blocks until it returns; the call
+itself runs on the caller's goroutine, outside any deadline budget.
+A caller that needs an out-of-band answer, for example a human
+replying hours later, builds that flow itself outside `tools`.
 
 `ApprovalThreshold` compares against an unexported rank order over
 `ExecutionClass`: `ExecutionClassUnclassified` ranks lowest, then

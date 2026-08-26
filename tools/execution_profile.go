@@ -35,9 +35,10 @@ func (c ExecutionClass) Validate() error {
 }
 
 // ExecutionProfile is execution-risk metadata for one tool: its
-// class, its per-turn dedup key, and its timeout. This package
-// publishes these fields; it does not enforce them. See
-// docs/packages/tools.md's "Published, not enforced" section.
+// class, its per-turn dedup key, and its run-timeout declaration.
+// The registry enforces Timeout on every dispatched run; ResourceKey
+// stays published-only metadata. See docs/packages/tools.md, "Run
+// timeout backstop" and "Published, not enforced".
 type ExecutionProfile struct {
 	Class       ExecutionClass
 	ResourceKey string

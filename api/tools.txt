@@ -1,8 +1,10 @@
 package tools
+  const DefaultRunTimeout = 10 * time.Minute
   const ExecutionClassExternal = "external"
   const ExecutionClassRead = "read"
   const ExecutionClassUnclassified = ""
   const ExecutionClassWrite = "write"
+  const TimeoutNone = -1
   func (c ExecutionClass) Validate() (error)
   func (r *Registry) Add(t Tool) (error)
   func (r *Registry) Get(name string) (Tool, bool)
@@ -13,10 +15,11 @@ package tools
   func (s *Scope) Allowed(name string, t Tool) (bool)
   func ExecutionProfileOf(t Tool) (ExecutionProfile)
   func IsPrivileged(t Tool) (bool)
-  func New() (*Registry)
+  func New(opts ...Option) (*Registry)
   func NewScope(opts ScopeOptions) (*Scope)
   func ResultBudgetOf(t Tool) (int, bool)
   func SchemaOf(t Tool) ([]byte, bool)
+  func WithDefaultRunTimeout(d time.Duration) (Option)
   type ExecutionClass string
   type ExecutionProfile struct {
   Class ExecutionClass
@@ -26,6 +29,7 @@ package tools
   type InOut struct {
   Value any
 }
+  type Option func(*Registry)
   type Out struct {
   Value any
 }
@@ -66,6 +70,7 @@ package tools
   var ErrDuplicateName
   var ErrInvalidExecutionClass
   var ErrNilTool
+  var ErrRunTimeout
   var ErrScopeDenied
   var ErrToolDeclined
   var ErrUnknownName

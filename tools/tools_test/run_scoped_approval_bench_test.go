@@ -22,8 +22,10 @@ func buildAlwaysApproveScope() *tools.Scope {
 // every call, next to BenchmarkRunScopedHundredTools's no-approval
 // baseline in registry_run_scoped_bench_test.go.
 // Target: under one microsecond per call.
-// Measured: ~27 ns/op, 0 B/op, 0 allocs/op (map lookup, the rank
-// compare, and a stub's Run, no allocation in any path).
+// Measured: ~800 ns/op, 608 B/op, 8 allocs/op: the bounded dispatch
+// in registry_timeout.go adds the derived timeout context, the
+// handoff channel, and the producer goroutine over the map lookup,
+// the rank compare, the Approve closure call, and a stub's Run.
 func BenchmarkRunScopedApprovalHundredTools(b *testing.B) {
 	r := buildHundredToolRegistry()
 	scope := buildAlwaysApproveScope()
@@ -39,12 +41,11 @@ func BenchmarkRunScopedApprovalHundredTools(b *testing.B) {
 
 // TestRunScopedApprovalAllocBudget guards the allocation floor for
 // RunScoped's approval path over a registry of one hundred tools. The
-// measured baseline is zero allocations: the map lookup, the rank
-// compare, the Approve closure call, and the stub's Run all allocate
-// nothing for this InOut/Out shape. The budget allows one allocation
-// above the baseline, matching RunScoped's no-approval budget in
-// registry_run_scoped_bench_test.go, to absorb a small, legitimate
-// change without masking a real regression.
+// pre-backstop baseline was zero allocations; the bounded dispatch
+// costs eight for this InOut/Out shape. The budget allows one
+// allocation above the measured baseline, matching RunScoped's
+// no-approval budget in registry_run_scoped_bench_test.go, to absorb
+// a small, legitimate change without masking a real regression.
 func TestRunScopedApprovalAllocBudget(t *testing.T) {
 	r := buildHundredToolRegistry()
 	scope := buildAlwaysApproveScope()
@@ -55,7 +56,7 @@ func TestRunScopedApprovalAllocBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if alloc > 1 {
-		t.Fatalf("RunScoped (approval path) allocated %v times per call; budget is 1", alloc)
+	if alloc > 9 {
+		t.Fatalf("RunScoped (approval path) allocated %v times per call; budget is 9", alloc)
 	}
 }

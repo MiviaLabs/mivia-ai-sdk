@@ -24,8 +24,10 @@ func buildHundredToolRegistry() *tools.Registry {
 // BenchmarkRunHundredTools benchmarks Run against a Registry already
 // holding one hundred tools.
 // Target: under one microsecond per call.
-// Measured: ~14 ns/op, 0 B/op, 0 allocs/op (map lookup plus a stub's
-// Run, no allocation in either path).
+// Measured: ~760 ns/op, 608 B/op, 8 allocs/op: the bounded dispatch
+// in registry_timeout.go adds the derived timeout context, the
+// handoff channel, and the producer goroutine over the map lookup and
+// stub's Run.
 func BenchmarkRunHundredTools(b *testing.B) {
 	r := buildHundredToolRegistry()
 	ctx := context.Background()
@@ -39,11 +41,12 @@ func BenchmarkRunHundredTools(b *testing.B) {
 }
 
 // TestRunAllocBudget guards the allocation floor for Run over a
-// registry of one hundred tools. The measured baseline is zero
-// allocations: the map lookup and the stub's Run both allocate
-// nothing for this InOut/Out shape. The budget allows one allocation
-// above the baseline to absorb a small, legitimate change without
-// masking a real regression.
+// registry of one hundred tools. The pre-backstop baseline was zero;
+// the bounded dispatch costs eight allocations for this InOut/Out
+// shape: four for the derived timeout context, two for the handoff
+// channel and its producer goroutine, two for the goroutine's closure.
+// The budget allows one allocation above the measured baseline to
+// absorb a small, legitimate change without masking a real regression.
 func TestRunAllocBudget(t *testing.T) {
 	r := buildHundredToolRegistry()
 	ctx := context.Background()
@@ -53,7 +56,7 @@ func TestRunAllocBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if alloc > 1 {
-		t.Fatalf("Run allocated %v times per call; budget is 1", alloc)
+	if alloc > 9 {
+		t.Fatalf("Run allocated %v times per call; budget is 9", alloc)
 	}
 }

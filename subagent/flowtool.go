@@ -30,6 +30,12 @@ type flowTool struct {
 // Name returns the registry name.
 func (f *flowTool) Name() string { return f.name }
 
+// ExecutionProfile declares TimeoutNone: a flow walk runs open-ended
+// inside its own step graph, so no registry cap.
+func (f *flowTool) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Timeout: tools.TimeoutNone}
+}
+
 // Run walks the plan once, confirming every step.
 func (f *flowTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	payload, _ := in.Value.(string)

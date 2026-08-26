@@ -23,9 +23,10 @@ func buildFiftyNameAllowlistScope() *tools.Scope {
 // allowlist.
 // Target: under one microsecond per call, next to Run's baseline in
 // registry_bench_test.go.
-// Measured: ~20 ns/op, 0 B/op, 0 allocs/op (map lookup, a map-membership
-// check in Scope.Allowed, and a stub's Run, no allocation in any
-// path).
+// Measured: ~810 ns/op, 608 B/op, 8 allocs/op: the bounded dispatch
+// in registry_timeout.go adds the derived timeout context, the
+// handoff channel, and the producer goroutine over the map lookup,
+// the Scope.Allowed check, and the stub's Run.
 func BenchmarkRunScopedHundredTools(b *testing.B) {
 	r := buildHundredToolRegistry()
 	scope := buildFiftyNameAllowlistScope()
@@ -41,12 +42,12 @@ func BenchmarkRunScopedHundredTools(b *testing.B) {
 
 // TestRunScopedAllocBudget guards the allocation floor for RunScoped
 // over a registry of one hundred tools behind a fifty-name allowlist
-// Scope. The measured baseline is zero allocations: the map lookup,
-// the Scope.Allowed check, and the stub's Run all allocate nothing
-// for this InOut/Out shape. The budget allows one allocation above
-// the baseline, matching Run's budget in registry_bench_test.go, to
-// absorb a small, legitimate change without masking a real
-// regression.
+// Scope. The pre-backstop baseline was zero allocations; the bounded
+// dispatch costs eight for this InOut/Out shape, matching Run's cost
+// in registry_bench_test.go. The budget allows one allocation above
+// the measured baseline, matching Run's budget in
+// registry_bench_test.go, to absorb a small, legitimate change
+// without masking a real regression.
 func TestRunScopedAllocBudget(t *testing.T) {
 	r := buildHundredToolRegistry()
 	scope := buildFiftyNameAllowlistScope()
@@ -57,7 +58,7 @@ func TestRunScopedAllocBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if alloc > 1 {
-		t.Fatalf("RunScoped allocated %v times per call; budget is 1", alloc)
+	if alloc > 9 {
+		t.Fatalf("RunScoped allocated %v times per call; budget is 9", alloc)
 	}
 }

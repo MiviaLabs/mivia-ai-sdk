@@ -134,9 +134,11 @@ hang, uses the opt-in form. The provider seam keeps only the
 unconditional form this round.
 
 A test-local panicking seam panics with `faultErr(seam)`, the same
-error value `FaultOn` would have returned. A scenario that recovers
-the panic itself asserts `errors.Is` against the recovered value, the
-same way it already asserts a returned error.
+error value `FaultOn` would have returned. A seam dispatched through
+a tools Registry surfaces as the run's returned error; the scenario
+asserts `errors.Is` against that return, the same way it asserts any
+returned fault. A seam called directly, outside a registry, still
+panics its caller, and that scenario recovers the value itself.
 
 The kit raises the seam only where the block already exposes an
 interface. A block behind a concrete type keeps no decorator: memory's
@@ -191,13 +193,12 @@ Each scenario states its wiring, inputs, and asserted outputs.
   non-Completer seam behaves like `faults_hang_test.go`'s Completer
   case.
 - `faults_store_panic_test.go` — wires ledger and agentrun over a
-  one-step, non-panel plan so the panicking store call runs in the
-  same goroutine as the test's own call to `Run`. Input: a step whose
-  Admit call runs over a test-local `panicStore`. Outputs: `Run` never
-  returns normally; the test's own deferred `recover` around the
-  `Run` call observes a value matching
-  `errors.Is(recovered.(error), e2e.ErrFault)`, proving a panicking
-  store matches `faults_panic_test.go`'s Completer case.
+  one-step, non-panel plan. Input: a step whose Admit call runs over
+  a test-local `panicStore`. Outputs: `Run` returns an error whose
+  chain keeps `e2e.ErrFault`, asserted with
+  `errors.Is(err, e2e.ErrFault)`; the bounded dispatch converts the
+  panicking store seam fail-closed. See `docs/packages/tools.md`'s
+  "Run timeout backstop" section for the conversion contract.
 - `faults_notifier_test.go` — wires channel, tools, agentrun, and the
   harness `FaultNotifier`. Input: an escalating tool with an `Ask`
   notifier set to fault on the first ask. Outputs: the escalation
@@ -217,19 +218,15 @@ Each scenario states its wiring, inputs, and asserted outputs.
   run returns once the deadline fires, and the error wraps
   `context.DeadlineExceeded`.
 - `faults_panic_test.go` — wires subagent and agentrun with a
-  test-local `panicCompleter`, on a one-step, non-panel plan
-  so the panicking tool call runs in the same goroutine as the test's
-  own call to `Runner.Run`. Input: a one-step runner whose sole tool
-  panics on its first call. Outputs: `Run` never returns normally; the
-  panic propagates out of `Run` uncaught, and the test's own
-  `recover`, deferred around the `Run` call, observes a value
-  matching `errors.Is(recovered.(error), e2e.ErrFault)`. This pins the
-  documented contract: neither `flow.Run` nor `agentrun.Runner.Run`
-  recovers a panic from a Fire call on the sequential path; a panic is
-  the caller's own fault, and it is the caller's job to recover one if
-  it wants a run's panic reported as a result instead of a crash. See
-  "Disclosed limits" below for the goroutine-concurrency case this
-  scenario deliberately does not cover.
+  test-local `panicCompleter`, on a one-step, non-panel plan whose
+  sole tool calls the completer inside one registry run. Input: the
+  panicking completer bound through `ProviderTool`. Outputs: `Run`
+  returns an error matching `errors.Is(err, e2e.ErrFault)` instead of
+  crashing; the bounded dispatch fails the call closed. The companion
+  `TestFaultCompleterStreamPanicPropagates` still pins the
+  unregistered path: a direct `ChatStream` call panics its own
+  caller. See "Disclosed limits" below for the goroutine-concurrency
+  case these scenarios deliberately do not cover.
 
 A fallback step stays out of the pipeline scenario by design. In an
 agentrun run the tool chain answers inside the ack, and a rejected

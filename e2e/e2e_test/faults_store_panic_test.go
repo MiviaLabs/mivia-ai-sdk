@@ -57,11 +57,12 @@ func (panicStore) Range(ctx context.Context, fn func(ledger.TaskState) bool) err
 	return ledger.NewMemStore().Range(ctx, fn)
 }
 
-// TestFaultStorePanicPropagatesOutOfRun proves a ledger store that
-// panics on its first call is not caught by flow's sequential path:
-// the panic propagates out of Run uncaught, mirroring
-// faults_panic_test.go's panicking Completer case for the store seam.
-func TestFaultStorePanicPropagatesOutOfRun(t *testing.T) {
+// TestFaultStorePanicFailsClosed proves a ledger store that panics on
+// its first call surfaces as Run's first error. The registry's
+// bounded dispatch converts the panic into an error that keeps the
+// fault's identity; see docs/packages/tools.md's "Run timeout
+// backstop" section for the conversion contract.
+func TestFaultStorePanicFailsClosed(t *testing.T) {
 	ctx := context.Background()
 	l, err := ledger.New(panicStore{}, nil)
 	if err != nil {
@@ -86,18 +87,11 @@ func TestFaultStorePanicPropagatesOutOfRun(t *testing.T) {
 		t.Fatalf("agentrun.New: %v", err)
 	}
 
-	var recovered any
-	func() {
-		defer func() { recovered = recover() }()
-		_, _, _ = runner.Run(ctx, "thread-store-panic", machine.InOut{})
-		t.Fatal("Run returned normally, want a panic")
-	}()
-
-	err, ok := recovered.(error)
-	if !ok {
-		t.Fatalf("recovered value = %#v, want an error", recovered)
+	_, _, err = runner.Run(ctx, "thread-store-panic", machine.InOut{})
+	if err == nil {
+		t.Fatal("Run error = nil, want the store fault surfaced fail-closed")
 	}
 	if !errors.Is(err, e2e.ErrFault) {
-		t.Fatalf("recovered error = %v, want e2e.ErrFault", err)
+		t.Fatalf("error = %v, want e2e.ErrFault", err)
 	}
 }

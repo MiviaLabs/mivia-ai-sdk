@@ -75,7 +75,15 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 			return l.hardFail(history, iterations, totalUsage), err
 		}
 		// Pull-based injector boundary: drain the installer's messages
-		// BEFORE the MaxIterations check.
+		// BEFORE the MaxIterations check, exactly the "before trim"
+		// placement the legacy context.go:15-19 use of BeforeStep
+		// picked. A nil or empty return is a no-op; a non-empty return
+		// grows history by those messages without counting against
+		// MaxIterations (the cap is on Completer calls, not on the
+		// number of injected frames). A nil steer is the Run
+		// (non-steerable) path; the Run contract pre-dates the
+		// injector so it never installs one, and we skip the call to
+		// avoid a nil-deref on the empty interface.
 		if steer != nil {
 			if injected := steer.drainInjected(); len(injected) > 0 {
 				history = append(history, injected...)
@@ -87,7 +95,11 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 
 		// Surface rotation (step 2+): the host hook replaces this
 		// iteration's advertised definitions, call-resolution
-		// registry, and scope AFTER the injector drain.
+		// registry, and scope AFTER the injector drain so an
+		// injected frame lands on the previous surface, mirroring
+		// mivia-agent's legacy applySurfaceHook skip-step-1 rule.
+		// A nil return keeps the prior surface; a hook panic fails
+		// the run closed rather than half-rotating.
 		if l.surfaceFn != nil && iterations >= 1 {
 			s, serr := safeSurface(l.surfaceFn)
 			if serr != nil {
@@ -109,7 +121,17 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 
 // runIteration runs one loop iteration: trim, window plan, the
 // token-budget check, the ConcludeMargin nudge, the Completer call,
-// audit, the token-budget check, and tool-call dispatch.
+// audit, the token-budget check, and tool-call dispatch. It mutates
+// history, iterations, totalUsage, runningTokens, and noticeSent in
+// place through their pointers, matching run's prior inlined
+// mutation. done reports whether run must return (res, err) now; done
+// false means the iteration completed normally and run should loop
+// again. EventIterationStart fires on entry; EventIterationEnd fires
+// from a deferred closure covering every exit path, so every
+// hard-fail cause and every graceful stop emits it exactly once.
+// checkBudget runs after planHistory: window-based compaction can
+// bring an over-budget history back under budget, so the check must
+// see the post-compaction history, not the pre-compaction one.
 func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, consecutiveFailures *int, noticeSent *bool, steer *Steer, stream *bytes.Buffer, surface runSurface) (res Result, err error, done bool) {
 	label := iterationLabel(*iterations + 1)
 	l.emitEvent(ctx, EventIterationStart, label)
@@ -147,6 +169,36 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
+			// Steered-stop branch. Two cases:
+			//
+			// (a) An injector is installed (SetInjector was called).
+			//     Case (a) returns IMMEDIATELY after ackTriggered().
+			//     The downgrade path does NOT call drainInjected:
+			//     the iteration-top boundary at run.go:71-85 drains
+			//     the injector on the next loop iteration, so the
+			//     deliver-once shape holds across consecutive
+			//     payloads. The sticky triggered flag is cleared
+			//     here so the next iteration's Chat call arms
+			//     un-triggered and proceeds. This mirrors the
+			//     legacy requestStep's soft-continue on
+			//     errSteerInterrupt so a bridge that polls
+			//     continuously across iterations (mivia-agent
+			//     bridgeSteerSignals) can deliver repeated steers
+			//     within one RunSteerable call without dropping
+			//     the run. The drain at the next iteration top
+			//     may be a non-empty return (history grows by
+			//     those messages) or an empty return (no history
+			//     change), and in BOTH cases the loop continues.
+			//
+			// (b) No injector is installed. The run stops with
+			//     StopSteered, the existing single-shot behavior
+			//     every pre-injector Steer test pins.
+			//
+			// The sticky-trigger fix (Part A.4) lives in the
+			// case-(a) path: ackTriggered must run BEFORE the next
+			// iteration's Chat call arms, otherwise arm sees
+			// triggered=true and cancels instantly, the next drain
+			// is empty, and the run spins between two empty drains.
 			if steer.hasInjector() {
 				steer.ackTriggered()
 				return Result{}, nil, false
@@ -163,7 +215,11 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 
 // afterChat holds the second half of one iteration's body: recording
 // the response, audit, the token-budget check, and tool-call dispatch
-// through runToolStage.
+// through runToolStage. Split from runIteration to keep both under
+// the structure gate's per-function line cap. noticeInRequest,
+// computed by runIteration, picks StopConcluded over StopNoToolCalls
+// when this iteration's Completer request carried the ConcludeMargin
+// nudge.
 func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, consecutiveFailures *int, noticeInRequest bool, surface runSurface) (Result, error, bool) {
 	resp, req := at.resp, at.req
 	*history = at.history
@@ -216,7 +272,10 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 }
 
 // runToolStage dispatches resp's tool calls, or reports StopNoToolCalls,
-// StopEmptyResponse, or StopConcluded when resp carries none.
+// StopEmptyResponse, or StopConcluded when resp carries none. The returned
+// bool reports whether the caller must return res (and err) as the
+// iteration's own result; when false, res.History carries the loop's next
+// history and the loop continues.
 func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, consecutiveFailures *int, noticeInRequest bool, surface runSurface) (Result, bool, error) {
 	if len(resp.ToolCalls) == 0 {
 		*consecutiveFailures = 0
@@ -257,7 +316,10 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 
 // isSteerStop reports whether err is runChat's Completer.Chat call
 // reacting to steer's Trigger-derived cancellation, rather than a
-// hard failure.
+// hard failure. All four conditions must hold: steer is non-nil, err
+// did not come from the prompt-too-long recovery path, ctx itself was
+// not already canceled ahead of the call, and steer's wasTriggered
+// reports true.
 func isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool) bool {
 	if steer == nil || fromRecovery || ctx.Err() != nil {
 		return false
@@ -330,7 +392,10 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 }
 
 // estimateTokens returns l.calibrated.EstimateTokens(req), or zero
-// when l.calibrated is nil or the estimate call fails.
+// when l.calibrated is nil or the estimate call fails. Zero is a
+// safe default: Calibrated.Observe no-ops on a non-positive estimated
+// value, so an estimator failure here degrades silently, the same
+// rule EstimateTokens failures already followed outside planning.
 func (l *Loop) estimateTokens(req provider.Request) int {
 	if l.calibrated == nil {
 		return 0
@@ -343,7 +408,10 @@ func (l *Loop) estimateTokens(req provider.Request) int {
 }
 
 // steerableChat calls l.completer.Chat on ctx directly when steer is
-// nil.
+// nil. When steer is non-nil, it derives a child context, arms steer
+// with the child's cancel func, calls Chat on the child, then disarms
+// steer and cancels the child before returning: no derived context
+// leaks past this one call.
 func (l *Loop) steerableChat(ctx context.Context, req provider.Request, steer *Steer) (provider.Response, error) {
 	if steer == nil {
 		return l.completer.Chat(ctx, req)
@@ -357,7 +425,12 @@ func (l *Loop) steerableChat(ctx context.Context, req provider.Request, steer *S
 	return l.completer.Chat(chatCtx, req)
 }
 
-// hardFail builds the Result a hard-fail error return carries.
+// hardFail builds the Result a hard-fail error return carries. Every
+// hard-fail cause shares one rule: when at least one iteration has
+// already completed, the partial History, Iterations, and Usage
+// travel with the error. When none has, no partial state exists yet,
+// and the rule degrades to the zero-value Result on its own, with no
+// special case for ctx cancellation or any other cause.
 func (l *Loop) hardFail(history []provider.Message, iterations int, totalUsage provider.Usage) Result {
 	if iterations == 0 {
 		return Result{}
@@ -365,8 +438,32 @@ func (l *Loop) hardFail(history []provider.Message, iterations int, totalUsage p
 	return Result{History: history, Iterations: iterations, Usage: totalUsage}
 }
 
+// billedTokens returns the larger, more trustworthy reading of one
+// response's token cost: the reported TotalTokens, or the sum of
+// PromptTokens and CompletionTokens, whichever is greater. provider.Usage
+// enforces no relationship between its fields, so a Completer that leaves
+// TotalTokens at zero must not silently bypass MaxTotalTokens.
+func billedTokens(u provider.Usage) int {
+	sum := u.PromptTokens + u.CompletionTokens
+	if u.TotalTokens > sum {
+		return u.TotalTokens
+	}
+	return sum
+}
+
+// sumUsage adds b's four fields onto a and returns the sum.
+func sumUsage(a, b provider.Usage) provider.Usage {
+	return provider.Usage{
+		PromptTokens:     a.PromptTokens + b.PromptTokens,
+		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
+		TotalTokens:      a.TotalTokens + b.TotalTokens,
+		CachedTokens:     a.CachedTokens + b.CachedTokens,
+	}
+}
+
 // applyTrim runs l.trim on history when set, then validates every
-// message in the result.
+// message in the result. A nil l.trim passes history through
+// unchanged and skips validation.
 func (l *Loop) applyTrim(ctx context.Context, history []provider.Message, iteration int) ([]provider.Message, error) {
 	if l.trim == nil {
 		return history, nil
@@ -384,7 +481,7 @@ func (l *Loop) applyTrim(ctx context.Context, history []provider.Message, iterat
 }
 
 // checkBudget sums history's content bytes and message count and
-// checks them against l.budget.Fits.
+// checks them against l.budget.Fits. A nil l.budget means uncapped.
 func (l *Loop) checkBudget(history []provider.Message, iteration int) error {
 	if l.budget == nil {
 		return nil

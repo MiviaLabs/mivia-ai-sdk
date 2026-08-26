@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"errors"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -94,6 +96,9 @@ func (t *lateProducerTool) Run(context.Context, InOut) (Out, error) {
 // the producer blocks; releasing it afterward lets both its own
 // one-buffered send and the abandoned internal handoff complete with
 // no panic and no send-block, and no value leaks into the caller.
+// Completion is proved by absence, not by fixture channels alone:
+// after release, no goroutine may remain parked inside runBounded,
+// so an unbuffered handoff regression strands exactly this test.
 func TestRunBoundedLateProducerBufferedSend(t *testing.T) {
 	r := New(WithDefaultRunTimeout(15 * time.Millisecond))
 	tl := &lateProducerTool{
@@ -130,5 +135,24 @@ func TestRunBoundedLateProducerBufferedSend(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("late producer never completed its one-buffered send")
+	}
+
+	// The abandoned producer must exit once it completes its buffered
+	// send. Absence of any runBounded frame across all stacks is the
+	// direct observation. One probe reads it immediately; if the
+	// producer was still mid-handoff, the exact two-second deadline
+	// passes before the confirming probe.
+	waitCtx, stop := context.WithTimeout(context.Background(), 2*time.Second)
+	defer stop()
+	buf := make([]byte, 1<<16)
+	settled := func() bool {
+		n := runtime.Stack(buf, true)
+		return !strings.Contains(string(buf[:n]), "runBounded")
+	}
+	if !settled() {
+		<-waitCtx.Done()
+	}
+	if !settled() {
+		t.Fatal("abandoned producer still parked inside runBounded")
 	}
 }

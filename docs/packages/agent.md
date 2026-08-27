@@ -19,6 +19,11 @@ messages. The exported surface below mirrors `api/agent.txt`.
 - `New(id, card, plan)` — builds an `Agent`.
 - `Agent.Name()` — the card's `Name` field.
 - `Agent.Capabilities()` — the card's `Capabilities` slice.
+- `Agent.Plan()` — the step plan `New` bound to the agent. Returns the
+  same `*flow.Definition` pointer `New` stored.
+- `Agent.Signer()` — the hex signer string of the identity `New`
+  bound to the agent. Returns "" for a nil `Agent` or one bound to a
+  nil identity.
 - `Agent.Run(ctx, threadID, m, in, wait, bus, hb, room, budget)` —
   drives the bound plan through `flow.Run`.
 - `EmitMessageDelivered(ctx, bus, m)` — verifies `m`'s signature, then
@@ -40,7 +45,9 @@ messages. The exported surface below mirrors `api/agent.txt`.
 Use `errors.Is` to test these.
 
 - `ErrNoIdentity` ("agent: identity is required") — `New` returns it
-  when `id` is nil. Pinned by `agent_test/definition_test.go`.
+  when `id` is nil, and `Run` returns it as its first check when the
+  receiver `a` or `a.id` is nil. Pinned by
+  `agent_test/definition_test.go`.
 - `ErrNoPlan` ("agent: plan is required") — `New` returns it when
   `plan` is nil. Pinned by `agent_test/definition_test.go`.
 - `ErrNoBus` ("agent: bus is required") — `EmitMessageDelivered`,
@@ -75,10 +82,11 @@ Use `errors.Is` to test these.
 
 ### Run
 
-- `Run` checks `wait` for nil, then `bus` for nil, then `threadID` for
-  empty, in that order, before it touches `m` or the bound plan. Each
-  check returns `machine.Status("")`, `in` unchanged, and its
-  sentinel: `ErrNoWait`, `ErrNoBus`, or `ErrNoThread`.
+- `Run` checks the receiver `a` and `a.id` for nil first, then `wait`
+  for nil, then `bus` for nil, then `threadID` for empty, in that
+  order, before it touches `m` or the bound plan. Each check returns
+  `machine.Status("")`, `in` unchanged, and its sentinel:
+  `ErrNoIdentity`, `ErrNoWait`, `ErrNoBus`, or `ErrNoThread`.
 - For each step `flow.Run` gates behind `Confirm`, `Run` builds an
   `envelope.Message` from the step's ID, `threadID`, and payload, with
   `Version`, `Intent`, and `Epistemic` set to values that pass

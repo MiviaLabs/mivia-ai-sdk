@@ -17,7 +17,10 @@ import. The exported surface below mirrors `api/dispatch.txt`.
   an admitted message. `Bus` receives `MessageDeliveredEvent` and
   `MessageAckedEvent`; built and subscribed when nil. `Ledger`,
   `ReplayLease`, and `ReplayCapacity` configure replay protection; see
-  "Replay protection" below.
+  "Replay protection" below. `MaxBodyBytes` caps one request body,
+  enforced through `http.MaxBytesReader`. Zero resolves to
+  `DefaultMaxBodyBytes` (1 MiB). A negative value fails `Validate`
+  with `ErrBadMaxBody`.
 - `Endpoint` — the built receiver. Build one with `New`.
 - `SendResult` — one reply line's outcome, in request order: `Ack`
   holds the decoded ack; `Err` is set when the server answered an
@@ -25,8 +28,9 @@ import. The exported surface below mirrors `api/dispatch.txt`.
 
 ## Functions
 
-- `Options.Validate` — checks `ID`, `Room`, and `Resolve`, in that
-  order, and returns the first sentinel that fails.
+- `Options.Validate` — checks `ID`, `Room`, `Resolve`, `MaxBodyBytes`,
+  `ReplayLease`, and `ReplayCapacity`, in that order, and returns the
+  first sentinel that fails.
 - `New(opts Options)` — validates `opts`, builds a `Bus` when
   `opts.Bus` is nil, subscribes a no-op handler for
   `MessageDeliveredEvent` and `MessageAckedEvent` on the resolved bus,
@@ -106,6 +110,9 @@ so the line discards a correct ack and returns a raw ledger error
 string. Both are known limits of a lease sized below handler latency.
 Sizing `ReplayLease` above handler p99 latency keeps the window shut.
 
+`Options.MaxBodyBytes` bounds one request body through
+`http.MaxBytesReader` (`DefaultMaxBodyBytes`, 1 MiB, when zero).
+
 `Options.ReplayLease` bounds one line's claim (`DefaultReplayLease`,
 30 seconds, when zero). Size it above `Handler.Handle`'s expected p99
 latency, not as a crash-detection timeout: `taskrun.Run` claims once
@@ -138,6 +145,8 @@ default during normal operation.
   caller matches it with `errors.Is`; pinned by
   `TestSendMatchesBadMethodSentinel` in
   `dispatch/dispatch_test/client_test.go`.
+- `ErrBadMaxBody` ("dispatch: max body bytes must not be negative") —
+  `Options.Validate` returns it when `MaxBodyBytes` is negative.
 - `ErrBadRequest` ("dispatch: request body read failed") —
   `Endpoint.Handler`'s `http.Handler` writes it as an HTTP 400 body
   when the request body fails to read. Same weak-pin note as

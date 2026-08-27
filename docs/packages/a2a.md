@@ -44,16 +44,15 @@ The exported surface below mirrors `api/a2a.txt`.
   produces. `FromPart` reads it with `encoding/json.Unmarshal`, not
   `envelope.Decode`, because the `ContextID`/`MessageID` override must
   run before `Validate`.
-- `Text`, `Raw`, and `URL` stay empty today. A later change to this
-  package can use them once a client needs a non-`Data` part.
+- `Text`, `Raw`, and `URL` stay empty. `ToPart` sets only `Part.Data`.
 - Conformance vectors live in `a2a/testdata/vectors/`, `valid_`
   prefixed. A vector pairs the source `envelope.Message` with its
   mapped `Part`, `ContextID`, and `MessageID`.
 
 ## Why this shape
 
-`Part` mirrors the A2A v1.0 wire shape, so a future transport can
-adopt it without reshaping `Part` itself. `ContextID` and `MessageID`
+`Part` mirrors the A2A v1.0 wire shape: one struct, no `kind` field,
+no separate part classes. `ContextID` and `MessageID`
 sit on `Mapped`, not on `Part`, because in the real A2A wire form
 they belong to the wrapping A2A `Message`, not to an individual
 `Part`.

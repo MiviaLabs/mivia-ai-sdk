@@ -89,10 +89,11 @@ behavior:
 - `faults_store_panic_test.go` — a panicking ledger store on a
   one-step, non-panel plan; the panic propagates out of `Run` uncaught
   and the test's own `recover` sees a value matching `ErrFault`.
+- `spool_test.go` — a `spool.SpoolTool` wired around an oversized-
+  result tool inside an `agentrun` step; the spooled view names a ref
+  a follow-up `Spool.Load` call resolves back to the full result.
 
-See [../plans/e2e.md](../plans/e2e.md) for the scenario map and the
-growth backlog: a remote subagent over `a2aack` and `dispatch`, MCP
-tools behind the chain, and scheduled liveness.
+See [../plans/e2e.md](../plans/e2e.md) for the scenario map.
 
 - The mivia-agent parity scenarios — `bugfix_flow_test.go`,
   `panel_review_test.go`, `delivery_repair_test.go`, and

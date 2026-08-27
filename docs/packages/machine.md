@@ -37,6 +37,13 @@ name registry. The exported surface below mirrors `api/machine.txt`.
   the table.
 - `Definition.Initial()` — returns the initial status.
 - `Definition.Transitions()` — returns a copy of the transition table.
+- `Definition.AllowedTransitions(from)` — returns every transition
+  whose `From` matches `from`, as a fresh copy. Returns an empty
+  slice when no transition matches.
+- `Definition.AllowedTriggers(from)` — returns the triggers of the
+  same rows `AllowedTransitions(from)` returns, in the same order.
+  `Validate`'s from/trigger uniqueness rule keeps the result
+  duplicate-free.
 - `Definition.Validate()` — checks the transition table.
 - `Definition.Fire(ctx, from, trigger, in)` — moves the record through
   the row and returns the target status and the output record.

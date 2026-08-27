@@ -88,7 +88,9 @@ or a bound trips. The exported surface below mirrors
   `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
   `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `TurnResultBudget`,
   `MaxConcurrentTools`, and `MaxConsecutiveToolFailures` are not negative,
-  and `HeartbeatInterval` requires `Bus`.
+  `HeartbeatInterval` requires `Bus`, and finally a non-nil
+  `WorkBudget` and a non-nil `ToolBudget` each pass their own
+  `validate` check.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. The second return holds the names skipped for a missing
@@ -108,6 +110,9 @@ Use `errors.Is` to test these.
   `Options.Validate` returns it for a negative `MaxIterations`.
   `Run` never returns it; hitting `MaxIterations` at run time is a
   graceful `StopMaxIterations` stop, not an error.
+- `ErrMaxConcurrentTools` ("agentloop: MaxConcurrentTools must not be
+  negative") — `Options.Validate` returns it for a negative
+  `MaxConcurrentTools`.
 - `ErrMaxConsecutiveToolFailures` — `Options.Validate` returns it
   for a negative `MaxConsecutiveToolFailures`.
 - `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
@@ -360,8 +365,7 @@ progress. A bridge that guards each `Trigger` on `HasActiveCall`
 closes that loop.
 
 See [../plans/agentloop.md](../plans/agentloop.md)'s "Addendum:
-pull-based steer injector (commit d914611)" for the full mechanics
-and the four follow-up items.
+pull-based steer injector" section for the full mechanics.
 
 ## Argument validation
 
@@ -466,6 +470,24 @@ including an `ErrorPolicyReport` error report marked with
 outcome, independent of whether `ToolResult.Content` was replaced by
 shaping. A `PointPreTool` veto stops the turn before shaping considers
 any later call, unchanged from a run with `TurnResultBudget` at zero.
+
+## Concurrent tool dispatch
+
+A positive `Options.MaxConcurrentTools` fans one turn's tool calls out
+through a worker pool. Zero, the default, and one both mean serial
+dispatch: today's behavior.
+
+`executeCalls` runs every non-duplicate call serially when
+`MaxConcurrentTools` is below two or the turn has fewer than two
+calls. Otherwise it starts a pool of `MaxConcurrentTools` workers that
+pull the next pending call index from a shared counter and run it.
+Any worker's error or veto sets a shared abort flag; every worker
+checks that flag before pulling its next call and stops once set.
+
+Only dispatch overlap changes. `collectCalls` still walks the plans in
+`ToolCall.Index` order to build history, so history order, audit
+order, dedup semantics, and the veto short-circuit match the serial
+path exactly.
 
 ## Invariants
 

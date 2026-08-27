@@ -96,8 +96,8 @@ skips approval gating entirely, the same way `Registry.Run` does.
 
 `mcp` wraps the official MCP Go SDK's client rather than
 reimplementing MCP's JSON-RPC framing and transports from the standard
-library, the same tradeoff phase 10 made for `a2aclient` against
-`a2a-go`. Unlike `a2a`/`a2aclient`, `mcp` does not split into a
+library, the same tradeoff `a2aclient` makes against `a2a-go`. Unlike
+`a2a`/`a2aclient`, `mcp` does not split into a
 mapping leaf and a client: its tool mapping has no offline shape
 independent of a live `Client`, so a caller of the mapping already
 needs the SDK's dependency closure regardless of where the package

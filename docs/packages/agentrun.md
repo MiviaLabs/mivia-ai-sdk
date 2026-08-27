@@ -16,13 +16,15 @@ mirrors `api/agentrun.txt`.
   `Artifacts` each need `Tools`. `Ask` needs a non-empty `AskTo`.
 - `Runner` — the composed pipeline `New` returns. Build it with `New`;
   the fields stay unexported.
-- `Hooks` — the `hooks.Registry` gating the run: PointPreTool vetoes
-  before the tool, PointPostTool observes the confirmed ack; a veto fails the step,
+- `Options.Hooks` — a `*hooks.Registry`, defined by the `hooks`
+  package, that gates the run: PointPreTool vetoes before the tool,
+  PointPostTool observes the confirmed ack; a veto fails the step,
   PointStop reports the final status. The pre and post points fire
   only with `Tools`; the stop point fires with either resolver.
-- `Tracer` — the `trace.Tracer` opening a root span per run and a
-  child span per tool call, so a run's span tree reads after the run
-  through `Tracer.Spans`.
+- `Options.Tracer` — a `*trace.Tracer`, defined by the `trace`
+  package, that opens a root span per run and a child span per tool
+  call, so a run's span tree reads after the run through
+  `Tracer.Spans`.
 - `Artifacts` — a record of each gated step's tool result, keyed by step
   ID. A step repeated inside a loop overwrites the entry, so the bare ID
   holds the latest iteration's result. Every run also appends to a
@@ -98,9 +100,13 @@ Use `errors.Is` to test these.
   returns it when the resolved receiver signer is empty, whether from
   `Options.Receiver` or from `Options.Agent`. Pinned by
   `agentrun_test/options_test.go`.
-- `ErrArtifactsInconsistent` ("agentrun: artifacts values and run
-  history disagree") — `Validate` wraps it for either invariant
+- `ErrArtifactsInconsistent` ("agentrun: artifacts state is
+  inconsistent") — `Validate` wraps it for either invariant
   violation. Pinned by `agentrun_test/artifacts_wire_test.go`.
+- `ErrArgumentDecode` ("agentrun: tool arguments failed to decode") —
+  the built ack chain wraps it when the resolved step's tool is a
+  `tools.SchemaTool` and its `DecodeArguments` rejects the step's
+  payload bytes.
 
 `Runner.Run` also propagates two sentinels the `agent` package
 defines, through `errors.Is`: `agent.ErrNoThread`, when `threadID` is
@@ -127,8 +133,10 @@ escalates to a human. Pinned by `agentrun_test/options_test.go` and
   faults at run time: `machine.New` forbids the self row it needs.
 - The built ack chain resolves a step's tool by `step.ID`. A suffixed
   repeat, which agent.Run mints for a step confirmed twice, resolves
-  the plain tool name and records its artifact under the suffixed
-  ID. A non-string
+  the plain tool name and records its artifact under that same plain
+  name: `Artifacts.SetRun` keys `Get` and the latest value by the
+  plain name, and stores the suffixed message ID only inside that
+  step's `Run` history entry, in its `MessageID` field. A non-string
   result fails with `ErrResultNotText`, naming the tool. An empty-string
   result is a runtime fault from `envelope.NewAck`, not
   `ErrResultNotText`.

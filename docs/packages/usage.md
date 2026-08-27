@@ -9,8 +9,9 @@ surface below mirrors `api/usage.txt`.
 ## Types
 
 - `Accumulator` — one running `provider.Usage` total per session
-  identifier. Safe for concurrent use. The zero value is not usable;
-  create one with `New`.
+  identifier. Safe for concurrent use. The zero value is ready to
+  use; `New` returns the same result for convenience. `Record`
+  initializes the internal map on its first call.
 
 ## Functions and methods
 

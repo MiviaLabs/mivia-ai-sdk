@@ -316,8 +316,8 @@ already cloned per step.
 A wave forwards one record: the output of the panel's first member, in
 declaration order, chosen after every member finishes. The other
 members' transitions still ran; only their records are discarded. A
-caller whose panel members need their outputs merged cannot rely on
-this package yet.
+caller whose panel members need their outputs merged must merge them
+itself; flow forwards only the first member's record.
 
 ## Fallback and continue-on-failure
 

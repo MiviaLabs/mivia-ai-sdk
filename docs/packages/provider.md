@@ -25,8 +25,9 @@ below mirrors `api/provider.txt`.
   and `MaxTokens` (`*float64`/`*int`; nil means "use the completer's
   own default"), `ToolChoice`, `Timeout`, `SessionID`,
   `DisableProviderReplay`, `ReasoningEffort`, `ReasoningDialect`, and
-  `StreamingWriter` (`io.Writer`; nil changes no behavior; no code in
-  this SDK writes to it yet).
+  `StreamingWriter` (`io.Writer`; nil changes no behavior; no package
+  in this SDK writes to `StreamingWriter`; it is an opt-in field a
+  `Completer` implementation may use).
 - `ToolChoice` — controls whether and how a completion may call a
   tool. Constants: `ToolChoiceAuto`, `ToolChoiceNone`. The empty value
   means unspecified.
@@ -209,8 +210,8 @@ below.
 ## Wire contract
 
 `provider` defines no wire format. It carries in-process values only;
-no conformance vector applies. A future concrete client package owns
-its own wire conformance against the vendor API it calls.
+no conformance vector applies. A concrete `Completer` implementation
+owns its own wire conformance against the vendor API it calls.
 
 ## Usage
 

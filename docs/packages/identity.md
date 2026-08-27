@@ -34,10 +34,14 @@ exported surface below mirrors `api/identity.txt`.
 
 ## Invariants
 
-`Validate` enforces both rules below. Load and Sign call it first.
+`Validate` enforces the three rules below. Load and Sign call it
+first.
 
 - The private key is exactly `ed25519.PrivateKeySize` bytes.
 - The public key equals the seed-derived key.
+- The public key half embedded inside `PrivateKey[32:]` also equals
+  the seed-derived key. Pinned by
+  `identity_test/validate_split_brain_test.go`.
 
 A zero-value Identity fails `Validate`. `Signer` returns an empty
 string for a wrong-length private key; the length guard runs before
@@ -50,8 +54,9 @@ string for a wrong-length private key; the length guard runs before
   to the 64-byte private key. Pinned by
   `identity_test/new_test.go`.
 - `ErrKeyInvalid` ("identity key breaks an invariant") —
-  `Identity.Validate` wraps it when the private key length is wrong
-  or the public key does not match the seed-derived key.
+  `Identity.Validate` wraps it when the private key length is wrong,
+  the public key does not match the seed-derived key, or the public
+  key half embedded inside `PrivateKey[32:]` does not match it.
   `Identity.Sign` returns the same wrapped error, since it calls
   `Validate` first. Pinned by `identity_test/new_test.go` and
   `identity_test/validate_split_brain_test.go`.

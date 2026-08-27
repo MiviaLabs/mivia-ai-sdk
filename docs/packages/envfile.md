@@ -56,7 +56,8 @@ plain errors whose text carries no parsed value.
 ## Cross-references
 
 None. `envfile` declares no internal import edge and has no non-test
-caller inside this module yet. `LoadBytes` composes with `workspace`
+caller inside this module. See `policy/pending_wiring.json` for the
+tracked reason. `LoadBytes` composes with `workspace`
 without an import edge in either direction: the caller reads the bytes
 through a confined workspace and parses them here. That composed path
 is pinned by `workspace/workspace_test/secret_integration_test.go`.

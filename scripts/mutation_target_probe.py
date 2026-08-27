@@ -3,7 +3,7 @@
 The checks live here because check_mutation.py must stay under 500
 lines, the precedent scripts/mutation_process.py set. Every check runs
 against a throwaway Go module in a temp directory, never against the
-repo tree. See docs/plans/mutation.md."""
+repo tree."""
 import shutil
 import subprocess
 from pathlib import Path
@@ -21,7 +21,7 @@ FIXTURE_TIMEOUT_SECONDS = 60.0
 # module, so the real wait is this constant. Do not reuse
 # mutation_process_probe.PROBE_TIMEOUT_SECONDS: at 0.3 s the group dies
 # before either test binary writes its PID file, and the check then
-# reports a false survivor. See docs/plans/mutation.md.
+# reports a false survivor.
 HANG_TIMEOUT_SECONDS = 5.0
 
 PKG = "probepkg"

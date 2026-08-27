@@ -43,8 +43,8 @@ Use `errors.Is` to test these.
   and stores nothing; the store stays as it was before the call.
 - A `content` that fits evicts the oldest-inserted blobs, in
   insertion order, until the new blob fits within the budget, then
-  stores it. Eviction is by insertion order only, in this first
-  version; there is no eviction by use.
+  stores it. Eviction is by insertion order only; there is no eviction
+  by use.
 - Putting a `content` whose ref already exists overwrites the stored
   bytes and refreshes its insertion order to most-recent.
 - `Get` returns `ErrUnknownRef` for a ref the store does not hold. It
@@ -62,9 +62,9 @@ Use `errors.Is` to test these.
 content, and it does not know about `envelope.Message` or any other
 wire type. It reuses `envelope.ContextRef` for addressing, so a ref
 computed by `memory.Store.Put` is the same ref a caller would embed in
-`Message.ContextRefs`. Eviction by insertion order only keeps the
-first version simple; policy-based eviction and eviction by use are
-out of scope. See [../plans/memory.md](../plans/memory.md).
+`Message.ContextRefs`. Insertion-order eviction is the chosen policy;
+policy-based eviction and eviction by use are out of scope for this
+package. See [../plans/memory.md](../plans/memory.md).
 
 ## Cross-references
 

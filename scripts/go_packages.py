@@ -3,7 +3,7 @@
 sole enumerator, so a package at any depth is visible. Go decides what a
 package is: it drops `_`-prefixed and `.`-prefixed segments, testdata
 directories, and tag-excluded files. Each package is keyed by its path
-relative to the module root. See docs/plans/nested-package-visibility.md."""
+relative to the module root."""
 import contextlib
 import io
 import json

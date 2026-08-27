@@ -556,17 +556,20 @@ was already an allowed `agentloop` import. Its contract folded into
 docs/plans/agentloop.md's "Addendum: heartbeat and progress events"
 section; no standalone phase 83 plan file remains.
 
-Phases 85 and 86 are plan-only and not scheduled, reviewed and
-approved. A bug audit found two confirmed, reproducible defects with
-no test coverage: `longtermmemory` silently splits one scope into two
-buckets when a caller's `Scope` string carries stray whitespace (85),
-and `contextplan.Calibrated` pairs an `Observe` call against the wrong
-estimate under concurrent or multi-estimate use, corrupting its EWMA
-calibration factor with no crash and no race-detector flag (86).
-Neither phase depends on the other. Phase 86 needs a companion change
-to `agentloop` landed in the same commit, detailed in its own file.
-See docs/plans/agents/phase85_longtermmemory_scope_normalization.md
-and phase86_calibrated_observe_pairing_fix.md.
+Phase 85 is plan-only and not scheduled, reviewed and approved. A bug
+audit found a confirmed, reproducible defect with no test coverage:
+`longtermmemory` silently splits one scope into two buckets when a
+caller's `Scope` string carries stray whitespace. See
+docs/plans/agents/phase85_longtermmemory_scope_normalization.md.
+
+Phase 86 (`contextplan.Calibrated` observe/estimate pairing) has
+shipped. `Calibrated.Observe` now takes an explicit `estimated`
+argument alongside `actual`. No caller relies on `Calibrated`'s
+internal state to pair an estimate with an actual usage count.
+`agentloop`'s companion change calls `Observe` with the iteration's
+own estimate. Its contract is documented in
+docs/packages/contextplan.md; no standalone phase 86 plan file
+remains.
 
 ## Gate interactions
 

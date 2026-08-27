@@ -36,8 +36,9 @@ Outside:
 - `LoadBytes(data []byte) (map[string]string, error)`
 
 `Load` and `LoadBytes` are the only exported symbols. `LoadBytes`
-landed with `docs/plans/secrets.md`, which owns its reasoning: bytes
-are what `workspace.ReadFile` returns. `Load` reads the file and
+landed with the secret-path denial change (see
+`docs/packages/workspace.md`): bytes are what `workspace.ReadFile`
+returns. `Load` reads the file and
 delegates to `LoadBytes`, so the two share one parser and one error
 set. A leaf package needs no constructor or type: the map is the whole
 result.

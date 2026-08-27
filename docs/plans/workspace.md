@@ -18,10 +18,10 @@ This plan covers two changes, built in order:
   nothing in change one.
 - Change two, secret-path denial. Shipped. `secretpath` is wired into
   the `Workspace` through `Options.Deny`, and a denied path returns
-  `ErrSecretPath`. `docs/plans/secrets.md` owns the reasoning for
-  change two; this plan owns the resulting `workspace` surface. The
-  `envfile.LoadBytes` half of `docs/plans/secrets.md` also shipped, so
-  no part of that plan is deferred.
+  `ErrSecretPath`. `docs/packages/workspace.md`'s residual-risk section
+  owns the reasoning for change two; this plan owns the resulting
+  `workspace` surface. The `envfile.LoadBytes` half of the secret-path
+  denial change also shipped, so no part of it is deferred.
 
 ## Scope
 
@@ -238,7 +238,7 @@ security fix.
   options carry their own `Deny *secretpath.Matcher`, and their
   `Validate` rejects a nil one. The model-reachable path therefore
   fails closed, while the library primitive stays usable without a
-  policy. See `docs/plans/secrets.md`.
+  policy. See `docs/packages/workspace.md`.
 - `Unbounded` is a named constant, not a bool and not a bare negative
   number. A reader sees `MaxReadBytes: workspace.Unbounded` at the
   call site and needs no table to read it. A separate
@@ -272,7 +272,7 @@ error text only.
   remembered guard to a method body. `secretpath.Matcher.Matches` also
   becomes nil-safe in the same change, so the nil test is a
   walk-skipping optimization, not the last line between the package
-  and a panic. See `docs/plans/secrets.md`.
+  and a panic. See `docs/packages/workspace.md`.
 
 The symlink walk:
 
@@ -354,8 +354,8 @@ Precedence, pinned rows:
   policy picks which. With a nil `Deny` it reports `ErrEscape`, from
   inside `os.Root`. With `Deny` set it reports `ErrSecretPath`,
   because the walk refuses the link before `os.Root` sees it. This is
-  the one row the walk turns over. `docs/plans/secrets.md` states the
-  same two cases and pins them in one test.
+  the one row the walk turns over. `workspace/workspace_test/secret_test.go`
+  pins both cases in one test.
 - A dangling symlink follows that same rule, through a different
   mechanism. With a nil `Deny` it reports `fs.ErrNotExist`. With
   `Deny` set it reports `ErrSecretPath`, because the walk refuses any
@@ -423,7 +423,7 @@ edit it.
   caller.
 - Exposing `os.Root.FS()`. A raw `fs.FS` would bypass the change-two
   `Deny` policy, so the package keeps one policy point and exposes
-  no `fs.FS`. See `docs/plans/secrets.md`.
+  no `fs.FS`. See `docs/packages/workspace.md`.
 - A `Workspace` is not safe against a hostile root directory. Quoting
   the `os.Root` documentation: it "does not prohibit traversal of
   filesystem boundaries, Linux bind mounts, /proc special files, or
@@ -432,14 +432,14 @@ edit it.
   package. `os.Root` closes the check-then-use gap. It does not make
   the package safe against a root an attacker prepared.
 - The `Deny` matcher is a name policy, not a content policy. See the
-  residual-risk list in `docs/plans/secrets.md`.
+  residual-risk list in `docs/packages/workspace.md`.
 - Hard-link detection. A hard link carries no distinguishing mode bit,
   so the symlink walk cannot see it. Measured: `os.Link` from
   `secrets/key.pem` to `innocent.txt` leaves the walk permitting, and
-  the read returns the secret. `docs/plans/secrets.md` records the
-  scope and the reason.
+  the read returns the secret. `docs/packages/workspace.md` records
+  the scope and the reason.
 - Resolving a link and re-matching its target. Rejected; see
-  `docs/plans/secrets.md`.
+  `docs/packages/workspace.md`.
 - Case folding and Unicode normalization in the matcher. `Matches`
   goes through `path.Match`, which is byte-exact. A case-insensitive
   filesystem, such as the default on darwin or windows, opens the same
@@ -447,7 +447,7 @@ edit it.
   A normalizing filesystem does the same across NFC and NFD spellings.
   Change two adds no per-platform folding: that behavior belongs to
   `secretpath` and needs its own plan. The gap is recorded as a
-  residual risk in `docs/plans/secrets.md`.
+  residual risk in `docs/packages/workspace.md`.
 - A defense against a concurrent attacker on the symlink walk. See
   "The deny check".
 - A labelled `ErrEscape` under a concurrent attacker. A deterministic
@@ -532,7 +532,7 @@ Surface added by change two:
 
 `Options` and `OpenWith` land in commit B, because the read bound
 needs a place to live at open time. Change two then adds one field and
-one sentinel to a struct that already exists. `docs/plans/secrets.md`
+one sentinel to a struct that already exists. `docs/packages/workspace.md`
 states the same split.
 
 Change two's lock delta is exactly two lines in `api/workspace.txt`:
@@ -841,9 +841,8 @@ size is exact.
 - `TestEscapeBeatsLimit`: `ReadFile("../outside.txt")` on a
   1-byte-limited workspace returns `ErrEscape`, not `ErrTooLarge`.
 - Change-two `Options.Validate`, deny, and symlink-walk cases live in
-  `workspace/workspace_test/secret_test.go`. See
-  `docs/plans/secrets.md`; do not duplicate them here.
-  `TestSecretPathBeatsLimit` stays in this file, because it is a
+  `workspace/workspace_test/secret_test.go`; do not duplicate them
+  here. `TestSecretPathBeatsLimit` stays in this file, because it is a
   precedence case against the bound.
 
 ### New file `workspace/workspace_test/confine_integration_test.go` (commit A)
@@ -994,7 +993,7 @@ Change two only:
 - `AGENTS.md`'s `workspace` entry drops "A leaf package; no internal
   imports", names the `secretpath` import, and lists `ErrSecretPath`.
 - `secretpath.Matcher.Matches` becomes nil-safe in the same change.
-  See `docs/plans/secrets.md`. `api/secretpath.txt` does not change.
+  `api/secretpath.txt` does not change.
 - Coverage for `workspace` and `secretpath` each stay at or above the
   85 percent floor.
 - `workspace` holds a mutation-kill floor of 96, in

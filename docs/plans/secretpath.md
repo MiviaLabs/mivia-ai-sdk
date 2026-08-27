@@ -250,8 +250,8 @@ index is out of range.
   `Workspace` as a deny policy, through `Options.Deny`. That wiring
   is not built yet. This fix must land before it, so the fail-open
   hole does not reach the file tools.
-- `docs/plans/secrets.md` states a `secretpath` delta of none. That
-  stays true, because the exported surface is unchanged.
+- The secret-path denial change carries a `secretpath` delta of none.
+  That stays true, because the exported surface is unchanged.
 
 ## Verification
 

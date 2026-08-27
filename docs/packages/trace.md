@@ -81,11 +81,11 @@ plus first bucket). This holds the pinned three-allocation budget
 for `Start` plus one `SetAttribute` plus `End`. `Attributes` still
 returns a `map[string]string`.
 
-`trace` imports no `events` bus and defines no exporter or sampling
-policy. The packages that would emit span events are later
-integration targets, the same no-caller posture `tools` and
-`trigger` shipped with. See [../plans/trace.md](../plans/trace.md)
-for the full design rationale.
+`trace` imports no `events` bus and defines no exporter, sampling
+policy, or event emitter. A caller wanting span events builds that
+integration outside this package. See
+[../plans/trace.md](../plans/trace.md) for the full design
+rationale.
 
 ## Wire contract
 

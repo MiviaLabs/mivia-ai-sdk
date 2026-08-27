@@ -9,8 +9,8 @@ for a package at any depth. Both are top-level only today.
 
 This plan is not scheduled. It lands after two other changes:
 
-- `docs/plans/nested-package-visibility.md`, which supplies the
-  enumeration helper.
+- `scripts/go_packages.py`'s package-enumeration helper, already
+  shipped.
 - The concurrent change already in flight against
   `scripts/check_mutation.py`. That change touches the subprocess and
   timeout region at lines 166 to 205 and adds argparse flags at lines

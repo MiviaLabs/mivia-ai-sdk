@@ -73,12 +73,12 @@ Use `errors.Is` to test these.
 
 `Condition` matches `machine.Guard`'s exact signature. `trigger`
 reuses it rather than inventing a new predicate shape. `Action`'s
-signature is chosen to match a planned scheduler package's job shape
-(not yet shipped in this module), so the two stay interchangeable with
-no adapter once that package lands. `trigger` declines an import edge
-to `channel` and `events`, and will decline one to the future
-scheduler package too: composition with each happens in one line of
-caller code, not inside this package. See
+signature, `func(ctx context.Context) error`, matches
+`scheduler.Job`'s signature exactly, so the two are interchangeable
+with no adapter. `trigger` declares no internal import edge in
+`policy/layers.json`: it imports none of `channel`, `events`, or
+`scheduler`. Composition with each happens in one line of caller
+code, not inside this package. See
 [../plans/trigger.md](../plans/trigger.md) for the full design
 rationale.
 

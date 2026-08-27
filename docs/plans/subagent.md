@@ -699,11 +699,6 @@ In `subagent/subagent_test/filetools_test.go`:
   `ErrDenyRequired`, and the five tools' new signatures in the same
   change as the code, following `docs/plans/TEMPLATE.md`'s
   API-surface discipline.
-- `docs/plans/secrets.md`'s "Phase 71 owns the tool surface" section
-  is corrected in the same change to match this addendum: the
-  `envfile.LoadBytes` term is marked dropped, not met, with the
-  reasoning "Envfile" in `docs/plans/agents/phase71_filetools.md`
-  states.
 
 ### Gap fix: workspace list and stat results as a string
 

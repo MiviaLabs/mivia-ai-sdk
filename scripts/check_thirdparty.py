@@ -2,7 +2,7 @@
 """Gate: the SDK is standard library only. policy/thirdparty.json names
 the packages allowed a direct exception, the modules each may import,
 and the build tag (if any) an exception needs. This gate is the one
-site that owns third-party truth; see docs/plans/thirdparty.md.
+site that owns third-party truth.
 
 Seven checks: per-package imports, a residual raw-text scan for files
 no `go list` pass attributes, policy shape, go.mod direct-require

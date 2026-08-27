@@ -130,8 +130,8 @@ with no caller yet" section, the same caller that will wire a
 
 `ExecutionProfile.Timeout` left this trio. The registry now enforces
 it: every `Run` and `RunScoped` dispatch carries a per-call deadline.
-See docs/packages/tools.md's "Run timeout backstop" section, and
-docs/plans/tools-run-backstop.md for the plan that added it.
+See docs/packages/tools.md's "Run timeout backstop" section for the
+run-timeout backstop this package enforces.
 
 ## API
 

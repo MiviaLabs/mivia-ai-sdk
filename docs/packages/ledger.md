@@ -264,7 +264,8 @@ the `ledger_sqlite` build tag: a caller who imports `ledger` for
 ```go
 l, err := ledger.New(nil, nil) // nil Store defaults to MemStore
 if err != nil {
-    // New has no error path today; still check it
+    // New returns (*Ledger, error) for interface consistency with
+    // other constructors; check err by convention.
 }
 ctx := context.Background()
 now := time.Now()

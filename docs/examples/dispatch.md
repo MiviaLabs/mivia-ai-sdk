@@ -34,17 +34,22 @@ if err != nil {
 	return fmt.Errorf("build room: %w", err)
 }
 
+resolve := func(ctx context.Context, m envelope.Message) (dispatch.Handler, error) {
+	return restater{}, nil
+}
+
 endpoint, err := dispatch.New(dispatch.Options{
-	ID:   "support-agent",
-	Room: r,
-	Resolve: func(ctx context.Context, m envelope.Message) (dispatch.Handler, error) {
-		return restater{}, nil
-	},
+	ID:      "support-agent",
+	Room:    r,
+	Resolve: resolve,
 })
 if err != nil {
 	return fmt.Errorf("build endpoint: %w", err)
 }
 ```
+
+The rest of this walkthrough reuses the same `resolve` variable. It never
+redefines it.
 
 Size `Options.ReplayLease` above `Handler.Handle`'s expected p99
 latency. `taskrun.Run` claims the replay key once, then calls `Handle`

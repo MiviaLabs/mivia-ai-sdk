@@ -2,12 +2,13 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, a2aclient, a2aack, dispatch,
-tools, contextbudget, mcp, ledger, durablefence, memory, provider,
-contextplan, channel, trigger, trace, skills, scheduler, agent,
-agentrun, subagent, taskrun, e2e, envfile, secretpath, workspace,
-spool, contextsummary, and longtermmemory. Each package
-covers one concern and composes through its exported API.
+heartbeat, identity, discovery, a2a, a2aclient, a2aack, a2aloopback,
+dispatch, tools, hooks, contextbudget, contextstate, schema, mcp,
+ledger, durablefence, memory, provider, providerregistry, toolcallctx,
+usage, contextplan, channel, trigger, trace, skills, scheduler, agent,
+agentrun, agentloop, runconfig, subagent, taskrun, e2e, envfile,
+secretpath, workspace, spool, contextsummary, and longtermmemory. Each
+package covers one concern and composes through its exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
 
@@ -71,11 +72,15 @@ into a `tools.Registry` through `subagent`:
 - [packages/spool.md](packages/spool.md) — the principal-scoped grant store for oversized content: a bounded view, a reference, and `SpoolTool` for wrapping any tool.
 - [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
 - [packages/contextstate.md](packages/contextstate.md) — the durable context contract and the canonical content-reference minter: sessions, checkpoints, commit validation, retention classes, volume `Limits`, and the in-memory store.
+- [packages/schema.md](packages/schema.md) — the JSON Schema compile/validate/corrective-message primitive: `Compile` admits and compiles a schema, `Validate` checks a payload against it, and `Corrective` renders a bounded, model-facing correction message.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
 - [packages/durablefence.md](packages/durablefence.md) — a leaf, test-only conformance kit that proves claim, takeover, and fence invariants against any implementation.
+- [packages/a2aloopback.md](packages/a2aloopback.md) — a leaf, test-only gRPC A2A server fixture: `Loopback` completes every task with a freshly signed envelope restating the request payload.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, the request and response types, and the reasoning vocabulary.
+- [packages/toolcallctx.md](packages/toolcallctx.md) — the tool-call context carrier: `WithToolCall` attaches a `provider.ToolCall` to a `context.Context`, and `ToolCallFromContext` reads it back.
+- [packages/usage.md](packages/usage.md) — the per-session usage accounting package: `Record` sums one `provider.Usage` call onto a running total keyed by session id, and `Total` reads the current sum.
 - [packages/contextplan.md](packages/contextplan.md) — fits one durable session into a bounded provider request: a token `Window`, per-payload elision decisions, and an EWMA-calibrated token estimator.
 - [packages/contextsummary.md](packages/contextsummary.md) — the LLM summarizer for compaction: one bounded `provider.Completer` call turns dropped messages into one validated, bounded `Summary`, injected as a named user message.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
@@ -88,6 +93,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
 - [packages/e2e.md](packages/e2e.md) — the end-to-end scenario suite: real high-level blocks wired together, one full run per scenario, outputs asserted across the handoffs.
 - [packages/subagent.md](packages/subagent.md) — the SDK's blocks as tools: a runner becomes a spawnable subagent, `RunAll` runs several at once, internal tools expose the blocks, and a signed-message mailbox carries both directions.
+- [packages/runconfig.md](packages/runconfig.md) — the JSON-document loader that binds a step graph to `agentrun.Options`: parse, validate, and wire a flow, its machine, its tools, and its subagents from one config file.
 - [packages/envfile.md](packages/envfile.md) — dotenv loading: `Load` and `LoadBytes` parse `KEY=VALUE` lines into a map without leaking values into errors.
 - [packages/secretpath.md](packages/secretpath.md) — glob-style secret path matching: a `Matcher` reports whether a path matches a configured pattern list.
 - [packages/workspace.md](packages/workspace.md) — filesystem confinement: `Open` binds a handle to a root directory and rejects traversal or symlink escapes.

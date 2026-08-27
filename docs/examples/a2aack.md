@@ -7,6 +7,12 @@ becomes the confirmed ack's restatement.
 
 ## The shape
 
+The code blocks below are illustrative fragments, not a complete program.
+They reference `ag`, `threadID`, `machineDef`, `start`, and `bus` without
+defining them. Adapt the shown pieces into your own program alongside a
+real `agent.Agent`, thread ID, `machine.Definition`, start step, and
+`events.Bus`.
+
 `a2aclient.Client` already sends a signed message, polls task state,
 and fetches the result. `a2aack` closes the loop with the composition
 layer. `Wait` depends on the minimal `Remote` interface, so

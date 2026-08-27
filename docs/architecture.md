@@ -86,7 +86,9 @@ flowchart LR
     dispatch --> agent
     dispatch --> envelope
     dispatch --> events
+    dispatch --> ledger
     dispatch --> room
+    dispatch --> taskrun
     agentrun --> agent
     agentrun --> channel
     agentrun --> contextbudget
@@ -327,8 +329,8 @@ flowchart LR
   return never fails a line. `Send` posts a batch of signed messages
   as one NDJSON request and parses the reply into one `SendResult` per
   line, in order. `dispatch` imports `agent`, `envelope`, `events`,
-  and `room`; it carries no third-party or network-transport import
-  beyond the standard library `net/http`. See
+  `ledger`, `room`, and `taskrun`; it carries no third-party or
+  network-transport import beyond the standard library `net/http`. See
   [packages/dispatch.md](packages/dispatch.md).
 - `agentrun/` — the config-struct composition layer over `agent.Run`.
   See [packages/agentrun.md](packages/agentrun.md).
@@ -918,6 +920,24 @@ in the pre-commit hook.
   suppression markers, no drift markers.
 - `.githooks/pre-commit` — runs `make verify-fast` on the staged
   snapshot. The worktree never leaks into the commit.
+
+A security review of `scripts/agent_hook_guard.py` found one
+uncorrected false positive: the guard does not scan a `git commit -F
+-` heredoc body for bypass flags. `bypass_text` strips `-m` and
+`--message` values before the scan, but it does not strip a heredoc
+body, so a heredoc that names a bypass flag in prose, or that
+contains an apostrophe, can trip the guard even when it carries no
+real bypass. Two workarounds need no guard change: pass the message
+with `-m` instead of a heredoc, or write the message to a file and
+run `git commit -F <path>` instead of `git commit -F -`. Stripping a
+heredoc body before the scan runs into an unparseable-body-extent
+problem: when two heredoc operators appear on one line, one accepted
+and one rejected, the rejected operator's un-stripped body is
+silently swallowed by the accepted operator's terminator search, so a
+general fix is not available. One narrower mitigation is available
+but unreviewed: skip the bypass scan when the whole command is a
+single simple shell segment, with no `;`, `|`, `&`, `>`, and no
+second `<<`.
 
 `make verify-fast` runs gofmt, vet, one test pass, the python gates,
 the semgrep scan, and the suppression-marker scan. `make verify` runs

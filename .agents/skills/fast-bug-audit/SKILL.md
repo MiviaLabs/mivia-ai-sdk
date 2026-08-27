@@ -1,12 +1,6 @@
 ---
 name: fast-bug-audit
-description: >-
-  Fast, opportunistic hunt for a small number of confirmed, reachable
-  bugs. Read-only. Trades exhaustive coverage for speed. Trigger when
-  the user wants a quick bug check, a couple of confident findings, or
-  asks to "scan for obvious bugs" without a full review. Use the
-  review or logic-review skill for the exhaustive, adversarial audit.
-  Not for implementation.
+description: Fast, opportunistic hunt for a small number of confirmed, reachable bugs. Read-only. Trades exhaustive coverage for speed. Trigger when the user wants a quick bug check, a couple of confident findings, or asks to "scan for obvious bugs" without a full review. Use the review or logic-review skill for the exhaustive, adversarial audit. Not for implementation.
 ---
 
 # Fast bug audit

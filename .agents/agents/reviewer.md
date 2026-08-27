@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Adversarial review of the implementation AFTER the builder finishes. Confirmed bugs only, checked against the plan and the gates. Read-only; returns SHIP or FIX with findings.
-tools: Read, Glob, Grep, Bash
+tools: [read_file, glob, grep, run_command]
 skills: [review, test-review]
 ---
 

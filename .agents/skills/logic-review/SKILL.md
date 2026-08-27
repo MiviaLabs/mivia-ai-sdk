@@ -1,13 +1,6 @@
 ---
 name: logic-review
-description: >-
-  Review the logic inside one Go function and the logic of the tests
-  that cover it. Trigger when the user asks to review a method or a
-  function, to check that specific logic is correct, to trace or walk
-  branches, paths, or edge cases, to review test logic, or asks
-  whether the tests would catch a bug in a given function. Use it for
-  line-level correctness. Use the review skill for the full gate
-  pass. Use the test-review skill for a package suite audit.
+description: Review the logic inside one Go function and the logic of the tests that cover it. Trigger when the user asks to review a method or a function, to check that specific logic is correct, to trace or walk branches, paths, or edge cases, to review test logic, or asks whether the tests would catch a bug in a given function. Use it for line-level correctness. Use the review skill for the full gate pass. Use the test-review skill for a package suite audit.
 ---
 
 # Logic review

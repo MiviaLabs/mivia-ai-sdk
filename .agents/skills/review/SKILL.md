@@ -1,12 +1,6 @@
 ---
 name: review
-description: >-
-  Run the deep adversarial review of code in this repo. Trigger whenever
-  the user types "review", "audit", or asks to deep-review, adversarially
-  review, or verify that a change is correct and its gates are intact.
-  This skill owns the full pass: make verify, race, fuzz, the reviewer
-  agent, and the gate-integrity audit. Use it instead of a skim. It
-  covers gate integrity, doc truth, and plan drift.
+description: Run the deep adversarial review of code in this repo. Trigger whenever the user types "review", "audit", or asks to deep-review, adversarially review, or verify that a change is correct and its gates are intact. This skill owns the full pass: make verify, race, fuzz, the reviewer agent, and the gate-integrity audit. Use it instead of a skim. It covers gate integrity, doc truth, and plan drift.
 ---
 
 # Review

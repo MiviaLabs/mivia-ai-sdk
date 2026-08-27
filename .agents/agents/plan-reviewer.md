@@ -1,7 +1,7 @@
 ---
 name: plan-reviewer
 description: Hostile review of a plan BEFORE code is written. Use after the planner finishes and before the builder starts. Read-only; returns APPROVE or REVISE with findings.
-tools: Read, Glob, Grep, Bash
+tools: [read_file, glob, grep, run_command]
 skills: [architect]
 ---
 

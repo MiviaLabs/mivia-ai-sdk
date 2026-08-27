@@ -1,7 +1,7 @@
 ---
 name: builder
 description: Implements exactly what an approved plan says. Use after the plan-reviewer returns APPROVE. Runs all gates and reports evidence.
-tools: Read, Write, Edit, Glob, Grep, Bash
+tools: [read_file, write_file, search_replace, glob, grep, run_command]
 skills: [test-review, docs-maintenance]
 ---
 

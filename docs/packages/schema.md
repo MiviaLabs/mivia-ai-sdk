@@ -101,8 +101,9 @@ Use `errors.Is` to test these, except where noted.
   decoder.
 - `Corrective` never reads a `*jsonschema.ValidationError`'s
   `Got`/instance-value fields. It reads only the schema-derived
-  `KeywordPath`, the structural `InstanceLocation`, and
-  `kind.Required`'s declared `Missing` field names. The payload's
+  `KeywordPath`, the structural `InstanceLocation`,
+  `kind.Required`'s declared `Missing` field names, and
+  `kind.AdditionalProperties`'s disallowed property names. The payload's
   actual failing value never reaches the rendered message.
 - `Corrective`'s truncation never splits a UTF-8 rune: it walks
   backward from the byte cap, dropping incomplete trailing rune bytes.

@@ -41,8 +41,9 @@ func Corrective(err error) string {
 
 // summarizeFailures renders every leaf validation failure in verr as
 // "<kind> at <instance path>", joined by "; ". It reads only the
-// schema-derived KeywordPath and the structural InstanceLocation, and
-// kind.Required's schema-declared Missing field names; it never reads
+// schema-derived KeywordPath and the structural InstanceLocation,
+// kind.Required's schema-declared Missing field names, and
+// kind.AdditionalProperties's Properties field names; it never reads
 // an ErrorKind's Got/instance-value fields.
 func summarizeFailures(verr *jsonschema.ValidationError) string {
 	return strings.Join(leafFailures(verr, nil), "; ")
@@ -65,6 +66,9 @@ func describeFailure(e *jsonschema.ValidationError) string {
 	path := instancePath(e.InstanceLocation)
 	if req, ok := e.ErrorKind.(*kind.Required); ok {
 		return "missing required " + strings.Join(req.Missing, ", ") + " at " + path
+	}
+	if add, ok := e.ErrorKind.(*kind.AdditionalProperties); ok {
+		return "additionalProperties " + strings.Join(add.Properties, ", ") + " not allowed at " + path
 	}
 	return keywordName(e.ErrorKind) + " mismatch at " + path
 }

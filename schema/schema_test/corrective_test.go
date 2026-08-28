@@ -248,3 +248,94 @@ func tail(s string) string {
 	}
 	return s[len(s)-window:]
 }
+
+func TestCorrectiveAdditionalPropertiesFormatting(t *testing.T) {
+	t.Run("single additional property at root", func(t *testing.T) {
+		doc := `{
+			"type": "object",
+			"properties": {"name": {"type": "string"}},
+			"additionalProperties": false
+		}`
+		c := compileFixture(t, doc)
+		err := c.Validate([]byte(`{"name": "alice", "extra": 123}`))
+		if !errors.Is(err, schema.ErrValidation) {
+			t.Fatalf("Validate: got %v, want ErrValidation", err)
+		}
+		got := schema.Corrective(err)
+		want := "additionalProperties extra not allowed at /"
+		if got != want {
+			t.Fatalf("Corrective(err) = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("nested additional property", func(t *testing.T) {
+		doc := `{
+			"type": "object",
+			"properties": {
+				"config": {
+					"type": "object",
+					"properties": {"enabled": {"type": "boolean"}},
+					"additionalProperties": false
+				}
+			}
+		}`
+		c := compileFixture(t, doc)
+		err := c.Validate([]byte(`{"config": {"enabled": true, "unknown": "value"}}`))
+		if !errors.Is(err, schema.ErrValidation) {
+			t.Fatalf("Validate: got %v, want ErrValidation", err)
+		}
+		got := schema.Corrective(err)
+		want := "additionalProperties unknown not allowed at /config"
+		if got != want {
+			t.Fatalf("Corrective(err) = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestCorrectiveAdditionalPropertiesNeverEmbedsInstanceValue(t *testing.T) {
+	doc := `{
+		"type": "object",
+		"properties": {"name": {"type": "string"}},
+		"additionalProperties": false
+	}`
+	c := compileFixture(t, doc)
+	const secretVal = "attacker_controlled_leak_payload_12345"
+	err := c.Validate([]byte(`{"name": "alice", "disallowed_field": "` + secretVal + `"}`))
+	if err == nil {
+		t.Fatal("Validate: want ErrValidation, got nil")
+	}
+	corrective := schema.Corrective(err)
+	if strings.Contains(corrective, secretVal) {
+		t.Fatalf("Corrective(err) leaked the instance value: %q", corrective)
+	}
+	if !strings.Contains(corrective, "additionalProperties disallowed_field not allowed at /") {
+		t.Fatalf("Corrective(err) = %q, want it to name the disallowed field", corrective)
+	}
+}
+
+func TestCorrectiveAdditionalPropertiesTruncatesAtRuneBoundary(t *testing.T) {
+	longPropName := strings.Repeat("é", 600)
+	doc := `{
+		"type": "object",
+		"properties": {"name": {"type": "string"}},
+		"additionalProperties": false
+	}`
+	c := compileFixture(t, doc)
+	err := c.Validate([]byte(`{"name": "alice", "` + longPropName + `": true}`))
+	if !errors.Is(err, schema.ErrValidation) {
+		t.Fatalf("Validate: got %v, want ErrValidation", err)
+	}
+	corrective := schema.Corrective(err)
+	if len(corrective) == 0 {
+		t.Fatal("Corrective(err) is empty")
+	}
+	if len(corrective) > schema.MaxCorrectiveBytes {
+		t.Fatalf("Corrective(err) is %d bytes, over MaxCorrectiveBytes (%d)", len(corrective), schema.MaxCorrectiveBytes)
+	}
+	if !utf8.ValidString(corrective) {
+		t.Fatalf("Corrective(err) split a UTF-8 rune: %q", corrective)
+	}
+	if !strings.HasPrefix(corrective, "additionalProperties ") {
+		t.Fatalf("Corrective(err) prefix = %q, want prefix 'additionalProperties '", corrective)
+	}
+}

@@ -69,7 +69,22 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 		return history, false, false, err
 	}
 	plans := l.planCalls(ordered)
-	results := l.executeCalls(ctx, plans, iteration, surface)
+	// The batch's dispatch ledger is fixed here, serially, BEFORE any worker
+	// starts: the exact provider indices executeCalls will hand to workers.
+	// Tools that order shared per-turn work by call index read it from ctx
+	// and wait exactly on dispatched predecessors; executeCalls guarantees
+	// every dispatched index settles exactly once (run return, rejection, or
+	// abort abandonment), so an unsettled predecessor is never a permanent
+	// hole.
+	dispatched := make([]int, 0, len(plans))
+	for _, p := range plans {
+		if !p.duplicate {
+			dispatched = append(dispatched, p.call.Index)
+		}
+	}
+	order := toolcallctx.NewBatchOrder(dispatched)
+	ctx = toolcallctx.WithBatchOrder(ctx, order)
+	results := l.executeCalls(ctx, order, plans, iteration, surface)
 	return l.collectCalls(ctx, history, plans, results, iteration)
 }
 
@@ -118,7 +133,15 @@ type callOutcome struct {
 // when l.maxConcurrent < 2 and through a worker pool of size
 // l.maxConcurrent otherwise. Dispatch overlap is the only difference
 // between the two paths: per-call semantics are runOneToolCall's own.
-func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int, surface runSurface) []callOutcome {
+//
+// Settlement contract (toolcallctx.BatchOrder): every dispatched index
+// settles exactly once - when its run returns (success, a reported
+// error, or a pre-tool rejection inside runOneToolCall), or at
+// abandonment when an abort stops the batch before the call runs. A
+// worker that observes the abort AFTER claiming an index settles that
+// index itself, so no dispatched index is ever left permanently
+// unsettled while another worker's tool waits on it.
+func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, plans []callPlan, iteration int, surface runSurface) []callOutcome {
 	outcomes := make([]callOutcome, len(plans))
 	idx := make([]int, 0, len(plans))
 	for i, p := range plans {
@@ -128,15 +151,19 @@ func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int
 	}
 	var aborted atomic.Bool
 	run := func(i int) {
+		defer order.Settle(plans[i].call.Index)
 		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration, surface)
 		if outcomes[i].err != nil || outcomes[i].veto {
 			aborted.Store(true)
 		}
 	}
 	if l.maxConcurrent < 2 || len(idx) < 2 {
-		for _, i := range idx {
+		for k, i := range idx {
 			run(i)
 			if aborted.Load() {
+				for _, rest := range idx[k+1:] {
+					order.Settle(plans[rest].call.Index)
+				}
 				break
 			}
 		}
@@ -149,12 +176,13 @@ func (l *Loop) executeCalls(ctx context.Context, plans []callPlan, iteration int
 		go func() {
 			defer wg.Done()
 			for {
-				if aborted.Load() {
-					return
-				}
 				n := int(next.Add(1)) - 1
 				if n >= len(idx) {
 					return
+				}
+				if aborted.Load() {
+					order.Settle(plans[idx[n]].call.Index)
+					continue
 				}
 				run(idx[n])
 			}

@@ -1,3 +1,13 @@
 package toolcallctx
+  func (b *BatchOrder) Changed() (<-chan struct{})
+  func (b *BatchOrder) Dispatched() ([]int)
+  func (b *BatchOrder) Settle(index int)
+  func (b *BatchOrder) Settled(index int) (bool)
+  func (b *BatchOrder) UnsettledBefore(limit int) (bool)
+  func BatchOrderFromContext(ctx context.Context) (*BatchOrder, bool)
+  func NewBatchOrder(dispatched []int) (*BatchOrder)
   func ToolCallFromContext(ctx context.Context) (provider.ToolCall, bool)
+  func WithBatchOrder(ctx context.Context, order *BatchOrder) (context.Context)
   func WithToolCall(ctx context.Context, call provider.ToolCall) (context.Context)
+  type BatchOrder struct {
+}

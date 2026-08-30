@@ -3710,5 +3710,421 @@ Exported symbols added to `api/agentloop.txt`:
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_prose.py` passes.
 
+## Addendum: a stop-decision hook
 
+Let a caller observe a graceful stop and continue the run from inside
+the loop.
 
+### Addendum goal
+
+The loop decides on its own when to stop. A caller injects messages
+before an iteration through `Steer.SetInjector`. A caller asks the loop
+to wind down through `ConcludeMargin` and `ConcludeNotice`. No seam lets
+a caller read the response that ended the run and continue from it.
+
+`runToolStage` holds the whole picture at the moment it stops. It holds
+the assistant message, an empty tool-call list, and the iteration count.
+It turns that into `StopNoToolCalls`, `StopEmptyResponse`, or
+`StopConcluded` and returns. The caller receives a finished `Result`
+with no way back in.
+
+A host that wants to continue such a turn runs a second loop over a
+longer message list. A second loop resets state this package owns.
+`Trim` re-runs over the whole history, so a long turn pays preparation
+twice. `MaxTotalTokens` and the internal running token count restart, so
+a per-turn ceiling becomes a per-attempt ceiling.
+
+The case for the hook rests on three points. It offers
+observe-then-decide at a stop point, which no existing seam offers. It
+collapses a host's two re-run sites into one loop. It removes the
+re-preparation cost, because a continuation stays inside the run.
+
+`Steer.SetInjector` does not cover the case. The loop drains it at the
+top of an iteration and at a steered-stop downgrade. Both points come
+before the response exists. A caller cannot decide to continue from
+evidence it has not seen.
+
+`ConcludeMargin`, `ConcludeNotice`, and `StopConcluded` do not cover it
+either. The nudge fires on proximity to a bound, not on what the model
+did. The notice pushes the model toward a final answer. That is the
+opposite operation.
+
+### Addendum scope
+
+Inside:
+
+- `Options.ContinueOnStop`, one optional hook.
+- `StopDecision`, the evidence the loop had when it decided to stop.
+- The three graceful stop sites in `runToolStage`.
+- `safeContinue`, the panic wrapper that fails the run closed.
+- The two file moves the structure gate forces.
+
+Outside:
+
+- Any judgement about when to continue. The loop offers the decision
+  point; the policy belongs to the caller.
+- Natural-language patterns. This package must not read a model's prose
+  to decide anything.
+- Any change to `Steer`, `ConcludeMargin`, `ConcludeNotice`, or
+  `StopConcluded`. Each keeps its current meaning.
+- The consuming migration in `mivia-agent`, which is a separate
+  repository.
+
+### Addendum API
+
+Exported symbols added to `api/agentloop.txt`:
+
+- `ContinueOnStop` field on `Options`, declared last in the struct.
+- `StopDecision` struct with `Stop`, `Message`, `ToolCalls`,
+  `Iterations`, and `History` fields.
+
+No existing symbol changes. A caller that leaves `ContinueOnStop` nil
+gets the current behavior unchanged. The change is additive and needs no
+major version.
+
+`Options.Validate` gains no case. A function field carries no invariant
+to enforce, so no new sentinel error enters the package.
+
+Declare the field last in `Options`, after `ToolBudget`, so the lock
+diff stays a pure append:
+
+```go
+// ContinueOnStop is consulted when the loop is about to stop
+// gracefully. A non-empty return appends those messages to the run
+// history and continues the loop. A nil or empty return stops the run
+// unchanged. A nil hook changes no behavior. Runs on the loop
+// goroutine, like Surface; a panic fails the run closed. A
+// continuation is an ordinary iteration and obeys every bound the
+// loop owns. The loop adds no bound of its own for this hook: a
+// caller that sets neither MaxIterations nor MaxTotalTokens and
+// always returns messages gets an unbounded run. That is the
+// caller's choice. See docs/plans/agentloop.md.
+ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
+```
+
+Declare `StopDecision` in the new `agentloop/stop.go`:
+
+```go
+// StopDecision is the evidence the loop had when it decided to stop.
+// Consulted only on a graceful stop; see Options.ContinueOnStop.
+type StopDecision struct {
+	// Stop is the graceful reason the loop picked.
+	Stop StopReason
+	// Message is the assistant turn that ended the run.
+	Message provider.Message
+	// ToolCalls is the response's tool-call list, empty at every
+	// call site the loop consults the hook from.
+	ToolCalls []provider.ToolCall
+	// Iterations counts the Completer calls that completed.
+	Iterations int
+	// History carries every message appended so far.
+	History []provider.Message
+}
+```
+
+### Addendum mechanics, exact
+
+Consult the hook at the three graceful stops in `runToolStage`:
+`StopNoToolCalls`, `StopEmptyResponse`, and `StopConcluded`.
+
+Never consult the hook for `StopSteered`, `StopHookVeto`,
+`StopMaxIterations`, or `StopRepeatedToolFailures`. Each is a bound or
+an explicit caller decision doing its job. Never consult the hook on a
+`hardFail` path. An error is not a stop.
+
+Restructure the no-tool-call branch to pick the reason, then delegate.
+The empty-content case still wins over the notice case, unchanged:
+
+```go
+if len(resp.ToolCalls) == 0 {
+	*consecutiveFailures = 0
+	stop := StopNoToolCalls
+	if strings.TrimSpace(resp.Message.Content) == "" {
+		stop = StopEmptyResponse
+	} else if noticeInRequest {
+		stop = StopConcluded
+	}
+	return l.gracefulStop(ctx, history, resp, iterations, totalUsage, stop)
+}
+```
+
+Add `gracefulStop` to `agentloop/stop.go`:
+
+```go
+// gracefulStop consults l.continueOnStop and returns runToolStage's
+// three values. A non-empty hook return continues the loop with the
+// grown history; a nil hook, an empty return, or a panic keeps the
+// stop or fails the run closed.
+func (l *Loop) gracefulStop(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, stop StopReason) (Result, bool, error) {
+	if l.continueOnStop != nil {
+		msgs, err := safeContinue(ctx, l.continueOnStop, StopDecision{
+			Stop:       stop,
+			Message:    resp.Message,
+			ToolCalls:  resp.ToolCalls,
+			Iterations: iterations,
+			History:    history,
+		})
+		if err != nil {
+			return l.hardFail(history, iterations, totalUsage), true, err
+		}
+		if len(msgs) > 0 {
+			return Result{History: append(history, msgs...)}, false, nil
+		}
+	}
+	return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: stop}, true, nil
+}
+```
+
+Control flow, exactly. `runToolStage` returns `(Result, bool done,
+error)`. `afterChat` returns the result when `done` is true. `afterChat`
+sets `*history = res.History` when `done` is false, then reports `done`
+false to `runIteration`. `runIteration` reports it to `run`, and `run`
+iterates again.
+
+A continuation therefore returns a `Result` whose `History` is the
+appended slice, with `done` false. That one return threads the grown
+history back through `afterChat`. The next iteration reads it as its own
+starting history. This is the same path a completed tool turn already
+takes, so no new control-flow shape enters the loop.
+
+Bounds, exactly. `afterChat` increments `iterations` and adds the
+response's billed tokens before it calls `runToolStage`. A continuation
+therefore already counts as a completed iteration. The next pass through
+`run` hits the `iterations >= l.maxIterations` check. The next
+`runIteration` pass runs `applyTrim`, the window plan, and `checkBudget`
+over the grown history. The `ctx.Err()` check at the top of `run` ends a
+canceled run. The `MaxTotalTokens` check in `afterChat` fires once the
+next response arrives.
+
+The runaway bound is conditional, not absolute. State it honestly.
+`New` maps `MaxIterations: 0` through `unboundedOrSet` to
+`math.MaxInt32`, and `TestSDKValidateAllowsUnboundedMaxIterations` pins
+that zero-means-uncapped contract. `MaxTotalTokens: 0` is likewise
+uncapped. So a bound catches a runaway hook only when the caller sets
+`MaxIterations` or `MaxTotalTokens`. With both unset, an always-continue
+hook runs without end.
+
+Today that same configuration is safe because the model's own
+no-tool-call turn ends the run. `ContinueOnStop` removes exactly that
+terminator. Name the consequence in the doc comment and leave the choice
+with the caller.
+
+Add no second bound for a runaway hook. A new cap would duplicate
+`MaxIterations` and would break the zero-means-uncapped contract that
+callers rely on. The fix is the documented caveat plus
+`TestContinueOnStopUnboundedWithoutBounds`.
+
+`consecutiveFailures` stays where it is. `runToolStage` sets it to zero
+on the no-tool-call branch before the hook runs. Keep that line in
+place. A turn with no tool call is not a tool failure, so the reset
+already holds on the stop path. A continuation must not change failure
+accounting.
+
+`noticeSent` stays where it is. It lives in `run` and reaches
+`runIteration` by pointer. `afterChat` and `runToolStage` never see it,
+so a continuation cannot reset it. That is correct: the notice fires
+once per run, and a continuation is one more iteration of the same run.
+The later stop reason depends on whether the notice survives.
+`runIteration` recomputes `noticeInRequest` every iteration, and
+`noticePresent` scans the current history for the notice text. `Trim`
+or `Window` may strip the notice from a later iteration's history; see
+the `noticePresent` doc comment in `agentloop/conclude.go`. So a later
+graceful stop reports `StopConcluded` again only while the notice
+survives in history. Once it is stripped, the same stop reports
+`StopNoToolCalls`. `noticeSent` stays true either way, so the notice
+never fires a second time.
+
+Panic handling. Wrap the hook in `safeContinue`, mirroring
+`safeSurface`:
+
+```go
+// safeContinue invokes fn, converting a panic into a plain error so a
+// hostile host hook fails the run closed instead of half-continuing.
+func safeContinue(ctx context.Context, fn func(context.Context, StopDecision) []provider.Message, d StopDecision) (msgs []provider.Message, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			msgs = nil
+			err = fmt.Errorf("agentloop: ContinueOnStop hook panicked: %v", r)
+		}
+	}()
+	return fn(ctx, d), nil
+}
+```
+
+`gracefulStop` turns that error into a `hardFail` return. The run fails
+closed and never half-continues. No new exported error type enters the
+package, matching `safeSurface`.
+
+Message handling. Append the returned messages verbatim. Do not label,
+wrap, or validate them. A host that appends a `RoleUser` message owns
+making it distinguishable from a real user turn.
+
+Known consequence at the `StopEmptyResponse` site. `afterChat` appends
+`resp.Message` verbatim and unvalidated. A response whose `Message` has
+an empty `Role` stops at `StopEmptyResponse` today, and nothing ever
+validates it. A continuation sends that message into the next
+`applyTrim` pass, which validates every trimmed message. `Message.Validate`
+returns `ErrUnknownRole` for an empty `Role`. So continuing past a
+`Role`-less empty response fails the run when `Trim` is set.
+
+Accept this behavior; do not paper over it. Validating the hook's own
+return would not help, because the offending message came from the
+completer. Validating `resp.Message` would change the stop behavior of
+runs that never use this hook. A caller that continues past an empty
+response owns the provider responses it feeds the loop.
+
+Wiring. Add a `continueOnStop` field to `Loop` in `agentloop/loop.go`.
+Set it from `opts.ContinueOnStop` in `New`.
+
+The hook receives the iteration context `runToolStage` already runs tool
+calls under. Cancellation of the outer context still ends the run at the
+top of the next iteration.
+
+### Addendum file and function budget
+
+`agentloop/run.go` holds 497 lines and `agentloop/options.go` holds 494.
+The structure gate caps a file at 500 lines. Both files need room before
+this change lands. Move code; do not raise the limit.
+
+- Move `billedTokens` and `sumUsage` out of `agentloop/run.go` into a
+  new `agentloop/tokens.go`. That is 22 lines with their comments, so
+  `run.go` drops to about 475.
+- Move `StopReason`, its doc comment, and its seven constants out of
+  `agentloop/options.go` into the new `agentloop/stop.go`. That is 34
+  lines, so `options.go` drops to about 460 before the new field lands.
+- Put `StopDecision`, `gracefulStop`, and `safeContinue` in
+  `agentloop/stop.go`, beside the stop vocabulary they serve.
+
+Both moves relocate code inside one package. No exported symbol changes,
+so the moves alone add nothing to `api/agentloop.txt`.
+
+`gracefulStop` holds about 20 lines and `safeContinue` about 9.
+`runToolStage` drops two return statements and gains one call, so it
+stays near its current 36 lines. Every function stays under the 80-line
+cap.
+
+### Addendum documentation
+
+- The plan deletes `docs/plans/agents/proposal_stop_decision_hook.md`.
+  This addendum carries its content, and a duplicate invites drift.
+- The plan drops that file's "Sequencing" section rather than folding it
+  in. The repository owner decided to build the seam on its own merits.
+- No file calls this hook a proposal, and no file calls it not
+  implemented.
+- A grep for the deleted filename hits only this documentation section.
+  A grep for `ContinueOnStop` and `StopDecision` hits only this plan
+  today. After the change it hits `agentloop/`, `api/agentloop.txt`,
+  and the package reference `docs/packages/agentloop.md`.
+- `docs/README.md`, `docs/architecture.md`, and `agentloop/doc.go` name
+  neither the proposal nor the hook, so none of them changes.
+
+### Addendum tests
+
+Put the cases in a new file under `agentloop/agentloop_test/`, named
+`continue_on_stop_test.go`. Split the bound cases into
+`continue_on_stop_bounds_test.go` when the first file passes 500 lines.
+
+Every entry names its class. A regression fails against the baseline
+where `ContinueOnStop` exists but `gracefulStop` never consults it. A
+guard passes against that baseline and against the change.
+
+- `TestContinueOnStopContinuesNoToolCalls` (regression) proves a
+  non-empty return on `StopNoToolCalls` reaches the completer again.
+- `TestContinueOnStopContinuesEmptyResponse` (regression) proves the
+  same at the `StopEmptyResponse` site. Set `Role:
+  provider.RoleAssistant` on the empty-content response, so the case
+  tests the continuation and not the `Role`-less trim failure.
+- `TestContinueOnStopEmptyResponseRoleLessTrimFails` (regression) pins
+  the known consequence above. A response with an empty `Role` and empty
+  content, a set `Trim`, and a continuing hook must fail the run with
+  `ErrUnknownRole`. Classify it as documented behavior, not a defect.
+- `TestContinueOnStopContinuesConcluded` (regression) proves the same at
+  the `StopConcluded` site.
+- `TestContinueOnStopNilReturnStopsUnchanged` (regression) proves a nil
+  return yields today's `Result` field for field. Assert also that the
+  hook ran exactly once and observed `StopDecision.Stop ==
+  StopNoToolCalls`. Without both assertions the case passes on a
+  build that never consults the hook. The invocation-count assertion
+  is what makes the case fail against the baseline.
+- `TestContinueOnStopEmptyReturnStopsUnchanged` (regression) proves an
+  empty non-nil return behaves as a nil return. Assert the same
+  invocation count of one and the same observed `Stop` value, for the
+  same reason, with the same regression consequence.
+- `TestContinueOnStopNilHookRequestsIdentical` (guard) proves a nil hook
+  produces the same request sequence as the current loop.
+- `TestContinueOnStopBoundedByMaxIterations` (regression) proves an
+  always-continue hook ends with `StopMaxIterations`, not a hang.
+- `TestContinueOnStopBoundedByMaxTotalTokens` (regression) proves the
+  same hook ends with `ErrTokenBudgetExceeded` when the ceiling is set.
+- `TestContinueOnStopUnboundedWithoutBounds` (regression) proves the
+  loop adds no bound of its own. Set `MaxIterations: 0` and
+  `MaxTotalTokens: 0`. Let the hook continue a fixed count of times,
+  then return nil. Assert the completer ran that many times plus one,
+  and that the run ended only because the hook stopped continuing.
+- `TestContinueOnStopReceivesStopEvidence` (regression) proves the hook
+  sees the assistant message and the empty tool-call list.
+- `TestContinueOnStopTrimAppliesToGrownHistory` (regression) proves
+  `Trim` runs over the grown history on the continued iteration.
+- `TestContinueOnStopTrimStripsNoticeReportsNoToolCalls` (regression)
+  proves the conditional notice claim above. A continued run whose
+  `Trim` drops the `ConcludeNotice` reports `StopNoToolCalls`, not
+  `StopConcluded`. Assert also that the notice is never appended a
+  second time, proving `noticeSent` stays true.
+- `TestContinueOnStopPanicFailsClosed` (regression) proves a panicking
+  hook fails the run and appends no continuation.
+- `TestContinueOnStopConcludedKeepsOneNotice` (regression) proves a
+  continued run appends `ConcludeNotice` exactly once. Assert the
+  completer call count is at least two. Without that assertion the case
+  passes against the baseline, where an un-continued run appends the
+  notice once anyway.
+- `TestContinueOnStopSkippedOnSteered` (guard) proves `StopSteered`
+  never consults the hook.
+- `TestContinueOnStopSkippedOnHookVeto` (guard) proves `StopHookVeto`
+  never consults the hook.
+- `TestContinueOnStopSkippedOnMaxIterations` (guard) proves
+  `StopMaxIterations` never consults the hook.
+- `TestContinueOnStopSkippedOnRepeatedToolFailures` (guard) proves
+  `StopRepeatedToolFailures` never consults the hook.
+- `TestContinueOnStopSkippedOnTokenBudgetHardFail` (guard) proves the
+  one `hardFail` that competes with a graceful stop over the same
+  response skips the hook. The `MaxTotalTokens` check in `afterChat`
+  fires after the response is recorded and before `runToolStage` runs.
+  Fixture: a zero-tool-call response that trips the ceiling. Assert the
+  run fails with `ErrTokenBudgetExceeded` and the hook ran zero times.
+  Claim only this path. `hardFail` has nine call sites, and most return
+  before `runToolStage` is reachable, so one case cannot prove the
+  general rule.
+- `TestContinueOnStopCancelledContextEndsRun` (regression) proves a
+  canceled context ends a continued run at the next iteration top.
+  Proving this needs at least one continuation, which the baseline never
+  performs, so the case is a regression and not a guard.
+
+Every skip case counts hook invocations. Assert that the count is zero,
+not only that the stop reason matched.
+
+Completer fixtures for the always-continue cases. `scriptedCompleter`
+in `helper_test.go` returns an error once its scripted list runs out.
+An always-continue hook then hard-fails on "no response scripted"
+instead of hitting the bound under test. Script exactly `MaxIterations`
+responses in those fixtures, or reuse `replayCompleter` from
+`unbounded_max_iterations_test.go`, which repeats a terminal response
+after its scripted turns. `TestContinueOnStopBoundedByMaxTotalTokens`
+must not use `replayCompleter`; it needs scripted responses carrying
+non-zero `Usage`, because `replayCompleter`'s repeated fallback reports
+zero tokens and can never trip the ceiling. Reuse `scriptedCompleter`
+for the request-sequence and call-count assertions, where the turn
+count is known.
+
+### Addendum verification
+
+- `make api-update`, then commit the `api/agentloop.txt` diff in this
+  same change.
+- `make verify` passes, including the coverage floor for `agentloop`.
+- `go test -race -count=1 ./agentloop/...` passes.
+- `python3 scripts/check_structure.py` passes, proving both moved-from
+  files stay under 500 lines.
+- `python3 scripts/check_deps.py` passes. `agentloop` needs no new row
+  in `policy/layers.json`. The hook uses `context` from the standard
+  library and `provider`, an edge the policy already allows.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_prose.py` passes.

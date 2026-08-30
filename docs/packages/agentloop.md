@@ -19,7 +19,8 @@ or a bound trips. The exported surface below mirrors
   `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
   `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `ConcludeNotice`,
   `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
-  `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`.
+  `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`,
+  `ContinueOnStop`.
   `Completer` and `Tools` are required; the rest are optional.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Surface` — one iteration's tool surface from `Options.Surface`:
@@ -42,6 +43,9 @@ or a bound trips. The exported surface below mirrors
   with `NewSteer` and call `Trigger` from another goroutine. One
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
+- `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
+  at a graceful stop: `Stop`, `Message`, `ToolCalls`, `Iterations`,
+  `History`. See "Stop-decision hook" below.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
   tool-run error: `ErrorPolicyReport` (the zero value; sends the
   error text back as the tool's `RoleTool` result and continues) or
@@ -304,6 +308,25 @@ the zero value in this case, since the run failed a stop condition
 instead of reaching one. When no iteration has completed yet, the
 rule degrades to the zero-value `Result` on its own, with no special
 case for ctx cancellation or any other cause.
+
+## Stop-decision hook
+
+`Options.ContinueOnStop` observes a graceful stop and may continue the
+run. The loop consults the hook only at the three tool-stage stops:
+`StopNoToolCalls`, `StopEmptyResponse`, and `StopConcluded`. The hook
+never runs at `StopSteered`, `StopHookVeto`, `StopMaxIterations`,
+`StopRepeatedToolFailures`, or on a hard-fail return.
+
+The hook receives one `StopDecision`: the stop reason, the assistant
+turn, the tool-call list, the iteration count, and the history. A nil
+or empty return stops the run unchanged. A non-empty return appends
+the messages verbatim to the history and runs the next iteration. A
+continuation is an ordinary iteration: `MaxIterations`,
+`MaxTotalTokens`, `Trim`, and every other bound still apply. The loop
+adds no bound of its own. A caller that sets neither bound and always
+returns messages gets an unbounded run. That is the caller's choice.
+
+The hook runs on the loop goroutine. A panic fails the run closed.
 
 ## Steering and interruption
 

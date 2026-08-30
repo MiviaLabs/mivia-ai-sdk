@@ -96,6 +96,10 @@ type Loop struct {
 	// Immutable after New; see agentloop/budget.go for the call
 	// contract the loop honors before each turn's tool calls dispatch.
 	toolBudget *ToolBudget
+	// continueOnStop is the caller's Options.ContinueOnStop, nil when
+	// unset. Immutable after New; consulted only from gracefulStop, at
+	// the three graceful stops in runToolStage.
+	continueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 }
 
 // New validates opts, calls Definitions(opts.Tools, opts.Scope) once,
@@ -157,6 +161,7 @@ func New(opts Options) (*Loop, error) {
 		streamSink:             opts.StreamingWriter,
 		workBudget:             opts.WorkBudget,
 		toolBudget:             opts.ToolBudget,
+		continueOnStop:         opts.ContinueOnStop,
 	}, nil
 }
 

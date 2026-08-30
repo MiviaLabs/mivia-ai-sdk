@@ -146,40 +146,9 @@ const (
 	ErrorPolicyFail   ErrorPolicy = "fail"
 )
 
-// StopReason names why Run stopped gracefully. No StopToolError
-// constant exists: a tool error under ErrorPolicyFail is a hard
-// failure, not a graceful stop.
-type StopReason string
-
-// The declared StopReason values.
-const (
-	// StopNoToolCalls is Run's stop reason when the model's response
-	// carries no tool call and carries text content.
-	StopNoToolCalls StopReason = "no_tool_calls"
-	// StopEmptyResponse is Run's stop reason when the model returns no
-	// tool call and no non-blank assistant text content.
-	StopEmptyResponse StopReason = "empty_response"
-	// StopMaxIterations is Run's stop reason when the iteration count
-	// reaches Options.MaxIterations. Not an error.
-	StopMaxIterations StopReason = "max_iterations"
-	// StopHookVeto is Run's stop reason when a PointPreTool handler
-	// vetoes a tool call. The tool does not run.
-	StopHookVeto StopReason = "hook_veto"
-	// StopConcluded is Run's stop reason when the model returns no tool
-	// call on an iteration ConcludeMargin nudged. Graceful, same
-	// Result-shape rule as StopNoToolCalls.
-	StopConcluded StopReason = "concluded"
-	// StopSteered is Run's stop reason when a Steer.Trigger call requests
-	// a soft-cancel of the in-flight Completer.Chat call. Graceful: nil
-	// error, the same Result-shape rule as every other graceful stop that
-	// happens before a new response arrives.
-	StopSteered StopReason = "steered"
-	// StopRepeatedToolFailures is Run's stop reason when consecutive
-	// turns each fail all dispatched tool calls with unknown tool
-	// errors, reaching MaxConsecutiveToolFailures. Graceful, same
-	// Result-shape rule as StopMaxIterations.
-	StopRepeatedToolFailures StopReason = "repeated_tool_failures"
-)
+// StopReason and its constants live in stop.go, beside StopDecision
+// and the graceful-stop helpers. Splitting them out keeps options.go
+// under the structure gate's per-file line cap.
 
 // Options declares the blocks one New call wires into a Loop.
 // Completer and Tools are required; the rest are optional.
@@ -347,6 +316,17 @@ type Options struct {
 	// budget invoked once per turn before dispatch. The zero value
 	// (nil) disables it. See ToolBudget for details.
 	ToolBudget *ToolBudget
+	// ContinueOnStop is consulted when the loop is about to stop
+	// gracefully. A non-empty return appends those messages to the run
+	// history and continues the loop. A nil or empty return stops the run
+	// unchanged. A nil hook changes no behavior. Runs on the loop
+	// goroutine, like Surface; a panic fails the run closed. A
+	// continuation is an ordinary iteration and obeys every bound the
+	// loop owns. The loop adds no bound of its own for this hook: a
+	// caller that sets neither MaxIterations nor MaxTotalTokens and
+	// always returns messages gets an unbounded run. That is the
+	// caller's choice. See docs/plans/agentloop.md.
+	ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 }
 
 // AuditKind names which of Run's two audit-relevant events an

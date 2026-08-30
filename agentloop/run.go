@@ -275,18 +275,18 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 // StopEmptyResponse, or StopConcluded when resp carries none. The returned
 // bool reports whether the caller must return res (and err) as the
 // iteration's own result; when false, res.History carries the loop's next
-// history and the loop continues.
+// history and the loop continues. The three graceful stops route through
+// gracefulStop, which consults Options.ContinueOnStop; see stop.go.
 func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, consecutiveFailures *int, noticeInRequest bool, surface runSurface) (Result, bool, error) {
 	if len(resp.ToolCalls) == 0 {
 		*consecutiveFailures = 0
-		if strings.TrimSpace(resp.Message.Content) == "" {
-			return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: StopEmptyResponse}, true, nil
-		}
 		stop := StopNoToolCalls
-		if noticeInRequest {
+		if strings.TrimSpace(resp.Message.Content) == "" {
+			stop = StopEmptyResponse
+		} else if noticeInRequest {
 			stop = StopConcluded
 		}
-		return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: stop}, true, nil
+		return l.gracefulStop(ctx, history, resp, iterations, totalUsage, stop)
 	}
 	if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
 		return l.hardFail(history, iterations, totalUsage), true,
@@ -438,28 +438,8 @@ func (l *Loop) hardFail(history []provider.Message, iterations int, totalUsage p
 	return Result{History: history, Iterations: iterations, Usage: totalUsage}
 }
 
-// billedTokens returns the larger, more trustworthy reading of one
-// response's token cost: the reported TotalTokens, or the sum of
-// PromptTokens and CompletionTokens, whichever is greater. provider.Usage
-// enforces no relationship between its fields, so a Completer that leaves
-// TotalTokens at zero must not silently bypass MaxTotalTokens.
-func billedTokens(u provider.Usage) int {
-	sum := u.PromptTokens + u.CompletionTokens
-	if u.TotalTokens > sum {
-		return u.TotalTokens
-	}
-	return sum
-}
-
-// sumUsage adds b's four fields onto a and returns the sum.
-func sumUsage(a, b provider.Usage) provider.Usage {
-	return provider.Usage{
-		PromptTokens:     a.PromptTokens + b.PromptTokens,
-		CompletionTokens: a.CompletionTokens + b.CompletionTokens,
-		TotalTokens:      a.TotalTokens + b.TotalTokens,
-		CachedTokens:     a.CachedTokens + b.CachedTokens,
-	}
-}
+// billedTokens and sumUsage live in tokens.go. Splitting them out
+// keeps run.go under the structure gate's per-file line cap.
 
 // applyTrim runs l.trim on history when set, then validates every
 // message in the result. A nil l.trim passes history through

@@ -91,6 +91,7 @@ package agentloop
   MaxConsecutiveToolFailures int
   WorkBudget *WorkBudget
   ToolBudget *ToolBudget
+  ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 }
   type Result struct {
   Final provider.Message
@@ -100,6 +101,13 @@ package agentloop
   Stop StopReason
 }
   type Steer struct {
+}
+  type StopDecision struct {
+  Stop StopReason
+  Message provider.Message
+  ToolCalls []provider.ToolCall
+  Iterations int
+  History []provider.Message
 }
   type StopReason string
   type Surface struct {

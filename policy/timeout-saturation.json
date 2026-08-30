@@ -1,0 +1,11 @@
+{
+  "description": "Every runtime conversion of an integer into a time.Duration by multiplying with a unit (time.Duration(n) * time.Second, either operand order, or the compound form x *= time.Second) must bound n BEFORE the multiply or appear here with the guard named. Mechanism (DC-7 in mivia-agent's defect taxonomy): time.Duration is int64, so an unbounded n wraps the product negative, and a negative bound arms an already-expired deadline, an instantly-elapsed retention, or a never-firing schedule. Compile-time constant multiplies without a time.Duration() conversion cannot overflow at runtime and are out of scope. A new bare conversion fails scripts/check_timeout_saturation.py until the value is bounded and dispositioned here; a stale entry (matching no site) also fails, so this list cannot rot.",
+  "allow": [
+    {
+      "file": "subagent/schedulertool.go",
+      "operand": "cmd.EveryMs",
+      "unit": "Millisecond",
+      "reason": "scheduler.Every maps a non-positive interval (including an overflow-wrapped one) to neverSchedule, so a wrapped value cannot arm a hot loop; the schedule silently never fires"
+    }
+  ]
+}

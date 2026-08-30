@@ -198,6 +198,14 @@ follow reliably. Each has a gate behind it.
 - Do not weaken a gate, raise a limit, or widen an exclusion to make
   your change pass. Change the design instead, or convince the user
   and record the exception in the gate file itself.
+- Never run `go test -fuzz` with default parallelism. Go fuzzing
+  spawns one worker per core, each with unbounded memory; on this
+  machine it reaches ~55 GB RSS in minutes and the kernel OOM kill
+  takes down the whole desktop app with it. If fuzzing is required,
+  cap it: `go test -fuzz <Target> -parallel 2 -fuzztime 60s` and say
+  so in the final report. Seeded smoke runs (`go test`, no `-fuzz`
+  flag) are always fine. Gate: `scripts/agent_hook_guard.py --probe`,
+  enforced live by the PreToolUse hook in `.claude/settings.json`.
 
 ## Gate tiers
 

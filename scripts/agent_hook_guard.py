@@ -33,6 +33,11 @@ HOOKS_PATH = re.compile(
     r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*"
     r"(?:-c\s+\S*core\.hooksPath|config\s+(?:-\S+(?:\s+\S+)?\s+)*core\.hooksPath)"
 )
+# go test -fuzz without -parallel spawns one worker per core, each with
+# unbounded memory; it OOM-kills the desktop session that launched it.
+# -fuzztime bounds duration, not workers, so it does not exempt a run.
+FUZZ = re.compile(r"\bgo\s+test\b[^|;&]*\s-fuzz\b")
+PARALLEL = re.compile(r"-parallel(?:\s+|=)\S+")
 # A write-target token may carry a parenthesized span such as a command
 # substitution; the span stays whole so spaces inside it are captured.
 # The base class excludes parens so the span group must consume them.
@@ -145,6 +150,13 @@ def check_command(cmd: str) -> str:
     norm = normalize(cmd)
     if HOOKS_PATH.search(norm) and norm != "git config core.hooksPath .githooks":
         return "blocked: core.hooksPath overrides are forbidden; use `make install-hooks`"
+    stripped = bypass_text(cmd)
+    if FUZZ.search(stripped) and not PARALLEL.search(stripped):
+        return (
+            "blocked: `go test -fuzz` with default parallelism spawns one worker per core"
+            " with unbounded memory and OOM-kills the session that launched it;"
+            " rerun capped: `go test -fuzz <Target> -parallel 2 -fuzztime 60s`"
+        )
     if BYPASS.search(bypass_text(cmd)):
         return "blocked: Git hook bypass is forbidden; fix the gate failure instead"
     for target in write_targets(norm):
@@ -163,7 +175,36 @@ def check_file_target(path: str) -> str:
     return ""
 
 
+def probe() -> int:
+    """Assert the fuzz guard fires on violations and stays silent on
+    clean commands. Wired into make verify-fast, following the --probe
+    convention of the other gates."""
+    blocked = [
+        "go test ./agentloop/ -run XXXX -fuzz FuzzCanonicalizeArgs -fuzztime 90s",
+        "go test -fuzz=FuzzTruncateContent ./agentloop/",
+        "go test ./... -fuzz FuzzDecode",
+    ]
+    allowed = [
+        "go test ./agentloop/ -run XXXX -fuzz FuzzCanonicalizeArgs -fuzztime 90s -parallel 2",
+        "go test -fuzz FuzzDecode -parallel=4 ./mcp/",
+        "go test ./agentloop/... ",
+        "go test ./agentloop/ -fuzztime 90s",
+        "git commit -m 'run go test -fuzz next'",
+    ]
+    for cmd in blocked:
+        if "fuzz" not in check_command(cmd):
+            print(f"probe failed to block: {cmd}", file=sys.stderr)
+            return 1
+    for cmd in allowed:
+        if reason := check_command(cmd):
+            print(f"probe blocked a clean command ({reason}): {cmd}", file=sys.stderr)
+            return 1
+    return 0
+
+
 def main() -> int:
+    if "--probe" in sys.argv[1:]:
+        return probe()
     try:
         event = json.load(sys.stdin)
     except json.JSONDecodeError:

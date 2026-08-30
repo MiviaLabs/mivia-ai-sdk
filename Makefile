@@ -22,6 +22,7 @@ verify-fast:
 		python3 scripts/check_names.py
 		python3 scripts/check_examples_sync.py
 	python3 scripts/check_test_tampering.py
+	python3 scripts/agent_hook_guard.py --probe
 	python3 scripts/check_timeout_saturation.py --probe
 	python3 scripts/check_timeout_saturation.py
 	$(SEMGREP_SCAN)

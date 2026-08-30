@@ -5,14 +5,19 @@
 [provider]
 # Stream watchdog bounds, raised for hard-thinking models (compiled defaults
 # 240s / 100s are sized for chat models). First-byte covers the silent wait
-# before the first token; byte-idle covers gaps after it.
+# before the first token; byte-idle covers gaps after it. Current mivia
+# builds also expose stream_content_idle_timeout_seconds (default 90s) for
+# providers that hide reasoning deltas behind keepalives.
 stream_first_byte_timeout_seconds = 600
 stream_idle_timeout_seconds = 300
 
 [subagents]
-# Per-LLM-request wall for subagent turns. 900s is deliberately the ceiling:
-# the compiled http.Client wall (15 min) hard-caps every single attempt, so
-# anything above 900 buys only doomed retries. Total must stay above the
-# per-request bound so one full request plus a retry window fits.
+# Per-LLM-request wall for subagent turns. On mivia builds with the derived
+# http.Client wall (budget + 60s margin, 15-minute floor), this knob raises
+# the wall with it, so values above 900 are honored and the budget - not the
+# wall - ends an overlong request. On older builds the compiled 15-minute
+# wall still caps every attempt, so keep 900 until this workspace runs a
+# current binary. Total must stay above the per-request bound so one full
+# request plus a retry window fits.
 default_request_timeout_seconds = 900
 default_total_timeout_seconds = 1800

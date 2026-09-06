@@ -6,6 +6,32 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
+// Conclude groups the graceful-conclude options: when the loop starts
+// nudging the model toward a final answer, and what it says.
+type Conclude struct {
+	// Margin nudges the model once MaxIterations-k < Margin holds.
+	// Zero disables the step-count term.
+	Margin int
+	// Deadline, when positive, fires the nudge once
+	// StartTime.Add(Deadline) has passed. Zero disables the term.
+	Deadline time.Duration
+	// Notice is the RoleUser content Run appends once nudging starts.
+	// Empty Notice uses DefaultConcludeNotice.
+	Notice string
+}
+
+// Validate checks the group in a fixed order and returns the first
+// failure: Margin is not negative, then Deadline is not negative.
+func (c Conclude) Validate() error {
+	if c.Margin < 0 {
+		return ErrConcludeMargin
+	}
+	if c.Deadline < 0 {
+		return ErrConcludeDeadline
+	}
+	return nil
+}
+
 // noticePresent reports whether history carries the ConcludeNotice
 // among its messages, the present-tense signal for whether the model
 // actually saw the nudge in this iteration's Completer request. A
@@ -29,17 +55,17 @@ func noticePresent(history []provider.Message, notice string) bool {
 // 1-based iteration k = iterations+1, qualifies for the conclude
 // nudge. Two terms are OR-ed: any one firing triggers the nudge.
 //
-//   - ConcludeMargin: maxIterations-k < concludeMargin. The original
-//     step-count term. A zero concludeMargin never fires.
-//   - ConcludeDeadline: time.Until(deadlineAt) <= 0.
-//     A zero concludeDeadline (and so a zero deadlineAt) never
+//   - Margin: bounds.MaxIterations-k < conclude.Margin. The original
+//     step-count term. A zero Margin never fires.
+//   - Deadline: time.Until(deadlineAt) <= 0.
+//     A zero Deadline (and so a zero deadlineAt) never
 //     fires.
 func (l *Loop) shouldConclude(iterations int) bool {
 	k := iterations + 1
-	if l.concludeMargin > 0 && l.maxIterations-k < l.concludeMargin {
+	if l.conclude.Margin > 0 && l.bounds.MaxIterations-k < l.conclude.Margin {
 		return true
 	}
-	if !l.deadlineAt.IsZero() && l.concludeDeadline > 0 &&
+	if !l.deadlineAt.IsZero() && l.conclude.Deadline > 0 &&
 		time.Until(l.deadlineAt) <= 0 {
 		return true
 	}

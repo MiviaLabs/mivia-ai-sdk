@@ -32,7 +32,7 @@ func TestRunCallsPerTurnExceeded(t *testing.T) {
 				),
 			}}
 			loop, err := agentloop.New(agentloop.Options{
-				Completer: completer, Tools: reg, MaxIterations: 5, MaxCallsPerTurn: 1, OnToolError: policy,
+				Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 1}, OnToolError: policy,
 			})
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
@@ -76,7 +76,7 @@ func TestRunMaxCallsPerTurnZeroUnbounded(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxCallsPerTurn: 0,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -107,7 +107,7 @@ func TestRunMaxIterationsGracefulStop(t *testing.T) {
 		responses = append(responses, toolCallResponse(provider.ToolCall{ID: "call", Name: "echo", Arguments: []byte("{}")}))
 	}
 	completer := &scriptedCompleter{responses: responses}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: maxIter})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: maxIter}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -137,7 +137,7 @@ func TestRunDefinitionsCachedOnce(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -173,7 +173,7 @@ func TestRunPreToolNonVetoErrorFails(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -199,7 +199,7 @@ func TestRunCtxCanceledBeforeFirstIteration(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -228,7 +228,7 @@ func TestRunCtxCanceledAtLaterIteration(t *testing.T) {
 		cancel: cancel,
 		resp:   toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -267,7 +267,7 @@ func TestRunCtxCanceledMidTurnStopsRemainingCalls(t *testing.T) {
 			provider.ToolCall{Index: 1, ID: "call-2", Name: "second", Arguments: []byte("{}")},
 		),
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -320,7 +320,7 @@ func TestRunBudgetExceededLaterIteration(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Budget: &contextbudget.Limits{MaxEvents: 2},
 	})
 	if err != nil {
@@ -364,7 +364,7 @@ func TestRunMidTurnVetoPreservesPriorCall(t *testing.T) {
 			provider.ToolCall{ID: "call-2", Index: 1, Name: "vetoed", Arguments: []byte("{}")},
 		),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

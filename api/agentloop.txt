@@ -29,6 +29,8 @@ package agentloop
   const StopRepeatedToolFailures = "repeated_tool_failures"
   const StopSteered = "steered"
   const ToolErrorPrefix = "[tool-error] "
+  func (b Bounds) Validate() (error)
+  func (c Conclude) Validate() (error)
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
   func (l *Loop) RunSteerable(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error)
   func (o Options) Validate() (error)
@@ -51,6 +53,19 @@ package agentloop
   ThinkingContent string
   CacheUsage provider.CacheUsage
 }
+  type Bounds struct {
+  MaxIterations int
+  MaxCallsPerTurn int
+  MaxTotalTokens int
+  MaxConcurrentTools int
+  MaxConsecutiveToolFailures int
+  TurnResultBudget int
+}
+  type Conclude struct {
+  Margin int
+  Deadline time.Duration
+  Notice string
+}
   type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)
   type ErrorPolicy string
   type Loop struct {
@@ -60,9 +75,7 @@ package agentloop
   Tools *tools.Registry
   Scope *tools.Scope
   Model string
-  MaxIterations int
-  MaxCallsPerTurn int
-  MaxTotalTokens int
+  Bounds Bounds
   OnToolError ErrorPolicy
   OnToolCallError ErrorFunc
   Hooks *hooks.Registry
@@ -78,15 +91,10 @@ package agentloop
   Window *contextplan.Window
   Summarizer *contextsummary.Summarizer
   Calibrated *contextplan.Calibrated
-  ConcludeMargin int
+  Conclude Conclude
   StartTime time.Time
-  ConcludeDeadline time.Duration
-  ConcludeNotice string
   DedupWithinTurn bool
-  MaxConcurrentTools int
   HeartbeatInterval time.Duration
-  TurnResultBudget int
-  MaxConsecutiveToolFailures int
   WorkBudget *WorkBudget
   ToolBudget *ToolBudget
   ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message

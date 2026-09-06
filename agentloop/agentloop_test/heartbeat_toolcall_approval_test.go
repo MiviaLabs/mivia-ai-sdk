@@ -44,7 +44,7 @@ func TestRunToolCallHeartbeatSpansApprovalGate(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Scope: scope, MaxIterations: 5, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Scope: scope, Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

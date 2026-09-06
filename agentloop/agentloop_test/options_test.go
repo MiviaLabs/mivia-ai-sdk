@@ -17,9 +17,9 @@ import (
 // test to mutate one field at a time.
 func validOptions() agentloop.Options {
 	return agentloop.Options{
-		Completer:     &scriptedCompleter{},
-		Tools:         tools.New(),
-		MaxIterations: 1,
+		Completer: &scriptedCompleter{},
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: 1},
 	}
 }
 
@@ -77,23 +77,23 @@ func testOptionsValidateBasics(t *testing.T) {
 			return o
 		}, agentloop.ErrNoTools, false},
 		{"zero MaxIterations passes (unbounded)", func(o agentloop.Options) agentloop.Options {
-			o.MaxIterations = 0
+			o.Bounds = agentloop.Bounds{MaxIterations: 0}
 			return o
 		}, nil, true},
 		{"negative MaxIterations", func(o agentloop.Options) agentloop.Options {
-			o.MaxIterations = -1
+			o.Bounds = agentloop.Bounds{MaxIterations: -1}
 			return o
 		}, agentloop.ErrMaxIterations, false},
 		{"zero MaxCallsPerTurn passes (unbounded)", func(o agentloop.Options) agentloop.Options {
-			o.MaxCallsPerTurn = 0
+			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: 0}
 			return o
 		}, nil, true},
 		{"zero MaxTotalTokens passes (unbounded)", func(o agentloop.Options) agentloop.Options {
-			o.MaxTotalTokens = 0
+			o.Bounds = agentloop.Bounds{MaxTotalTokens: 0}
 			return o
 		}, nil, true},
 		{"negative MaxTotalTokens fails", func(o agentloop.Options) agentloop.Options {
-			o.MaxTotalTokens = -1
+			o.Bounds = agentloop.Bounds{MaxTotalTokens: -1}
 			return o
 		}, agentloop.ErrMaxTotalTokens, false},
 		{"negative Budget field fails", func(o agentloop.Options) agentloop.Options {
@@ -123,57 +123,90 @@ func testOptionsValidateBasics(t *testing.T) {
 func testOptionsValidateConclude(t *testing.T) {
 	cases := []validateCase{
 		{"negative ConcludeMargin fails", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeMargin = -1
+			o.Conclude = agentloop.Conclude{Margin: -1}
 			return o
 		}, agentloop.ErrConcludeMargin, false},
 		{"zero ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeMargin = 0
+			o.Conclude = agentloop.Conclude{Margin: 0}
 			return o
 		}, nil, true},
 		{"positive ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeMargin = 3
+			o.Conclude = agentloop.Conclude{Margin: 3}
 			return o
 		}, nil, true},
 		{"negative ConcludeDeadline fails", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeDeadline = -time.Second
+			o.Conclude = agentloop.Conclude{Deadline: -time.Second}
 			return o
 		}, agentloop.ErrConcludeDeadline, false},
 		{"zero ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeDeadline = 0
+			o.Conclude = agentloop.Conclude{Deadline: 0}
 			return o
 		}, nil, true},
 		{"positive ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeDeadline = time.Minute
+			o.Conclude = agentloop.Conclude{Deadline: time.Minute}
 			return o
 		}, nil, true},
 	}
 	runValidateCases(t, cases)
 }
 
+// TestConcludeValidate covers one case per invariant Conclude.Validate
+// claims. It calls the grouped method directly on a Conclude value, not
+// through Options.Validate, and pins the unchanged sentinels with
+// errors.Is.
+func TestConcludeValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		concl   agentloop.Conclude
+		wantErr error
+		wantOK  bool
+	}{
+		{"negative Margin", agentloop.Conclude{Margin: -1}, agentloop.ErrConcludeMargin, false},
+		{"zero Margin passes", agentloop.Conclude{Margin: 0}, nil, true},
+		{"negative Deadline", agentloop.Conclude{Deadline: -time.Second}, agentloop.ErrConcludeDeadline, false},
+		{"zero Deadline passes", agentloop.Conclude{Deadline: 0}, nil, true},
+		{"valid group passes", agentloop.Conclude{Margin: 2, Deadline: time.Minute, Notice: "wrap up"}, nil, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.concl.Validate()
+			if c.wantOK {
+				if err != nil {
+					t.Fatalf("Validate() error = %v, want nil", err)
+				}
+				return
+			}
+			if !errors.Is(err, c.wantErr) {
+				t.Fatalf("Validate() error = %v, want %v", err, c.wantErr)
+			}
+		})
+	}
+}
+
 func testOptionsValidateBudgetsAndLimits(t *testing.T) {
 	cases := []validateCase{
 		{"negative TurnResultBudget fails", func(o agentloop.Options) agentloop.Options {
-			o.TurnResultBudget = -1
+			o.Bounds = agentloop.Bounds{TurnResultBudget: -1}
 			return o
 		}, agentloop.ErrTurnResultBudget, false},
 		{"zero TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
-			o.TurnResultBudget = 0
+			o.Bounds = agentloop.Bounds{TurnResultBudget: 0}
 			return o
 		}, nil, true},
 		{"positive TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
-			o.TurnResultBudget = 10
+			o.Bounds = agentloop.Bounds{TurnResultBudget: 10}
 			return o
 		}, nil, true},
 		{"negative MaxConcurrentTools fails", func(o agentloop.Options) agentloop.Options {
-			o.MaxConcurrentTools = -1
+			o.Bounds = agentloop.Bounds{MaxConcurrentTools: -1}
 			return o
 		}, agentloop.ErrMaxConcurrentTools, false},
 		{"zero MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
-			o.MaxConcurrentTools = 0
+			o.Bounds = agentloop.Bounds{MaxConcurrentTools: 0}
 			return o
 		}, nil, true},
 		{"positive MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
-			o.MaxConcurrentTools = 4
+			o.Bounds = agentloop.Bounds{MaxConcurrentTools: 4}
 			return o
 		}, nil, true},
 		{"incomplete ToolBudget fails", func(o agentloop.Options) agentloop.Options {
@@ -237,7 +270,7 @@ func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
-	o.ConcludeDeadline = -time.Second
+	o.Conclude = agentloop.Conclude{Deadline: -time.Second}
 	err := o.Validate()
 	if !errors.Is(err, agentloop.ErrNoCompleter) {
 		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)

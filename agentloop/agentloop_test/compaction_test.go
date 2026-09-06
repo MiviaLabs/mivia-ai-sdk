@@ -90,12 +90,12 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     sc,
-		Tools:         reg,
-		MaxIterations: 4,
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer:  sc,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 4},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -131,9 +131,9 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 	}
 	cal := contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)
 	base := agentloop.Options{
-		Completer:     &scriptedCompleter{},
-		Tools:         tools.New(),
-		MaxIterations: 2,
+		Completer: &scriptedCompleter{},
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: 2},
 	}
 	cases := []struct {
 		name    string
@@ -374,13 +374,13 @@ func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 3,
-		Budget:        &contextbudget.Limits{MaxBytes: 200},
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 3},
+		Budget:     &contextbudget.Limits{MaxBytes: 200},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -427,13 +427,13 @@ func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
 	}
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 3,
-		Budget:        &contextbudget.Limits{MaxBytes: 50},
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 3},
+		Budget:     &contextbudget.Limits{MaxBytes: 50},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

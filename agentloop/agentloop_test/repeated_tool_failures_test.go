@@ -25,10 +25,9 @@ func TestRepeatedToolFailuresStopsEarly(t *testing.T) {
 	}}
 	const maxFailures = 3
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:                  completer,
-		Tools:                      reg,
-		MaxIterations:              10,
-		MaxConsecutiveToolFailures: maxFailures,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 10, MaxConsecutiveToolFailures: maxFailures},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -68,10 +67,9 @@ func TestRepeatedToolFailuresResetsOnSuccess(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:                  completer,
-		Tools:                      reg,
-		MaxIterations:              10,
-		MaxConsecutiveToolFailures: 2,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 10, MaxConsecutiveToolFailures: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -107,10 +105,9 @@ func TestRepeatedToolFailuresResetsOnMixedTurn(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:                  completer,
-		Tools:                      reg,
-		MaxIterations:              10,
-		MaxConsecutiveToolFailures: 2,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 10, MaxConsecutiveToolFailures: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -142,10 +139,9 @@ func TestRepeatedToolFailuresExcludesArgValidationAndToolError(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:                  completer,
-		Tools:                      reg,
-		MaxIterations:              10,
-		MaxConsecutiveToolFailures: 2,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 10, MaxConsecutiveToolFailures: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -175,10 +171,9 @@ func TestRepeatedToolFailuresDefaultZeroUnbounded(t *testing.T) {
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:                  completer,
-		Tools:                      reg,
-		MaxIterations:              maxIter,
-		MaxConsecutiveToolFailures: 0,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: maxIter, MaxConsecutiveToolFailures: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -199,9 +194,9 @@ func TestRepeatedToolFailuresDefaultZeroUnbounded(t *testing.T) {
 // fails Validate with ErrMaxConsecutiveToolFailures.
 func TestRepeatedToolFailuresValidateNegative(t *testing.T) {
 	opts := agentloop.Options{
-		Completer:                  &scriptedCompleter{},
-		Tools:                      tools.New(),
-		MaxConsecutiveToolFailures: -1,
+		Completer: &scriptedCompleter{},
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxConsecutiveToolFailures: -1},
 	}
 	if err := opts.Validate(); !errors.Is(err, agentloop.ErrMaxConsecutiveToolFailures) {
 		t.Fatalf("Validate() error = %v, want ErrMaxConsecutiveToolFailures", err)

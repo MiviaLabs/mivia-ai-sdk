@@ -48,16 +48,16 @@ type dedupKey struct {
 // total below, since it never reaches runOneToolCall or the shaping
 // step.
 //
-// When l.turnResultBudget is positive, runToolCalls shapes each call's
+// When l.bounds.TurnResultBudget is positive, runToolCalls shapes each call's
 // already-rendered msg.Content against a running byte total for this
 // turn, after runOneToolCall's own per-call tools.ResultBudgetOf bound
 // already applied. A call's content stays whole only when the running
-// total plus its byte length does not exceed l.turnResultBudget;
+// total plus its byte length does not exceed l.bounds.TurnResultBudget;
 // otherwise the content is replaced with BatchTruncationNotice and the
 // running total does not grow for it. AuditRecord.Err always reports
 // the true per-call outcome, independent of this shaping. The running
 // total resets to zero once per runToolCalls call, at the start of
-// this turn's batch. l.turnResultBudget zero skips the check entirely.
+// this turn's batch. l.bounds.TurnResultBudget zero skips the check entirely.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
@@ -130,8 +130,8 @@ type callOutcome struct {
 }
 
 // executeCalls dispatches every non-duplicate plan's call, serially
-// when l.maxConcurrent < 2 and through a worker pool of size
-// l.maxConcurrent otherwise. Dispatch overlap is the only difference
+// when l.bounds.MaxConcurrentTools < 2 and through a worker pool of size
+// l.bounds.MaxConcurrentTools otherwise. Dispatch overlap is the only difference
 // between the two paths: per-call semantics are runOneToolCall's own.
 //
 // Settlement contract (toolcallctx.BatchOrder): every dispatched index
@@ -157,7 +157,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, 
 			aborted.Store(true)
 		}
 	}
-	if l.maxConcurrent < 2 || len(idx) < 2 {
+	if l.bounds.MaxConcurrentTools < 2 || len(idx) < 2 {
 		for k, i := range idx {
 			run(i)
 			if aborted.Load() {
@@ -171,7 +171,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, 
 	}
 	var next atomic.Int64
 	var wg sync.WaitGroup
-	for w := 0; w < l.maxConcurrent && w < len(idx); w++ {
+	for w := 0; w < l.bounds.MaxConcurrentTools && w < len(idx); w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -240,8 +240,8 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 			failed++
 		}
 		msg := out.msg
-		if l.turnResultBudget > 0 {
-			if runningTotal+len(msg.Content) <= l.turnResultBudget {
+		if l.bounds.TurnResultBudget > 0 {
+			if runningTotal+len(msg.Content) <= l.bounds.TurnResultBudget {
 				runningTotal += len(msg.Content)
 			} else {
 				msg.Content = BatchTruncationNotice

@@ -19,7 +19,7 @@ func TestRunNoToolCallEndsAtOneIteration(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi there")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -49,7 +49,7 @@ func TestRunOneToolCallAppendsRoleToolMessage(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -93,7 +93,7 @@ func TestRunTwoCallsRunInIndexOrder(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -121,7 +121,7 @@ func TestRunUnknownToolName(t *testing.T) {
 			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "missing", Arguments: []byte("in")}),
 			{Message: textMessage(provider.RoleAssistant, "final")},
 		}}
-		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}
@@ -150,7 +150,7 @@ func TestRunUnknownToolName(t *testing.T) {
 			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "missing", Arguments: []byte("in")}),
 		}}
 		loop, err := agentloop.New(agentloop.Options{
-			Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 		})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
@@ -186,7 +186,7 @@ func TestRunPreToolVetoStops(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -218,7 +218,7 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 			{Message: textMessage(provider.RoleAssistant, "final")},
 		}}
-		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}
@@ -252,7 +252,7 @@ func TestRunDecodeArgumentsFailure(t *testing.T) {
 			toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		}}
 		loop, err := agentloop.New(agentloop.Options{
-			Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 		})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
@@ -282,7 +282,7 @@ func TestRunBudgetExceeded(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Budget: &contextbudget.Limits{MaxBytes: 1},
 	})
 	if err != nil {
@@ -305,7 +305,7 @@ func TestRunTrimError(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return nil, errBoom
 		},
@@ -331,7 +331,7 @@ func TestRunTrimInvalidMessage(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return []provider.Message{{Role: provider.RoleTool, ToolCallID: ""}}, nil
 		},
@@ -365,7 +365,7 @@ func TestRunTrimDropsToolReplyPassesValidation(t *testing.T) {
 		ToolCalls: []provider.ToolCall{{ID: "call-1", Name: "echo"}},
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return []provider.Message{textMessage(provider.RoleUser, "hi"), assistantWithCall}, nil
 		},
@@ -396,7 +396,7 @@ func TestRunUsageSumsAllFourFieldsAcrossIterations(t *testing.T) {
 	second := provider.Response{Message: textMessage(provider.RoleAssistant, "final")}
 	second.Usage = provider.Usage{PromptTokens: 20, CompletionTokens: 8, TotalTokens: 28, CachedTokens: 7}
 	completer := &scriptedCompleter{responses: []provider.Response{first, second}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -415,7 +415,7 @@ func TestRunUsageSumsAllFourFieldsAcrossIterations(t *testing.T) {
 // zero-value Result, since no iteration has completed yet.
 func TestRunCompleterChatErrorFirstIteration(t *testing.T) {
 	completer := &scriptedCompleter{errs: []error{errBoom}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -440,7 +440,7 @@ func TestRunCompleterChatErrorLaterIteration(t *testing.T) {
 		responses: []provider.Response{toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")})},
 		errs:      []error{nil, errBoom},
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -462,7 +462,7 @@ func TestRunEmptyResponseEndsWithStopEmptyResponse(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "   ")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

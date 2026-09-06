@@ -64,12 +64,12 @@ func TestRunRecoveryObservePairsWithRecoveryEstimate(t *testing.T) {
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     sc,
-		Tools:         reg,
-		MaxIterations: 4,
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    cal,
+		Completer:  sc,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 4},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: cal,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -123,10 +123,10 @@ func TestRunCalibratedWithoutWindowEstimates(t *testing.T) {
 	}
 	sc := &scriptedCompleter{responses: []provider.Response{final}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     sc,
-		Tools:         reg,
-		MaxIterations: 1,
-		Calibrated:    cal,
+		Completer:  sc,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 1},
+		Calibrated: cal,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -155,10 +155,10 @@ func TestRunEstimatorFailureNonFatal(t *testing.T) {
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	sc := &scriptedCompleter{responses: []provider.Response{final}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     sc,
-		Tools:         reg,
-		MaxIterations: 1,
-		Calibrated:    cal,
+		Completer:  sc,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 1},
+		Calibrated: cal,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -251,10 +251,10 @@ func TestRunConcurrentSharedLoopWithPlanning(t *testing.T) {
 	}
 
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 1,
-		Calibrated:    cal,
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 1},
+		Calibrated: cal,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

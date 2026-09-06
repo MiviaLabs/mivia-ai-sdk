@@ -92,11 +92,11 @@ func TestRunConcludeDeadlineThresholdFires(t *testing.T) {
 	// the past at New, so time.Until(deadlineAt) is negative. The term fires on iter 1.
 	start := time.Now().Add(-2 * time.Hour)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    5,
-		ConcludeDeadline: time.Hour,
-		StartTime:        start,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Deadline: time.Hour},
+		StartTime: start,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -122,11 +122,11 @@ func TestRunConcludeDeadlineFutureDoesNotFire(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    5,
-		ConcludeDeadline: 2 * time.Hour,
-		StartTime:        time.Now(),
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Deadline: 2 * time.Hour},
+		StartTime: time.Now(),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -155,10 +155,10 @@ func TestRunConcludeMarginThresholdFires(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:      completer,
-		Tools:          reg,
-		MaxIterations:  5,
-		ConcludeMargin: 4,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Margin: 4},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -194,12 +194,11 @@ func TestRunConcludeTermsOREDTogether(t *testing.T) {
 	// The assertion this test carries is the dedup: exactly one notice
 	// in request 2. It does not discriminate one live term from two.
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    5,
-		ConcludeMargin:   4,
-		ConcludeDeadline: time.Hour,
-		StartTime:        time.Now().Add(-2 * time.Hour),
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Margin: 4, Deadline: time.Hour},
+		StartTime: time.Now().Add(-2 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -230,11 +229,10 @@ func TestRunConcludeZeroTermsDoNotFire(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    5,
-		ConcludeMargin:   0,
-		ConcludeDeadline: 0,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Margin: 0, Deadline: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -261,10 +259,10 @@ func TestRunConcludeMarginBoundary(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:      completer,
-		Tools:          reg,
-		MaxIterations:  5,
-		ConcludeMargin: 3,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Margin: 3},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -296,11 +294,10 @@ func TestRunConcludeZeroTermsKExceedsMaxIterations(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    3,
-		ConcludeMargin:   0,
-		ConcludeDeadline: 0,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 3},
+		Conclude:  agentloop.Conclude{Margin: 0, Deadline: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -321,17 +318,18 @@ func TestRunConcludeZeroTermsKExceedsMaxIterations(t *testing.T) {
 	}
 }
 
-// TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire proves that ConcludeDeadline: 0
-// with a past StartTime still disables the deadline term (deadlineAt is zero time).
+// TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire proves that
+// Conclude{Deadline: 0} with a past StartTime still disables the
+// deadline term (deadlineAt is zero time).
 func TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:        completer,
-		Tools:            reg,
-		MaxIterations:    5,
-		ConcludeDeadline: 0,
-		StartTime:        time.Now().Add(-2 * time.Hour),
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Conclude:  agentloop.Conclude{Deadline: 0},
+		StartTime: time.Now().Add(-2 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

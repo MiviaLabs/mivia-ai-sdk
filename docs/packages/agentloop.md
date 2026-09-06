@@ -12,17 +12,22 @@ or a bound trips. The exported surface below mirrors
 - `Loop` — a bound, ready-to-run tool-calling loop. The zero value is
   not usable; create one with `New`.
 - `Options` — the config struct `New` validates and wires:
-  `Completer`, `Tools`, `Scope`, `Model`, `MaxIterations`,
-  `MaxCallsPerTurn`, `MaxTotalTokens`, `OnToolError`, `OnToolCallError`,
+  `Completer`, `Tools`, `Scope`, `Model`, `Bounds`,
+  `OnToolError`, `OnToolCallError`,
   `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
   `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
-  `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
-  `ConcludeNotice`,
-  `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
-  `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`,
+  `Calibrated`, `StartTime`, `Conclude`,
+  `DedupWithinTurn`, `HeartbeatInterval`,
+  `WorkBudget`, `ToolBudget`,
   `ContinueOnStop`.
   `Completer` and `Tools` are required; the rest are optional.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
+- `Bounds` — the loop's numeric caps group: `MaxIterations`,
+  `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
+  `MaxConsecutiveToolFailures`, `TurnResultBudget`. Zero follows each
+  member's own rule.
+- `Conclude` — the graceful-conclude group: `Margin`, `Deadline`,
+  `Notice`. See "Graceful conclude" below.
 - `Surface` — one iteration's tool surface from `Options.Surface`:
   `Advertised`, `Registry`, `Scope`.
 - `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
@@ -85,13 +90,13 @@ or a bound trips. The exported surface below mirrors
   for its current `RunSteerable` call, if any. Safe to call from
   another goroutine, any number of times.
 - `Options.Validate()` — checks, in order: `Completer` and `Tools` are
-  set, `MaxIterations` is non-negative, `Usage` requires a non-blank
-  `SessionID`, a non-nil `Budget` passes `contextbudget.Limits.
-  Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
+  set, `Bounds.Validate` passes (each cap non-negative), `Usage`
+  requires a non-blank `SessionID`, a non-nil `Budget` passes
+  `contextbudget.Limits.
+  Validate`, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
-  `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
-  `TurnResultBudget`,
-  `MaxConcurrentTools`, and `MaxConsecutiveToolFailures` are not negative,
+  `Calibrated`, and excludes `Trim`, `Conclude.Validate` passes
+  (`Margin` not negative, then `Deadline` not negative),
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
   `validate` check.
@@ -111,14 +116,14 @@ Use `errors.Is` to test these.
 - `ErrNoTools` ("agentloop: tools registry is required") —
   `Options.Validate` returns it when `Tools` is nil.
 - `ErrMaxIterations` ("agentloop: MaxIterations must be non-negative") —
-  `Options.Validate` returns it for a negative `MaxIterations`.
-  `Run` never returns it; hitting `MaxIterations` at run time is a
+  `Options.Validate` returns it for a negative `Bounds.MaxIterations`.
+  `Run` never returns it; hitting `Bounds.MaxIterations` at run time is a
   graceful `StopMaxIterations` stop, not an error.
 - `ErrMaxConcurrentTools` ("agentloop: MaxConcurrentTools must not be
   negative") — `Options.Validate` returns it for a negative
-  `MaxConcurrentTools`.
+  `Bounds.MaxConcurrentTools`.
 - `ErrMaxConsecutiveToolFailures` — `Options.Validate` returns it
-  for a negative `MaxConsecutiveToolFailures`.
+  for a negative `Bounds.MaxConsecutiveToolFailures`.
 - `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
   `Options.Validate` returns it when `WorkBudget` is set but either
   `Reserve` or `Refund` is nil.
@@ -134,7 +139,7 @@ Use `errors.Is` to test these.
   and UTF-8-bytes cases.
 - `ErrCallsPerTurnExceeded` ("agentloop: turn requested more calls
   than MaxCallsPerTurn allows") — `Run`'s error when one turn's
-  response requests more calls than a positive `MaxCallsPerTurn`
+  response requests more calls than a positive `Bounds.MaxCallsPerTurn`
   allows. Always fails the run, before any call in the turn runs,
   regardless of `OnToolError`.
 - `ErrOverBudget` ("agentloop: message history exceeds Budget") —
@@ -142,7 +147,7 @@ Use `errors.Is` to test these.
   `Fits` check ahead of a `Completer` call.
 - `ErrTokenBudgetExceeded` ("agentloop: cumulative tokens exceed
   MaxTotalTokens") — `Run`'s error when the run's cumulative billed
-  tokens exceed a positive `MaxTotalTokens` after a `Completer` call
+  tokens exceed a positive `Bounds.MaxTotalTokens` after a `Completer` call
   returns.
 - `ErrInvalidSchema` — `New`'s error when a `Scope`-offered
   `SchemaTool`'s `ParameterSchema()` fails `schema.Compile`, wrapped
@@ -177,9 +182,9 @@ Use `errors.Is` to test these.
   `Trim` are set.
 - `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
   negative") — `Options.Validate` returns it for a negative
-  `ConcludeMargin`.
+  `Conclude.Margin`.
 - `ErrTurnResultBudget` — `Options.Validate` returns it for a negative
-  `TurnResultBudget`.
+  `Bounds.TurnResultBudget`.
 - `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
   non-nil Bus") — `Options.Validate` returns it when
   `HeartbeatInterval` is positive and `Bus` is nil.
@@ -208,7 +213,7 @@ Before every `Chat` call, when `Calibrated` is set, `Run` calls
 result. After `Chat` returns a response, `Run` calls
 `Calibrated.Observe(estimated, resp.Usage.TotalTokens)`, pairing that
 same call's estimate with its own actual usage, before the
-`MaxTotalTokens` check. A non-positive estimate or `TotalTokens` is a
+`Bounds.MaxTotalTokens` check. A non-positive estimate or `TotalTokens` is a
 no-op. The recovery path holds its own estimate over its own retried
 request, never the pre-recovery estimate.
 
@@ -224,18 +229,18 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
-## Graceful conclude near MaxIterations
+## Graceful conclude near Bounds.MaxIterations
 
-A positive `Options.ConcludeMargin` nudges the model toward a final
-answer as `MaxIterations` approaches, instead of hard-stopping with
+A positive `Options.Conclude.Margin` nudges the model toward a final
+answer as `Bounds.MaxIterations` approaches, instead of hard-stopping with
 whatever partial state the transcript holds. Zero disables nudging.
 
 Number each `Completer` call with a 1-based index `k`, from 1 to
-`MaxIterations`. `Run` appends `ConcludeNotice` to history once,
+`Bounds.MaxIterations`. `Run` appends `Conclude.Notice` to history once,
 immediately before the call at the first `k` for which
-`MaxIterations - k < ConcludeMargin` holds. A `ConcludeMargin` at or
-above `MaxIterations` satisfies this at `k = 1`, so the nudge fires on
-`Run`'s first iteration. An empty `ConcludeNotice` uses
+`Bounds.MaxIterations - k < Conclude.Margin` holds. A `Conclude.Margin` at or
+above `Bounds.MaxIterations` satisfies this at `k = 1`, so the nudge fires on
+`Run`'s first iteration. An empty `Conclude.Notice` uses
 `DefaultConcludeNotice`.
 
 The append lands at the tail of history, as the last message in the
@@ -249,14 +254,14 @@ ends at `StopMaxIterations`, unchanged, if the limit is hit.
 
 `StopConcluded` never fires from notice text that reached history some
 other way — a caller re-feeding a prior `Run` call's leftover
-`History`, or coincidental content matching `ConcludeNotice`. The
-check requires both that this run's own `ConcludeMargin` logic queued
+`History`, or coincidental content matching `Conclude.Notice`. The
+check requires both that this run's own `Conclude.Margin` logic queued
 the notice and that the notice still sits in the request the model
 actually answered; a `Trim` or `Window` step that strips the notice
 before the model sees it falls back to `StopNoToolCalls`.
 
 `Options.Window` may also drop, reorder, or summarize away the notice
-before a nudged call; no test covers `ConcludeMargin` combined with
+before a nudged call; no test covers `Conclude.Margin` combined with
 `Window`, and the two have no current caller pairing them.
 
 ## Duplicate-call dedup within a turn
@@ -321,8 +326,8 @@ The hook receives one `StopDecision`: the stop reason, the assistant
 turn, the iteration count, and the history. A nil
 or empty return stops the run unchanged. A non-empty return appends
 the messages verbatim to the history and runs the next iteration. A
-continuation is an ordinary iteration: `MaxIterations`,
-`MaxTotalTokens`, `Trim`, and every other bound still apply. The loop
+continuation is an ordinary iteration: `Bounds.MaxIterations`,
+`Bounds.MaxTotalTokens`, `Trim`, and every other bound still apply. The loop
 adds no bound of its own. A caller that sets neither bound and always
 returns messages gets an unbounded run. That is the caller's choice.
 
@@ -472,7 +477,7 @@ with no marker, since the marker itself would not fit.
 
 ## Turn result budget
 
-A positive `Options.TurnResultBudget` caps the summed byte size of one
+A positive `Options.Bounds.TurnResultBudget` caps the summed byte size of one
 turn's rendered tool results, across every call in that turn. It
 shapes each call's content after that call's own `tools.ResultBudgetOf`
 bound already applied, not instead of it.
@@ -480,11 +485,11 @@ bound already applied, not instead of it.
 `runToolCalls` runs calls in `ToolCall.Index` order and tracks a
 running byte total for the turn, reset to zero at the start of each
 turn. A call's content stays whole only when the running total plus
-its byte length does not exceed `TurnResultBudget`; otherwise the
+its byte length does not exceed `Bounds.TurnResultBudget`; otherwise the
 content is replaced with `BatchTruncationNotice`
 ("[batch-truncated] Turn tool-result budget exhausted; this result
 was omitted."), and the running total does not grow for that call. A
-zero `TurnResultBudget` skips the check entirely and every call's
+zero `Bounds.TurnResultBudget` skips the check entirely and every call's
 content passes through whole.
 
 Shaping applies to every appended `RoleTool` message's content,
@@ -492,17 +497,17 @@ including an `ErrorPolicyReport` error report marked with
 `ToolErrorPrefix`. `AuditRecord.Err` always carries the call's true
 outcome, independent of whether `ToolResult.Content` was replaced by
 shaping. A `PointPreTool` veto stops the turn before shaping considers
-any later call, unchanged from a run with `TurnResultBudget` at zero.
+any later call, unchanged from a run with `Bounds.TurnResultBudget` at zero.
 
 ## Concurrent tool dispatch
 
-A positive `Options.MaxConcurrentTools` fans one turn's tool calls out
+A positive `Options.Bounds.MaxConcurrentTools` fans one turn's tool calls out
 through a worker pool. Zero, the default, and one both mean serial
 dispatch: today's behavior.
 
 `executeCalls` runs every non-duplicate call serially when
-`MaxConcurrentTools` is below two or the turn has fewer than two
-calls. Otherwise it starts a pool of `MaxConcurrentTools` workers that
+`Bounds.MaxConcurrentTools` is below two or the turn has fewer than two
+calls. Otherwise it starts a pool of `Bounds.MaxConcurrentTools` workers that
 pull the next pending call index from a shared counter and run it.
 Any worker's error or veto sets a shared abort flag; every worker
 checks that flag before pulling its next call and stops once set.
@@ -528,8 +533,9 @@ path exactly.
 - A `DecodeArguments` failure on malformed model-supplied JSON
   arguments is a tool-run error and goes through the same
   `OnToolError` policy as a failed `Run`.
-- A zero `MaxCallsPerTurn` means unbounded. A zero `MaxTotalTokens`
-  means unbounded. A zero `TurnResultBudget` means unbounded.
+- A zero `Bounds.MaxCallsPerTurn` means unbounded. A zero
+  `Bounds.MaxTotalTokens` means unbounded. A zero `Bounds.TurnResultBudget`
+  means unbounded.
 - A nil `Options.Trim` passes history through unchanged and skips
   `provider.Message.Validate` on it.
 
@@ -570,12 +576,12 @@ reg := tools.New()
 _ = reg.Add(echoTool{})
 
 loop, err := agentloop.New(agentloop.Options{
-    Completer:     myCompleter,
-    Tools:         reg,
-    MaxIterations: 10,
+    Completer: myCompleter,
+    Tools:     reg,
+    Bounds:    agentloop.Bounds{MaxIterations: 10},
 })
 if err != nil {
-    // Completer or Tools missing, or MaxIterations negative
+    // Completer or Tools missing, or a negative Bounds member
 }
 
 res, err := loop.Run(context.Background(), []provider.Message{

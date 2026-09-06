@@ -116,7 +116,7 @@ func TestContinueOnStopContinuesNoToolCalls(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -157,7 +157,7 @@ func TestContinueOnStopContinuesEmptyResponse(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -193,7 +193,7 @@ func TestContinueOnStopEmptyResponseRoleLessTrimFails(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return msgs, nil
 		},
@@ -224,8 +224,8 @@ func TestContinueOnStopContinuesConcluded(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
-		ConcludeMargin: 5, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
+		Conclude: agentloop.Conclude{Margin: 5}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -257,7 +257,7 @@ func runNoToolCallOnce(t *testing.T, hook func(context.Context, agentloop.StopDe
 		{Message: textMessage(provider.RoleAssistant, "final"), Usage: provider.Usage{TotalTokens: 3}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: hook,
 	})
 	if err != nil {
@@ -334,7 +334,7 @@ func TestContinueOnStopNilHookRequestsIdentical(t *testing.T) {
 			{Message: textMessage(provider.RoleAssistant, "final")},
 		}}
 		loop, err := agentloop.New(agentloop.Options{
-			Completer: completer, Tools: reg, MaxIterations: 5, ContinueOnStop: hook,
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, ContinueOnStop: hook,
 		})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
@@ -362,7 +362,7 @@ func TestContinueOnStopReceivesStopEvidence(t *testing.T) {
 	final := textMessage(provider.RoleAssistant, "final")
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: final}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -397,7 +397,7 @@ func TestContinueOnStopTrimAppliesToGrownHistory(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			mu.Lock()
 			seen = append(seen, append([]provider.Message(nil), msgs...))
@@ -433,7 +433,7 @@ func TestContinueOnStopPanicFailsClosed(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: func(context.Context, agentloop.StopDecision) []provider.Message {
 			panic("hostile host")
 		},

@@ -56,7 +56,7 @@ func TestAuditRecordsOneCompletionAndOneToolCallPerIteration(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{resp1, resp2, final}}
 
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -125,7 +125,7 @@ func TestAuditToolCallErrCarriesUnrenderedDecodeError(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -156,7 +156,7 @@ func TestAuditToolCallErrCarriesUnrenderableResultError(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -185,7 +185,7 @@ func TestAuditNoRecordForVetoedCall(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -210,7 +210,7 @@ func TestAuditNoRecordForFailedToolCall(t *testing.T) {
 	}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -242,7 +242,7 @@ func TestAuditCompletionRecordedBeforeCallsPerTurnFailure(t *testing.T) {
 	}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxCallsPerTurn: 1, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 1}, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -271,7 +271,7 @@ func TestAuditCompletionRecordedBeforeTokenBudgetFailure(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{tripping}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, MaxTotalTokens: 100, Audit: auditor.Audit,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100}, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -295,7 +295,7 @@ func TestAuditFuncErrorFailsRun(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
 	auditor := &recordingAuditor{err: errAudit}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -330,7 +330,7 @@ func TestAuditFuncErrorOnToolCallFailsRun(t *testing.T) {
 		}
 		return nil
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditFn})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditFn})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -358,7 +358,7 @@ func TestAuditNilRunsUnchanged(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

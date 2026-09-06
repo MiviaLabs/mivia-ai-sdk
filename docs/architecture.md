@@ -355,8 +355,8 @@ flowchart LR
   `New` validates `Options` and calls `Definitions` once; `Run` offers
   the cached tool definitions, calls `Registry.RunScoped` for each
   model-requested call, appends the results, and repeats until the
-  model asks for no more tools or a bound trips (`MaxIterations`,
-  `MaxCallsPerTurn`, `MaxTotalTokens`, `Budget`, or ctx cancellation).
+  model asks for no more tools or a bound trips (the `Bounds` caps,
+  `Budget`, or ctx cancellation).
   A wired `Hooks` registry fires `PointPreTool` and `PointPostTool` per
   tool call and `PointStop` once, on every return path. A model-chosen
   call's arguments run through a `schema`-compiled validation gate

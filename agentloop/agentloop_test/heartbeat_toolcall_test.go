@@ -20,7 +20,7 @@ func TestRunHeartbeatGoroutineLeakOnCtxCancel(t *testing.T) {
 	bus := events.New()
 	completer := &slowCompleter{delay: heartbeatTestBlock, resp: provider.Response{Message: textMessage(provider.RoleAssistant, "hi")}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 1}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -45,7 +45,7 @@ func TestRunHeartbeatGoroutineLeakNoTick(t *testing.T) {
 	bus := events.New()
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 1, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 1}, Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -85,7 +85,7 @@ func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -130,7 +130,7 @@ func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -163,7 +163,7 @@ func TestRunOneToolCallHeartbeatPositivePath(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -207,7 +207,7 @@ func TestRunHeartbeatGoroutineLeakAfterMultipleTicks(t *testing.T) {
 	bus := events.New()
 	completer := &slowCompleter{delay: heartbeatTestBlock, resp: toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")})}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -263,7 +263,7 @@ func TestRunHeartbeatGoroutineLeakOnCompleterPanic(t *testing.T) {
 	bus := events.New()
 	completer := &panickingCompleter{delay: heartbeatTestBlock}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 1}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -309,7 +309,7 @@ func TestRunHeartbeatGoroutineLeakOnToolCallPanic(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "boom", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -342,7 +342,7 @@ func TestRunCompletionHeartbeatStopsWhenChatReturns(t *testing.T) {
 		resp:  toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")}),
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 1, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -402,7 +402,7 @@ func TestRunToolCallHeartbeatStopsWhenToolReturns(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "slow", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 1, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Hooks: hreg, Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

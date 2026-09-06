@@ -21,7 +21,7 @@ const (
 	// tool call and no non-blank assistant text content.
 	StopEmptyResponse StopReason = "empty_response"
 	// StopMaxIterations is Run's stop reason when the iteration count
-	// reaches Options.MaxIterations. Not an error.
+	// reaches Options.Bounds.MaxIterations. Not an error.
 	StopMaxIterations StopReason = "max_iterations"
 	// StopHookVeto is Run's stop reason when a PointPreTool handler
 	// vetoes a tool call. The tool does not run.

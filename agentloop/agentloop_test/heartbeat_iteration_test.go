@@ -39,7 +39,7 @@ func TestRunIterationStartEndOrder(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func TestRunCtxCanceledBeforeFirstIterationEmitsNoEvents(t *testing.T) {
 	subscribeEvents(t, bus, rec.handle, agentloop.EventIterationStart, agentloop.EventIterationEnd)
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -147,7 +147,7 @@ func buildHardFailCtxCancelMidCall(t *testing.T, bus *events.Bus) (*agentloop.Lo
 			provider.ToolCall{Index: 1, ID: "call-2", Name: "second", Arguments: []byte("{}")},
 		),
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -158,7 +158,7 @@ func buildHardFailCtxCancelMidCall(t *testing.T, bus *events.Bus) (*agentloop.Lo
 func buildHardFailTrimError(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) { return nil, errBoom },
 	})
 	if err != nil {
@@ -172,7 +172,7 @@ func buildHardFailTrimError(t *testing.T, bus *events.Bus) (*agentloop.Loop, con
 func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
 		Budget: &contextbudget.Limits{MaxBytes: 1},
 	})
 	if err != nil {
@@ -190,7 +190,7 @@ func buildHardFailPlanHistoryError(t *testing.T, bus *events.Bus) (*agentloop.Lo
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
 		Window:     &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}},
 		Summarizer: sum,
 		Calibrated: contextplan.Calibrate(errEstimator{}, 1.0),
@@ -206,7 +206,7 @@ func buildHardFailAuditError(t *testing.T, bus *events.Bus) (*agentloop.Loop, co
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	auditor := &recordingAuditor{err: errAudit}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
 		Audit: auditor.Audit,
 	})
 	if err != nil {
@@ -221,8 +221,7 @@ func buildHardFailTokenBudgetExceeded(t *testing.T, bus *events.Bus) (*agentloop
 		{Message: textMessage(provider.RoleAssistant, "hi"), Usage: provider.Usage{TotalTokens: 100}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
-		MaxTotalTokens: 10,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 10}, Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -245,7 +244,7 @@ func buildHardFailToolCallError(t *testing.T, bus *events.Bus) (*agentloop.Loop,
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, Bus: bus, HeartbeatInterval: time.Hour})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, Bus: bus, HeartbeatInterval: time.Hour})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -266,8 +265,7 @@ func buildHardFailCallsPerTurnExceeded(t *testing.T, bus *events.Bus) (*agentloo
 		),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Bus: bus, HeartbeatInterval: time.Hour,
-		MaxCallsPerTurn: 1,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 1}, Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -385,7 +383,7 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 	ch, handler := eventChan()
 	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 4,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4},
 		Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})

@@ -72,12 +72,12 @@ func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
 	estErr := errors.New("estimator boom")
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 3,
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(erroringEstimator{err: estErr}, 1.0),
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 3},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(erroringEstimator{err: estErr}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -119,12 +119,12 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsWithErrCompactionFailed(t *te
 	estErr := errors.New("post-compaction estimate boom")
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 3,
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(summaryAwareEstimator{failErr: estErr}, 1.0),
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 3},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(summaryAwareEstimator{failErr: estErr}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -163,12 +163,12 @@ func TestRunCheckCompactedBudgetOverflowAfterSummaryInjection(t *testing.T) {
 	}
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		MaxIterations: 3,
-		Window:        &w,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(summaryAwareEstimator{overflow: true}, 1.0),
+		Completer:  completer,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 3},
+		Window:     &w,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(summaryAwareEstimator{overflow: true}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

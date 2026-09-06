@@ -215,7 +215,7 @@ func TestRoleToolMessageCarriesToolName_Success(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -252,7 +252,7 @@ func TestRoleToolMessageCarriesToolName_Dedup(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

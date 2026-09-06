@@ -8,6 +8,7 @@ MARKER_SCAN := grep -riE '(//|\#)\s*nosem[g]rep' . --exclude-dir=.git --exclude-
 verify-fast:
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
+	go vet ./docs/examples/_agentloop/
 	go test ./...
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py

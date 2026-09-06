@@ -134,7 +134,7 @@ const RecoveryTargetTokens = 16384
 // a recovery compaction, so the model sees that compaction occurred.
 const CompactionNotice = "Earlier messages were compacted into a context summary. Some detail was dropped."
 
-// DefaultConcludeNotice is Options.ConcludeNotice's fallback text.
+// DefaultConcludeNotice is Options.Conclude.Notice's fallback text.
 const DefaultConcludeNotice = "You are close to the iteration limit. Provide your best final answer now."
 
 // DuplicateCallNotice replaces a tool result's content when
@@ -174,15 +174,9 @@ type Options struct {
 	// Model names the model Request.Model carries. An empty Model
 	// means the Completer's own default.
 	Model string
-	// MaxIterations bounds the number of Completer calls one Run
-	// makes. Must be non-negative.
-	MaxIterations int
-	// MaxCallsPerTurn bounds the number of tool calls one turn's
-	// response may request. Zero means unbounded.
-	MaxCallsPerTurn int
-	// MaxTotalTokens caps the run's cumulative billed tokens, summed
-	// across every Completer call. Zero means unbounded.
-	MaxTotalTokens int
+	// Bounds groups the loop's numeric caps; see the Bounds type for
+	// the members and their zero values.
+	Bounds Bounds
 	// OnToolError governs what Run does with a tool-run error.
 	OnToolError ErrorPolicy
 	// OnToolCallError runs only on the ErrorPolicyReport path after a
@@ -256,59 +250,27 @@ type Options struct {
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated
-	// ConcludeMargin nudges the model to produce a final answer as
-	// MaxIterations approaches, appending ConcludeNotice once, instead of
-	// hard-stopping at MaxIterations with no notice. Zero disables
-	// nudging. See docs/plans/agentloop.md for the worked table.
-	ConcludeMargin int
+	// Conclude groups the graceful-conclude terms; see the Conclude
+	// type for Margin, Deadline, and Notice.
+	Conclude Conclude
 	// StartTime is the wall-clock anchor the SDK uses for the
-	// time-based ConcludeDeadline term. The work deadline the loop
-	// measures against is StartTime.Add(ConcludeDeadline) when
-	// ConcludeDeadline is positive; zero StartTime falls back to the
-	// time of New, so the threshold fires ConcludeDeadline into the
-	// run from the moment of construction. Zero StartTime and zero
-	// ConcludeDeadline together disable the term entirely.
+	// time-based Conclude.Deadline term. The work deadline the loop
+	// measures against is StartTime.Add(Conclude.Deadline) when
+	// Conclude.Deadline is positive; zero StartTime falls back to the
+	// time of New, so the threshold fires the deadline into the run
+	// from the moment of construction. Zero StartTime and zero
+	// Conclude.Deadline together disable the term entirely.
 	StartTime time.Time
-	// ConcludeDeadline, when > 0, fires the conclude nudge when
-	// the wall-clock deadline StartTime.Add(ConcludeDeadline) has
-	// passed. A zero value disables this term. New computes the
-	// deadline once at construction as deadlineAt. A zero StartTime
-	// resolves to time.Now().
-	ConcludeDeadline time.Duration
-	// ConcludeNotice is the RoleUser content Run appends once nudging
-	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
-	// DefaultConcludeNotice.
-	ConcludeNotice string
 	// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
 	// already served earlier in the same turn, and serves
 	// DuplicateCallNotice instead of running the tool again. False, the
 	// zero value, runs every call, unchanged from the base plan.
 	DedupWithinTurn bool
-	// MaxConcurrentTools bounds how many tool calls of one turn run
-	// in parallel through runToolCalls. Zero (the default) and 1 both
-	// mean serial: today's behavior. A value N >= 2 fans the turn's
-	// calls out through a worker pool of size N. History order, audit
-	// order, dedup semantics, the ctx.Err() pre-dispatch check, and
-	// the veto short-circuit all match the serial path; the pool only
-	// changes which calls overlap in time. Negative values fail
-	// Validate with ErrMaxConcurrentTools.
-	MaxConcurrentTools int
 	// HeartbeatInterval emits a heartbeat Event on Bus every interval
 	// while one Completer call or one tool call is in flight. Zero
 	// disables heartbeats. A positive HeartbeatInterval requires a
 	// non-nil Bus.
 	HeartbeatInterval time.Duration
-	// TurnResultBudget caps the summed byte size of one turn's rendered
-	// tool results, across every call in that turn, before they append to
-	// history. Zero means uncapped. Distinct from a Tool's own
-	// tools.ResultBudgetOf bound, which caps one call's content alone.
-	// Negative values fail Validate with ErrTurnResultBudget.
-	TurnResultBudget int
-	// MaxConsecutiveToolFailures bounds how many consecutive turns
-	// where every tool call fails with an unknown tool error may run
-	// before stopping early. Zero (the default) means unbounded.
-	// Negative values fail Validate with ErrMaxConsecutiveToolFailures.
-	MaxConsecutiveToolFailures int
 	// WorkBudget, when non-nil, is a host-callable token-reservation
 	// surface the loop invokes around each Completer call. A non-nil
 	// WorkBudget requires both functions; Validate rejects a half-wired
@@ -397,16 +359,13 @@ type AuditFunc func(ctx context.Context, rec AuditRecord) error
 type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)
 
 // Validate checks Options in a fixed order and returns the first
-// failure: Completer required, Tools required, MaxIterations
-// non-negative, Usage requires a non-blank SessionID, a non-nil Budget
-// passes contextbudget.Limits.Validate, MaxTotalTokens is not
-// negative, a non-nil Window passes Window.Validate, requires
-// Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
-// is not negative, ConcludeDeadline is not negative, TurnResultBudget
-// is not negative, MaxConcurrentTools is not negative,
-// MaxConsecutiveToolFailures is not negative, a positive
-// HeartbeatInterval requires a non-nil Bus, and finally WorkBudget and
-// ToolBudget each pass their own check.
+// failure: Completer required, Tools required, Bounds.Validate (each
+// cap non-negative), Usage requires a non-blank SessionID, a non-nil
+// Budget passes contextbudget.Limits.Validate, a non-nil Window passes
+// Window.Validate, requires Summarizer, requires Calibrated, and
+// excludes Trim, Conclude.Validate (Margin not negative, then Deadline
+// not negative), a positive HeartbeatInterval requires a non-nil Bus,
+// and finally WorkBudget and ToolBudget each pass their own check.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -414,8 +373,8 @@ func (o Options) Validate() error {
 	if o.Tools == nil {
 		return ErrNoTools
 	}
-	if o.MaxIterations < 0 {
-		return ErrMaxIterations
+	if err := o.Bounds.Validate(); err != nil {
+		return err
 	}
 	if o.Usage != nil && strings.TrimSpace(o.SessionID) == "" {
 		return ErrSessionIDRequired
@@ -424,9 +383,6 @@ func (o Options) Validate() error {
 		if err := o.Budget.Validate(); err != nil {
 			return fmt.Errorf("agentloop: invalid Budget: %w", err)
 		}
-	}
-	if o.MaxTotalTokens < 0 {
-		return ErrMaxTotalTokens
 	}
 	if o.Window != nil {
 		if err := o.Window.Validate(); err != nil {
@@ -442,20 +398,8 @@ func (o Options) Validate() error {
 			return ErrTrimExcluded
 		}
 	}
-	if o.ConcludeMargin < 0 {
-		return ErrConcludeMargin
-	}
-	if o.ConcludeDeadline < 0 {
-		return ErrConcludeDeadline
-	}
-	if o.TurnResultBudget < 0 {
-		return ErrTurnResultBudget
-	}
-	if o.MaxConcurrentTools < 0 {
-		return ErrMaxConcurrentTools
-	}
-	if o.MaxConsecutiveToolFailures < 0 {
-		return ErrMaxConsecutiveToolFailures
+	if err := o.Conclude.Validate(); err != nil {
+		return err
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
 		return ErrHeartbeatRequiresBus

@@ -26,7 +26,7 @@ func TestDedupWithinTurnFalseRunsBothCalls(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -57,7 +57,7 @@ func TestDedupWithinTurnByteEqualArguments(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -93,7 +93,7 @@ func TestDedupWithinTurnKeyOrderIndependent(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -123,7 +123,7 @@ func TestDedupWithinTurnDifferentArgumentsBothRun(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -156,7 +156,7 @@ func TestDedupWithinTurnDifferentToolNamesSameArgumentsBothRun(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -186,7 +186,7 @@ func TestDedupWithinTurnCarriesDuplicateCallsOwnToolCallID(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -237,7 +237,7 @@ func TestDedupWithinTurnHooksFireOnceForPair(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -272,7 +272,7 @@ func TestDedupWithinTurnPreToolVetoStopsBeforeSecondCall(t *testing.T) {
 			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte(`{"a":1}`)},
 		),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -305,7 +305,7 @@ func TestDedupWithinTurnResetsBetweenIterations(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte(`{"a":1}`)}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -337,7 +337,7 @@ func TestDedupWithinTurnAuditRecordNilErr(t *testing.T) {
 	}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -370,7 +370,7 @@ func TestDedupWithinTurnErroredCallSeedsDedupSet(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -408,7 +408,7 @@ func TestDedupWithinTurnAuditErrorOnDuplicateFailsRun(t *testing.T) {
 		return nil
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true, Audit: auditFn,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true, Audit: auditFn,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -440,7 +440,7 @@ func TestDedupWithinTurnSkippedCallOpensNoToolSpan(t *testing.T) {
 	}}
 	tracer := trace.New()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true, Tracer: tracer,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true, Tracer: tracer,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

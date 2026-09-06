@@ -153,7 +153,7 @@ func TestMaxConcurrentToolsSerialPreservesOrder(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxConcurrentTools: 1,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 1},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -186,7 +186,7 @@ func TestMaxConcurrentToolsParallelRunsConcurrently(t *testing.T) {
 		tl.release = release
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxConcurrentTools: 3,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 3},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -218,12 +218,12 @@ func TestMaxConcurrentToolsParallelRunsConcurrently(t *testing.T) {
 // TestMaxConcurrentToolsDefaultZeroIsSerial proves the zero default
 // matches today's serial behavior: a turn with three distinct calls
 // never overlaps them even though MaxConcurrentTools is unset, so an
-// existing caller passing Options{MaxConcurrentTools: 0} sees no
+// existing caller passing a zero Bounds.MaxConcurrentTools sees no
 // regression.
 func TestMaxConcurrentToolsDefaultZeroIsSerial(t *testing.T) {
 	a, b, c, reg, completer := threeCallTurn(t)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -245,8 +245,7 @@ func TestMaxConcurrentToolsParallelAuditOrderMatchesIndex(t *testing.T) {
 	_, _, _, reg, completer := threeCallTurn(t)
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
-		MaxConcurrentTools: 3, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 3}, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -280,8 +279,7 @@ func TestMaxConcurrentToolsParallelDedupStillServed(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
-		MaxConcurrentTools: 4, DedupWithinTurn: true,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 4}, DedupWithinTurn: true,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -316,7 +314,7 @@ func TestMaxConcurrentToolsParallelAllCallsRun(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxConcurrentTools: 8,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 8},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -353,7 +351,7 @@ func TestMaxConcurrentToolsMoreCallsThanWorkers(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxConcurrentTools: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

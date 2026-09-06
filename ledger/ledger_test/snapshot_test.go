@@ -2,7 +2,9 @@ package ledger_test
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 )
@@ -141,4 +143,96 @@ func TestRestoreReproducesPriorState(t *testing.T) {
 			t.Fatalf("restored state for %q = %+v, want %+v", key, got, want)
 		}
 	}
+}
+
+// claimedRecord snapshots one ledger holding a claimed record and
+// returns that record for mutation in a test row.
+func claimedRecord(t *testing.T, ctx context.Context, key ledger.IdempotencyKey) ledger.TaskState {
+	t.Helper()
+	l := newLedger(t, nil)
+	mustAdmit(t, l, ctx, key, 1)
+	mustClaim(t, l, ctx, key, "owner-a")
+	snap, err := l.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	return snap.Tasks[0]
+}
+
+// TestRestoreRejectsInvalidRecord proves Restore validates each
+// record at the insert boundary, so a hand-built snapshot cannot
+// insert a record TaskState.Validate rejects.
+func TestRestoreRejectsInvalidRecord(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("valid snapshot restores", func(t *testing.T) {
+		l := newLedger(t, nil)
+		mustAdmit(t, l, ctx, "root", 1)
+		mustAdmit(t, l, ctx, "dep", 1, "root")
+		mustClaim(t, l, ctx, "dep", "owner-a")
+		snap, err := l.Snapshot(ctx)
+		if err != nil {
+			t.Fatalf("Snapshot: %v", err)
+		}
+		fresh := newLedger(t, nil)
+		if err := fresh.Restore(ctx, snap); err != nil {
+			t.Fatalf("Restore: %v", err)
+		}
+		for _, key := range []ledger.IdempotencyKey{"root", "dep"} {
+			if _, found, err := fresh.State(ctx, key); err != nil || !found {
+				t.Fatalf("State(%q) = found %v, err %v, want the restored record", key, found, err)
+			}
+		}
+	})
+
+	t.Run("claimed record with no owner", func(t *testing.T) {
+		bad := claimedRecord(t, ctx, "no-owner")
+		bad.Owner = ""
+		err := newLedger(t, nil).Restore(ctx, ledger.Snapshot{Tasks: []ledger.TaskState{bad}})
+		if err == nil {
+			t.Fatal("Restore = nil, want the validation error")
+		}
+		if !strings.Contains(err.Error(), "ledger: restore: key") || !strings.Contains(err.Error(), "no-owner") {
+			t.Fatalf("Restore error = %v, want the key-naming restore wrap", err)
+		}
+	})
+
+	t.Run("claimed record with a zero lease", func(t *testing.T) {
+		bad := claimedRecord(t, ctx, "zero-lease")
+		bad.LeaseUntil = time.Time{}
+		err := newLedger(t, nil).Restore(ctx, ledger.Snapshot{Tasks: []ledger.TaskState{bad}})
+		if err == nil {
+			t.Fatal("Restore = nil, want the validation error")
+		}
+		if !strings.Contains(err.Error(), "ledger: restore: key") || !strings.Contains(err.Error(), "zero-lease") {
+			t.Fatalf("Restore error = %v, want the key-naming restore wrap", err)
+		}
+	})
+
+	t.Run("mixed snapshot stops at the invalid record", func(t *testing.T) {
+		valid := ledger.TaskState{}
+		l := newLedger(t, nil)
+		mustAdmit(t, l, ctx, "valid", 1)
+		snap, err := l.Snapshot(ctx)
+		if err != nil {
+			t.Fatalf("Snapshot: %v", err)
+		}
+		valid = snap.Tasks[0]
+		bad := claimedRecord(t, ctx, "invalid")
+		bad.Owner = ""
+		fresh := newLedger(t, nil)
+		err = fresh.Restore(ctx, ledger.Snapshot{Tasks: []ledger.TaskState{valid, bad}})
+		if err == nil {
+			t.Fatal("Restore = nil, want the validation error")
+		}
+		if !strings.Contains(err.Error(), "invalid") {
+			t.Fatalf("Restore error = %v, want the invalid key named", err)
+		}
+		if _, found, err := fresh.State(ctx, "valid"); err != nil || !found {
+			t.Fatalf("State(valid) = found %v, err %v, want the earlier insert kept", found, err)
+		}
+		if _, found, _ := fresh.State(ctx, "invalid"); found {
+			t.Fatal("the invalid record entered the store")
+		}
+	})
 }

@@ -37,8 +37,17 @@ func (s Snapshot) Validate() error {
 // CompareAndSwap. It is meant for MemStore cold-start or test setup.
 // It returns an error the first time a key already has a record; a
 // caller restoring into a fresh Ledger never hits this path.
+// Restore inserts every Snapshot record into Store through
+// CompareAndSwap. It validates each record first; a record failing
+// TaskState.Validate fails the restore with the key named. It is
+// meant for MemStore cold-start or test setup. It returns an error
+// the first time a key fails validation or already has a record;
+// earlier inserts stay in place.
 func (l *Ledger) Restore(ctx context.Context, s Snapshot) error {
 	for _, t := range s.Tasks {
+		if err := t.Validate(); err != nil {
+			return fmt.Errorf("ledger: restore: key %q: %w", t.Key, err)
+		}
 		ok, err := l.store.CompareAndSwap(ctx, t.Key, TaskState{}, t)
 		if err != nil {
 			return err

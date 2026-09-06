@@ -71,14 +71,15 @@ fails `Load` with `ErrBadDocument` wrapping `ErrCallerBuilt`.
 - `Load(data)` — resolves one JSON document into a `*Definition`.
   Rejects malformed JSON, a non-object root, a step with both `tool`
   and `internal`, a step that sets `sub` beside `tool` or `internal`,
-  an empty step ID, an undeclared external tool, a blank or duplicate
-  tool name, an unknown internal kind, and an unknown `when` value,
-  each wrapped in `ErrBadDocument`. Also rejects an `internal`
-  section key no `Kind` constant names, a key naming a caller-built
-  `Kind` (wrapping `ErrCallerBuilt`), and an invalid internal config
-  value. Also wraps in `ErrBadDocument` any rejection from
-  `machine.New`, `flow.New`, or an internal builder. A present
-  `options.budget` maps onto `Options.Budget` as a
+  a step with no `tool`, `internal`, or `sub` binding outside a
+  two-or-more-member panel, an empty step ID, an undeclared external
+  tool, a blank or duplicate tool name, an unknown internal kind, and
+  an unknown `when` value, each wrapped in `ErrBadDocument`. Also
+  rejects an `internal` section key no `Kind` constant names, a key
+  naming a caller-built `Kind` (wrapping `ErrCallerBuilt`), and an
+  invalid internal config value. Also wraps in `ErrBadDocument` any
+  rejection from `machine.New`, `flow.New`, or an internal builder. A
+  present `options.budget` maps onto `Options.Budget` as a
   `*contextbudget.Limits` with no range check; `Runner`'s call into
   `agentrun.New` rejects a negative field. `Load` never reads the
   environment.
@@ -101,13 +102,14 @@ Use `errors.Is` to test these.
 - `ErrBadDocument` ("runconfig: bad document") — `Load` returns it for
   every document-shape rejection listed under `Load` above: malformed
   JSON, a missing `machine` or `plan` section, a step with both
-  bindings, a step with `sub` beside a binding, an empty step ID, an
-  undeclared or duplicate or blank tool name, an unknown internal kind,
-  an unknown `when` value, a bad retry duration string, a rejected
-  `internal` section key or config, or a constructor rejection from
-  `machine.New`, `flow.New`, or an internal builder. `Runner`
-  also wraps it when `tools.Registry.Add` rejects a resolved step
-  adapter, for example on a duplicate step ID.
+  bindings, a step with `sub` beside a binding, a step with no `tool`,
+  `internal`, or `sub` binding outside a two-or-more-member panel, an
+  empty step ID, an undeclared or duplicate or blank tool name, an
+  unknown internal kind, an unknown `when` value, a bad retry duration
+  string, a rejected `internal` section key or config, or a
+  constructor rejection from `machine.New`, `flow.New`, or an internal
+  builder. `Runner` also wraps it when `tools.Registry.Add` rejects a
+  resolved step adapter, for example on a duplicate step ID.
 - `ErrCallerBuilt` ("runconfig: internal kind stays caller-built") —
   `Load` returns it, wrapped inside `ErrBadDocument` with two `%w`
   verbs, when the document's `internal` section names one of the six
@@ -127,7 +129,9 @@ One JSON document holds five top-level sections: `machine`, `plan`,
 array of `{from, to, trigger}` rows. `plan` holds a `steps` array and a
 `panels` array of step-ID arrays. Each step in `plan.steps` sets `id`,
 and optionally `needs`, `to`, `when`, `payload`, `retry`, `loop`, and
-exactly one of `tool`, `internal`, or `sub`. `options` maps `room`,
+at most one of `tool`, `internal`, or `sub`. A step carries none of
+the three exactly when it is a member of a panel with two or more
+members. `options` maps `room`,
 `ask_to`, an optional `budget` object, and an optional `trace` boolean
 onto `Options`. `tools` lists the external tool names a step's `tool`
 field may reference. `internal` maps a wireable `Kind` name to that

@@ -12,12 +12,18 @@ type SchemaTool interface {
 }
 
 // SchemaOf returns t.ParameterSchema() and true when t implements
-// SchemaTool; else it returns nil, false. It follows
-// ExecutionProfileOf's precedent: an optional marker, checked through
-// a type assertion, with a paired accessor.
+// SchemaTool and publishes non-nil schema bytes. It fails closed: a
+// tool whose ParameterSchema() returns nil gets nil, false, whether
+// or not it implements SchemaTool, so a nil schema never reads as
+// published. It follows ExecutionProfileOf's precedent: an optional
+// marker, checked through a type assertion, with a paired accessor.
 func SchemaOf(t Tool) ([]byte, bool) {
 	if st, ok := t.(SchemaTool); ok {
-		return st.ParameterSchema(), true
+		schema := st.ParameterSchema()
+		if schema == nil {
+			return nil, false
+		}
+		return schema, true
 	}
 	return nil, false
 }

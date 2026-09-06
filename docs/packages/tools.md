@@ -48,7 +48,8 @@ unknown name fails. The exported surface below mirrors
   `ParameterSchema() []byte` and `DecodeArguments(raw []byte) (InOut,
   error)` to publish a model-facing parameter schema and decode
   model-supplied arguments. `agentloop.Definitions` skips a tool that
-  does not implement it.
+  does not implement it, and a tool whose `ParameterSchema()` returns
+  nil.
 
 ## Functions and methods
 
@@ -79,7 +80,9 @@ unknown name fails. The exported surface below mirrors
 - `IsPrivileged(t)` — returns `t.Privileged()`, or false when `t` does
   not implement `PrivilegedTool`.
 - `SchemaOf(t)` — returns `t.ParameterSchema()` and true when `t`
-  implements `SchemaTool`, or `nil, false` when it does not.
+  implements `SchemaTool` and publishes non-nil schema bytes. It fails
+  closed: a tool whose `ParameterSchema()` returns nil gets `nil,
+  false`, whether or not it implements `SchemaTool`.
 - `NewScope(opts)` — builds a `Scope` from `ScopeOptions`.
 - `Scope.Allowed(name, t)` — true when `name` passes the denylist, the
   privileged check, and the allowlist.
@@ -161,9 +164,10 @@ Use `errors.Is` to test these.
   returns that error unchanged and never runs the tool.
 - `Tools` returns tools sorted by name, so two calls against an
   unchanged `Registry` return equal slices in the same order.
-- A tool that does not implement `SchemaTool` is unschema'd.
-  `SchemaOf` reports `nil, false`; this package never synthesizes a
-  schema.
+- A tool that does not implement `SchemaTool` is unschema'd. So is a
+  tool whose `ParameterSchema()` returns nil, whether or not it
+  implements `SchemaTool`. `SchemaOf` reports `nil, false` for both;
+  this package never synthesizes a schema.
 
 ## Why this shape
 
@@ -268,8 +272,10 @@ all. An unrecognized `Class` must not let a tool skip approval.
   `agentloop.Loop.Run` decodes model-supplied arguments through
   `SchemaTool.DecodeArguments`.
 - [spool.md](spool.md) — `spool.SpoolTool` forwards `SchemaTool` from
-  the wrapped tool to the returned `tools.Tool` only when the wrapped
-  tool implements it.
+  the wrapped tool to the returned `tools.Tool` through
+  `tools.SchemaOf`. `SchemaOf` fails closed: a wrapped tool that
+  publishes no schema bytes reports `nil, false`, and
+  `agentloop.Definitions` skips the wrapper.
 
 ## Usage
 

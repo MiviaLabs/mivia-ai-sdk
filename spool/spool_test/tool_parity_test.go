@@ -1,11 +1,13 @@
-// Parity test: the SpoolTool wrapper always implements
-// tools.ProfiledTool, tools.ResultBudgetTool, and
-// tools.PrivilegedTool, and it mirrors inner only for
-// tools.SchemaTool. Enumerates every subset of the known interfaces,
-// so a wrapper that dropped an unconditional capability, or that
-// widened the conditional schema bit, fails here, not in a live run.
-// When tools gains a new optional interface, add it to probes and to
-// SpoolTool in the same change. See docs/plans/spool.md.
+// Parity test: the SpoolTool wrapper declares all four optional
+// interfaces, tools.ProfiledTool, tools.ResultBudgetTool,
+// tools.PrivilegedTool, and tools.SchemaTool, for every inner, and it
+// mirrors inner's values through the tools helpers. tools.SchemaOf
+// still reports nil, false for a schema-less wrapper, because
+// tools.SchemaOf fails closed on nil schema bytes. Enumerates every
+// subset of the known interfaces, so a wrapper that dropped a
+// capability, or that forwarded a wrong value, fails here, not in a
+// live run. When tools gains a new optional interface, add it to
+// probes and to SpoolTool in the same change. See docs/plans/spool.md.
 package spool_test
 
 import (
@@ -227,6 +229,41 @@ func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
 	}
 }
 
+// TestSpoolToolNilSchemaIdentityDecode covers the schema-less masks
+// under the one-struct wrapper. The wrapper still implements
+// tools.SchemaTool; ParameterSchema returns nil; and DecodeArguments
+// identity-decodes raw bytes as a string value. This row kills the
+// mutation that drops the comma-ok fallback in DecodeArguments.
+func TestSpoolToolNilSchemaIdentityDecode(t *testing.T) {
+	for mask := 0; mask < 8; mask++ {
+		inner := innerFor(mask)
+		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		if err != nil {
+			t.Fatalf("NewSpool: %v", err)
+		}
+		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		if err != nil {
+			t.Fatalf("SpoolTool: %v", err)
+		}
+		wrappedSchema, ok := wrapped.(tools.SchemaTool)
+		if !ok {
+			t.Fatalf("subset %04b: wrapper does not implement SchemaTool, want it to", mask)
+		}
+		if got := wrappedSchema.ParameterSchema(); got != nil {
+			t.Errorf("subset %04b: ParameterSchema() = %s, want nil", mask, got)
+		}
+		raw := []byte(`identity-payload-7`)
+		wantIn := tools.InOut{Value: string(raw)}
+		gotIn, gotErr := wrappedSchema.DecodeArguments(raw)
+		if gotErr != nil {
+			t.Errorf("subset %04b: DecodeArguments error = %v, want nil", mask, gotErr)
+		}
+		if gotIn != wantIn {
+			t.Errorf("subset %04b: DecodeArguments = %+v, want identity %+v", mask, gotIn, wantIn)
+		}
+	}
+}
+
 func TestSpoolToolInterfaceParity(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
 		inner := innerFor(mask)
@@ -238,15 +275,12 @@ func TestSpoolToolInterfaceParity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}
-		for i, p := range probes {
-			// Probes 0, 1 and 2 are unconditional; probe 3
-			// mirrors inner.
-			want := true
-			if i == 3 {
-				want = p.satisfy(inner)
-			}
-			if got := p.satisfy(wrapped); got != want {
-				t.Errorf("subset %04b: wrapper satisfies %s = %v, want %v", mask, p.name, got, want)
+		for _, p := range probes {
+			// Presence is unconditional now: the wrapper declares
+			// all four optional interfaces for every mask. Value
+			// parity, checked below, is what still mirrors inner.
+			if got := p.satisfy(wrapped); !got {
+				t.Errorf("subset %04b: wrapper satisfies %s = false, want true", mask, p.name)
 			}
 		}
 		assertParityValues(t, mask, inner, wrapped)

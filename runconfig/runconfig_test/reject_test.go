@@ -36,7 +36,7 @@ func replace(t *testing.T, old, new string) string {
 }
 
 // shapeCases lists the document-shape ErrBadDocument cases: JSON
-// form, step binding rules, and the tools array.
+// form, the tools array, and the empty step ID.
 func shapeCases(t *testing.T) []rejectCase {
 	t.Helper()
 	return []rejectCase{
@@ -54,11 +54,6 @@ func shapeCases(t *testing.T) []rejectCase {
 			name: "missing machine",
 			doc:  `{"plan": {"steps": [{"id": "s"}]}}`,
 			want: "machine and plan",
-		},
-		{
-			name: "both bindings",
-			doc:  replace(t, `"tool": "grep"}]`, `"tool": "grep", "internal": "flow"}]`),
-			want: "both tool and internal",
 		},
 		{
 			name: "empty id",
@@ -95,6 +90,20 @@ func shapeCases(t *testing.T) []rejectCase {
 			doc:  replace(t, `"tools": ["grep"]`, `"tools": [""]`),
 			want: "blank tool name",
 		},
+	}
+}
+
+// bindingCases lists the step-binding ErrBadDocument cases: both
+// bindings, sub beside a binding, and an unbound step outside a
+// two-or-more-member panel.
+func bindingCases(t *testing.T) []rejectCase {
+	t.Helper()
+	return []rejectCase{
+		{
+			name: "both bindings",
+			doc:  replace(t, `"tool": "grep"}]`, `"tool": "grep", "internal": "flow"}]`),
+			want: "both tool and internal",
+		},
 		{
 			name: "sub with declared tool",
 			doc:  replace(t, `"tool": "grep"}]`, `"tool": "grep", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
@@ -109,6 +118,16 @@ func shapeCases(t *testing.T) []rejectCase {
 			name: "sub with internal kind",
 			doc:  replace(t, `"tool": "grep"}]`, `"internal": "flow", "sub": {"steps": [{"id": "inner", "to": "d"}]}}]`),
 			want: `step "s" sets sub beside tool or internal`,
+		},
+		{
+			name: "unbound step outside a panel",
+			doc:  replace(t, `", "tool": "grep"}]`, `"}]`),
+			want: `has no tool, internal, or sub binding`,
+		},
+		{
+			name: "unbound step in a one-member panel",
+			doc:  replace(t, `", "tool": "grep"}]`, `"}], "panels": [["s"]]`),
+			want: `has no tool, internal, or sub binding`,
 		},
 	}
 }
@@ -192,7 +211,8 @@ func constructorCases(t *testing.T) []rejectCase {
 // rejectCases lists every ErrBadDocument shape.
 func rejectCases(t *testing.T) []rejectCase {
 	t.Helper()
-	cases := append(shapeCases(t), retryDelayCases(t)...)
+	cases := append(shapeCases(t), bindingCases(t)...)
+	cases = append(cases, retryDelayCases(t)...)
 	cases = append(cases, budgetCases(t)...)
 	return append(cases, constructorCases(t)...)
 }

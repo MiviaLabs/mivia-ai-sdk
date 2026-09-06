@@ -919,3 +919,77 @@ risk. The builder confirms the number in the `make verify` coverage
 block.
 
 No conformance vector changes. The `tools` package owns none.
+
+### Correction: SchemaOf fails closed on a nil schema
+
+Status: shipped. One commit together with `docs/plans/spool.md`'s
+"Change: collapse the wrapper variants to one". See that section's
+"Landing order" for the two-commit split. The fail-closed rule is a
+precondition for the `spool` collapse in the same commit.
+
+`SchemaOf` (`tools/schema.go:18-23`) returns `st.ParameterSchema()`
+and true whenever the type assertion succeeds. A `SchemaTool` whose
+`ParameterSchema()` returns nil reports `nil, true`. That reads as a
+published schema. It is not one.
+
+Change `SchemaOf` to fail closed. When the assertion succeeds but
+`ParameterSchema()` returns nil, return `nil, false`. State the rule
+in the function body, not in the comment alone. Update the doc
+comment: a true second result promises non-nil schema bytes.
+
+Call-site audit, grepped over `SchemaOf`, `SchemaTool`, and
+`ParameterSchema` across `*.go`:
+
+- `agentloop/definitions.go:22-25` skips a tool when the bool is
+  false and records the name. A nil-schema `SchemaTool` now lands in
+  `skipped` instead of reaching `compileSchemas` as a nil document.
+  This is the intended fix.
+- `agentrun/wire.go:118-126` gates an unguarded `t.(tools.SchemaTool)`
+  assertion on the bool. A true bool still implies the interface. The
+  assertion stays safe. A nil-schema tool keeps its plain payload.
+- `spool/tool.go` and `runconfig/steptool.go:47` discard the bool and
+  forward the bytes. Nil forwards as nil either way. Unchanged.
+- `agentloop/toolcall.go:476` asserts the interface directly and
+  never calls `SchemaOf`. Unchanged.
+- Tests at `mcp/schema_tool_test.go:26`, `mcp/client_test.go:94`, and
+  `spool/spool_test/readtool_test.go:165` use tools with real
+  schemas. Unchanged.
+- `runconfig/steptool_internal_test.go:394` compares wrapper bytes
+  against `tools.SchemaOf(inner)` bytes. Byte parity holds under the
+  fail-closed rule. Unchanged.
+
+Tests:
+
+- Flip the "typed nil" subtest in `tools/tools_test/schema_test.go`.
+  It pins the old fail-open result `nil, true`. It must expect
+  `nil, false`, and its comment states the fail-closed rationale.
+  This is a mandated expectation change, not a weakened test. The
+  commit body names it. `scripts/check_test_tampering.py` reports one
+  `TT01` finding for the rewritten function body. The orchestrator
+  authorizes the trailer, following the "Removal" section's sequence.
+- Extend `TestSchemaOf` with one subtest: a non-nil receiver whose
+  `ParameterSchema()` returns nil. `SchemaOf` returns `nil, false`.
+  Keep the existing `(schema, true)` case and the plain-Tool
+  `(nil, false)` case.
+- Add one case in `agentloop/agentloop_test/definitions_test.go`, the
+  package that consumes the bool. Name it
+  `TestDefinitionsSkipsNilSchemaSchemaTool`. Its tool implements
+  `tools.SchemaTool` and returns nil from `ParameterSchema()`. The
+  test asserts the tool lands in `Definitions`' skip list and appears
+  in neither the offered definitions nor the error. Put the case in
+  `agentloop`, not in `tools`.
+
+API and lock: no exported symbol changes. `SchemaOf`'s signature is
+unchanged, so `make api-update` produces no `api/tools.txt` diff.
+`policy/layers.json` needs no edit. The `tools` row stays `[]`.
+
+Docs: rewrite the `SchemaOf` bullet at `docs/packages/tools.md:81`
+with the fail-closed rule. Extend its neighbor at lines 164-166: a
+tool that publishes no schema bytes is unschema'd, whether or not it
+implements `SchemaTool`. Extend the two skip clauses at
+`docs/packages/tools.md:50-51` and `docs/architecture.md:404`. Each
+says `Definitions` skips a tool that does not implement
+`SchemaTool`. Each gains "or whose `ParameterSchema()` returns nil".
+Check the `ErrArgumentDecode` entry at
+`docs/packages/agentrun.md:106-110`; add one clause for the
+nil-schema pass-through.

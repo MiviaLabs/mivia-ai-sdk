@@ -27,7 +27,8 @@ func (s *schemaTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 }
 
 // TestSchemaOf covers the SchemaTool-implementing case, the
-// non-implementing case, and a typed nil.
+// non-implementing case, a non-nil receiver publishing no schema
+// bytes, and a typed nil.
 func TestSchemaOf(t *testing.T) {
 	t.Run("implements SchemaTool", func(t *testing.T) {
 		want := []byte(`{"type":"object"}`)
@@ -49,14 +50,27 @@ func TestSchemaOf(t *testing.T) {
 			t.Fatalf("SchemaOf = %v, want nil", got)
 		}
 	})
+	t.Run("nil schema fails closed", func(t *testing.T) {
+		st := &schemaTool{stubTool: stubTool{name: "schemaless"}}
+		got, ok := tools.SchemaOf(st)
+		if ok {
+			t.Fatalf("SchemaOf(nil schema) ok = true, want false: a nil schema is not a published schema")
+		}
+		if got != nil {
+			t.Fatalf("SchemaOf(nil schema) = %v, want nil", got)
+		}
+	})
 	t.Run("typed nil", func(t *testing.T) {
 		var st *schemaTool
 		got, ok := tools.SchemaOf(st)
-		if !ok {
-			t.Fatalf("SchemaOf(typed nil) ok = false, want true: a typed nil still implements SchemaTool")
+		// Fail closed: a typed nil implements SchemaTool, but its
+		// ParameterSchema returns nil, so SchemaOf reports nil, false.
+		// A nil schema must never read as published.
+		if ok {
+			t.Fatalf("SchemaOf(typed nil) ok = true, want false: nil schema bytes fail closed")
 		}
 		if got != nil {
-			t.Fatalf("SchemaOf(typed nil) = %v, want nil: st.schema is nil on a nil receiver", got)
+			t.Fatalf("SchemaOf(typed nil) = %v, want nil", got)
 		}
 	})
 }

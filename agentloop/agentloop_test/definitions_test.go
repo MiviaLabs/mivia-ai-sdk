@@ -2,6 +2,7 @@ package agentloop_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -36,6 +37,31 @@ func TestDefinitionsSkipsSchemaFreeTools(t *testing.T) {
 	}
 	if len(skipped) != 1 || skipped[0] != "without-schema" {
 		t.Fatalf("Definitions() skipped = %v, want [without-schema]", skipped)
+	}
+}
+
+// TestDefinitionsSkipsNilSchemaSchemaTool proves a tool implementing
+// tools.SchemaTool whose ParameterSchema returns nil lands in the skip
+// list: SchemaOf fails closed on nil schema bytes, so the tool is
+// offered in no definition and its name appears in no error. A
+// one-tool registry whose offered set ends empty fails closed with
+// ErrNoSchemas, per Definitions' documented contract.
+func TestDefinitionsSkipsNilSchemaSchemaTool(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "nil-schema", schema: nil})
+
+	defs, skipped, err := agentloop.Definitions(reg, nil)
+	if !errors.Is(err, agentloop.ErrNoSchemas) {
+		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
+	}
+	if len(defs) != 0 {
+		t.Fatalf("Definitions() defs = %v, want none: a nil schema is not a published schema", defs)
+	}
+	if len(skipped) != 1 || skipped[0] != "nil-schema" {
+		t.Fatalf("Definitions() skipped = %v, want [nil-schema]", skipped)
+	}
+	if strings.Contains(err.Error(), "nil-schema") {
+		t.Fatalf("err = %v, want it to not name the skipped tool", err)
 	}
 }
 

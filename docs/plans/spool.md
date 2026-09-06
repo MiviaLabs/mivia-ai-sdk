@@ -1001,6 +1001,9 @@ across `*.go`, minus test files.
 
 ### Change scope: why the schema bit stays conditional
 
+Status: superseded by "Change: collapse the wrapper variants to one"
+below. The body stays as the shipped record of its own commit.
+
 `tools.SchemaOf` (`tools/schema.go:18`) returns `nil, false` when the
 assertion fails. A wrapper declaring `tools.SchemaTool` over a
 schema-less inner returns `nil, true` instead. Three production
@@ -1352,6 +1355,10 @@ conditional bit.
 
 ### Note: runconfig carries the same latent hazard
 
+Status: superseded. The fail-closed `tools.SchemaOf` change resolves
+the premise. See "Change: collapse the wrapper variants to one"
+below.
+
 Out of scope for this commit. Do not fix it here. Recorded so it is
 not lost.
 
@@ -1364,3 +1371,156 @@ It is unreachable inside this tree today. `agentrun` does not import
 `agentloop`, and `policy/layers.json` grants `agentrun` no `agentloop`
 edge. A caller who registers a `runconfig`-built tool into an
 `agentloop` registry does reach it. That case needs its own plan.
+
+## Change: collapse the wrapper variants to one
+
+Status: shipped. One commit together with `docs/plans/tools.md`'s
+"Correction: SchemaOf fails closed on a nil schema". That correction
+is a precondition, not an option. This collapse is safe only under a
+fail-closed `tools.SchemaOf`.
+
+### Landing order
+
+This slice lands as two commits, in this order:
+
+1. Commit 1: the fail-closed `tools.SchemaOf` plus this collapse.
+   Plans: `docs/plans/tools.md` and this section. The two parts ship
+   in one commit because the collapse is unsafe without the
+   fail-closed rule.
+2. Commit 2: the `runconfig` unbound-step rejection. Plan:
+   `docs/plans/runconfig.md`'s "Correctness fix: an unbound step
+   outside a two-member panel". Commit 2 does not depend on commit 1.
+
+### Change goal
+
+`spool/tool.go` holds four wrapper types: `spoolTool`, `schemaCap`,
+`spoolToolCaps`, and `spoolToolSchema`. The two-variant shape exists
+to keep the schema bit conditional. That reason dies with the
+fail-closed `SchemaOf`. One wrapper struct, in the shape of
+`runconfig/steptool.go`, replaces all four.
+
+### Change scope
+
+- Keep one struct. Name it `spoolTool`. It carries the run fields and
+  declares `tools.ProfiledTool`, `tools.ResultBudgetTool`,
+  `tools.PrivilegedTool`, and `tools.SchemaTool` unconditionally.
+- Delete `schemaCap`, `spoolToolCaps`, and `spoolToolSchema`.
+- Forward through `tools.ExecutionProfileOf`, `tools.ResultBudgetOf`,
+  `tools.IsPrivileged`, and `tools.SchemaOf`, the way
+  `runconfig/steptool.go` does.
+- Give `DecodeArguments` the comma-ok form with an identity fallback:
+  `tools.InOut{Value: string(raw)}`. The old `schemaCap.DecodeArguments`
+  asserted `c.inner.(tools.SchemaTool)` unguarded. That method must
+  not survive the collapse.
+- `SpoolTool` returns `&spoolTool{...}` on every path. The
+  `inner.(tools.SchemaTool)` branch disappears.
+- Rewrite the comments at `spool/tool.go` lines 10-14, 49-53, 62-68,
+  70-81, and 105-122 for the one-struct shape. Each new method
+  comment starts with the method name, so `check_docs.py` passes.
+
+Safety argument, reader by reader:
+
+- `agentloop/definitions.go:22` reads `tools.SchemaOf`. Under the
+  fail-closed rule a schema-less wrapper reports `nil, false`. The
+  wrapper lands in `skipped`. No nil schema is offered.
+- `agentrun/wire.go:119-121` reads the bool, then asserts
+  `tools.SchemaTool` unguarded. The bool is false for a schema-less
+  wrapper, so the branch stays untaken. The old panic path is gone.
+- `agentloop/toolcall.go:476` asserts the interface directly. It was
+  never the hazard. Unchanged.
+
+Mark the superseded rationale. Insert one status line directly under
+the heading "Change scope: why the schema bit stays conditional"
+above. The line reads: `Status: superseded by "Change: collapse the
+wrapper variants to one" below.` Do not rewrite that body. Add the
+same one-line status under the closing note about the `runconfig`
+hazard. Done in this revision of this file.
+
+### Change API
+
+No exported symbol changes. `SpoolTool`'s signature is unchanged.
+Every touched type stays unexported.
+
+`api/spool.txt` still changes. The lock records exported methods with
+their receiver types; see `scripts/api_surface.go:289` and the
+"Change API" section of the two-variant change above. Run
+`make api-update` and commit the `api/spool.txt` diff inside commit 1.
+
+Expected diff shape. Five lines removed:
+
+- `func (c schemaCap) DecodeArguments(raw []byte) (tools.InOut, error)`
+- `func (c schemaCap) ParameterSchema() ([]byte)`
+- `func (t spoolToolCaps) ExecutionProfile() (tools.ExecutionProfile)`
+- `func (t spoolToolCaps) MaxResultBytes() (int)`
+- `func (t spoolToolCaps) Privileged() (bool)`
+
+Five lines added, on the one wrapper's pointer receiver:
+
+- `func (t *spoolTool) DecodeArguments(raw []byte) (tools.InOut, error)`
+- `func (t *spoolTool) ExecutionProfile() (tools.ExecutionProfile)`
+- `func (t *spoolTool) MaxResultBytes() (int)`
+- `func (t *spoolTool) ParameterSchema() ([]byte)`
+- `func (t *spoolTool) Privileged() (bool)`
+
+The two existing `*spoolTool` lines for `Name` and `Run` stay
+unchanged. Any line outside this set is the failure signal. The
+builder stops and reports it.
+
+### Change tests
+
+Value parity holds for every mask. Interface presence does not. One
+test pins the old two-variant shape and needs a mandated change:
+
+- `TestSpoolToolInterfaceParity`
+  (`spool/spool_test/tool_parity_test.go:230`) makes probe 3,
+  `tools.SchemaTool` presence, mirror inner. Masks without the schema
+  bit fail under one struct. Change the expectation: every probe is
+  unconditional now. Rewrite the loop comment and the file header
+  comment at lines 1-8, which promise the wrapper "mirrors inner only
+  for `tools.SchemaTool`".
+- Add one sibling test next to
+  `TestSpoolToolSchemaForwardsToInner`, in the same file. Name it
+  `TestSpoolToolNilSchemaIdentityDecode`. Do not extend
+  `TestSpoolToolSchemaForwardsToInner`; its rewrite budget stays at
+  zero, so the parity rewrite fires one `TT01` in total. The sibling
+  loops the schema-less masks. The wrapper still implements
+  `tools.SchemaTool`; `ParameterSchema()` returns nil; and
+  `DecodeArguments(raw)` returns `tools.InOut{Value: string(raw)}`.
+  This row kills the mutation that drops the comma-ok fallback.
+
+Everything else holds, checked by reading each assertion:
+
+- `spool_tool_test.go:451` expects `tools.SchemaOf(wrapper)` to be
+  `nil, false` for a schema-less inner. The wrapper forwards nil and
+  `SchemaOf` fails closed. The assertion holds.
+- `tool_parity_test.go`'s value parity (`assertParityValues`) holds
+  for all sixteen masks, before and after.
+- `readtool_test.go:165` uses a real schema. Unaffected.
+- `TestSpoolToolParityRunThroughCaps` keeps the fixtures honest.
+
+`scripts/check_test_tampering.py` reports `TT01` for the rewritten
+`TestSpoolToolInterfaceParity` body. The commit body names it. The
+orchestrator authorizes the trailer.
+
+### Change docs
+
+- `docs/packages/spool.md:115-124`: rewrite the wrapper bullet for
+  the one-struct shape. The wrapper implements all four interfaces;
+  `tools.SchemaOf` still reports `nil, false` for a schema-less one.
+- `docs/packages/spool.md:139-144`: reword the cross-reference.
+  Stripping is no longer the mechanism. A nil schema fails closed.
+- `docs/architecture.md:421-423`: the `spool` bullet says the wrapper
+  forwards `SchemaTool` only when the wrapped tool implements it.
+  Replace that sentence with the one-struct rule.
+
+### Change verification
+
+- `make verify` passes. `spool` holds the eighty-five coverage floor.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  `python3 scripts/check_docs.py`, `python3 scripts/check_structure.py`,
+  and `python3 scripts/check_prose.py` pass.
+- `python3 scripts/check_api.py` passes after `make api-update`, with
+  the `api/spool.txt` diff staged in the same commit.
+- `go test -race ./spool/... ./tools/... ./agentloop/... ./agentrun/...`
+  passes.
+- No `policy/layers.json` edit. `spool` already imports `tools`.

@@ -111,15 +111,17 @@ type Definition struct {
 
 // Load resolves one JSON document into a Definition. It rejects
 // malformed JSON, a non-object root, a step with both bindings, a step
-// that sets sub beside tool or internal, an empty step ID, an
-// undeclared external tool, a blank or duplicate tool name, an unknown
-// internal kind, an unknown when value, an internal section key a Kind
-// constant does not name or a caller-built Kind names, an invalid
-// internal section config, and a negative budget field. It also wraps
-// any rejection from machine.New, flow.New, or an internal builder. It
-// wraps every failure in ErrBadDocument. A present options.budget maps
-// onto Options.Budget as a *contextbudget.Limits and must pass
-// Limits.Validate. The loader never reads the environment.
+// that sets sub beside tool or internal, a step with no tool, internal,
+// or sub binding outside a two-or-more-member panel, an empty step ID,
+// an undeclared external tool, a blank or duplicate tool name, an
+// unknown internal kind, an unknown when value, an internal section
+// key a Kind constant does not name or a caller-built Kind names, an
+// invalid internal section config, and a negative budget field. It
+// also wraps any rejection from machine.New, flow.New, or an internal
+// builder. It wraps every failure in ErrBadDocument. A present
+// options.budget maps onto Options.Budget as a *contextbudget.Limits
+// and must pass Limits.Validate. The loader never reads the
+// environment.
 func Load(data []byte) (*Definition, error) {
 	var doc wireDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
@@ -204,6 +206,9 @@ func buildMachine(w *wireMachine) (*machine.Definition, error) {
 
 // buildPlan feeds the wire steps and panels into flow.New. It
 // recurses over sub plans and collects one Binding per bound step.
+// After flow.New succeeds it enforces the binding rule: a step with no
+// tool, internal, or sub binding must sit in a two-or-more-member
+// panel.
 func buildPlan(w *wirePlan, declared map[string]bool) (*flow.Definition, []Binding, error) {
 	steps := make([]flow.Step, 0, len(w.Steps))
 	var bindings []Binding
@@ -222,6 +227,21 @@ func buildPlan(w *wirePlan, declared map[string]bool) (*flow.Definition, []Bindi
 	plan, err := flow.New(steps, panels)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
+	}
+	panelled := make(map[string]bool)
+	for _, ids := range w.Panels {
+		if len(ids) < 2 {
+			continue
+		}
+		for _, id := range ids {
+			panelled[id] = true
+		}
+	}
+	for i := range w.Steps {
+		s := &w.Steps[i]
+		if s.Tool == "" && s.Internal == "" && s.Sub == nil && !panelled[s.ID] {
+			return nil, nil, fmt.Errorf("%w: step %q has no tool, internal, or sub binding", ErrBadDocument, s.ID)
+		}
 	}
 	return plan, bindings, nil
 }

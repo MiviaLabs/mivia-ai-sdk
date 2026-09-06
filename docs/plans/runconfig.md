@@ -1018,3 +1018,123 @@ compiles. One change keeps one review surface.
   fix.
 - `make verify` passes; `runconfig` holds the 85 coverage floor.
 - No `api/` diff; no `policy/layers.json` change.
+
+## Correctness fix: an unbound step outside a two-member panel
+
+Status: shipped. Second commit of the slice. It does not depend on
+commit 1, the `tools` `SchemaOf` fail-closed rule plus the `spool`
+wrapper collapse. See `docs/plans/spool.md`'s "Landing order".
+
+### Fix goal
+
+`Load` accepts a step with no `tool`, no `internal`, and no `sub`
+that is not a member of a two-plus-member panel. The failure surfaces
+later, in `agentrun.New`, as `tools.ErrUnknownName`. That sentinel
+belongs to another package. The contract section above, at lines
+98-101, already states the rule: a step carries neither binding
+exactly when it runs inside a two-plus-member panel. Enforce it at
+load time.
+
+`flow` accepts one-member panels as a real shape. `flow/validate.go`
+checks no panel size. `flow/runner.go:12-24` documents a one-member
+panel running alone, confirmed like a singleton. The exemption is
+therefore "member of a panel with two or more members". A step with
+no binding in a one-member panel, or in no panel, is a bad document.
+
+### Fix scope
+
+In `buildPlan` (`runconfig/loader.go:207-227`), after `flow.New`
+succeeds:
+
+- Build the two-plus-member id set from the raw `w.Panels` in scope.
+  Do not re-derive panels from the built definition.
+- Walk `w.Steps` once. A step with empty `Tool`, empty `Internal`, and
+  nil `Sub`, whose id is not in that set, fails with
+  `fmt.Errorf("%w: step %q has no tool, internal, or sub binding",
+  ErrBadDocument, id)`.
+- Place the pass after the `flow.New` call. Constructor rejections
+  keep their precedence. The "duplicate step id" row in
+  `reject_test.go` feeds an unbound second step; it must keep failing
+  with flow's error, not with the new one.
+- The existing recursion into sub plans runs this pass at every
+  level. Add no recursion code.
+
+`Load`'s doc comment (`runconfig/loader.go:112-122`) gains the new
+case in its rejection list, in the same change. The contract section
+above at lines 98-101 needs no edit; it already states this rule.
+
+`docs/packages/runconfig.md` gains the rule in three spots, in the
+same change:
+
+- The `Load` rejection list near line 76 gains the unbound-step case.
+- The `ErrBadDocument` failure-mode bullet at lines 101-108 names it.
+- The Document-shape sentence at line 131 says a step sets "exactly
+  one of `tool`, `internal`, or `sub`". That is false today and
+  stays false. Reword it: a step sets at most one of the three, and
+  carries none exactly when it is a member of a two-plus-member
+  panel.
+- The Invariants list needs no edit. Its binding bullet states only
+  the both-bindings rule, which this change does not touch.
+
+No exported symbol changes. `Load`'s signature is unchanged. No
+`api/runconfig.txt` diff. No `policy/layers.json` edit. The
+`runconfig` row already grants `flow` and `tools`.
+
+### Fix tests
+
+New cases:
+
+- One `bindingCases` row in `runconfig/runconfig_test/reject_test.go`:
+  the base document with the step's `tool` field removed. The step is
+  unbound and panel-less. The want fragment names the binding rule.
+- One more `bindingCases` row in the same table: the same unbound step,
+  now the sole member of a one-member panel (`"panels": [["s"]]`). A
+  one-member panel does not exempt a step from the binding rule. The
+  want fragment names the binding rule, the same fragment the
+  panel-less row uses.
+- One positive case in `runconfig/runconfig_test/load_test.go`: a
+  two-member panel, one bound step and one unbound step, both
+  `to: "d"`. It loads. The binding list holds one entry. Mind flow's
+  panel rules: members agree on `To`, neither carries `sub`, and
+  neither sets `PayloadFrom`.
+
+Mandated fixture updates. The new rule turns existing positive tests
+red, because their documents carry unbound steps:
+
+- `TestLoadRoundTrip`: step `b` is unbound and panel-less. Bind it.
+  The `want` binding list gains its entry, in plan order.
+- `TestLoadPanels`: step `a` sits in a one-member panel; step `b`
+  sits in none. Bind both. The panel assertions stay untouched.
+- `TestLoadSubAndLoop`: the sub plan's `inner` step is unbound. Bind
+  it. The `len(d.Bindings)` want flips from zero to one.
+- `TestLoadOptionsBudget`, both subtests, `TestLoadOptionsTrace`, all
+  three subtests, and `TestLoadUnknownFieldsIgnored`: bind the single
+  step with `"internal": "flow"`. No assertion changes.
+- `docWithSection` (`runconfig/runconfig_test/internal_test.go:48`):
+  its step is unbound, and `buildInternal` runs after `buildPlan`, so
+  the new rejection would fire first with the wrong fragment. Bind
+  the step to a declared external tool. All ten config rows keep
+  their fragments.
+
+Stays green, verified:
+
+- `whitespaceOnlyToolDoc` (`reject_test.go:222`) holds an unbound
+  step, but its blank-name rejection fires in `declaredTools` before
+  `buildPlan`. It keeps failing with the blank-name error.
+- The `FuzzLoad` seeds stay legal. The fuzz property accepts a
+  rejection that wraps `ErrBadDocument`. The seed with the unbound
+  sub step now rejects, and the property holds.
+
+`scripts/check_test_tampering.py` reports `TT01` per rewritten
+fixture function body. The commit body names each finding. The
+orchestrator authorizes the trailers.
+
+### Fix verification
+
+- `make verify` passes. `runconfig` holds the 85 coverage floor.
+- `go test -race ./runconfig/...` passes.
+- `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
+  `python3 scripts/check_docs.py`, and `python3 scripts/check_prose.py`
+  pass.
+- `python3 scripts/check_api.py` passes with no `api/runconfig.txt`
+  diff.

@@ -24,13 +24,17 @@ capability list. The exported surface below mirrors
 - `Name` must not be blank after `strings.TrimSpace`.
 - `Capabilities` must not be empty.
 - Each capability entry is trimmed with `strings.TrimSpace` before the
-  next two checks run.
+  next three checks run.
 - A capability entry that is blank after trim fails, including a
   whitespace-only entry.
 - A duplicate capability entry fails. Two entries count as duplicates
   when `strings.EqualFold` matches them after trim. `Match` uses the
   same fold comparison, so a validated card never hides a second entry
   that `Match` would treat as equal.
+- A capability entry that carries padding fails. The check runs last,
+  after the duplicate check, so an entry that is both padded and a
+  duplicate still fails as a duplicate. `Match` compares the stored
+  string, so a validated card never holds an entry `Match` cannot hit.
 
 ## Failure modes
 
@@ -47,6 +51,8 @@ match them with `errors.Is`.
   Pinned by `discovery_test/card_test.go`.
 - `Card.Validate` fails when a capability entry repeats another,
   fold-compared after trim. Pinned by `discovery_test/card_test.go`.
+- `Card.Validate` fails when a capability entry carries padding.
+  Pinned by `discovery_test/card_test.go`.
 
 ## Match semantics
 

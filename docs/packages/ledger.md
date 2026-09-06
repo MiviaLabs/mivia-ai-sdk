@@ -65,7 +65,9 @@ surface below mirrors `api/ledger.txt`.
   for a key whose record was deleted.
 - `Ledger.Admit(ctx, actor, key, seq, task, now, needs...)` — records a
   task once per key. A need already failed or blocked lands the new
-  record `StatusBlocked`, so a late dependent never claims. After the
+  record `StatusBlocked`, so a late dependent never claims. It calls
+  `TaskState.Validate` on the record before the write, so a record
+  `Validate` rejects returns `false` and that error. After the
   record inserts, `Admit` re-reads its needs and blocks it when a need
   failed in that window. It returns
   `false, nil`, not an error, for a duplicate or a post-completion
@@ -126,8 +128,11 @@ surface below mirrors `api/ledger.txt`.
   `Renew`, `Release`, and `Complete` return `ErrNotClaimed`, not
   `ErrFenced`, because the record is no longer `StatusClaimed`.
 - `ErrNotStale` ("ledger: lease is not stale") — `Takeover` returns
-  it when the current lease has not yet expired. Pinned by
-  `ledger_test/takeover_test.go`.
+  it when the current lease has not yet expired. `Takeover` checks the
+  claimed status first, so a terminal record returns `ErrNotClaimed`
+  even while its lease is still live. Pinned by
+  `ledger_test/takeover_test.go` and
+  `ledger_test/takeover_terminal_test.go`.
 - `ErrNotClaimed` ("ledger: record is not claimed") — `Claim`,
   `Renew`, `Release`, `Complete`, and `Takeover` return it when the
   record's status is outside their eligible set. `Claim` and
@@ -158,7 +163,8 @@ surface below mirrors `api/ledger.txt`.
   five constants, a `Needs` entry equal to `Key`, a non-empty
   `BlockedBy` outside `StatusBlocked`, an empty `BlockedBy` inside
   `StatusBlocked`, and a `StatusClaimed` record with an empty `Owner`
-  or a zero `LeaseUntil`.
+  or a zero `LeaseUntil`. `Admit`, `Restore`, and `Snapshot.Validate`
+  call it.
 - `Admit` rebases a `StatusPending` or `StatusClaimed` record at a
   higher sequence; it never rebases a terminal record.
 - A rebase carries `Fence` forward unchanged, so the next `Claim`

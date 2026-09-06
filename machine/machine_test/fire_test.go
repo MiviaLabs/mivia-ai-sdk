@@ -2,6 +2,7 @@ package machine_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -79,8 +80,8 @@ func TestFireUnknownFrom(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown from status, got nil")
 	}
-	if !strings.Contains(err.Error(), "no transition") {
-		t.Fatalf("error %q should mention no transition", err.Error())
+	if !errors.Is(err, machine.ErrNoTransition) {
+		t.Fatalf("error %q is not ErrNoTransition", err.Error())
 	}
 	// Red step: Fire did not exist on the empty implementation.
 	// The unknown-from path returned nil before the check was added.
@@ -97,8 +98,8 @@ func TestFireUnknownTrigger(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown trigger, got nil")
 	}
-	if !strings.Contains(err.Error(), "no transition") {
-		t.Fatalf("error %q should mention no transition", err.Error())
+	if !errors.Is(err, machine.ErrNoTransition) {
+		t.Fatalf("error %q is not ErrNoTransition", err.Error())
 	}
 	// Red step: Fire did not exist. The unknown-trigger path returned
 	// nil before the check was added.
@@ -116,8 +117,8 @@ func TestFireGuardBlocksMove(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for rejected guard, got nil")
 	}
-	if !strings.Contains(err.Error(), "guard rejected") {
-		t.Fatalf("error %q should mention guard rejected", err.Error())
+	if !errors.Is(err, machine.ErrGuardRejected) {
+		t.Fatalf("error %q is not ErrGuardRejected", err.Error())
 	}
 	if got != "idle" {
 		t.Fatalf("Fire kept status %q, want %q", got, "idle")

@@ -149,8 +149,8 @@ func (d *Definition) Fire(
 	}
 	if row == nil {
 		return from, in, fmt.Errorf(
-			"machine: no transition from %q on %q",
-			from, trig,
+			"%w from %q on %q",
+			ErrNoTransition, from, trig,
 		)
 	}
 	if row.Guard != nil {
@@ -160,8 +160,8 @@ func (d *Definition) Fire(
 		}
 		if !ok {
 			return from, in, fmt.Errorf(
-				"machine: guard rejected move from %q on %q",
-				from, trig,
+				"%w from %q on %q",
+				ErrGuardRejected, from, trig,
 			)
 		}
 	}

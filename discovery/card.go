@@ -36,11 +36,13 @@ func Parse(data []byte) (Card, error) {
 
 // Validate checks the card invariants. It rejects a blank Name after
 // TrimSpace. It rejects an empty Capabilities list. It applies
-// TrimSpace to each capability entry before the next two checks. It
+// TrimSpace to each capability entry before the next three checks. It
 // rejects a capability entry that is blank after trim, including a
 // whitespace-only entry. It rejects a duplicate entry, compared with
 // strings.EqualFold after trim: the same fold Match uses, so a
 // Validate pass guarantees Match never hides a second, equal entry.
+// It rejects a padded entry last, after the duplicate check, because
+// Match compares the stored string and never hits a padded entry.
 func (c Card) Validate() error {
 	if strings.TrimSpace(c.Name) == "" {
 		return errors.New("discovery: name is required")
@@ -58,6 +60,9 @@ func (c Card) Validate() error {
 			if strings.EqualFold(trimmed, prior) {
 				return fmt.Errorf("discovery: duplicate capability %q", trimmed)
 			}
+		}
+		if trimmed != capability {
+			return errors.New("discovery: capability entry must not carry padding")
 		}
 		seen = append(seen, trimmed)
 	}

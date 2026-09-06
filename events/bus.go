@@ -38,7 +38,8 @@ type Handler func(ctx context.Context, e Event) error
 // Bus holds one subscription set for event dispatch.
 // It is safe for concurrent use but it does not order goroutines.
 // The caller owns the bus; the module has no shared bus.
-// The zero value is not usable; create a bus with New.
+// The zero value is usable: Subscribe builds the subscription set on
+// first use, and Emit on an empty set dispatches nothing.
 type Bus struct {
 	mu   sync.Mutex
 	subs map[Name][]Handler
@@ -61,6 +62,9 @@ func (b *Bus) Subscribe(name Name, h Handler) error {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.subs == nil {
+		b.subs = make(map[Name][]Handler)
+	}
 	b.subs[name] = append(b.subs[name], h)
 	return nil
 }

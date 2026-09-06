@@ -19,7 +19,8 @@ surface below mirrors `api/events.txt`.
   returned error.
 - `Bus` — one subscription set for event dispatch. It is safe for
   concurrent use but it does not order goroutines. The zero value is
-  not usable; create a bus with `New`.
+  usable: `Subscribe` builds the subscription set on first use, and
+  `Emit` on an empty set dispatches nothing.
 
 ## Functions and methods
 
@@ -56,8 +57,9 @@ compile error, not a silent miss.
   fails. `Emit` does not propagate a handler error; its error covers
   only `Event` validation.
 - `Emit` never starts a goroutine.
-- The zero value of `Bus` is not usable. `New` is the only sanctioned
-  construction.
+- The zero value of `Bus` is usable. `Subscribe` builds the
+  subscription set on first use, so `New` is a convenience, not a
+  requirement.
 
 ## Failure modes
 

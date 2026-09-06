@@ -104,7 +104,9 @@ match them with `errors.Is`.
   message content. Pinned by `envelope/sign_test.go` and the
   `invalid_sig_` vectors in `envelope/testdata/vectors/`.
 - `Sign` fails when the supplied key is not an ed25519 private key of
-  the expected length. Pinned by `envelope/sign_test.go`.
+  the expected length. It also fails when the message fails
+  `Validate` with `Signer` and `Signature` cleared. Pinned by
+  `envelope/sign_test.go`.
 - `VerifyThread` fails when the thread is empty, a message fails
   `Validate`, two messages share an id, a message's `thread_id`
   does not match the thread, the first message carries a

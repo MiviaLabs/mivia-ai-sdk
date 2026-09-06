@@ -15,13 +15,14 @@ import (
 // after lets the blocking ancestor appear, mirroring the two-phase
 // order TestTakeoverRejectsBlockingAncestor already uses.
 type takeoverShapeCase struct {
-	name          string
-	claim         ledger.IdempotencyKey
-	before        func(t *testing.T, l *ledger.Ledger, ctx context.Context)
-	after         func(t *testing.T, l *ledger.Ledger, ctx context.Context)
-	wantErr       error
-	wantStatus    machine.Status
-	wantBlockedBy ledger.IdempotencyKey
+	name           string
+	claim          ledger.IdempotencyKey
+	plantSelfNeeds []ledger.IdempotencyKey
+	before         func(t *testing.T, l *ledger.Ledger, ctx context.Context)
+	after          func(t *testing.T, l *ledger.Ledger, ctx context.Context)
+	wantErr        error
+	wantStatus     machine.Status
+	wantBlockedBy  ledger.IdempotencyKey
 }
 
 // takeoverShapeCases returns the row set
@@ -61,13 +62,12 @@ func takeoverShapeCases() []takeoverShapeCase {
 			wantStatus: ledger.StatusClaimed,
 		},
 		{
-			name:  "self-need with no failure terminates",
-			claim: "S",
-			before: func(t *testing.T, l *ledger.Ledger, ctx context.Context) {
-				mustAdmit(t, l, ctx, "S", 1, "S")
-			},
-			after:      noop,
-			wantStatus: ledger.StatusClaimed,
+			name:           "self-need with no failure terminates",
+			claim:          "S",
+			plantSelfNeeds: []ledger.IdempotencyKey{"S"},
+			before:         noop,
+			after:          noop,
+			wantStatus:     ledger.StatusClaimed,
 		},
 		{
 			name:  "completed sibling beside a blocked need",
@@ -99,7 +99,11 @@ func TestTakeoverRejectsBlockingAncestorShapes(t *testing.T) {
 	for _, tc := range takeoverShapeCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			l := newLedger(t, nil)
+			store := ledger.NewMemStore()
+			l := newLedgerOverStore(t, store)
+			for _, k := range tc.plantSelfNeeds {
+				plantSelfNeed(t, store, ctx, k)
+			}
 			tc.before(t, l, ctx)
 			mustClaim(t, l, ctx, tc.claim, "owner-claim")
 			tc.after(t, l, ctx)

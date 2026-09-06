@@ -104,7 +104,8 @@ func (m Message) RequiresAck() bool {
 	return m.AckRequired || m.Intent == IntentRequest
 }
 
-// Validate checks all Message invariants. Called by Encode and Decode.
+// Validate checks all Message invariants. Called by Sign, Encode,
+// and Decode.
 func (m Message) Validate() error {
 	if m.Version != Version {
 		return fmt.Errorf("version %q unsupported, want %q", m.Version, Version)

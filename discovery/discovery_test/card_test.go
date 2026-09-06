@@ -50,6 +50,7 @@ func TestParse(t *testing.T) {
 		{name: "empty capability list is rejected", fixture: "empty_capabilities.json", wantErr: true, errSubstr: "capabilities must not be empty"},
 		{name: "whitespace-only capability entry is rejected after trim", fixture: "whitespace_capability.json", wantErr: true, errSubstr: "capability entry must not be blank"},
 		{name: "duplicate capability entry is rejected", fixture: "duplicate_capability.json", wantErr: true, errSubstr: "duplicate capability"},
+		{name: "padded capability entry is rejected", fixture: "padded_capability.json", wantErr: true, errSubstr: "capability entry must not carry padding"},
 		{name: "malformed JSON is a syntax decode error", fixture: "malformed.json", wantErr: true, errSubstr: "unexpected end of JSON input"},
 		{name: "type-mismatch JSON is a decode error", fixture: "type_mismatch.json", wantErr: true, errSubstr: "cannot unmarshal string"},
 		{name: "unknown extra JSON field is ignored", fixture: "extra_field.json", wantName: "Agent A", wantCaps: 3},
@@ -97,6 +98,7 @@ func TestCardValidate(t *testing.T) {
 		{name: "duplicate capability differing only in case is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "duplicate capability"},
 		{name: "duplicate capability differing only in padding is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "duplicate capability"},
 		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "duplicate capability"},
+		{name: "padded capability entry is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "capability entry must not carry padding"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

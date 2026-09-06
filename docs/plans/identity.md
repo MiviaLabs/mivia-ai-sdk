@@ -203,34 +203,35 @@ Every rejection asserts errors.Is against ErrKeyFormat.
   pass. `go test -race ./identity/...` must pass. `make verify-fast`
   must pass.
 
-## Addendum: maintenance batch — the Load comment states a live check
+## Addendum: the Load comment names a live check
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 4.
 
-- Stop a comment from inviting deletion of a live security check.
+The comment above the `Validate` call at `identity/identity.go:63`
+called the check defensive and said it "cannot fail for any id built
+here". That claim is false, so the comment invited deletion of a live
+security check.
 
-### Scope
+`identity/identity.go:61` derives `pub` from `priv.Public()`. For an
+`ed25519.PrivateKey` that method returns a copy of the file's second
+half. It is not the seed-derived key. `Validate` compares the
+seed-derived key against both `PublicKey` and `PrivateKey[32:]`, so a
+split-brain file fails both comparisons.
 
-- Verified: `identity/identity.go:61` derives `pub` from
-  `priv.Public()`, which returns a copy of the key file's second half,
-  not the seed-derived key. `Validate` compares the seed-derived key
-  against both `PublicKey` and `PrivateKey[32:]`. A split-brain file
-  fails both comparisons.
-- Verified: `identity/identity_test/validate_split_brain_test.go:64`
-  drives `Load` over three split-brain files and expects
-  `ErrKeyInvalid`. The `Validate` call at `identity.go:66` is
-  reachable and load-bearing.
-- Exact change: replace the three comment lines at `identity.go:63`
-  with one line naming the split-brain rule and the test. No code
-  change. Wrapping across two lines for column width is acceptable.
+The three comment lines become one sentence naming the split-brain
+case and pointing at the test that covers it. No code changes.
+
+`docs/packages/identity.md:22` stays accurate. It describes
+`identity/identity.go:94`, which validates the identity, not a
+message. Leave it unchanged.
 
 ### Addendum tests
 
-- No new test. `TestValidateSplitBrainLoad` already covers the branch
-  the comment describes.
+- No new test. `TestValidateSplitBrainLoad` already drives `Load` over
+  three split-brain files and expects `ErrKeyInvalid`.
 
 ### Addendum verification
 
-- `go test ./identity/...` passes.
-- `make verify` passes.
-- No `api/` diff; no `policy/layers.json` change.
+- No code, API, or policy diff. `python3 scripts/check_plan.py`,
+  `scripts/check_prose.py`, and `scripts/check_labels.py` pass.

@@ -165,34 +165,37 @@ already-benchmarked lock, with no allocation-sensitive hot path.
 - No code, API, or policy diff. `python3 scripts/check_plan.py`,
   `scripts/check_prose.py`, and `scripts/check_labels.py` pass.
 
-## Addendum: maintenance batch — ErrUnsigned names both refusals
+## Addendum: ErrUnsigned covers a failed signature check
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 6e.
 
-- Make the sentinel text cover both refusals it already carries.
+`room/room.go:33` declared `ErrUnsigned` with the text "unsigned
+message cannot be admitted". `room/room.go:159` also wraps that
+sentinel when a present signature does not verify. The old text denied
+that second case.
 
-### Scope
+New text: "message is unsigned or its signature does not verify".
 
-- Verified: `room/room.go:33` declares `ErrUnsigned` as "unsigned
-  message cannot be admitted". `room/room.go:156` returns it for an
-  empty signer, and `room/room.go:159` wraps it for a signature that
-  does not verify. A forged signature is not an unsigned message.
-- Exact change: reword the sentinel to "message is unsigned or its
-  signature does not verify". No new sentinel and no `api/` diff.
-- A grep of the tree found the old text at `room/room.go:33` and
-  `docs/packages/room.md:49` only. Three other sites reference the
-  symbol, not the text.
+The sentinel keeps its name, so no lock changes. Only the message
+string changes. `docs/packages/room.md:49` quotes the old text and is
+updated with the code. Three sites reference the symbol alone and need
+no change.
 
 ### Addendum tests
 
-- No new test. `room/integration_test.go` already pins both the
-  unsigned row and the forged-signature row against the symbol.
+- No new test. `room/integration_test.go:182` and `:184` match the
+  sentinel with `errors.Is`, not by string, so both keep passing.
+- The case "invalid payload, validly signed" now builds its message
+  with a local `signBypassingValidate` helper, because
+  `envelope.Sign` validates first. See docs/plans/envelope.md,
+  "Addendum: Sign validates a normalized copy".
 
 ### Addendum verification
 
-- `go test ./room/...` passes.
-- `make verify` passes; `room` holds the 85 coverage floor.
-- No `api/` diff; no `policy/layers.json` change.
+- `make verify` passes. The `room` coverage floor holds.
+- No `api/` diff: the lock records symbol names, not error strings.
+- No `policy/layers.json` diff.
 
 ## Addendum: maintenance batch — drop StaleMembers and the heartbeat edge
 

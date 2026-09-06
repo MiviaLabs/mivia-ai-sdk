@@ -77,9 +77,11 @@ match them with `errors.Is`.
   self loop, a transition whose `From` is not reachable from
   `initial`, or a duplicate transition sharing a `From` and
   `Trigger`. Pinned by `machine_test/status_test.go`.
-- `Definition.Fire` fails when no transition row matches the current
-  status and trigger, or when the row's `Guard` rejects the move.
-  Pinned by `machine_test/fire_test.go`.
+- `Definition.Fire` fails with `ErrNoTransition` when no transition row
+  matches the current status and trigger. It fails with
+  `ErrGuardRejected` when the row's `Guard` rejects the move. Both
+  errors wrap the status and the trigger. Pinned by
+  `machine_test/fire_test.go`.
 
 ## Usage
 

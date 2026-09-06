@@ -1087,35 +1087,47 @@ In `workspace/workspace_test/workspace_test.go`:
   needs no wording change: "Root must not be blank" already matches
   the corrected code.
 
-## Addendum: maintenance batch — ErrBlankRoot
+## Addendum: Options.Validate returns ErrBlankRoot
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 6c.
 
-- Give the blank-root refusal a sentinel, like the other refusals in
-  this package.
+`docs/plans/workspace.md:63` states the blank-root rule. The rule does
+not change. Only its error does: `Options.Validate` at
+`workspace/workspace.go:83` returned an inline `errors.New`, so a
+caller could not match it with `errors.Is`. Add
+`ErrBlankRoot = errors.New("workspace: Root is blank")` beside the
+other sentinels and return it there. The rendered text is unchanged.
 
-### Scope
+### Reconciling the earlier fix-verification sentence
 
-- Verified: `workspace/workspace.go:83` returns an inline
-  `errors.New` beside the `ErrInvalidLimit` sentinel.
-- Exact change: declare
-  `ErrBlankRoot = errors.New("workspace: Root is blank")` beside the
-  other sentinels, and return it from `Options.Validate`. The text
-  does not change.
-- Run `make api-update`. `api/workspace.txt` gains `var ErrBlankRoot`.
+The earlier addendum at `docs/plans/workspace.md:1082` says
+`docs/packages/workspace.md` line 35 "needs no wording change". That
+judgment covered the blank-root rule, which still reads "Root must not
+be blank" and is still correct.
+
+It is now superseded on one point. Line 35 gains the sentinel name,
+because a caller can match `ErrBlankRoot` with `errors.Is`. The
+sentinel list near line 103 gains an `ErrBlankRoot` bullet as well.
 
 ### Addendum tests
 
 - `workspace/workspace_test/read_limit_test.go` already carries a
-  `wantErr error` field checked with `errors.Is`. Add
-  `wantErr: workspace.ErrBlankRoot` to both blank-root rows. No new
-  test function.
+  `wantErr error` field checked with `errors.Is`. The two blank-root
+  rows gain `wantErr: workspace.ErrBlankRoot`. No new test function.
+- Both rows reach the blank-root branch and never reach
+  `validateLimit`, so each assertion is a live control.
 - `workspace/workspace_test/secret_test.go:249` asserts only a
-  boolean, and its comment defers the blank-root rows to
-  `read_limit_test.go`. It stays unchanged.
+  boolean, and its own comment defers the blank-root rows to
+  `read_limit_test.go`. Leave it unchanged.
 
 ### Addendum verification
 
-- `go test ./workspace/...` passes.
-- `make verify` passes; `workspace` holds the 85 coverage floor.
-- `api/workspace.txt` gains `var ErrBlankRoot`.
+- `make verify` passes. The `workspace` coverage floor holds.
+- `make api-update` adds `var ErrBlankRoot` to `api/workspace.txt`.
+  Commit that diff in the same change.
+- `make mutation-gate` holds `workspace`'s floor of 100 in
+  `scripts/mutation_denylist/workspace.json`. Two earlier passages in
+  this file cite 96; that number is stale and the JSON file is the
+  authority.
+- No `policy/layers.json` diff.

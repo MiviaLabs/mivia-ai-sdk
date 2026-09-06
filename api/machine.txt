@@ -25,3 +25,5 @@ package machine
   OnEntry Action
 }
   type Trigger string
+  var ErrGuardRejected
+  var ErrNoTransition

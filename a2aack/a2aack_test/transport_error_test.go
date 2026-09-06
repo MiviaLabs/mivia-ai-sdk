@@ -136,7 +136,9 @@ func TestTransportNewAckRejectsEmptyRestatement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	signed, err := envelope.Sign(key, envelope.Message{
+	// envelope.Sign rejects an empty payload, so this case signs the
+	// message with a local helper that skips Sign's Validate gate.
+	fake.result = signBypassingValidate(t, key, envelope.Message{
 		Version:    envelope.Version,
 		ID:         "res-empty",
 		ThreadID:   "thread-1",
@@ -144,10 +146,6 @@ func TestTransportNewAckRejectsEmptyRestatement(t *testing.T) {
 		Epistemic:  envelope.EpistemicAssumed,
 		Confidence: 0.5,
 	})
-	if err != nil {
-		t.Fatalf("sign empty result: %v", err)
-	}
-	fake.result = signed
 	ackFn, err := a2aack.Wait(fake, a2aack.Options{Poll: errPoll, Timeout: errTimeout})
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)

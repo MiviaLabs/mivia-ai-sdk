@@ -79,20 +79,25 @@ func TestEmitWithNoSubscriberReturnsNil(t *testing.T) {
 	}
 }
 
-// TestZeroValueBusPinsConstructorOnly proves the zero value is unusable.
-// Subscribe on the zero value panics on the nil subscription map.
-// Emit on the zero value finds no subscriber and returns nil.
-// The invariant is constructor-only; New is the only sanctioned build.
-func TestZeroValueBusPinsConstructorOnly(t *testing.T) {
+// TestZeroValueBusSubscribesAndEmits proves the zero value is usable.
+// Subscribe on the zero value builds the subscription set, so a later
+// Emit runs the handler once. Emit on an untouched zero value finds no
+// subscriber and returns nil.
+func TestZeroValueBusSubscribesAndEmits(t *testing.T) {
 	var b events.Bus
-	func() {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Fatal("zero-value Subscribe did not panic")
-			}
-		}()
-		_ = b.Subscribe("move", func(context.Context, events.Event) error { return nil })
-	}()
+	var runs int
+	if err := b.Subscribe("move", func(context.Context, events.Event) error {
+		runs++
+		return nil
+	}); err != nil {
+		t.Fatalf("zero-value Subscribe: %v", err)
+	}
+	if err := b.Emit(context.Background(), events.Event{Name: "move", Data: "x"}); err != nil {
+		t.Fatalf("zero-value Emit: %v", err)
+	}
+	if runs != 1 {
+		t.Fatalf("handler ran %d times, want 1", runs)
+	}
 	var c events.Bus
 	if err := c.Emit(context.Background(), events.Event{Name: "move", Data: "x"}); err != nil {
 		t.Fatalf("zero-value Emit returned an error with no subscriber: %v", err)

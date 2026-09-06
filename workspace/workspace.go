@@ -38,6 +38,9 @@ var ErrTooLarge = errors.New("workspace: file exceeds read limit")
 // zero, nor a positive value at or under maxReadLimit.
 var ErrInvalidLimit = errors.New("workspace: invalid read limit")
 
+// ErrBlankRoot reports that Options.Root is blank after TrimSpace.
+var ErrBlankRoot = errors.New("workspace: Root is blank")
+
 // ErrSecretPath reports that Options.Deny refuses a path. Two rules
 // return it. The name check matches the cleaned root-relative path
 // against the matcher. The symlink walk refuses any path whose
@@ -77,11 +80,12 @@ type Options struct {
 }
 
 // Validate reports whether o names a usable Workspace. Root must not
-// be blank. MaxReadBytes must be Unbounded, zero, or a positive value
-// at or under maxReadLimit. Deny may be nil, which denies nothing.
+// be blank; a blank Root returns ErrBlankRoot. MaxReadBytes must be
+// Unbounded, zero, or a positive value at or under maxReadLimit. Deny
+// may be nil, which denies nothing.
 func (o Options) Validate() error {
 	if strings.TrimSpace(o.Root) == "" {
-		return errors.New("workspace: Root is blank")
+		return ErrBlankRoot
 	}
 	return validateLimit(o.MaxReadBytes)
 }

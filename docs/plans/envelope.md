@@ -198,53 +198,72 @@ limit. Coverage must stay at or above 85% total and per package; this
 round only adds tests and a small internal fallback, so it must not
 lower the floor.
 
-## Addendum: maintenance batch — Sign validates first
+## Addendum: Sign validates a normalized copy
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 6a.
 
-- Stop `Sign` from producing a signed message `Validate` rejects.
+`docs/plans/envelope.md:19` says validation is "centralized in
+Validate and called by Encode/Decode". That list is now incomplete.
+`Sign` calls `Validate` too, after its key-length check and before it
+sets `Signer`.
 
-### Scope
+`Sign` validates a normalized copy, not the message as supplied:
 
-- Verified: `envelope/sign.go:14` never calls `Validate`. A caller can
-  sign a message with a blank payload or an unknown intent.
-- Exact change: call `m.Validate()` after the key-length check and
-  before the `Signer` assignment. Return the error.
-- Ordering is safe. `Message.Validate` never requires `Signer` or
-  `Signature`. `validateSignature` at `envelope/message.go:185`
-  returns nil when both fields are empty.
-- Consequence: the `marshal for signing` branch becomes unreachable. A
-  NaN or infinite `Confidence` is the only input that fails
-  `json.Marshal`, and `Validate` rejects it first. Keep the branch as
-  a defensive one.
-- No new conformance vector. The vectors pin `Encode` and `Decode`.
-  This change adds no schema rule and no new `Validate` rule.
+```go
+check := m
+check.Signer = ""
+check.Signature = ""
+if err := check.Validate(); err != nil {
+    return Message{}, err
+}
+```
+
+The copy is load-bearing. `validateSignature` at
+`envelope/message.go:185` constrains `Signer` and `Signature` whenever
+either field is non-empty. `Sign` overwrites both fields immediately
+after. Validating them would reject the natural strip-and-re-sign
+idiom, which clears `Signature` and keeps `Signer`. That is the same
+move `Sign` and `VerifySignature` make internally. The normalized copy
+validates exactly the content that gets signed.
+
+One branch becomes unreachable through `Sign`. A NaN or infinite
+`Confidence` is the only input that makes `json.Marshal` fail on a
+`Message`, and `Validate` already rejects it. Keep the `marshal for
+signing` branch as a defensive branch.
+
+This change adds no field, no schema rule, and no `Validate` rule. The
+set of valid messages on the wire is unchanged. So it needs no
+conformance vector, and it does not trigger the AGENTS.md rule that
+sends a message-semantics change to docs/architecture.md's "Why the
+envelope is shaped this way" section.
+
+Three more sites state the old contract and change with the code:
+`envelope/message.go:107`, `docs/packages/envelope.md:106`, and
+docs/architecture.md's pipeline step one at line 695.
 
 ### Addendum tests
 
-- Replace `TestSignRejectsUnserializableMessage` in
-  `envelope/sign_test.go` with `TestSignRejectsInvalidMessage`. The
-  old test pinned the marshal branch this change makes unreachable.
-  The replacement asserts the intent error for `Intent: "bogus"` and
-  the confidence error for a NaN `Confidence`, so it keeps two
+- `envelope/sign_test.go` replaces `TestSignRejectsUnserializableMessage`
+  with `TestSignRejectsInvalidMessage`. The old test pinned the
+  marshal branch this change makes unreachable. The new test asserts
+  the intent error and the confidence error, so it keeps two
   assertions where the old had one.
-- Two call sites outside `envelope` sign a message `Validate` rejects
-  on purpose. `a2aack/a2aack_test/transport_error_test.go:148` needs a
-  validly signed empty payload to reach the restatement branch at
-  `a2aack/a2aack.go:136`. `room/integration_test.go:203` proves a
-  correct signature does not rescue invalid content at
-  `room/room.go:152`. Both build the message with a local
-  `signBypassingValidate` helper instead. A test-only signing helper
-  does not belong on the public surface.
-- A grep of every `.Sign(` site in the tree, followed by a full suite
-  run with the change applied, found exactly these three sites.
+- `a2aack/a2aack_test/helpers_test.go` and `room/integration_test.go`
+  each gain a local `signBypassingValidate` helper. Each case needs a
+  message whose signature verifies and whose content `Validate`
+  rejects, which `Sign` can no longer build.
+- Each helper ends with a `VerifySignature` self-check that fails the
+  test on error. The two copies re-implement envelope's canonical
+  signing form, so the self-check catches drift if that form changes.
 
 ### Addendum verification
 
-- `go test ./...` passes.
-- `make verify` passes; `envelope` measured 99.4 percent coverage
-  with the change applied.
-- No `api/` diff; no `policy/layers.json` change.
+- `make verify` passes. Envelope measured 99.4 percent coverage with
+  the change applied, and `Sign` measured 91.7 percent.
+- No `api/` diff. No new conformance vector.
+- The commit carries one `Allow-Test-Change: TT01` trailer naming both
+  test replacements in the batch.
 
 ## Addendum: maintenance batch — delegate the ref-form check to contextstate
 

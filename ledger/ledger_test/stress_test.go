@@ -133,8 +133,8 @@ func modelClaim(st map[ledger.IdempotencyKey]modelRec, op *stressOp) (bool, ledg
 	return true, cur.fence, nil
 }
 
-// modelTakeover mirrors ledger.Takeover: staleness is checked before
-// the claimed-status precondition, unlike Claim.
+// modelTakeover mirrors ledger.Takeover: the claimed-status
+// precondition is checked before staleness, matching Claim's order.
 func modelTakeover(st map[ledger.IdempotencyKey]modelRec, op *stressOp) (bool, ledger.FenceToken, error) {
 	if op.owner == "" {
 		return false, 0, ledger.ErrEmptyOwner
@@ -143,11 +143,11 @@ func modelTakeover(st map[ledger.IdempotencyKey]modelRec, op *stressOp) (bool, l
 	if !found {
 		return false, 0, ledger.ErrNoKey
 	}
-	if cur.leaseUntil.After(op.now) {
-		return false, 0, ledger.ErrNotStale
-	}
 	if cur.status != ledger.StatusClaimed {
 		return false, 0, ledger.ErrNotClaimed
+	}
+	if cur.leaseUntil.After(op.now) {
+		return false, 0, ledger.ErrNotStale
 	}
 	cur.fence++
 	cur.owner = op.owner

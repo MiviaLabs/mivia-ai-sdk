@@ -24,15 +24,16 @@ type admitSpec struct {
 
 // ancestorCase is one row of TestClaimRejectsBlockingAncestor.
 type ancestorCase struct {
-	name          string
-	completed     []ledger.IdempotencyKey
-	failed        []ledger.IdempotencyKey
-	admits        []admitSpec
-	claim         ledger.IdempotencyKey
-	wantErr       error
-	wantStatus    machine.Status
-	wantBlockedBy ledger.IdempotencyKey
-	wantOther     map[ledger.IdempotencyKey]machine.Status
+	name           string
+	completed      []ledger.IdempotencyKey
+	failed         []ledger.IdempotencyKey
+	plantSelfNeeds []ledger.IdempotencyKey
+	admits         []admitSpec
+	claim          ledger.IdempotencyKey
+	wantErr        error
+	wantStatus     machine.Status
+	wantBlockedBy  ledger.IdempotencyKey
+	wantOther      map[ledger.IdempotencyKey]machine.Status
 }
 
 // buildTerminal admits, claims, and completes key at status.
@@ -94,10 +95,10 @@ func ancestorCases() []ancestorCase {
 			wantStatus: ledger.StatusClaimed,
 		},
 		{
-			name:       "self-need with no failure",
-			admits:     []admitSpec{{"S", []ledger.IdempotencyKey{"S"}}},
-			claim:      "S",
-			wantStatus: ledger.StatusClaimed,
+			name:           "self-need with no failure",
+			plantSelfNeeds: []ledger.IdempotencyKey{"S"},
+			claim:          "S",
+			wantStatus:     ledger.StatusClaimed,
 		},
 		{
 			name:      "completed sibling beside a blocked need",
@@ -133,7 +134,11 @@ func TestClaimRejectsBlockingAncestor(t *testing.T) {
 	for _, tc := range ancestorCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			l := newLedger(t, nil)
+			store := ledger.NewMemStore()
+			l := newLedgerOverStore(t, store)
+			for _, k := range tc.plantSelfNeeds {
+				plantSelfNeed(t, store, ctx, k)
+			}
 			for _, k := range tc.completed {
 				buildTerminal(t, l, ctx, k, ledger.StatusCompleted)
 			}

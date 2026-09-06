@@ -297,36 +297,39 @@ run `go test -coverpkg=./machine ./machine/machine_test/` and read
 the number before reporting. If it lands below 85, stop and
 escalate; do not weaken the gate.
 
-## Addendum: maintenance batch — Fire gains two sentinels
+## Addendum: Fire gains two sentinels
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 6b.
 
-- Let a caller match `Fire`'s two refusals with `errors.Is` instead of
-  a substring.
+`Fire` returned two plain errors, so a caller could only match them by
+substring. Add `machine/errors.go` with two sentinels:
 
-### Scope
+- `ErrNoTransition = errors.New("machine: no transition")`
+- `ErrGuardRejected = errors.New("machine: guard rejected move")`
 
-- Verified: `machine/definition.go:150` returns bare `fmt.Errorf`
-  strings for a missing row and a rejected guard.
-- Exact change: add `machine/errors.go` declaring `ErrNoTransition`
-  ("machine: no transition") and `ErrGuardRejected` ("machine: guard
-  rejected move"). Wrap both sites with `%w`. The rendered text stays
-  byte-identical, so no other test changes.
-- Flow builds its own "no transition to status" text at
-  `flow/wave.go:104`, and agentrun builds its own at
-  `agentrun/matrix.go:332`. Neither belongs to machine and neither
-  changes.
-- Run `make api-update`. `api/machine.txt` gains both names.
+`machine/definition.go:150` wraps each with `%w` and keeps the same
+format verbs. The rendered text is byte-identical to today's text, so
+no caller and no doc example changes behavior.
+
+Flow and agentrun build their own similar strings at
+`flow/wave.go:104` and `agentrun/matrix.go:332`. Neither is machine's
+text, and neither changes. `docs/examples/flow-fallback-admission.md`
+embeds machine's rendered text, which is unchanged.
+
+`docs/packages/machine.md:80` names both sentinels.
 
 ### Addendum tests
 
-- `machine/machine_test/fire_test.go` moves its three
-  `strings.Contains` assertions to `errors.Is` against the matching
-  sentinel. The test names do not change.
+- `machine/machine_test/fire_test.go` moves three `strings.Contains`
+  assertions to `errors.Is` against the matching sentinel. The test
+  names do not change, and no assertion is dropped.
 
 ### Addendum verification
 
-- `go test ./machine/... ./flow/... ./agentrun/...` passes.
-- `make verify` passes; `machine` holds the 85 coverage floor.
-- `api/machine.txt` gains `var ErrGuardRejected` and
-  `var ErrNoTransition`.
+- `make verify` passes. The `machine` coverage floor holds.
+- `make api-update` adds `var ErrGuardRejected` and `var
+  ErrNoTransition` to `api/machine.txt`. Commit that diff in the same
+  change.
+- No `policy/layers.json` diff. No conformance vector: this is not
+  wire semantics.

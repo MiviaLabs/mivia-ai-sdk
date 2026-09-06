@@ -3,6 +3,7 @@ package room_test
 import (
 	"crypto/ed25519"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -198,11 +199,9 @@ func TestAdmissionFailures(t *testing.T) {
 			m := baseMessage(r.ID())
 			m.ID = "x6"
 			m.Payload = ""
-			signed, err := envelope.Sign(alice.key, m)
-			if err != nil {
-				t.Fatalf("sign: %v", err)
-			}
-			return signed
+			// envelope.Sign rejects an empty payload, so this case
+			// signs with a local helper that skips Sign's Validate gate.
+			return signBypassingValidate(t, alice.key, m)
 		}()},
 	}
 	for name, tc := range cases {
@@ -273,4 +272,26 @@ func TestConcurrentRoster(t *testing.T) {
 	if !r.IsMember(poster.id) {
 		t.Fatal("poster must stay a member")
 	}
+}
+
+// signBypassingValidate signs m the way envelope.Sign does, minus
+// Sign's Validate gate, so a case can build a message whose signature
+// verifies and whose content Validate rejects.
+func signBypassingValidate(t testing.TB, key ed25519.PrivateKey, m envelope.Message) envelope.Message {
+	t.Helper()
+	pub, ok := key.Public().(ed25519.PublicKey)
+	if !ok {
+		t.Fatalf("signBypassingValidate: key exposes no ed25519 public key")
+	}
+	m.Signer = hex.EncodeToString(pub)
+	m.Signature = ""
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("signBypassingValidate: marshal: %v", err)
+	}
+	m.Signature = hex.EncodeToString(ed25519.Sign(key, data))
+	if err := m.VerifySignature(); err != nil {
+		t.Fatalf("signBypassingValidate: signature does not verify: %v", err)
+	}
+	return m
 }

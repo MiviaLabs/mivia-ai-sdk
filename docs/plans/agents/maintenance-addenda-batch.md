@@ -8,6 +8,15 @@ package, a type, or an abstraction.
 
 The batch lands as one commit on `build/maintenance-addenda-batch`.
 
+## Where the work happens
+
+The batch is built in an isolated git worktree checked out on
+`build/maintenance-addenda-batch`. The shared checkout at
+`/home/mac/projects/mivialabs/mivia-ai-sdk` holds other concurrent
+efforts and is read-only reference for this batch. No file from
+another effort can enter this commit, because the worktree carries
+only this batch's edits. Run every gate from the worktree root.
+
 ## Scope
 
 Inside the batch:
@@ -22,6 +31,9 @@ Inside the batch:
 
 Outside the batch:
 
+- The `Claim`, `Takeover`, and `Renew` lease-validation hole. See
+  item 1.
+- Any route-exclusion or skipped-unit comparison in item 5.
 - Any refactor not required by the six items.
 - Any new package, new exported type, or new abstraction.
 - Any change to a gate, a limit, or an exclusion.
@@ -44,7 +56,8 @@ The lock records symbol names, not error strings.
 
 No import edge changes. `policy/layers.json` needs no row. The new
 test in item five lives in `agentrun/agentrun_test`, an external test
-package the deps gate exempts.
+package the deps gate exempts. `policy/layers.json` already grants
+`agentrun -> flow`.
 
 ## Item 1: ledger.Admit calls TaskState.Validate
 
@@ -54,9 +67,43 @@ package the deps gate exempts.
 builds `next` and passes it straight to `Store.CompareAndSwap`.
 `Admit(ctx, actor, "k", 1, nil, now, "k")` returns `true, nil`. The
 stored record then fails `TaskState.Validate` at
-`ledger/task_state.go:98`. `Snapshot` succeeds, `Encode` fails, and
-`Restore` fails the same way. A live ledger cannot round-trip its own
-snapshot.
+`ledger/task_state.go:98`, which rejects a task naming itself in
+`Needs`. `Snapshot` collects that record, `Snapshot.Encode` fails on
+it, and `Restore` fails the same way.
+
+### What the fix delivers, exactly
+
+After the fix, `Admit` can no longer store a record its own snapshot
+cannot encode. That is the whole claim.
+
+The fix does not restore the snapshot round-trip property for the
+ledger as a whole. Three other write paths can still store a record
+`TaskState.Validate` rejects. See the next section.
+
+### The sibling hole this batch leaves open
+
+Three write paths set `LeaseUntil` from `now.Add(lease)` and run no
+validation: `Claim` at `ledger/claim.go:66`, `Renew` at
+`ledger/claim.go:108`, and `Takeover` at `ledger/claim.go:215`. A zero
+`now` with a zero `lease` stores a `StatusClaimed` record with a zero
+`LeaseUntil`. `TaskState.Validate` rejects that record at
+`ledger/task_state.go:107`. `Encode` and `Restore` then fail exactly
+as they fail for a self-need record.
+
+Review reproduced all three with item 1 applied. `Renew` was missed in
+the first draft of this plan: the survey reasoned about it instead of
+reading it. See `.agents/memories/grep_beats_reasoning_for_completeness.md`.
+
+Every other `CompareAndSwap` in `ledger/` is safe. `blockOne` always
+sets `BlockedBy`. `Complete` moves `Status` only. `Release` moves
+`Status` back to `StatusPending` and clears `Owner` and `LeaseUntil`
+at `ledger/claim.go:151`, which moves the record toward validity, not
+away from it. `Claim`, `Renew`, and `Takeover` are the whole remaining
+hole.
+
+The hole stays open in this batch. The user scoped the batch to six
+named items, and this is not one of them. Closing it changes two more
+public contracts and their doc comments. Plan it as its own change.
 
 ### Fix
 
@@ -70,6 +117,37 @@ compiles on the local value. Its preconditions are met at that point.
 `StatusPending`, or `StatusBlocked` with `BlockedBy` set. `Owner` and
 `LeaseUntil` are only required for `StatusClaimed`, which `Admit`
 never writes. `Validate` reads no other field.
+
+### Doc comment change
+
+`Admit`'s doc comment at `ledger/ledger.go:46` enumerates every
+failure and every return. It gains a new error return, so the
+enumeration must name it. Add this sentence after the sentence that
+ends "like Complete's dependent scan":
+
+> // Admit validates the record before it writes: a record
+> // TaskState.Validate rejects, such as one naming itself in Needs,
+> // returns false and that error.
+
+### Package doc change
+
+`docs/packages/ledger.md:66` carries the same enumeration for
+`Ledger.Admit` and has the same omission. Add this sentence after the
+sentence ending "never claims":
+
+> It calls `TaskState.Validate` on the record before the write, so a
+> record `Validate` rejects returns `false` and that error.
+
+The `TaskState.Validate` bullet at `docs/packages/ledger.md:157` lists
+what `Validate` rejects but names no caller. Add this sentence to the
+end of that bullet:
+
+> `Admit`, `Restore`, and `Snapshot.Validate` call it.
+
+Those three are every production caller after the fix.
+`Snapshot.Validate` at `ledger/snapshot.go:29` is the caller that
+enforces the round-trip property, and `Restore` calls it again per
+record at `ledger/snapshot.go:48`.
 
 ### Collateral
 
@@ -98,6 +176,10 @@ a `mustAdmit` call. Both test bodies build a `ledger.NewMemStore()`,
 wrap it with `newLedgerOverStore`, and plant before the rest of the
 fixture runs.
 
+Review confirmed the collateral is not vacuous. With a panic planted
+at the dedup branch, both self-need rows still reach the seen-set
+branch at `ledger/ledger.go:165`.
+
 No other call site passes a self-need. Verified by grepping every
 `.Admit(` site in the tree.
 
@@ -114,9 +196,9 @@ branch at `task_state.go:99` returns the self-need error.
 `TestAdmitSnapshotRoundTrips` admits `"root"` and `"dep"`, where
 `"dep"` needs `"root"`. Both records pass `Validate`, so the new call
 does not reject them. `Snapshot`, `Snapshot.Validate`, `Encode`,
-`Decode`, and `Restore` then all succeed. `Restore` runs
-`TaskState.Validate` per record at `ledger/snapshot.go`, which is the
-call that fails today for a self-need record.
+`Decode`, and `Restore` then all succeed. The test proves that
+records `Admit` accepts survive a snapshot round-trip. It does not
+prove the property for records `Claim` or `Takeover` write.
 
 Both tests were written and run against a working copy. Both pass.
 
@@ -166,6 +248,7 @@ New text:
 ### Every ErrNotStale expectation in the tree
 
 Grepped across `.go` and `.md`. Five test sites carry an expectation.
+Review confirmed the set is complete.
 
 - `ledger/ledger_test/takeover_test.go:39` in
   `TestTakeoverWhileLeaseLiveRejected`. The record is `StatusClaimed`,
@@ -305,6 +388,10 @@ New text:
 
 Wrapping across two lines for column width is acceptable.
 
+`docs/packages/identity.md:22` stays accurate. It describes
+`identity/identity.go:94`, which validates the identity, not a
+message. Leave it unchanged.
+
 ### Tests
 
 No new test. `TestValidateSplitBrainLoad` already covers the branch.
@@ -313,31 +400,48 @@ No new test. `TestValidateSplitBrainLoad` already covers the branch.
 
 ### Gap
 
-`agentrun/matrix.go:99` and `agentrun/matrix.go:199` re-implement
-flow's declaration-order scan. `flow/runner.go:93` owns the original.
+`agentrun/matrix.go:99` and `agentrun/matrix.go:200` re-implement
+flow's declaration-order scan. `nextReadyGroup` at
+`flow/runner.go:304` owns the original.
 Nothing compares the two. `grep -rl "flow.Run(" agentrun/` returns
 nothing.
 
 ### What is observable
 
 `ValidateMatrix` returns only an error. It exposes no order value.
-The item as written cannot compare two order values without a
-production change. It can compare something stronger and still
-honest: the set of transition rows each scan demands, attributed to
-the same units, on the same definition.
+`api/agentrun.txt:13` confirms that. The error text, which names the
+unit and the demanded status pair, is the only side channel.
 
 `flow.Run` exposes its own walk two ways. `onCheckpoint` fires once
 per resolved unit and carries `Checkpoint.Status`, the status the run
 rests on after that unit. `Confirm` fires for a singleton and a
 one-member panel only. `flow/runner.go:14` states that `Run` skips
-`Confirm` for a panel of two or more members. So `Confirm` alone
+`Confirm` for a panel of two or more members. Review confirmed that
+skip in the code: `runWave` at `flow/wave.go:35` never calls
+`confirmStep`, and `advanceGroup`'s `scanPanel` branch at
+`flow/runner.go:144` bypasses `runSingleton`. So `Confirm` alone
 cannot record a wave. The test uses both, and asserts the `Confirm`
 gap explicitly.
 
-### The result
+### The claim this item proves
 
-The two scans agree. No divergence was found, so the STOP condition
-does not apply. No production change is needed.
+Assertions two and three together prove one property. The simulator
+demands exactly the set of transition rows the run consumes,
+attributed to the same units.
+
+Set equality is the claim. Order equivalence is not.
+
+### The residual gap
+
+State the gap in the test file's own doc comment, so a later reader
+does not over-read the result.
+
+- Nothing here pins the two scans' relative ordering beyond what the
+  row set forces. Two walk orders with identical demand sets are
+  indistinguishable to these assertions.
+- `walkSim`'s walk is machine-independent. It reads only `m.Initial()`;
+  the machine affects `checkRow` alone.
+- Route exclusions stay outside the comparison. So do skipped units.
 
 ### The fixture
 
@@ -345,28 +449,57 @@ Add `agentrun/agentrun_test/matrix_equivalence_test.go`, external
 package `agentrun_test`. It reuses `mustFlow`, `mustMachine`, and
 `assertMatrixFails` from `matrix_test.go`.
 
-Statuses: `queued` (initial), `sx`, `gathered`, `routed`, `done`.
+Statuses: `queued` (initial), `sx`, `sy`, `gathered`, `routed`,
+`done`.
 
 Steps, in declaration order:
 
-- `root`, `To: sx`, no needs. The singleton.
+- `root`, `To: sx`, no needs. The first singleton.
+- `root2`, `To: sy`, no needs. The second singleton, declared after
+  `root`.
 - `panelA`, `To: gathered`, `Needs: ["root"]`.
-- `panelB`, `To: gathered`, `Needs: ["root"]`.
+- `panelB`, `To: gathered`, `Needs: ["root2"]`.
 - `router`, `To: routed`, `Needs: ["panelA", "panelB"]`, with a
   `Route` returning `["finish"]`.
 - `finish`, `To: done`, `Needs: ["router"]`.
 
 Panels: one panel, `{"panelA", "panelB"}`.
 
-Two fixture constraints were found by running it:
+### Why two independent roots
+
+The graph must let declaration order decide something. A total order
+cannot: with one root, no two units are ever ready at once.
+
+`root` and `root2` have no needs, so both are ready at the start.
+Declaration order alone picks `root` first. Review proved the fixture
+discriminates: with `nextUnit`'s scan at `agentrun/matrix.go:100`
+reversed, the test fails with
+
+> assertion 2: step "root2": no transition from "queued" to "sy"
+
+The earlier single-root fixture passed that same planted reversal.
+That is why the fixture changed.
+
+### Two fixture constraints found by running it
 
 - `flow.New` rejects a panel member that is a direct dependent of a
   routed step. The route therefore sits on `router`, below the panel,
-  not on `root`.
+  not on a root.
 - The route must return every direct dependent. `ValidateMatrix`
-  walks the all-run path and does not model a route exclusion. A
-  route that excludes a sibling would make the two orders differ by
-  design, not by defect.
+  walks the all-run path and does not model a route exclusion.
+
+### The route is not a discriminator
+
+Say this plainly, so the fixture list does not imply otherwise.
+
+`grep -n "Route" agentrun/matrix.go` returns two comment lines and
+nothing else. The simulator does not model `Route` at all. In
+`flow/runner.go:119-132` a route that excludes nothing takes the same
+status path as no route. Removing the route changes no assertion.
+
+Keep the route anyway. It cheaply pins that a non-excluding route does
+not perturb the chain. A route that excludes a sibling stays out of
+scope, because the simulator walks the all-run path.
 
 ### The machine
 
@@ -381,29 +514,32 @@ order is flow's, not the fixture's expectation.
 
 1. Run `flow.Run` over the complete machine with a recording
    `Confirm` and a recording `onCheckpoint`. Assert the `Confirm`
-   order equals `["root", "router", "finish"]`. This pins the
+   order equals `["root", "root2", "router", "finish"]`. This pins the
    documented `Confirm` gap for a wave.
 2. Build a machine holding only the recorded status chain, one row
    per checkpoint. Assert `ValidateMatrix` returns nil. This proves
    the simulator demands no row outside what the run consumed.
 3. For each recorded chain link, build the complete machine minus
-   that one row. Assert `ValidateMatrix` fails and names both
-   statuses. This proves the simulator demands every row the run
-   consumed, at the same point in the walk.
+   that one row. Assert `ValidateMatrix` fails, and assert the error
+   text names both statuses and the expected unit label. The unit
+   label is the load-bearing half: `"panelA panelB"` pins that the
+   simulator attributes the wave's row to the wave, not to a member.
 
-Assertions two and three together pin a two-way equivalence between
-the two scans.
+Assertion 3 is specified once, here. The `agentrun` addendum repeats
+this same wording.
 
 ### Reachability trace
 
 The recorded chain on the working copy is
-`[sx gathered routed done]`. Each drop-one case failed with the
-expected message:
+`[sx sy gathered routed done]`. Five links, five drop-one cases. Each
+case failed with the expected message:
 
 - Drop `queued -> sx`: `agentrun: step "root": no transition from
   "queued" to "sx"`.
-- Drop `sx -> gathered`: `agentrun: step "panelA panelB": no
-  transition from "sx" to "gathered"`.
+- Drop `sx -> sy`: `agentrun: step "root2": no transition from "sx"
+  to "sy"`.
+- Drop `sy -> gathered`: `agentrun: step "panelA panelB": no
+  transition from "sy" to "gathered"`.
 - Drop `gathered -> routed`: `agentrun: step "router": no transition
   from "gathered" to "routed"`.
 - Drop `routed -> done`: `agentrun: step "finish": no transition from
@@ -411,41 +547,139 @@ expected message:
 
 Each message names the unit the simulator reached and the exact pair
 it demanded. Every failure is a live positive control: none of the
-four passed vacuously. Verified on the working copy.
+five passed vacuously. Verified on the working copy.
 
 `joinIDs` at `agentrun/matrix.go` produces the `"panelA panelB"`
 label, which is how the wave identifies itself.
 
-## Item 6a: envelope.Sign calls Validate
+### The result
+
+The two scans agree on the demanded row set. No divergence was found,
+so the user's STOP condition does not apply. No production change is
+needed.
+
+## Item 6a: envelope.Sign validates a normalized copy
 
 ### Fix
 
-In `envelope/sign.go:14`, call `m.Validate()` after the key-length
-check and before the `Signer` assignment. Return the error.
+In `envelope/sign.go:14`, after the key-length check and before the
+`Signer` assignment, validate a normalized copy:
 
-`Message.Validate` at `envelope/message.go:108` never requires
-`Signer` or `Signature`. `validateSignature` at
-`envelope/message.go:185` returns nil when both fields are empty. So
-`Validate` runs correctly on an unsigned message, and the order is
-safe. Verified by reading `validateSignature` and by running the
-suite.
+```go
+check := m
+check.Signer = ""
+check.Signature = ""
+if err := check.Validate(); err != nil {
+    return Message{}, err
+}
+```
+
+Do not call `m.Validate()` on the message as supplied.
+
+### Why the copy, not the message
+
+`validateSignature` at `envelope/message.go:185` constrains `Signer`
+and `Signature` whenever either field is non-empty. `Sign` overwrites
+both fields immediately after. So validating them is both wrong and
+harmful.
+
+The natural re-sign idiom clears `Signature` and keeps `Signer`. That
+is the same move `Sign` makes at `sign.go:22` and `VerifySignature`
+makes at `sign.go:48`. Review probed all three idioms against a plain
+`m.Validate()` call:
+
+- Strip the signature, keep the signer, re-sign: fails with
+  "signature must be 128 lowercase hex chars".
+- Re-sign a fully signed message: passes.
+- Preset a non-hex `Signer`: fails with "signer must be 64 lowercase
+  hex chars".
+
+No current caller uses the first idiom, so the suite stays green
+either way. It is a latent trap, not a live break.
+
+The normalized copy costs the same three lines. It validates exactly
+the content that gets signed. All three idioms pass. The full suite
+produces the identical three failures listed below. Coverage is
+unchanged.
 
 ### One production branch becomes unreachable
 
 `Validate` rejects a NaN or infinite `Confidence`. That is the only
-input that makes `json.Marshal` fail on a `Message`. After the change,
-the `marshal for signing` branch in `Sign` cannot fire. Keep it as a
-defensive branch. Envelope coverage measured 99.4 percent on the
-working copy, and `Sign` measured 91.7 percent. Both clear the floor.
+input that makes `json.Marshal` fail on a `Message`. Review confirmed
+there is no other candidate and no retargeting option: every
+`Message` field is a `string`, a `[]string`, an `int`, a `bool`, or a
+struct of those. `Confidence` is the only `float64`.
+
+After the change, the `marshal for signing` branch in `Sign` cannot
+fire. Keep it as a defensive branch. Envelope coverage measured 99.4
+percent on the working copy, and `Sign` measured 91.7 percent. Both
+clear the floor.
 
 No new conformance vector. The vectors in
 `envelope/testdata/vectors/` pin `Encode` and `Decode`. This change
 adds no schema rule and no new `Validate` rule.
 
+### The architecture-section obligation
+
+AGENTS.md requires a change to message semantics to update
+docs/architecture.md's "Why the envelope is shaped this way" section
+in the same change. This change does not qualify.
+
+That section at `docs/architecture.md:715` explains why the message
+carries epistemic typing, provenance, acks, and a thread hash chain.
+Item 6a adds no field, no schema rule, and no `Validate` rule. It
+moves an existing gate earlier in the pipeline. The set of valid
+messages on the wire is unchanged, so the section stays as written.
+
+### Doc sites this change makes false
+
+Four sites state the old contract. All four change.
+
+`envelope/message.go:107`. Old text:
+
+> // Validate checks all Message invariants. Called by Encode and Decode.
+
+New text:
+
+> // Validate checks all Message invariants. Called by Sign, Encode,
+> // and Decode.
+
+`docs/packages/envelope.md:106`. Old bullet:
+
+> - `Sign` fails when the supplied key is not an ed25519 private key
+>   of the expected length. Pinned by `envelope/sign_test.go`.
+
+New bullet:
+
+> - `Sign` fails when the supplied key is not an ed25519 private key
+>   of the expected length. It also fails when the message fails
+>   `Validate` with `Signer` and `Signature` cleared. Pinned by
+>   `envelope/sign_test.go`.
+
+`docs/architecture.md:695`. Old numbered step:
+
+> 1. **Sign.** `envelope/sign.go`, `Sign(key, m)`: sets Signer and
+>    Signature. The signature covers the canonical JSON of every field
+>    except itself.
+
+New numbered step:
+
+> 1. **Sign.** `envelope/sign.go`, `Sign(key, m)`: validates, then sets
+>    Signer and Signature. The signature covers the canonical JSON of
+>    every field except itself.
+
+Step 2 in that same list already says `Encode` "validates, then
+marshals". The new step 1 carries the matching clause.
+
+`docs/plans/envelope.md:19` says validation is "centralized in
+Validate and called by Encode/Decode". The addendum for that file
+corrects it.
+
 ### Every Sign call site that signs a Validate-rejected message
 
 Grepped `.Sign(` across the tree: 37 sites in 27 files. Then applied
-the change and ran the whole suite. Exactly three sites break.
+the change and ran the whole suite. Exactly three sites break. Review
+confirmed the set is complete.
 
 - `envelope/sign_test.go:90` in `TestSignRejectsUnserializableMessage`.
   It pins the `json.UnsupportedValueError` from a NaN `Confidence`.
@@ -466,7 +700,9 @@ the change and ran the whole suite. Exactly three sites break.
   the signature check. The case proves a correct signature does not
   rescue invalid content.
 
-For the last two, add a local test helper in each package:
+### The local signing helper
+
+For the last two sites, add a local test helper in each package:
 
 ```go
 // signBypassingValidate signs m the way envelope.Sign does, minus
@@ -480,7 +716,21 @@ the canonical JSON, exactly as `envelope.Sign` does. Put one copy in
 `a2aack/a2aack_test/helpers_test.go` and one in
 `room/integration_test.go`. Two local copies beat one new exported
 symbol in `envelope`. A test-only signing helper does not belong on
-the public surface.
+the public surface. No shared test package exists, so this is not a
+copied-exported-type smell.
+
+Guard both copies against silent drift. Each helper re-implements
+envelope's canonical signing form. If that form ever changes, a copy
+that still produces an unverifiable message must fail loudly. End
+each helper with a self-check before it returns:
+
+```go
+if err := m.VerifySignature(); err != nil {
+    t.Fatalf("signBypassingValidate: signature does not verify: %v", err)
+}
+```
+
+Review confirmed the self-check works in both packages.
 
 Both replacements were written and run. The whole suite passes.
 
@@ -498,15 +748,16 @@ In `machine/definition.go:150`, wrap with `%w`:
 - `fmt.Errorf("%w from %q on %q", ErrNoTransition, from, trig)`
 - `fmt.Errorf("%w from %q on %q", ErrGuardRejected, from, trig)`
 
-The rendered text is byte-identical to today's text. Verified: the
-whole suite passes with no other test touched.
+The rendered text is byte-identical to today's text. Review confirmed
+that byte-for-byte. The whole suite passes with no other test touched.
 
 Run `make api-update`. `api/machine.txt` gains both names.
 
 ### The grep for the two error texts
 
 Grepped `"no transition"` and `"guard rejected"` across `.go` and
-`.md`. Matches split into three groups.
+`.md`. Matches split into three groups. Review confirmed the
+classification.
 
 Machine's own text, which this item changes:
 
@@ -556,7 +807,9 @@ Run `make api-update`. `api/workspace.txt` gains `var ErrBlankRoot`.
 `workspace/workspace_test/read_limit_test.go` already carries a
 `wantErr error` field checked with `errors.Is`. Add
 `wantErr: workspace.ErrBlankRoot` to both blank-root rows at
-`read_limit_test.go:62` and `:63`. No new test function.
+`read_limit_test.go:62` and `:63`. No new test function. Review
+confirmed both rows reach the blank-root branch and never reach
+`validateLimit`.
 
 `workspace/workspace_test/secret_test.go:249` asserts only a boolean.
 Its own comment says `read_limit_test.go` owns the blank-root rows.
@@ -580,6 +833,26 @@ if b.subs == nil {
 `bus.go` declares no other method that touches `b.subs`. Verified by
 grepping `.subs` across `events/`.
 
+### Necessity, stated honestly
+
+This item reverses a documented invariant. Say so plainly.
+
+- Three doc sites state the old rule: `events/bus.go:41`,
+  `docs/packages/events.md:21`, and `docs/packages/events.md:59`.
+- One test pins it on purpose. `TestZeroValueBusPinsConstructorOnly`
+  carries the comment "The invariant is constructor-only; New is the
+  only sanctioned build".
+- No in-tree caller can reach the panic. All 22 production
+  `events.Bus` sites hold a `*events.Bus` built by `events.New`, or
+  nil-check first. So this fixes no live defect.
+- The change aligns `events.Bus` with `trigger.Registry`'s
+  usable-zero-value idiom at `trigger/registry.go:77`.
+- The user ordered this change directly, and ordered the doc comment
+  update with it. That instruction is the authority for the reversal
+  and for the `TT01` trailer. The plan does not self-authorize it.
+
+### Doc comment change
+
 Update the `Bus` doc comment at `events/bus.go:41`.
 
 Old text:
@@ -601,14 +874,6 @@ zero `Bus`, emits, and asserts the handler ran once. It keeps the old
 test's second half, which asserts `Emit` on an untouched zero `Bus`
 returns nil.
 
-The rename removes a test function name, so the tampering gate fires
-`TT01`. Add this trailer to the commit, after re-verifying the diff:
-
-```
-Allow-Test-Change: TT01 zero-value Bus behavior changed by design; the
-replacement pins the new guard and keeps the old nil-Emit assertion
-```
-
 ## Item 6e: room ErrUnsigned text
 
 ### Fix
@@ -625,7 +890,8 @@ No new sentinel and no lock change.
 ### The grep for the old text
 
 Grepped `"unsigned message cannot be admitted"` and `ErrUnsigned`
-across `.go` and `.md`. Two sites carry the text.
+across `.go` and `.md`. Two sites carry the text. Review confirmed the
+set is complete.
 
 - `room/room.go:33`, the declaration.
 - `docs/packages/room.md:49`, which quotes it.
@@ -640,16 +906,20 @@ Write these addenda with the code, in the same commit. Each names the
 exact sentence that changes.
 
 - `docs/plans/ledger.md:457` — the sentence that defers the `Admit`
-  validation gap. See the addendum in that file.
+  validation gap. The addendum also names the `Claim` and `Takeover`
+  hole this batch leaves open.
 - `docs/plans/ledger.md:200` — the `Takeover` check order.
-- `docs/plans/envelope.md:17` — the sentence saying validation is
-  called by `Encode` and `Decode`.
+- `docs/plans/envelope.md:19` — the sentence saying validation is
+  called by `Encode` and `Decode`. The quoted clause sits at `:20`.
 - `docs/plans/discovery.md:44` — the `Validate` rule list.
 - `docs/plans/machine.md` — the `Fire` sentinels.
-- `docs/plans/workspace.md:63` — the blank-root rule.
-- `docs/plans/events.md` — the zero-value `Bus` rule.
+- `docs/plans/workspace.md:63` — the blank-root rule. The addendum
+  also reconciles `docs/plans/workspace.md:1082`.
+- `docs/plans/events.md` — the zero-value `Bus` rule and the user's
+  instruction as its authority.
 - `docs/plans/room.md` — the `ErrUnsigned` meaning.
-- `docs/plans/agentrun.md:104` — the new equivalence test.
+- `docs/plans/agentrun.md:104` — the new equivalence test, its exact
+  claim, and its residual gap.
 - `docs/plans/identity.md` — the `Load` comment claim.
 
 ## Package doc updates
@@ -657,15 +927,27 @@ exact sentence that changes.
 These describe shipped behavior, so they change with the code, not
 before it.
 
+- `docs/packages/ledger.md:66` — the `Ledger.Admit` entry names the
+  new `Validate` rejection.
 - `docs/packages/ledger.md:128` — add that a terminal record returns
   `ErrNotClaimed` even while its lease is still live.
+- `docs/packages/ledger.md:157` — the invariant bullet names `Admit`,
+  `Restore`, and `Snapshot.Validate` as callers of
+  `TaskState.Validate`.
+- `docs/packages/envelope.md:106` — the `Sign` failure list names the
+  new `Validate` rejection.
 - `docs/packages/discovery.md:30` — add the padding rule to the
   invariant list.
 - `docs/packages/machine.md:80` — name `ErrNoTransition` and
   `ErrGuardRejected`.
-- `docs/packages/workspace.md:35` and `:103` — name `ErrBlankRoot`.
+- `docs/packages/workspace.md:35` — the `Options.Validate` entry names
+  `ErrBlankRoot`.
+- `docs/packages/workspace.md:103` — add an `ErrBlankRoot` bullet to
+  the sentinel list, beside the `ErrInvalidLimit` entry.
 - `docs/packages/events.md:21` and `:59` — the zero value is usable.
 - `docs/packages/room.md:49` — the new `ErrUnsigned` text.
+- `docs/architecture.md:695` — pipeline step one says `Sign`
+  validates first.
 
 ## Tests
 
@@ -719,29 +1001,98 @@ raise the assertion count.
 
 ## Verification
 
-Run in order:
+Run in order, from the worktree root:
 
 - `make api-update`, then commit the `api/` diff in the same change.
 - `make verify`.
 - `go test -race ./ledger/... ./flow/... ./agentrun/...`.
+- `python3 scripts/check_prose.py` and `python3 scripts/check_plan.py`.
 
 Do not run `go test -fuzz` with default parallelism. Seeded smoke runs
 under plain `go test` are fine.
 
 Gates this batch touches:
 
-- `scripts/check_api.py` sees two new symbols in two lock files.
+- `scripts/check_api.py` sees three new symbols in two lock files.
 - `scripts/check_plan.py` sees the plan addenda.
 - `scripts/check_prose.py` sees the new prose.
 - `scripts/check_test_tampering.py` fires `TT01` for the events test
-  rename and may fire `TT01` for the envelope test rename. Re-verify
-  each finding against the diff before adding a trailer.
+  rename and for the envelope test rename. Re-verify each finding
+  against the diff before adding the trailer.
 - The coverage floor holds. Envelope measured 99.4 percent with the
   change applied.
 
 No gate is weakened, no limit raised, and no exclusion widened.
 
 `make verify-fast` passed on a working copy carrying all six items.
+
+## Staging
+
+Stage exactly these paths. Stage nothing else. The worktree carries
+only this batch, so `git add -A` from the worktree root is safe, but
+review `git status` before the commit either way.
+
+Production code:
+
+- `ledger/ledger.go`
+- `ledger/claim.go`
+- `discovery/card.go`
+- `identity/identity.go`
+- `envelope/sign.go`
+- `envelope/message.go`
+- `machine/errors.go` (new)
+- `machine/definition.go`
+- `workspace/workspace.go`
+- `events/bus.go`
+- `room/room.go`
+
+Tests:
+
+- `ledger/ledger_test/admit_validate_test.go` (new)
+- `ledger/ledger_test/takeover_terminal_test.go` (new)
+- `ledger/ledger_test/helpers_test.go`
+- `ledger/ledger_test/transitive_block_test.go`
+- `ledger/ledger_test/transitive_block_takeover_test.go`
+- `ledger/ledger_test/stress_test.go`
+- `discovery/discovery_test/card_test.go`
+- `discovery/discovery_test/testdata/padded_capability.json` (new)
+- `agentrun/agentrun_test/matrix_equivalence_test.go` (new)
+- `envelope/sign_test.go`
+- `a2aack/a2aack_test/helpers_test.go`
+- `a2aack/a2aack_test/transport_error_test.go`
+- `room/integration_test.go`
+- `machine/machine_test/fire_test.go`
+- `workspace/workspace_test/read_limit_test.go`
+- `events/events_test/events_test.go`
+
+API locks:
+
+- `api/machine.txt`
+- `api/workspace.txt`
+
+Package docs:
+
+- `docs/packages/ledger.md`
+- `docs/packages/envelope.md`
+- `docs/packages/discovery.md`
+- `docs/packages/machine.md`
+- `docs/packages/workspace.md`
+- `docs/packages/events.md`
+- `docs/packages/room.md`
+- `docs/architecture.md`
+
+Plans:
+
+- `docs/plans/ledger.md`
+- `docs/plans/envelope.md`
+- `docs/plans/discovery.md`
+- `docs/plans/identity.md`
+- `docs/plans/machine.md`
+- `docs/plans/workspace.md`
+- `docs/plans/events.md`
+- `docs/plans/room.md`
+- `docs/plans/agentrun.md`
+- `docs/plans/agents/maintenance-addenda-batch.md`
 
 ## Commit
 
@@ -756,28 +1107,37 @@ fix(sdk): close six Validate, ordering, and sentinel gaps
 Body:
 
 ```
-Admit now validates the record it writes, so a live ledger can
-round-trip its own snapshot. Takeover checks status before lease
-staleness, so a completed record returns ErrNotClaimed as its doc
-promises. discovery.Validate rejects a padded capability entry that
-Match can never hit. identity.Load carries a truthful comment on its
-Validate call. agentrun gains an equivalence test proving
-ValidateMatrix demands exactly the transition rows flow.Run consumes.
-envelope.Sign validates first; machine.Fire, workspace.Options, and
-room gain or reword sentinels; the zero events.Bus is usable.
+Admit now validates the record it writes, so it can no longer store a
+record its own snapshot cannot encode. Claim and Takeover still write
+a lease without validating it, so the ledger's snapshot round-trip is
+not restored as a whole; that hole is named in the plan and left to
+its own change. Takeover checks status before lease staleness, so a
+completed record returns ErrNotClaimed as its doc promises.
+discovery.Validate rejects a padded capability entry that Match can
+never hit. identity.Load carries a truthful comment on its Validate
+call. agentrun gains a test proving ValidateMatrix demands exactly the
+set of transition rows flow.Run consumes, attributed to the same
+units. envelope.Sign validates a normalized copy first; machine.Fire,
+workspace.Options, and room gain or reword sentinels; the zero
+events.Bus is usable, which reverses a documented invariant at the
+user's direct instruction.
 
 Two tests are replaced because the behavior they pinned changed by
-design. TestZeroValueBusPinsConstructorOnly pinned the zero-Bus panic
-this change removes. TestSignRejectsUnserializableMessage pinned a
-marshal branch Sign's new Validate call makes unreachable. Both
-replacements keep or raise the assertion count. Two ledger fixture
-rows now plant their self-need record through the Store, because
-Admit rejects one.
+design. Both replacements keep or raise the assertion count. Two
+ledger fixture rows now plant their self-need record through the
+Store, because Admit rejects one.
 
 See docs/plans/agents/maintenance-addenda-batch.md.
 
-Allow-Test-Change: TT01 zero-value Bus behavior changed by design; the
-replacement pins the new guard and keeps the old nil-Emit assertion
+Allow-Test-Change: TT01 two replacements, each by design: TestZeroValueBusPinsConstructorOnly pinned the zero-Bus panic the user instructed us to remove, and TestSignRejectsUnserializableMessage pinned a marshal branch that Sign's new Validate call makes unreachable; both replacements keep or raise the assertion count
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 ```
+
+The `TT01` trailer names both replacements on one line. The override
+parser at `scripts/test_tampering_override.py:74` keys on the finding
+ID, so a single trailer waives every `TT01` finding in the commit. A
+reason naming only one replacement would waive the other silently.
+See `.agents/memories/override_trailers_dont_carry_to_merge_commits.md`.
+Re-issue the same trailer on a later merge commit if the gate fires
+there again.

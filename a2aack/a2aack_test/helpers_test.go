@@ -8,6 +8,8 @@ package a2aack_test
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
+	"encoding/json"
 	"sync/atomic"
 	"testing"
 
@@ -115,4 +117,26 @@ func (f *fakeRemote) Result(context.Context, a2aclient.TaskHandle) (envelope.Mes
 		return envelope.Message{}, f.resultErr
 	}
 	return f.result, nil
+}
+
+// signBypassingValidate signs m the way envelope.Sign does, minus
+// Sign's Validate gate, so a case can build a message whose signature
+// verifies and whose content Validate rejects.
+func signBypassingValidate(t testing.TB, key ed25519.PrivateKey, m envelope.Message) envelope.Message {
+	t.Helper()
+	pub, ok := key.Public().(ed25519.PublicKey)
+	if !ok {
+		t.Fatalf("signBypassingValidate: key exposes no ed25519 public key")
+	}
+	m.Signer = hex.EncodeToString(pub)
+	m.Signature = ""
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("signBypassingValidate: marshal: %v", err)
+	}
+	m.Signature = hex.EncodeToString(ed25519.Sign(key, data))
+	if err := m.VerifySignature(); err != nil {
+		t.Fatalf("signBypassingValidate: signature does not verify: %v", err)
+	}
+	return m
 }

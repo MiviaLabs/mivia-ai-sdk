@@ -46,7 +46,8 @@ Use `errors.Is` to test these.
 - `ErrWrongRoom` ("message names a different room") — `Accepts` wraps
   it when the message names a room other than this one. Pinned by
   `room/integration_test.go`.
-- `ErrUnsigned` ("unsigned message cannot be admitted") — `Accepts`
+- `ErrUnsigned` ("message is unsigned or its signature does not
+  verify") — `Accepts`
   wraps it when the signer is empty or signature verification fails.
   Pinned by `room/integration_test.go`.
 - `ErrNoMonitor` ("room: heartbeat monitor is required") —

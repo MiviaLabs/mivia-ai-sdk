@@ -32,7 +32,8 @@ exported surface below mirrors `api/workspace.txt`.
 - `OpenWith(opts Options) (*Workspace, error)` — the same open under
   the read bound `opts` names. It calls `opts.Validate` first and
   returns that error unchanged.
-- `Options.Validate() error` — `Root` must not be blank.
+- `Options.Validate() error` — `Root` must not be blank; a blank
+  `Root` returns `ErrBlankRoot`.
   `MaxReadBytes` must be `Unbounded`, zero, or a positive value at or
   under `math.MaxInt64 - 1`. `Deny` may be nil.
 - `Workspace.Root() string` — returns the resolved root path.
@@ -100,6 +101,9 @@ Use `errors.Is` to test the escape case.
 - `ErrTooLarge` ("workspace: file exceeds read limit") — the file is
   longer than the read's effective bound. It wraps no filesystem
   error, because it is this package's own policy refusal.
+- `ErrBlankRoot` ("workspace: Root is blank") — `Options.Root` is
+  blank after `TrimSpace`. `Options.Validate` returns it before it
+  checks the read bound.
 - `ErrInvalidLimit` ("workspace: invalid read limit") — the bound is
   neither `Unbounded`, nor zero, nor a positive value at or under
   `math.MaxInt64 - 1`. `Options.Validate` and `ReadFileLimit` both

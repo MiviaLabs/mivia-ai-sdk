@@ -102,3 +102,41 @@ func buildBlocked(t *testing.T, l *ledger.Ledger, ctx context.Context) {
 		t.Fatalf("Complete: %v", err)
 	}
 }
+
+// newLedgerOverStore builds a Ledger over a caller-held Store, so a
+// test can write to that Store directly beside the Ledger's own
+// writes.
+func newLedgerOverStore(t *testing.T, store ledger.Store) *ledger.Ledger {
+	t.Helper()
+	l, err := ledger.New(store, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	return l
+}
+
+// plantSelfNeed writes a StatusPending record naming itself in Needs
+// straight through Store.CompareAndSwap. Admit rejects that record,
+// so a case proving the ancestor walk terminates on a self-need
+// plants it instead of admitting it. Store.CompareAndSwap runs no
+// validation, so the plant succeeds.
+func plantSelfNeed(t *testing.T, store ledger.Store, ctx context.Context, key ledger.IdempotencyKey) {
+	t.Helper()
+	next := ledger.TaskState{
+		Key:       key,
+		Status:    ledger.StatusPending,
+		Sequence:  1,
+		Needs:     []ledger.IdempotencyKey{key},
+		CreatedBy: testActor,
+		CreatedAt: fixedNow,
+		UpdatedBy: testActor,
+		UpdatedAt: fixedNow,
+	}
+	ok, err := store.CompareAndSwap(ctx, key, ledger.TaskState{}, next)
+	if err != nil {
+		t.Fatalf("plantSelfNeed(%s): %v", key, err)
+	}
+	if !ok {
+		t.Fatalf("plantSelfNeed(%s): want true", key)
+	}
+}

@@ -59,8 +59,8 @@ func TestOptionsValidate(t *testing.T) {
 		wantErr error
 		ok      bool
 	}{
-		{name: "blank root", opts: workspace.Options{}, ok: false},
-		{name: "blank root with valid limit", opts: workspace.Options{MaxReadBytes: 8}, ok: false},
+		{name: "blank root", opts: workspace.Options{}, wantErr: workspace.ErrBlankRoot, ok: false},
+		{name: "blank root with valid limit", opts: workspace.Options{MaxReadBytes: 8}, wantErr: workspace.ErrBlankRoot, ok: false},
 		{name: "negative limit", opts: workspace.Options{Root: dir, MaxReadBytes: -2}, wantErr: workspace.ErrInvalidLimit},
 		{name: "limit over maxReadLimit", opts: workspace.Options{Root: dir, MaxReadBytes: math.MaxInt64}, wantErr: workspace.ErrInvalidLimit},
 		{name: "unbounded", opts: workspace.Options{Root: dir, MaxReadBytes: workspace.Unbounded}, ok: true},

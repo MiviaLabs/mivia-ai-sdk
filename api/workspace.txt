@@ -18,6 +18,7 @@ package workspace
 }
   type Workspace struct {
 }
+  var ErrBlankRoot
   var ErrEscape
   var ErrInvalidLimit
   var ErrSecretPath

@@ -172,13 +172,13 @@ func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, o
 // the prior value, fencing the dispossessed owner's token.
 //
 // Takeover first calls Store.Load. It returns ErrNoKey when the key
-// has no record, checked before the ErrNotStale and ErrNotClaimed
-// checks and before any CompareAndSwap call. It returns ErrNotStale
-// when LeaseUntil is still after now. It returns ErrNotClaimed for a
-// StatusPending or terminal record: Takeover never admits or claims a
-// never-claimed record; a caller uses Claim for that. It returns
-// ErrNotClaimed last when a key in the record's transitive Needs
-// closure holds StatusFailed or StatusBlocked, checked after the
+// has no record, checked before the ErrNotClaimed and ErrNotStale
+// checks and before any CompareAndSwap call. It returns ErrNotClaimed
+// for a StatusPending or terminal record, checked next: Takeover never
+// admits or claims a never-claimed record, and a caller uses Claim for
+// that. It returns ErrNotStale when LeaseUntil is still after now. It
+// returns ErrNotClaimed last when a key in the record's transitive
+// Needs closure holds StatusFailed or StatusBlocked, checked after the
 // ErrNotStale check and before any CompareAndSwap call. That refusal
 // writes: it moves the record to StatusBlocked through blockOne,
 // naming the nearest blocking ancestor in BlockedBy. See
@@ -195,11 +195,11 @@ func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, 
 		if !found {
 			return 0, ErrNoKey
 		}
-		if cur.LeaseUntil.After(now) {
-			return 0, ErrNotStale
-		}
 		if cur.Status != StatusClaimed {
 			return 0, ErrNotClaimed
+		}
+		if cur.LeaseUntil.After(now) {
+			return 0, ErrNotStale
 		}
 		blocker, blocked, err := l.blockingAncestor(ctx, cur.Needs)
 		if err != nil {

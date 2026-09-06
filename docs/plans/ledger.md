@@ -1238,9 +1238,10 @@ gate.
   diamond with two paths to one leaf, a two-node cycle, a self-need
   where `S` names `S`, a branch whose sibling completed before the
   failure, and a need that was never admitted. The self-need row is
-  reachable because `Admit` never calls `TaskState.Validate`; it is
-  the shortest cycle, and it hangs a walk with a broken `seen` set. Each row asserts the `Claim` result, the record's status
-  after the attempt, and its `BlockedBy`. The never-admitted-need row
+  reachable because it plants the record straight through the `Store`,
+  which runs no validation; it is the shortest cycle, and it hangs a
+  walk with a broken `seen` set. Each row asserts the `Claim` result,
+  the record's status after the attempt, and its `BlockedBy`. The never-admitted-need row
   asserts the claim succeeds, pinning the documented rule that an
   absent need blocks nothing. The completed-sibling row asserts the
   sibling keeps `StatusCompleted`. This row set kills a mutation that
@@ -1912,61 +1913,78 @@ case all use valid records and stay green.
 - `docs/packages/ledger.md`, the `Ledger.Restore` line: add "It
   validates each record first." One sentence.
 
-## Addendum: maintenance batch — Admit validates, Takeover reorders
+## Addendum: Admit validates, and Takeover checks status first
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, items 1 and 2.
 
-- Make `Admit` reject a record `TaskState.Validate` rejects, so a live
-  ledger can round-trip its own snapshot.
-- Make `Takeover` return `ErrNotClaimed` for a terminal record, as its
-  doc comment promises.
+### Admit validates the record it writes
 
-### Scope
+`docs/plans/ledger.md:457` says the `Admit` self-need gap "predates
+this change and stays out of scope here". That sentence is now
+historical. `Admit` calls `next.Validate()` after the blocked branch
+and before `Store.CompareAndSwap`. It returns `false` and that error
+when the record is invalid.
 
-- Verified: `ledger/ledger.go:68` builds `next` and passes it to
-  `Store.CompareAndSwap` with no validation. `Admit` with a self-need
-  returns true. `Snapshot` then succeeds and `Encode` fails.
-- Exact change one: call `next.Validate()` after the `if blocked`
-  block and before `CompareAndSwap`. Return the error. Add no inline
-  self-need check. `Validate` has a value receiver and needs only
-  `Key`, `Status`, `Needs`, and `BlockedBy`, all set at that point.
-- Verified: `ledger/claim.go:198` checks `LeaseUntil.After(now)`
-  before `claim.go:201` checks the status. `Complete` leaves the lease
-  on the record, so a completed record inside its lease window returns
-  `ErrNotStale`.
-- Exact change two: swap the two blocks so the status check runs
-  first, matching `Claim`. No wire change and no new sentinel. Rewrite
-  the ordering sentences in the `Takeover` doc comment at
-  `claim.go:174`.
-- Out of scope: any other `Validate` call site, and any change to
-  `blockingAncestor`.
+What the change delivers, exactly: `Admit` can no longer store a
+record its own snapshot cannot encode.
+
+What it does not deliver: the ledger's snapshot round-trip property as
+a whole. Three write paths set `LeaseUntil` from `now.Add(lease)` and
+run no validation: `Claim` at `ledger/claim.go:66`, `Renew` at
+`ledger/claim.go:108`, and `Takeover` at `ledger/claim.go:215`. A zero
+clock with a zero lease stores a `StatusClaimed` record with a zero
+`LeaseUntil`. `TaskState.Validate` rejects that record at
+`ledger/task_state.go:107`, so `Encode` and `Restore` fail the same
+way. That hole stays open and needs its own change.
+
+Every other `CompareAndSwap` in `ledger/` is safe. `blockOne` always
+sets `BlockedBy`. `Complete` moves `Status` only. `Release` moves
+`Status` back to `StatusPending` and clears `Owner` and `LeaseUntil`
+at `ledger/claim.go:151`, which moves the record toward validity.
+
+The `seen` set inside `blockingAncestor` stays load-bearing. Two test
+rows still plant a self-need record straight through the `Store`, so
+the walk still meets a cycle.
+
+`Admit`'s doc comment and the `Ledger.Admit` entry in
+`docs/packages/ledger.md` both name the new rejection. The invariant
+bullet at `docs/packages/ledger.md:157` names `Admit`, `Restore`, and
+`Snapshot.Validate` as callers of `TaskState.Validate`. Those three
+are every production caller after the fix.
+
+### Takeover checks status before lease staleness
+
+`ledger/claim.go:174`'s doc comment listed the `Takeover` check order
+as `ErrNoKey`, then `ErrNotStale`, then `ErrNotClaimed`. The code
+matched that comment, not this plan. The new order is `ErrNoKey`, then
+`ErrNotClaimed`, then `ErrNotStale`. It matches `Claim`, and it matches
+the order `docs/plans/ledger.md:200` already specified.
+
+`Complete` leaves `LeaseUntil` on the record. Under the old order a
+completed record inside its lease window returned `ErrNotStale`, which
+contradicted the doc comment. The new order returns `ErrNotClaimed`.
+
+`modelTakeover` in `ledger/ledger_test/stress_test.go` mirrors the
+production order, so it is reordered with the code.
 
 ### Addendum tests
 
-- Add `ledger/ledger_test/admit_validate_test.go`. One case admits a
-  self-need and expects the `names itself in Needs` error, with no
-  record stored. One case admits a valid graph and drives `Snapshot`,
-  `Encode`, `Decode`, and `Restore` to success on a fresh ledger.
-- Add `ledger/ledger_test/takeover_terminal_test.go`. It builds a
-  completed record with `buildCompleted`, asserts `LeaseUntil` is
-  still after `fixedNow`, then expects `ErrNotClaimed` from a
-  `Takeover` at `fixedNow`. That fixture returns `ErrNotStale` today.
-- Two existing self-need rows change their fixture layer only.
+- `ledger/ledger_test/admit_validate_test.go` adds
+  `TestAdmitRejectsSelfNeed` and `TestAdmitSnapshotRoundTrips`. The
+  second proves that records `Admit` accepts survive a snapshot round
+  trip. It claims nothing about records `Claim` or `Takeover` write.
+- `ledger/ledger_test/takeover_terminal_test.go` adds
+  `TestTakeoverAgainstCompletedWithLiveLeaseRejected`. It fails before
+  the swap and passes after it.
+- The two self-need rows in
   `ledger/ledger_test/transitive_block_test.go` and
-  `transitive_block_takeover_test.go` plant the self-need record
-  through `Store.CompareAndSwap`, which runs no validation. Add
-  `newLedgerOverStore` and `plantSelfNeed` to `helpers_test.go`. Both
-  rows keep their name, their assertions, and their intent.
-- `modelTakeover` in `ledger/ledger_test/stress_test.go` mirrors the
-  old order in code and in its comment. Reorder both. The model is a
-  specification mirror, so it tracks the spec.
-- Every other `ErrNotStale` expectation stays. `takeover_test.go:39`
-  and `takeover_race_test.go:47` both act on a `StatusClaimed` record.
-  `takeover_test.go:91` acts past the lease deadline. The reorder
-  changes none of them.
+  `transitive_block_takeover_test.go` keep their names and assertions.
+  Only the fixture layer moves to a planted store record.
 
 ### Addendum verification
 
+- `make verify` passes. The `ledger` coverage floor holds.
 - `go test -race ./ledger/...` passes.
-- `make verify` passes; `ledger` holds the 85 coverage floor.
-- No `api/` diff; no `policy/layers.json` change.
+- No `api/` diff. No `policy/layers.json` diff. No new conformance
+  vector: neither item changes wire semantics.

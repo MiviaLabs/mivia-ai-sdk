@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -87,12 +88,22 @@ func TestSignRejectsBadKey(t *testing.T) {
 	}
 }
 
-func TestSignRejectsUnserializableMessage(t *testing.T) {
+// TestSignRejectsInvalidMessage pins Sign's Validate gate. Sign
+// validates a copy with Signer and Signature cleared, so an invalid
+// message never gets a signature. It replaces the marshal-error case:
+// a NaN Confidence is the only input that fails json.Marshal, and
+// Validate now rejects it before the marshal runs.
+func TestSignRejectsInvalidMessage(t *testing.T) {
 	m := validMessage()
-	m.Confidence = math.NaN()
-	var marshalErr *json.UnsupportedValueError
-	if _, err := Sign(testKey(t), m); !errors.As(err, &marshalErr) {
-		t.Fatalf("err = %v, want the json marshal error", err)
+	m.Intent = "bogus"
+	if _, err := Sign(testKey(t), m); err == nil || !strings.Contains(err.Error(), "intent") {
+		t.Fatalf("err = %v, want the intent error", err)
+	}
+
+	n := validMessage()
+	n.Confidence = math.NaN()
+	if _, err := Sign(testKey(t), n); err == nil || !strings.Contains(err.Error(), "confidence") {
+		t.Fatalf("err = %v, want the confidence error", err)
 	}
 }
 

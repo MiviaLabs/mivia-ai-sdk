@@ -8,12 +8,19 @@ import (
 	"fmt"
 )
 
-// Sign returns m with Signer (hex public key) and Signature set. The signed
+// Sign returns m with Signer (hex public key) and Signature set. It
+// first validates a copy of m with Signer and Signature cleared. The signed
 // bytes are the canonical JSON of m with Signature cleared, so any field
 // change after signing breaks VerifySignature.
 func Sign(key ed25519.PrivateKey, m Message) (Message, error) {
 	if len(key) != ed25519.PrivateKeySize {
 		return Message{}, fmt.Errorf("key length %d, want %d", len(key), ed25519.PrivateKeySize)
+	}
+	check := m
+	check.Signer = ""
+	check.Signature = ""
+	if err := check.Validate(); err != nil {
+		return Message{}, err
 	}
 	// A valid-length PrivateKey always exposes a PublicKey, so the length
 	// check covers the format; the assertion only converts the type.

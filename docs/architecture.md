@@ -694,9 +694,9 @@ sequenceDiagram
     E-->>B: nil
 ```
 
-1. **Sign.** `envelope/sign.go`, `Sign(key, m)`: sets Signer and
-   Signature. The signature covers the canonical JSON of every field
-   except itself.
+1. **Sign.** `envelope/sign.go`, `Sign(key, m)`: validates, then sets
+   Signer and Signature. The signature covers the canonical JSON of
+   every field except itself.
 2. **Encode.** `envelope/message.go`, `Message.Encode`: validates, then
    marshals to JSON. An invalid message cannot cross the wire.
 3. **Transport.** Out of scope for this SDK. The wire form is the JSON

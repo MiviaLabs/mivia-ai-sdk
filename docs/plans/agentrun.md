@@ -373,56 +373,101 @@ Every commit in this change that rewrites a mandated test carries an
 `Allow-Test-Change` commit-message trailer. The trailer names the
 rewrites. See docs/plans/events.md, Verification.
 
-## Addendum: maintenance batch — ValidateMatrix equivalence test
+## Addendum: an equivalence test for ValidateMatrix
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 5.
 
-- Prove the `ValidateMatrix` simulator demands exactly the transition
-  rows `flow.Run` consumes on the same definition.
+`agentrun/matrix.go:99` and `agentrun/matrix.go:200` re-implement
+flow's declaration-order scan, which `nextReadyGroup` at
+`flow/runner.go:304` owns. Nothing
+compared the two. Add
+`agentrun/agentrun_test/matrix_equivalence_test.go` in the external
+`agentrun_test` package.
 
-### Scope
+### What the test proves, and what it does not
 
-- Verified: `agentrun/matrix.go:99` and `agentrun/matrix.go:199`
-  re-implement the declaration-order scan `flow/runner.go:93` owns.
-  Nothing compares the two. `grep -rl "flow.Run(" agentrun/` returns
-  nothing.
-- `ValidateMatrix` returns only an error, so it exposes no order
-  value. The test compares the two scans through what is observable:
-  the set of rows each demands, attributed to the same unit.
-- `flow.Run` skips `Confirm` for a panel of two or more members; see
-  `flow/runner.go:14`. The test records the walk with `onCheckpoint`,
-  whose `Checkpoint.Status` gives the status after each resolved unit.
-  It also records `Confirm` and asserts the documented gap.
-- No production change. The two scans agree.
+The claim: the simulator demands exactly the set of transition rows
+the run consumes, attributed to the same units.
+
+Set equality is the claim. Order equivalence is not. Record the
+residual gap in the test file's own doc comment:
+
+- Nothing pins the two scans' relative ordering beyond what the row
+  set forces. Two walk orders with identical demand sets are
+  indistinguishable to these assertions.
+- `walkSim`'s walk is machine-independent. It reads only
+  `m.Initial()`; the machine affects `checkRow` alone.
+- Route exclusions stay outside the comparison. So do skipped units.
+
+`ValidateMatrix` returns only an error and exposes no order value, as
+`api/agentrun.txt:13` shows. The error text, which names the unit and
+the demanded status pair, is the only side channel.
+
+### The fixture
+
+Statuses: `queued` (initial), `sx`, `sy`, `gathered`, `routed`,
+`done`.
+
+Steps in declaration order: `root` to `sx` with no needs; `root2` to
+`sy` with no needs; `panelA` to `gathered` needing `root`; `panelB` to
+`gathered` needing `root2`; `router` to `routed` needing both panel
+members and carrying a `Route` returning `["finish"]`; `finish` to
+`done` needing `router`. One panel holds `panelA` and `panelB`.
+
+Two independent roots are required. A total order cannot let
+declaration order decide anything, because no two units are ever ready
+at once. `root` and `root2` are both ready at the start, so
+declaration order alone picks `root` first. With `nextUnit`'s scan
+reversed, the test fails and names `root2` and the `queued` to `sy`
+pair.
+
+The route is not a discriminator. The simulator does not model `Route`
+at all, and a route that excludes nothing takes the same status path
+as no route. Keep it anyway: it cheaply pins that a non-excluding
+route does not perturb the chain. A route that excludes a sibling
+stays out of scope.
+
+Two fixture constraints came from running it. `flow.New` rejects a
+panel member that is a direct dependent of a routed step, so the route
+sits on `router`. The route must return every direct dependent,
+because the simulator walks the all-run path.
+
+### The three assertions
+
+1. Run `flow.Run` over a complete machine with a recording `Confirm`
+   and a recording `onCheckpoint`. Assert the `Confirm` order is
+   `root`, `root2`, `router`, `finish`. This pins the documented gap:
+   `Run` skips `Confirm` for a panel of two or more members.
+2. Build a machine holding only the recorded status chain, one row per
+   checkpoint. Assert `ValidateMatrix` returns nil. This proves the
+   simulator demands no row outside what the run consumed.
+3. For each recorded chain link, build the complete machine minus that
+   one row. Assert `ValidateMatrix` fails, and assert the error text
+   names both statuses and the expected unit label. The unit label is
+   the load-bearing half: `"panelA panelB"` pins that the simulator
+   attributes the wave's row to the wave, not to a member.
+
+The recorded chain is `sx`, `sy`, `gathered`, `routed`, `done`. Five
+links give five drop-one cases, and each one failed with its expected
+message. None passed vacuously.
+
+The two scans agree on the demanded row set. No divergence was found,
+so no production change is needed.
 
 ### Addendum tests
 
-- Add `agentrun/agentrun_test/matrix_equivalence_test.go`, external
-  package `agentrun_test`. It reuses `mustFlow`, `mustMachine`, and
-  `assertMatrixFails`.
-- Fixture: statuses `queued`, `sx`, `gathered`, `routed`, `done`. A
-  root singleton to `sx`; a two-member panel to `gathered`; a routing
-  singleton to `routed` whose `Route` returns its only dependent; a
-  joining singleton to `done`.
-- `flow.New` rejects a panel member that is a direct dependent of a
-  routed step, so the route sits below the panel. The route must
-  exclude nothing, because the simulator walks the all-run path.
-- The run uses a machine holding every ordered pair of distinct
-  statuses, so `flow.Run` picks its own path.
-- Assertion one: the `Confirm` order equals the three singletons.
-- Assertion two: a machine holding only the recorded status chain
-  passes `ValidateMatrix`. The simulator demands no extra row.
-- Assertion three: for each recorded link, the complete machine minus
-  that one row fails `ValidateMatrix`, naming both statuses. The
-  simulator demands every recorded row.
-- The recorded chain is `sx`, `gathered`, `routed`, `done`. Each
-  drop-one case names the expected unit: `root`, then
-  `"panelA panelB"`, then `router`, then `finish`. Every one is a live
-  positive control.
+- `agentrun/agentrun_test/matrix_equivalence_test.go` adds
+  `TestValidateMatrixMatchesRunOrder`. It reuses `mustFlow`,
+  `mustMachine`, and `assertMatrixFails` from `matrix_test.go`.
+- A helper builds a complete machine over every ordered pair of
+  distinct statuses, minus the pairs a case drops. Each row gets a
+  distinct trigger, and every status stays reachable from `queued`.
 
 ### Addendum verification
 
-- `go test -race ./agentrun/...` passes.
-- `make verify` passes; `agentrun` holds the 85 coverage floor.
-- No `api/` diff; no `policy/layers.json` change. The deps gate
-  exempts an external test package.
+- `make verify` passes. The `agentrun` coverage floor holds.
+- `go test -race ./agentrun/... ./flow/...` passes.
+- No `api/` diff. `policy/layers.json` already grants `agentrun` the
+  `flow` edge, and the test package is external, which the deps gate
+  exempts.

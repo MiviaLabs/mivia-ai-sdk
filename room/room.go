@@ -30,7 +30,7 @@ var (
 	ErrAlreadyMember = errors.New("already a room member")
 	ErrLastModerator = errors.New("cannot remove the last moderator")
 	ErrWrongRoom     = errors.New("message names a different room")
-	ErrUnsigned      = errors.New("unsigned message cannot be admitted")
+	ErrUnsigned      = errors.New("message is unsigned or its signature does not verify")
 )
 
 // Room is a named standing group with a role roster. Safe for

@@ -49,9 +49,11 @@ func admitEligible(cur TaskState, seq Sequence) bool {
 // record already holds StatusFailed or StatusBlocked lands the new
 // record StatusBlocked, with BlockedBy naming that need, so a
 // dependent that arrives after its dependency's failure never
-// claims: late admission blocks, like Complete's dependent scan. A
-// Store fault while reading a need fails Admit; admission never
-// guesses between pending and blocked. After the record inserts,
+// claims: late admission blocks, like Complete's dependent scan.
+// Admit validates the record before it writes: a record
+// TaskState.Validate rejects, such as one naming itself in Needs,
+// returns false and that error. A Store fault while reading a need
+// fails Admit; admission never guesses between pending and blocked. After the record inserts,
 // Admit re-reads its needs and blocks the record when a need failed
 // in that window; see recheckNeeds. A Store fault on that re-read
 // returns the error and leaves the record StatusPending. It returns
@@ -106,6 +108,9 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 			next.Status = StatusBlocked
 			next.BlockedBy = blocker
 		}
+		if err := next.Validate(); err != nil {
+			return false, err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, old, next)
 		if err != nil {
 			return false, err
@@ -152,8 +157,9 @@ func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (Idem
 // StatusBlocked. A never-admitted need is skipped, matching
 // blockingNeed. A Store fault or a canceled ctx returns that error, so
 // Claim and Takeover fail closed and grant nothing. The seen set
-// admits each key once, so a cyclic graph terminates; Admit accepts a
-// self-need, so a record can name itself. The walk makes only Load
+// admits each key once, so a cyclic graph terminates; Admit rejects a
+// self-need, but a direct Store write runs no validation, so a record
+// naming itself can still reach the walk. The walk makes only Load
 // calls and runs outside any Range callback, so it never reenters
 // Store from inside Range. See "Transitive blocking" in
 // docs/plans/ledger.md.

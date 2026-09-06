@@ -299,37 +299,52 @@ Each rewriting commit in `docs/plans/agentrun.md` and
 `docs/plans/dispatch.md` scope carries the same `Allow-Test-Change`
 trailer. It names the rewrites those addenda mandate.
 
-## Addendum: maintenance batch — the zero Bus is usable
+## Addendum: the zero-value Bus is usable
 
-### Goal
+Part of the maintenance addenda batch. See
+docs/plans/agents/maintenance-addenda-batch.md, item 6d.
 
-- Stop the zero `Bus` from panicking on `Subscribe`.
+`Subscribe` assigns into `b.subs` at `events/bus.go:64`. On a zero
+`Bus` that map is nil, so the call panics. Add the same two-line
+nil-map guard `trigger/registry.go:77` uses, inside the lock and
+before the append. `Emit` only reads the map, which is safe on nil.
 
-### Scope
+### This reverses a documented invariant
 
-- Verified: `events/bus.go:64` assigns into `b.subs`, which is nil on
-  a zero `Bus`. `Subscribe` panics there.
-- Verified: `Emit` at `events/bus.go:81` only reads the map, which is
-  safe on nil. `bus.go` declares no other method that touches
-  `b.subs`.
-- Exact change: add the nil-map guard `trigger/registry.go:77` uses,
-  inside the lock and before the append. Update the `Bus` doc comment
-  at `events/bus.go:41`, which says the zero value is not usable.
-- Out of scope: every other package whose doc says its zero value is
-  not usable.
+State the necessity case plainly. This is a contract reversal, not a
+bug fix.
+
+- Three doc sites state the old rule: `events/bus.go:41`,
+  `docs/packages/events.md:21`, and `docs/packages/events.md:59`.
+- One test pins it on purpose. Its comment reads: the invariant is
+  constructor-only, and `New` is the only sanctioned build.
+- No in-tree caller can reach the panic. All 22 production
+  `events.Bus` sites hold a `*events.Bus` built by `events.New`, or
+  they nil-check first. So the change fixes no live defect.
+- The gain is idiom alignment. `events.Bus` now behaves like
+  `trigger.Registry`, whose zero value is usable.
+- The user ordered this change and its doc comment update directly.
+  That instruction is the authority for the reversal and for the
+  `TT01` override trailer. This plan does not self-authorize it.
+
+The `Bus` doc comment and both `docs/packages/events.md` sites change
+with the code, so no site keeps claiming the zero value is unusable.
 
 ### Addendum tests
 
-- Replace `TestZeroValueBusPinsConstructorOnly` with a test that
-  subscribes on a zero `Bus`, emits, and asserts the handler ran once.
-  Keep the old test's second half, which asserts `Emit` on an
-  untouched zero `Bus` returns nil.
-- The old test pinned the panic this change removes. The rename
-  removes a test function name, so the tampering gate fires `TT01`.
-  Re-verify the diff, then carry an `Allow-Test-Change` trailer.
+- `events/events_test/events_test.go` replaces
+  `TestZeroValueBusPinsConstructorOnly` with
+  `TestZeroValueBusSubscribesAndEmits`. The old test asserted the
+  panic this change removes.
+- The replacement subscribes on a zero `Bus`, emits, and asserts the
+  handler ran once. It keeps the old test's second half, which
+  asserts `Emit` on an untouched zero `Bus` returns nil.
 
 ### Addendum verification
 
-- `go test ./events/...` passes.
-- `make verify` passes; `events` holds the 85 coverage floor.
-- No `api/` diff; no `policy/layers.json` change.
+- `make verify` passes. The `events` coverage floor holds.
+- No `api/` diff. No `policy/layers.json` diff. No conformance vector:
+  this is not wire semantics.
+- The commit carries one `Allow-Test-Change: TT01` trailer. Its reason
+  names both test replacements in the batch, because a single trailer
+  waives every `TT01` finding in the commit.

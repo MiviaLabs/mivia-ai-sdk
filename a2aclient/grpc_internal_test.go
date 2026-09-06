@@ -227,19 +227,24 @@ func TestStateTerminalMatchesUpstream(t *testing.T) {
 // TestDataFromRawPreservesLargeIntegers proves the map[string]any hop
 // keeps envelope integer fields above 2^53 byte-exact. Sign covers the
 // canonical JSON of max_hops and cost_budget, so any float64 rounding
-// through the DataPart hop breaks VerifySignature on the remote.
+// through the DataPart hop breaks VerifySignature on the remote. A
+// number float64 cannot hold exactly travels as a numPrefix string;
+// dataFromParts restores the original literal.
 func TestDataFromRawPreservesLargeIntegers(t *testing.T) {
 	raw := json.RawMessage(`{"max_hops":9007199254740993,"cost_budget":9007199254740993}`)
 	m, err := dataFromRaw(raw)
 	if err != nil {
 		t.Fatalf("dataFromRaw: %v", err)
 	}
-	out, err := json.Marshal(m)
+	if got := m["max_hops"]; got != numPrefix+"9007199254740993" {
+		t.Fatalf("max_hops = %v, want the numPrefix string", got)
+	}
+	back, err := dataFromParts(a2acore.ContentParts{a2acore.DataPart{Data: m}})
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("dataFromParts: %v", err)
 	}
 	want := `{"cost_budget":9007199254740993,"max_hops":9007199254740993}`
-	if string(out) != want {
-		t.Fatalf("round trip = %s, want %s", out, want)
+	if string(back) != want {
+		t.Fatalf("round trip = %s, want %s", back, want)
 	}
 }

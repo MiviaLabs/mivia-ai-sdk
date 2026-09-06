@@ -177,3 +177,120 @@ second `Transitions` read returns the original `To`. No test covered
 rationale lives in the "Why build, not buy" section above.
 `api/machine.txt` lands via make api-update. The lock update drops
 the exported fields and adds the two methods.
+
+## Addendum: wire surface removal
+
+Status: approved. This addendum records the removal decision.
+
+### Goal
+
+Remove the exported JSON wire surface from `machine`. The repo rule
+is no abstraction without a caller. The wire surface has zero
+production callers. The JSON schema already lives in two places:
+`machine/wire.go` and runconfig's private `buildMachine` decode. This
+change leaves runconfig's decode as the one wire-schema consumer.
+
+### Evidence
+
+Grep for `machine.Encode`, `machine.Decode`, `machine.NewRegistry`,
+and `machine.Registry` across the tree. Production callers: none.
+Consumers live only in `machine/machine_test/` and in comments
+(`flow/wire.go`, `flow/flow_test/checkpoint_fuzz_test.go`,
+`docs/plans/agentrun.md`).
+
+`Encode` is unusable on definitions built through `machine.New`.
+`wireName` rejects a bound function that carries no recorded wire
+name. `machine.New` never records names. The machine wire tests
+decode before they encode, so they never hit this path.
+
+`Decode` returns `Definition` by value while `Fire` and `Validate`
+use pointer receivers. `machine.Decode(...).Fire(...)` does not
+compile. The removal deletes this mixed-receiver inconsistency.
+
+runconfig never imports a machine wire symbol. It calls
+`machine.New` and `machine.Transition` in `runconfig/loader.go`'s
+`buildMachine`. runconfig stays untouched.
+
+### Removal list
+
+Delete `machine/wire.go` in full. The lock diff removes four entries
+from `api/machine.txt`:
+
+- `(d *Definition).Encode(reg Registry) ([]byte, error)`
+- `Decode(data []byte, reg Registry) (Definition, error)`
+- `NewRegistry() (Registry)`
+- `type Registry struct`
+
+Delete the `names []transName` field from `Definition` in
+`machine/definition.go`. Only `Decode` wrote it and only `Encode` read
+it. Drop the `names` sentence from the `Definition` doc comment.
+
+### Keep list
+
+Keep every state-model symbol: `Status`, `Trigger`, `Guard`, `Action`,
+`Transition`, `InOut`, `Definition`, `New`, `Initial`, `Transitions`,
+`AllowedTransitions`, `AllowedTriggers`, `Validate`, `Fire`.
+
+Keep `MoveEvent`. It is not part of the wire surface. Consumers:
+`agent/agent_test/system_fixture_test.go` subscribes to it,
+`events/events_test/cross_subsystem_integration_test.go` subscribes
+and emits it, and `docs/examples/events-bus.md` uses it. Its constant
+stays in `machine/events.go`. The `events` import stays.
+
+### Code outside machine
+
+No package code outside `machine` changes. Two comment-only
+touch-ups are allowed in the same commit: `flow/wire.go`'s `Decode`
+comment mirrors `machine.Decode`'s shape, and
+`flow/flow_test/checkpoint_fuzz_test.go` names `FuzzDecode`. Update
+or trim those references. No behavior change anywhere.
+
+### Tests
+
+Delete five wire test files from `machine/machine_test/`:
+`wire_test.go`, `wire_integration_test.go`, `wire_bench_test.go`,
+`conformance_test.go`, and `fuzz_test.go`. They test removed API.
+This is API removal, not test weakening. Delete
+`machine/testdata/vectors/` too. Only the deleted tests read those
+vectors. `scripts/check_test_tampering.py` will flag the deletions.
+The `Allow-Test-Change` commit trailer is the waiver.
+
+No new tests. The surviving tests prove the remaining surface:
+`go test ./machine/...` stays green after removal. Behavior outside
+the deleted test files is unchanged. This is a pure surface removal.
+
+### API lock
+
+Run `make api-update`. Commit the `api/machine.txt` diff in the same
+change. The diff holds deletions only. No other package lock changes.
+`policy/layers.json` needs no edit: the removal deletes an import
+(`encoding/json` is stdlib) and keeps the `events` edge.
+
+### Docs, same change
+
+- `docs/architecture.md`: the `machine/` bullet lists `Encode`,
+  `Decode`, `Registry`, `NewRegistry`, and `MoveEvent`. Drop the wire
+  names. Keep `MoveEvent`.
+- `docs/packages/machine.md`: delete the wire sections and the
+  `Registry`, `NewRegistry`, `Encode`, and `Decode` entries.
+- `docs/README.md`: the machine blurb reads "the status model, the
+  move dispatch, and the JSON wire form". Drop "and the JSON wire
+  form" from that one line.
+- `docs/plans/agentrun.md`: lines 186, 220, and 226 cite
+  `machine.Decode` in present tense. Rewrite those passages without
+  the machine half of the analogy. `flow.Decode` stays the live
+  example. Historical plans are frozen records; this file is treated
+  as live because it cites the removed API as current fact.
+- `machine/doc.go`: drop the `wire.go` line from the package map.
+- `docs/plans/machine.md`: this addendum.
+
+### Verification
+
+Run `make verify`. Coverage: the package now reports through
+`coverpkg` at 100 percent with the wire code included. After removal,
+`wire.go`'s statements leave the denominator and the numerator
+together. The remaining code is covered by the surviving fire and
+status tests. The builder must confirm the per-package floor holds:
+run `go test -coverpkg=./machine ./machine/machine_test/` and read
+the number before reporting. If it lands below 85, stop and
+escalate; do not weaken the gate.

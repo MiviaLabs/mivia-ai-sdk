@@ -4128,3 +4128,149 @@ count is known.
   library and `provider`, an edge the policy already allows.
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_prose.py` passes.
+
+## Addendum: steer ack generation counter
+
+### Goal
+
+Close the steer trigger-drop window in the injector soft-continue
+path. `ackTriggered` clears `triggered` unconditionally. A `Trigger`
+fired after `disarm` but before `ackTriggered` is wiped. The caller's
+steer intent vanishes. This contradicts the rule in
+`Steer.HasActiveCall`'s doc comment: a trigger with no call in flight
+still sets the flag for the next arm to observe.
+
+### Scope
+
+Inside:
+
+- One new unexported field pair on `Steer`: `gen uint` and
+  `ackedGen uint`.
+- `Trigger` increments `gen` under the existing mutex.
+- `wasTriggered` records `gen` into `ackedGen` when it returns true.
+- `ackTriggered` clears `triggered` only when `gen == ackedGen`.
+- `reset` zeroes `gen` and `ackedGen` with the rest.
+- One new internal test file, `agentloop/steer_ack_test.go`, package
+  `agentloop`, for the deterministic pairing test.
+- One new external test file, `agentloop/agentloop_test/steer_ack_regression_test.go`,
+  for the loop-level regression rows.
+
+Outside:
+
+- Any exported symbol. `api/agentloop.txt` stays byte-identical.
+- The plain steered-stop path. It never calls `ackTriggered`; see
+  `run.go`'s steered-stop branch. Case (b) semantics stay pinned by
+  the existing `steer_test.go` rows.
+- The Trigger-while-chat-in-flight cancel path. That trigger is the
+  observed one; the ack consumes it exactly as before.
+- `SetInjector` concurrency caveats. Its doc comment declares those
+  caller-unprotected. Out of scope.
+- Any production-code hook for tests.
+
+### API
+
+No exported change. `Steer` keeps `Trigger`, `SetInjector`, and
+`HasActiveCall`; `NewSteer` stays. The invariant: an ack clears only
+the trigger generation the loop observed, never a newer one. After the
+fix, the code enforces what the `HasActiveCall` doc comment claims.
+The doc comment needs no edit. Extend the `ackTriggered` doc comment
+by one sentence: it clears the flag only when no newer `Trigger`
+fired since `wasTriggered` observed one.
+
+### Mechanism
+
+Sequence today, injector installed: stop trigger sets `triggered` and
+cancels the chat. Chat returns. `disarm` clears `cancel`.
+`isSteerStop` calls `wasTriggered`. The injector branch calls
+`ackTriggered`, which clears the flag unconditionally. A `Trigger` in
+that tail is a logic race under correct locking, the same shape as the
+prior `Calibrated.Observe` mispairing.
+
+Fix: `Trigger` does `s.gen++` beside `s.triggered = true`.
+`wasTriggered` sets `s.ackedGen = s.gen` when it returns true. This is
+the loop's observation of one trigger generation. `ackTriggered` runs
+`s.triggered = false` only under `if s.gen == s.ackedGen`. A trigger
+fired after the observation raises `gen`; the ack leaves the flag set.
+The next arm sees it and cancels instantly, honoring the late steer.
+The steered stop after that instant cancel observes the same
+generation, so its ack clears, and the loop converges with no spin.
+
+### Determinism note
+
+The production window from `wasTriggered` to `ackTriggered` is a few
+statements on the loop goroutine. No blocking point exists between
+them. A loop-level test cannot interleave into that window without a
+sleep. The pairing lives entirely inside `Steer`, so the killing test
+drives `Steer`'s own methods sequentially in an internal test. This is
+deterministic and needs no production hook. The loop-level fixtures
+cover the adjacent reachable windows with channel barriers, not
+sleeps. The `observe_pairing_test.go` precedent supports pairing-level
+proof for a mutex-protected mispairing.
+
+### Addendum tests
+
+New internal file `agentloop/steer_ack_test.go`, package `agentloop`.
+New external file `agentloop/agentloop_test/steer_ack_regression_test.go`,
+package `agentloop_test`.
+
+- `TestSteerAckSparesUnobservedTrigger` is the killing test. Fixture:
+  `Trigger`; `wasTriggered` returns true; `Trigger` again;
+  `ackTriggered`; `wasTriggered` must stay true. Against the old
+  `ackTriggered`, whose body is the unconditional `s.triggered = false`
+  at `steer.go`, the final read reports false and the test fails.
+  Against the new conditional clear, it passes. Same fixture, both
+  directions, no goroutines.
+- `TestSteerAckClearsObservedTrigger` pins the happy path: observe
+  then ack with no newer trigger clears the flag once.
+- `TestSteerAckWithoutObserveClearsNothing` pins the safe default: an
+  ack with `ackedGen` behind `gen` never clears.
+- `TestSteerDoubleTriggerSingleGenerationAck` covers a double
+  `Trigger` before the observe: one ack consumes both only after an
+  observe of the later generation; a stale observe does not.
+- `TestSteerTriggerAfterResetNewGeneration` covers `reset` zeroing
+  `gen` and `ackedGen`, then a fresh trigger observe-and-ack cycle.
+- `TestInjectorAckSparesTriggerBeforeNextArm` is the loop-level
+  window probe. Fixture: injector installed; a blocking fake
+  Completer whose first Chat blocks on a channel. Test triggers while
+  Chat blocks, so the stop trigger is deterministic. The fake's second
+  Chat signals entry and blocks, so the test observes whether the
+  second iteration armed clean or canceled instantly. With the fix and
+  a trigger raised between the first ack and the second arm, the
+  second Chat is canceled instantly and the run reports the second
+  stop. The trigger-before-arm side of the window is reachable here;
+  the trigger-inside-ack-window side is covered by the internal test
+  above.
+- `TestInjectorTriggerDuringDrainIsHonored` is a regression row: the
+  injector blocks at the iteration-top drain; the test triggers;
+  release; the drain delivers and the next chat cancels instantly.
+  Works under old and new code; pins the non-ack paths.
+- Existing rows keep passing unchanged:
+  `TestInjectorTriggeredAndEmptyInjectorSoftContinues`,
+  `TestSteerTriggerMidCompleter`, `TestSteerTriggerTwiceAndBeforeStart`,
+  `TestSteerTriggerConcurrent`, and the recovery rows in
+  `steer_recovery_test.go`. They pin the non-injector path, which
+  never acks.
+
+### What this does not change
+
+- A trigger while a chat is in flight: same cancel, same stop, same
+  ack consumption. That trigger is the observed generation.
+- `reset` semantics: still zero-valued start per `RunSteerable`; now
+  also zeroes the two counters.
+- `SetInjector` mid-run caveats: unchanged, caller-unprotected.
+- The non-injector steered stop: no ack on that path today, none
+  after.
+
+### Addendum verification
+
+- `make verify` passes. The `agentloop` coverage floor stays at or
+  above 85; the new tests only add covered statements.
+- `make api-update` produces no diff in `api/agentloop.txt`. State:
+  no API lock change is expected or permitted.
+- `policy/layers.json` gets no new edge; both new test files import
+  only what `agentloop` tests already import.
+- `go test -race -count=1 ./agentloop/...` passes.
+- `python3 scripts/check_structure.py` passes: `steer.go` grows under
+  ten lines and stays well under the 500-line cap.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass.

@@ -794,3 +794,18 @@ Every test above runs under `go test -race ./dispatch/...`.
   `check_plan.py`, and `check_deps.py` pass.
 - This work lands as its own commit, after the `ledger` commit and the
   `taskrun` doc commit.
+
+## Addendum: drop the no-op subscriptions in New
+
+`New` no longer subscribes no-op handlers for `MessageDeliveredEvent`
+and `MessageAckedEvent`. `events.Bus.Emit` returns nil for a name with
+no subscriber, so the workaround is dead weight. Delete the loop, the
+`noop` closure, and the `New` doc-comment sentence about it at
+`dispatch/options.go:171-179`. The bullets naming the subscription in
+this plan are removed with the code. See docs/plans/events.md,
+"Addendum: Emit accepts an unobserved event", for the contract, the
+test rewrites, and the verification set.
+
+Every commit in this change that rewrites a mandated test carries an
+`Allow-Test-Change` commit-message trailer. The trailer names the
+rewrites. See docs/plans/events.md, Verification.

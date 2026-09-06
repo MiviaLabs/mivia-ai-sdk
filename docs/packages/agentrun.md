@@ -107,7 +107,9 @@ Use `errors.Is` to test these.
 - `ErrArgumentDecode` ("agentrun: tool arguments failed to decode") —
   the built ack chain wraps it when the resolved step's tool is a
   `tools.SchemaTool` and its `DecodeArguments` rejects the step's
-  payload bytes.
+  payload bytes. A tool whose `ParameterSchema()` returns nil keeps
+  the plain payload: `tools.SchemaOf` reports `nil, false` for it, so
+  the chain runs no decode.
 
 `Runner.Run` also propagates two sentinels the `agent` package
 defines, through `errors.Is`: `agent.ErrNoThread`, when `threadID` is

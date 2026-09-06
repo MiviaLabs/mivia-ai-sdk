@@ -110,17 +110,15 @@ Use `errors.Is` to test these.
   no store write. `inner`'s own error passes through unchanged, with
   no spooling attempted.
 - `SpoolTool`'s returned `tools.Tool` always implements
-  `tools.ProfiledTool`, `tools.ResultBudgetTool`, and
-  `tools.PrivilegedTool`. Each forwards through
-  `tools.ExecutionProfileOf`, `tools.ResultBudgetOf`, and
-  `tools.IsPrivileged`, so a caller reading `inner`'s published values
-  through those helpers sees no difference. It implements
-  `tools.SchemaTool` only when `inner` does. That one bit stays
-  conditional because `agentloop.Definitions` skips a tool whose
-  `tools.SchemaOf` reports false; an unconditional declaration would
-  offer the model a nil schema instead of failing closed. `SpoolTool`
-  changes only `Run`'s result handling, never `inner`'s declared
-  execution class, result budget, privilege, or schema.
+  `tools.ProfiledTool`, `tools.ResultBudgetTool`,
+  `tools.PrivilegedTool`, and `tools.SchemaTool`. Each forwards
+  through `tools.ExecutionProfileOf`, `tools.ResultBudgetOf`,
+  `tools.IsPrivileged`, and `tools.SchemaOf`, so a caller reading
+  `inner`'s published values through those helpers sees no
+  difference. `tools.SchemaOf` fails closed: a schema-less wrapper
+  reports `nil, false`, and `agentloop.Definitions` skips it.
+  `SpoolTool` changes only `Run`'s result handling, never `inner`'s
+  declared execution class, result budget, privilege, or schema.
 
 ## Why this shape
 
@@ -139,9 +137,10 @@ refs happen to be `envelope.ContextRef` values today. See
 
 - [tools.md](tools.md) — `SpoolTool` wraps a `tools.Tool` and forwards
   its optional `ProfiledTool`, `ResultBudgetTool`, `PrivilegedTool`,
-  and `SchemaTool` interfaces. Stripping `SchemaTool` would make a
-  wrapped tool unreachable to an `agentloop.Loop`'s model, since
-  `agentloop.Definitions` skips a tool with no published schema.
+  and `SchemaTool` interfaces through the `tools` helpers. A nil
+  schema fails closed: `tools.SchemaOf` reports `nil, false` for a
+  schema-less wrapper, so `agentloop.Definitions` skips it and no
+  nil schema reaches a model.
 - [memory.md](memory.md) — `memory.Store` satisfies `ContentStore`
   with no import needed on either side.
 

@@ -401,7 +401,8 @@ flowchart LR
   execution-risk and schema markers a `Tool` may implement, and a
   `Scope` that narrows which tools a run may invoke. `SchemaTool`
   publishes a parameter schema and decodes model-supplied arguments;
-  `agentloop.Definitions` skips a tool that does not implement it.
+  `agentloop.Definitions` skips a tool that does not implement it, and
+  a tool whose `ParameterSchema()` returns nil.
   `ScopeOptions.Approve` and `ScopeOptions.ApprovalThreshold`
   add a synchronous approval gate: `RunScoped` calls `Approve` with a
   `ToolCall` after `Allowed` passes and before it runs the tool,
@@ -417,9 +418,10 @@ flowchart LR
   evicts the oldest grants, by insertion order, once a new grant would
   exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
   `maxBytes` spools instead of returning in full, and the wrapper
-  always forwards `ExecutionProfile`, `MaxResultBytes`, and
-  `Privileged` through the `tools` helpers. It forwards `SchemaTool`
-  only when the wrapped tool implements it.
+  always forwards `ExecutionProfile`, `MaxResultBytes`,
+  `Privileged`, and `SchemaTool` through the `tools` helpers.
+  `tools.SchemaOf` fails closed: a schema-less wrapper reports
+  `nil, false`, and `agentloop.Definitions` skips it.
   `spool` imports `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,

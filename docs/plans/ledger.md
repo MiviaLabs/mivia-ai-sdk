@@ -496,7 +496,10 @@ interface. `ledger/sqlite_store.go` implements `Load`,
 `Snapshot.Validate` is per-record, so it cannot reject a snapshot
 holding blocked `B` beside pending `C` naming `B`. The pull check
 needs no exemption for it: it reads status at claim time and does not
-care how a record reached `StatusBlocked`.
+care how a record reached `StatusBlocked`. `Restore` now runs
+`TaskState.Validate` on each record before insert, so a record failing
+its field rules never enters the store. See "Addendum: Restore
+validates at the boundary".
 
 `MemStoreOptions.MaxEntries` is a known limit for both designs.
 Eviction deletes the record, so no walk can see through an evicted key
@@ -1818,3 +1821,92 @@ Mutation floor:
 - `ledger` holds a mutation-kill floor of 91, in
   `scripts/mutation_denylist/ledger.json`. Run `make mutation-gate`
   to check it.
+
+## Addendum: Restore validates at the boundary
+
+Approved change. `Restore` rejects a snapshot record that fails
+`TaskState.Validate`.
+
+### Goal
+
+`Encode` and `Decode` validate every record. `Restore` inserts each
+record with no check. A hand-built snapshot can insert a claimed
+record with no owner. The ceremony then assumes a state that
+`TaskState.Validate` rejects. `Restore` must validate at the same
+boundary as the wire paths.
+
+### New Restore contract
+
+- The loop calls `t.Validate()` first, before `CompareAndSwap`.
+- On failure, `Restore` returns
+  `fmt.Errorf("ledger: restore: key %q: %w", t.Key, err)`. The caller
+  can name the offender. The wrap uses `%w`, so a future sentinel in
+  `TaskState.Validate` stays reachable by `errors.Is`.
+- `TaskState.Validate` today returns plain `fmt.Errorf` values with no
+  sentinel. This change adds no sentinel. That would widen the
+  exported surface. A caller matches on the message or on non-nil.
+- Semantics stay per-record and partial-on-error. The existing
+  already-exists error also stops mid-loop after earlier inserts.
+  Per-record validation matches that contract. Validate-all-first
+  would be a second, stricter contract for one small fix; the plan
+  rejects it.
+- The doc comment on `Restore` states the new rule.
+
+### API
+
+No signature changes. `api/ledger.txt` gets no diff. No
+`make api-update` run is needed. `policy/layers.json` gets no change.
+
+### Compatibility
+
+A tree-wide grep for `.Restore(` finds production callers nowhere.
+Callers live in `ledger/ledger_test/context_test.go` and
+`ledger/ledger_test/snapshot_test.go` only. All their snapshots come
+from real ledgers or hold valid pending records. No caller depends on
+a lax restore. No `durablefence` or e2e wiring calls `Restore`. No
+tag-gated sqlite file calls it, but the shared change must still
+compile under the `ledger_sqlite` tag.
+
+### Addendum tests
+
+New table-driven test in `ledger/ledger_test/snapshot_test.go`. Write
+it first; it fails against the current code.
+
+- `TestRestoreRejectsInvalidRecord` — cases:
+  - `valid snapshot restores` — control. A snapshot from a real
+    ledger restores into a fresh ledger. `State` reflects every
+    record. Green on both sides of the fix.
+  - `claimed record with no owner` — `Restore` fails. The message
+    names the key.
+  - `claimed record with a zero lease` — `Restore` fails. The message
+    names the key.
+  - `mixed snapshot` — one valid pending record, then one claimed
+    record with no owner. `Restore` returns the error naming the
+    invalid key. The valid record is present. The invalid record is
+    absent. This pins the partial-on-error contract.
+
+No existing test changes. `TestRestoreReproducesPriorState`,
+`TestRestoreRejectsAlreadyPresentKey`, and the fault-store restore
+case all use valid records and stay green.
+
+### Addendum verification
+
+- `go test ./ledger/...` — new test red before the fix, green after.
+- `go test -race ./ledger/...`.
+- `go build -tags ledger_sqlite ./ledger/...` — the tag-gated store
+  must compile. `make verify` does not cover it.
+- `make verify` — expect exactly two known-foreign failures:
+  `TestSteerAckSparesUnobservedTrigger` and
+  `TestSteerAckWithoutObserveClearsNothing` in
+  `agentloop/agentloop_test/steer_ack_test.go`. They belong to a
+  parallel change. The `ledger` package stays at or above 98.0
+  coverage.
+- `make mutation-gate` holds the `ledger` floor of 91.
+
+### Doc updates
+
+- `docs/plans/ledger.md`, "Restore and eviction": add one sentence.
+  It states that `Restore` now validates each record before insert,
+  so the per-record skip is no longer true.
+- `docs/packages/ledger.md`, the `Ledger.Restore` line: add "It
+  validates each record first." One sentence.

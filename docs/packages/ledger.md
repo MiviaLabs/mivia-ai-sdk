@@ -100,7 +100,8 @@ surface below mirrors `api/ledger.txt`.
 - `Snapshot.Validate()` — runs `TaskState.Validate` over every entry.
 - `Snapshot.Encode()` and `Decode(data)` — JSON round-trip for a
   snapshot, validating before and after.
-- `Ledger.Restore(ctx, snapshot)` — inserts every snapshot record.
+- `Ledger.Restore(ctx, snapshot)` — inserts every snapshot record. It
+  validates each record first.
 - `TaskState.Validate()` — checks one record's field rules.
 - `MemStore.Load`, `MemStore.CompareAndSwap`, `MemStore.Range` — the
   `Store` implementation.

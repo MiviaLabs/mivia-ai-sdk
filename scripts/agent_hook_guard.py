@@ -43,7 +43,8 @@ HOOKS_PATH = re.compile(
     r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*"
     r"(?:-c\s+\S*core\.hooksPath\b"
     r"|config\s+(?:\S+\s+)*"
-    r"(?:core\.hooksPath\b|(?:--)?(?:remove|rename)-section\s+core\b))",
+    r"(?:core\.hooksPath\b"
+    r"|(?:--)?(?:remove|rename)-section\s+(?:\S+\s+)*core\b))",
     re.IGNORECASE,
 )
 # go test -fuzz without -parallel spawns one worker per core, each with
@@ -60,7 +61,9 @@ TOKEN = r"[^\s\"';|&()]+(?:\([^)]*\)[^\s\"';|&()]*)*"
 REDIRECT = re.compile(r">>?\s*[\"']?(" + TOKEN + ")")
 TEE = re.compile(r"\btee\s+(?:-\S+\s+)*[\"']?(" + TOKEN + ")")
 SED_TARGET = re.compile(
-    r"\bsed\s+-i\S*[^\n|;&>]*?[\"']?(" + TOKEN.replace("|&()", "|&>()") + r")\s*(?:[|;&()>]|$)"
+    r"\bsed\s+(?:-i\S*|--in-place(?:=\S*)?)[^\n|;&>]*?[\"']?("
+    + TOKEN.replace("|&()", "|&>()")
+    + r")\s*(?:[|;&()>]|$)"
 )
 API_LOCK = re.compile(r"(^|/)api/[^/]+\.txt$")
 

@@ -228,6 +228,42 @@ The run costs no time. A no-match segment holding 160 option tokens
 and 160 word tokens takes 1.1 milliseconds. The measured growth is
 linear across 20, 40, 80, and 160 tokens.
 
+### Correction: the token run had to nest inside the section clause too
+
+The first version of the pattern put the generic token run only
+between `config` and the whole alternation, not between the section
+subcommand and `core` itself:
+
+```
+config\s+(?:\S+\s+)*(?:core\.hooksPath|(?:--)?(?:remove|rename)-section\s+core\b)
+```
+
+`git config remove-section --global core` is real git syntax, a flag
+placed after the subcommand rather than before it, and it escaped
+this version outright: nothing sits between `remove-section` and
+`core` for the run to cover. Verified against git 2.53.0 in an
+isolated repository: the command removes the whole `core` section,
+core.hooksPath included, and the shipped pattern let it through.
+
+The section alternative now carries its own token run:
+
+```
+(?:--)?(?:remove|rename)-section\s+(?:\S+\s+)*core\b
+```
+
+A flag before the subcommand, after it, or on both sides all match.
+`git config remove-section alias` and its flagged forms stay allowed,
+because the run still requires the literal `core` after every token it
+consumes.
+
+### The `sed -i` anchor missed the GNU long form
+
+`SED_TARGET` matched only `-i`, so `sed --in-place=.bak -e '...' api/
+envelope.txt` wrote to a lock with no detection. The anchor now
+accepts either form: `-i\S*` or `--in-place(?:=\S*)?`. This is the
+same generic-token philosophy as the hooks-path fix: name the shapes
+that write, not the ones that do not.
+
 ### Decisions this fix records
 
 - The read subcommand `get` blocks. The classic `--get core.hooksPath`

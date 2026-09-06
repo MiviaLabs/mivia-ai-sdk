@@ -114,6 +114,11 @@ PROBE_ALLOWED = [
     "git commit -m 'run go test -fuzz next'",
 ]
 PROBE_HOOKS_BLOCKED += [
+    # Discriminators: a flag placed after the subcommand, not
+    # before it, is real git syntax the earlier fix missed.
+    "git config remove-section --global core",
+    "git config remove-section -f /tmp/other core",
+    "git config rename-section --global core mine",
     # Discriminators: git's subcommand syntax, missed by the old
     # dash-flag-only option run.
     "git config set core.hooksPath /tmp/evil",
@@ -133,12 +138,19 @@ PROBE_HOOKS_BLOCKED += [
 ]
 # Pins: a write-target token from one command must never block another.
 PROBE_API_BLOCKED = [
+    # Discriminators: sed's GNU long-form flag was never matched.
+    "sed --in-place=.bak -e 's/a/b/' api/envelope.txt",
+    "sed --in-place -e 's/a/b/' api/envelope.txt",
     "sed -i \'s/a/b/\' api/envelope.txt",
     "sed -i \'s/a/b/\' api/envelope.txt\ngo build ./...",
     "make api\ngo doc x | tee api/envelope.txt",
     "cat x 2>&1 > api/envelope.txt",
 ]
 PROBE_ALLOWED += [
+    # Pins: a section drop on an unrelated section, with a flag
+    # before or after the subcommand, stays allowed.
+    "git config remove-section alias",
+    "git config remove-section --global alias",
     # Discriminators: a write-target token must not cross a boundary.
     "sed -i \'s/a/b/\' foo.go\ncat api/envelope.txt",
     "sed -i \'s/a/b/\' foo.go\nhead -5 api/envelope.txt",

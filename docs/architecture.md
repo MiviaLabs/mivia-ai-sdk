@@ -57,7 +57,6 @@ flowchart LR
     ledger --> events
     memory --> envelope
     room --> envelope
-    room --> heartbeat
     a2a --> envelope
     a2aclient --> a2a
     a2aclient --> envelope
@@ -166,12 +165,7 @@ flowchart LR
   every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
-  message admission. It also provides `StaleMembers` and the sentinel
-  `ErrNoMonitor`. `StaleMembers` takes a caller-supplied
-  `*heartbeat.Monitor` and reports which current roster members
-  `hb.Dead` also reports; the roster, not the `Monitor`, is the source
-  of truth for membership. `room` imports `heartbeat`. See
-  [packages/room.md](packages/room.md).
+  message admission. See [packages/room.md](packages/room.md).
 - `machine/` — the status model. It provides `Status`, `Trigger`,
   `Guard`, `Action`, `Transition`, `InOut`, `Definition`, `New`,
   `Initial`, `Transitions`, `AllowedTransitions`, `AllowedTriggers`,
@@ -280,11 +274,9 @@ flowchart LR
   `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
   `MissedEvent`. `Monitor` tracks liveness by time: it records the
   last beat per id and reports which ids have gone silent past a
-  fixed timeout. `agent` and `room` both import it: `agent.Run`'s
-  optional step-liveness heartbeat, and `room.Room.StaleMembers`'s
-  roster-staleness check. It imports `events` only, for the
-  `MissedEvent` constant. See
-  [packages/heartbeat.md](packages/heartbeat.md).
+  fixed timeout. `agent`, `agentrun`, `runconfig`, and `subagent`
+  import it. It imports `events` only, for the `MissedEvent`
+  constant. See [packages/heartbeat.md](packages/heartbeat.md).
 - `a2a/` — the A2A v1.0 mapping. It provides `Part`, `Mapped`,
   `ToPart`, and `FromPart`. `ToPart` validates an `envelope.Message`
   and encodes it into a `Part`. `FromPart` decodes a `Part` back into

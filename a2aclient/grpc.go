@@ -1,6 +1,7 @@
 package a2aclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -118,10 +119,16 @@ func resultMessage(task *a2acore.Task) *a2acore.Message {
 }
 
 // dataFromRaw unmarshals raw envelope JSON into the map[string]any
-// shape a2a-go's DataPart carries.
+// shape a2a-go's DataPart carries. It decodes numbers as json.Number,
+// so envelope integer fields round-trip byte-exact; a float64 decode
+// would round values above 2^53 and break the remote's signature
+// check. The inbound DataPart decode inside a2a-go has no such
+// decoder hook and stays float64.
 func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
 	return m, nil

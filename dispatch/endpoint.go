@@ -45,6 +45,9 @@ func (e *Endpoint) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	// A mid-stream write error means the client disconnected and cannot
+	// be reported in-band; the loop keeps writing, one reply per line.
 	for _, line := range bytes.Split(bytes.TrimSpace(body), []byte("\n")) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {

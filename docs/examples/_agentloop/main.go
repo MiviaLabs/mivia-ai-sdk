@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -173,14 +175,21 @@ func main() {
 	}
 
 	// One Options literal wires every group: the completer and
-	// registry, the scope, the Bounds and Conclude groups, the context
-	// window with its summarizer and calibrated estimator, tracing,
-	// hooks, usage, both host budgets, and audit. New validates the
-	// whole literal before it builds anything.
+	// registry, the scope, the Bounds and Conclude groups, the event
+	// bus with its heartbeat and dedup switches, the history budget,
+	// the start-time anchor, the context window with its summarizer
+	// and calibrated estimator, tracing, hooks, usage, both host
+	// budgets, and audit. New validates the whole literal before it
+	// builds anything.
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: canned,
-		Tools:     buildRegistry(),
-		Scope:     tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
+		Bus:               events.New(),
+		HeartbeatInterval: time.Hour,
+		DedupWithinTurn:   true,
+		StartTime:         time.Now(),
+		Budget:            &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
+		Completer:         canned,
+		Tools:             buildRegistry(),
+		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
 		Bounds: agentloop.Bounds{
 			MaxIterations:              4,
 			MaxCallsPerTurn:            4,

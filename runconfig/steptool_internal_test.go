@@ -2,6 +2,7 @@ package runconfig
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -80,37 +81,6 @@ func TestNewStepToolForwardsAllCapabilities(t *testing.T) {
 	}
 	if in.Value != "raw" {
 		t.Fatalf("DecodeArguments Value = %v, want raw", in.Value)
-	}
-
-	out, err := wrapped.Run(context.Background(), tools.InOut{})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if out.Value != "ran" {
-		t.Fatalf("Run Value = %v, want ran", out.Value)
-	}
-}
-
-// TestNewStepToolForwardsNoCapabilities proves newStepTool declares
-// none of the four optional interfaces for a bare inner implementing
-// none of them.
-func TestNewStepToolForwardsNoCapabilities(t *testing.T) {
-	wrapped := newStepTool("step-bare", bareTool{name: "inner-bare"})
-
-	if wrapped.Name() != "step-bare" {
-		t.Fatalf("Name = %q, want step-bare", wrapped.Name())
-	}
-	if _, ok := wrapped.(tools.SchemaTool); ok {
-		t.Fatal("wrapped implements tools.SchemaTool, want it not to")
-	}
-	if _, ok := wrapped.(tools.ProfiledTool); ok {
-		t.Fatal("wrapped implements tools.ProfiledTool, want it not to")
-	}
-	if _, ok := wrapped.(tools.ResultBudgetTool); ok {
-		t.Fatal("wrapped implements tools.ResultBudgetTool, want it not to")
-	}
-	if _, ok := wrapped.(tools.PrivilegedTool); ok {
-		t.Fatal("wrapped implements tools.PrivilegedTool, want it not to")
 	}
 
 	out, err := wrapped.Run(context.Background(), tools.InOut{})
@@ -284,27 +254,6 @@ func stepInnerFor(mask int) tools.Tool {
 	}
 }
 
-// TestNewStepToolInterfaceParity proves newStepTool's returned
-// tools.Tool satisfies exactly the optional interfaces inner
-// satisfies, for every one of the sixteen subsets of tools.SchemaTool,
-// tools.ProfiledTool, tools.ResultBudgetTool, and tools.PrivilegedTool.
-// A mis-wired branch in newStepTool's switch (for example, returning a
-// variant with the wrong capability set for a given subset) fails
-// here even when the all-four and none-of-four cases above stay
-// green.
-func TestNewStepToolInterfaceParity(t *testing.T) {
-	for mask := 0; mask < 1<<len(stepToolProbes); mask++ {
-		inner := stepInnerFor(mask)
-		wrapped := newStepTool("step", inner)
-		for _, p := range stepToolProbes {
-			want := p.satisfy(inner)
-			if got := p.satisfy(wrapped); got != want {
-				t.Errorf("subset %04b: wrapper satisfies %s = %v, want %v", mask, p.name, got, want)
-			}
-		}
-	}
-}
-
 // TestNewStepToolForwardsPerSubset proves that, for every one of the
 // sixteen subsets, each capability the wrapper declares forwards
 // inner's own distinctive value rather than a zero value or another
@@ -371,5 +320,174 @@ func TestNewStepToolForwardsPerSubset(t *testing.T) {
 		if out.Value != "ran" {
 			t.Errorf("subset %04b: Run Value = %v, want ran", mask, out.Value)
 		}
+	}
+}
+
+// nilSchemaTool implements tools.SchemaTool with a nil schema and a
+// recording decode, so the wrapper's forwarding of a nil schema and
+// the decode routing into inner are both observable.
+type nilSchemaTool struct {
+	decoded []byte
+}
+
+func (t *nilSchemaTool) Name() string { return "inner-nil-schema" }
+func (t *nilSchemaTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	return tools.Out{Value: "ran"}, nil
+}
+func (t *nilSchemaTool) ParameterSchema() []byte { return nil }
+func (t *nilSchemaTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	t.decoded = raw
+	return tools.InOut{Value: "inner-decoded"}, nil
+}
+
+// errDecodeTool implements tools.SchemaTool and always fails decode
+// with a sentinel error.
+var errDecodeSentinel = errors.New("inner decode sentinel")
+
+type errDecodeTool struct{ name string }
+
+func (t errDecodeTool) Name() string { return t.name }
+func (t errDecodeTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+	return tools.Out{Value: "ran"}, nil
+}
+func (t errDecodeTool) ParameterSchema() []byte { return []byte(`{"marker":"schema-marker"}`) }
+func (t errDecodeTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	return tools.InOut{}, errDecodeSentinel
+}
+
+// TestNewStepToolDeclaresAllCapsAlways proves the wrapper declares all
+// four optional interfaces for every one of the sixteen inner
+// capability subsets, and forwards each capability's value from inner
+// through the tools helpers. Rows whose inner lacks a capability pin
+// the degraded default: a nil schema and an identity decode for the
+// schema-less shape. The interface-presence assertions separate this
+// shape from the old exact-parity variants; mask 0000 fails hardest
+// against the old code.
+func TestNewStepToolDeclaresAllCapsAlways(t *testing.T) {
+	for mask := 0; mask < 1<<len(stepToolProbes); mask++ {
+		inner := stepInnerFor(mask)
+		wrapped := newStepTool("step", inner)
+
+		for _, p := range stepToolProbes {
+			if !p.satisfy(wrapped) {
+				t.Errorf("subset %04b: wrapper does not implement %s, want it always declared", mask, p.name)
+			}
+		}
+
+		pt := wrapped.(tools.ProfiledTool)
+		if got, want := pt.ExecutionProfile(), tools.ExecutionProfileOf(inner); got != want {
+			t.Errorf("subset %04b: ExecutionProfile() = %+v, want inner's %+v", mask, got, want)
+		}
+		bt := wrapped.(tools.ResultBudgetTool)
+		gotN := bt.MaxResultBytes()
+		wantN, _ := tools.ResultBudgetOf(inner)
+		if gotN != wantN {
+			t.Errorf("subset %04b: MaxResultBytes() = %d, want inner's %d", mask, gotN, wantN)
+		}
+		rt := wrapped.(tools.PrivilegedTool)
+		if got, want := rt.Privileged(), tools.IsPrivileged(inner); got != want {
+			t.Errorf("subset %04b: Privileged() = %v, want inner's %v", mask, got, want)
+		}
+
+		st := wrapped.(tools.SchemaTool)
+		gotSchema := st.ParameterSchema()
+		wantSchema, _ := tools.SchemaOf(inner)
+		if string(gotSchema) != string(wantSchema) {
+			t.Errorf("subset %04b: ParameterSchema() = %s, want inner's %s", mask, gotSchema, wantSchema)
+		}
+
+		if mask&8 == 0 {
+			in, err := st.DecodeArguments([]byte("raw"))
+			if err != nil {
+				t.Errorf("subset %04b: identity DecodeArguments: %v", mask, err)
+			}
+			if in.Value != "raw" {
+				t.Errorf("subset %04b: identity DecodeArguments Value = %v, want raw", mask, in.Value)
+			}
+		} else {
+			in, err := st.DecodeArguments([]byte("payload"))
+			if err != nil {
+				t.Errorf("subset %04b: DecodeArguments: %v", mask, err)
+			}
+			innerST, _ := inner.(tools.SchemaTool)
+			want, werr := innerST.DecodeArguments([]byte("payload"))
+			if werr != nil {
+				t.Fatalf("subset %04b: inner decode: %v", mask, werr)
+			}
+			if in.Value != want.Value {
+				t.Errorf("subset %04b: DecodeArguments Value = %v, want inner's %v", mask, in.Value, want.Value)
+			}
+		}
+
+		out, err := wrapped.Run(context.Background(), tools.InOut{})
+		if err != nil {
+			t.Fatalf("subset %04b: Run: %v", mask, err)
+		}
+		if out.Value != "ran" {
+			t.Errorf("subset %04b: Run Value = %v, want ran", mask, out.Value)
+		}
+	}
+}
+
+// TestNewStepToolDeclaresAllCapsAlwaysNilSchema proves a schema-less
+// ParameterSchema forwards as nil and the decode routes into inner,
+// not the identity path.
+func TestNewStepToolDeclaresAllCapsAlwaysNilSchema(t *testing.T) {
+	inner := &nilSchemaTool{}
+	wrapped := newStepTool("step", inner)
+
+	st, ok := wrapped.(tools.SchemaTool)
+	if !ok {
+		t.Fatal("wrapper does not implement tools.SchemaTool")
+	}
+	if got := st.ParameterSchema(); got != nil {
+		t.Errorf("ParameterSchema() = %s, want nil", got)
+	}
+	in, err := st.DecodeArguments([]byte("payload"))
+	if err != nil {
+		t.Fatalf("DecodeArguments: %v", err)
+	}
+	if in.Value != "inner-decoded" {
+		t.Errorf("DecodeArguments Value = %v, want inner-decoded", in.Value)
+	}
+	if string(inner.decoded) != "payload" {
+		t.Errorf("inner decoded %q, want payload", inner.decoded)
+	}
+}
+
+// TestNewStepToolDeclaresAllCapsAlwaysDecodeError proves a decode
+// failure from inner propagates unwrapped.
+func TestNewStepToolDeclaresAllCapsAlwaysDecodeError(t *testing.T) {
+	wrapped := newStepTool("step", errDecodeTool{name: "inner-err"})
+
+	st, ok := wrapped.(tools.SchemaTool)
+	if !ok {
+		t.Fatal("wrapper does not implement tools.SchemaTool")
+	}
+	_, err := st.DecodeArguments([]byte("payload"))
+	if err != errDecodeSentinel {
+		t.Fatalf("DecodeArguments error = %v, want the sentinel unwrapped", err)
+	}
+}
+
+// TestNewStepToolDeclaresAllCapsAlwaysEmptyIdentity proves empty raw
+// bytes take the identity path to an empty string value with no error.
+func TestNewStepToolDeclaresAllCapsAlwaysEmptyIdentity(t *testing.T) {
+	wrapped := newStepTool("step", bareTool{name: "inner-bare"})
+
+	st, ok := wrapped.(tools.SchemaTool)
+	if !ok {
+		t.Fatal("wrapper does not implement tools.SchemaTool")
+	}
+	in, err := st.DecodeArguments(nil)
+	if err != nil {
+		t.Fatalf("DecodeArguments: %v", err)
+	}
+	s, ok := in.Value.(string)
+	if !ok {
+		t.Fatalf("DecodeArguments Value type = %T, want string", in.Value)
+	}
+	if s != "" {
+		t.Errorf("DecodeArguments Value = %q, want empty", s)
 	}
 }

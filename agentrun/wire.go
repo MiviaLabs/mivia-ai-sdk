@@ -117,8 +117,8 @@ func (r *Runner) chain() agent.AckWait {
 		}
 		in := tools.InOut{Value: msg.Payload}
 		if t, ok := r.tools.Get(name); ok {
-			if st, ok := t.(tools.SchemaTool); ok {
-				decoded, derr := st.DecodeArguments([]byte(msg.Payload))
+			if _, ok := tools.SchemaOf(t); ok {
+				decoded, derr := t.(tools.SchemaTool).DecodeArguments([]byte(msg.Payload))
 				if derr != nil {
 					return envelope.Ack{}, fmt.Errorf("agentrun: step %q: %w: %w", msg.ID, ErrArgumentDecode, derr)
 				}

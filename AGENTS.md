@@ -15,6 +15,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `events/` — in-process reaction bus.
 - `tools/` — tool registry: execution profiles, scopes, approval gating.
 - `provider/` — model provider interface and reasoning vocabulary.
+- `provider/anthropic/` — Anthropic Messages API concrete adapter.
 - `agent/` — composition layer wiring blocks into an agent.
 - `agentrun/` — config-struct runner composition over agent.Run.
 - `subagent/` — blocks as tools, concurrent spawns, and mailboxes.

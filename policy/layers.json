@@ -119,6 +119,9 @@
       "envelope"
     ],
     "provider": [],
+    "provider/anthropic": [
+      "provider"
+    ],
     "providerregistry": [
       "provider"
     ],

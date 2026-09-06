@@ -60,6 +60,11 @@
       "reason": "JSON-config composition layer over agentrun. A deployment's own main package loads a runner definition; no SDK package composes runconfig further.",
       "target": "external application code (outside this module)",
       "permanent": true
+    },
+    "provider/anthropic": {
+      "reason": "Anthropic Messages API adapter leaf. Its first in-repo caller is the e2e wire test and the agentloop composition example.",
+      "target": "external application code; the in-repo caller is the e2e wire test and the agentloop composition example from part two",
+      "permanent": true
     }
   }
 }

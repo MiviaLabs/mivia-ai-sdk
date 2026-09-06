@@ -19,7 +19,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-five packages and the import edges
+The diagram shows the forty-six packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextstate`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,
@@ -145,6 +145,7 @@ flowchart LR
     e2e --> ledger
     e2e --> provider
     e2e --> tools
+    anthropic["provider/anthropic"] --> provider
     contextbudget[contextbudget]
     schema[schema]
     discovery[discovery]
@@ -513,8 +514,8 @@ flowchart LR
   `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
   `Response` and the terminal `Chunk` carry `CacheUsage` and
   `WebSearch` for provider-side cache and search accounting.
-  `Completer` has no
-  implementation in this SDK; a caller supplies its own concrete type.
+  `provider` defines the contract only; `provider/anthropic` provides
+  the concrete adapter.
   `RunTurn` validates `Request` once, then validates every message,
   dispatches on `Request.Stream`, and aggregates a streamed `Chunk`
   sequence into one `Response`. `ReasoningEventKind` is the
@@ -522,6 +523,14 @@ flowchart LR
   `RedactBlock` clears a `ReasoningBlock`'s content and marks it
   redacted. `provider` imports no other package in this module. See
   [packages/provider.md](packages/provider.md).
+- `provider/anthropic/` — the Anthropic Messages API adapter. It provides
+  `Client`, `New`, `Options`, `Options.Validate`, default constants, and
+  the sentinels `ErrAPIKeyRequired`, `ErrInvalidOptions`, `ErrAuth`,
+  `ErrRateLimited`, `ErrBadRequest`, `ErrServer`, and `ErrRefused`.
+  `Client` implements `Completer`, `ContextAccountant`, and
+  `ReasoningPolicy`. It maps streaming events, tool calls, thinking
+  blocks, cache usage, and model refusals. See
+  [packages/provider/anthropic.md](packages/provider/anthropic.md).
 - `contextplan/` — fits one durable session into a bounded provider
   request. It provides `Planner` with `NewPlanner` and `Plan`,
   `Window` with `Validate` and `Budget`, `PlanResult`, `Elision`,

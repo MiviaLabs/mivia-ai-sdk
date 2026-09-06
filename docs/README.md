@@ -4,7 +4,7 @@
 agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, a2aack, a2aloopback,
 dispatch, tools, hooks, contextbudget, contextstate, schema, mcp,
-ledger, durablefence, memory, provider, providerregistry, toolcallctx,
+ledger, durablefence, memory, provider, provider/anthropic, providerregistry, toolcallctx,
 usage, contextplan, channel, trigger, trace, skills, scheduler, agent,
 agentrun, agentloop, runconfig, subagent, taskrun, e2e, envfile,
 secretpath, workspace, spool, contextsummary, and longtermmemory. Each
@@ -79,6 +79,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/a2aloopback.md](packages/a2aloopback.md) — a leaf, test-only gRPC A2A server fixture: `Loopback` completes every task with a freshly signed envelope restating the request payload.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, the request and response types, and the reasoning vocabulary.
+- [packages/provider/anthropic.md](packages/provider/anthropic.md) — the Anthropic Messages API adapter: concrete `Completer`, `ContextAccountant`, and `ReasoningPolicy` implementation.
 - [packages/toolcallctx.md](packages/toolcallctx.md) — the tool-call context carrier: `WithToolCall` attaches a `provider.ToolCall` to a `context.Context`, and `ToolCallFromContext` reads it back.
 - [packages/usage.md](packages/usage.md) — the per-session usage accounting package: `Record` sums one `provider.Usage` call onto a running total keyed by session id, and `Total` reads the current sum.
 - [packages/contextplan.md](packages/contextplan.md) — fits one durable session into a bounded provider request: a token `Window`, per-payload elision decisions, and an EWMA-calibrated token estimator.

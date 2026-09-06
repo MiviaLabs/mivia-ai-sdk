@@ -903,3 +903,26 @@ the channel it already returns.
   deliberately broken aggregation.
 - `make verify` passes; `provider` holds the 85 coverage floor.
 - No `api/` diff; no `policy/layers.json` change.
+
+## Addendum: first concrete adapter
+
+### Goal
+
+Name `provider/anthropic` as the first concrete implementer of the
+`ContextAccountant` and `ReasoningPolicy` optional capability interfaces.
+
+### Scope
+
+- Documents that `provider/anthropic.Client` is the first concrete
+  implementation of `provider.Completer`, `provider.ContextAccountant`,
+  and `provider.ReasoningPolicy`.
+- One test pinning interface satisfaction.
+
+### Addendum tests
+
+- `TestAnthropicAdapterCapabilities` in `provider/provider_test/completer_test.go`.
+
+### Addendum verification
+
+- `go test ./provider/...` passes.
+- `make verify` passes.

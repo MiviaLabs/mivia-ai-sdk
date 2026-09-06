@@ -9,6 +9,7 @@ verify-fast:
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
 	go vet ./docs/examples/_agentloop/
+	go run ./docs/examples/_agentloop/ | grep -q '^final: HELLO$$'
 	go test ./...
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py

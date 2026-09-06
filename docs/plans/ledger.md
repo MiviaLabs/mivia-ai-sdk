@@ -1831,6 +1831,8 @@ Mutation floor:
   to check it.
 
 ## Addendum: Restore validates at the boundary
+Status: shipped.
+
 
 Approved change. `Restore` rejects a snapshot record that fails
 `TaskState.Validate`.
@@ -1920,6 +1922,8 @@ case all use valid records and stay green.
   validates each record first." One sentence.
 
 ## Addendum: Admit validates, and Takeover checks status first
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, items 1 and 2.
@@ -1999,6 +2003,8 @@ production order, so it is reordered with the code.
   vector: neither item changes wire semantics.
 
 ## Addendum: the lease write paths validate
+Status: shipped.
+
 
 See `docs/plans/agents/ledger-lease-validation.md` for the full plan.
 

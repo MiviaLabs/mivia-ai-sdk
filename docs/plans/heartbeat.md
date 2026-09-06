@@ -229,6 +229,8 @@ Test files live in `heartbeat/heartbeat_test/`:
 - AGENTS.md's Layout section gains a one-line heartbeat entry.
 
 ## Addendum: maintenance batch — MissedEvent stays as documented public API
+Status: shipped.
+
 
 ### Goal
 

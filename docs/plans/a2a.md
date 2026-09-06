@@ -199,6 +199,8 @@ maps onto an A2A v1.0 part through the `a2a` package, still with no
 task-lifecycle or transport claim.
 
 ## Addendum: ToPart drops its duplicate Validate call
+Status: shipped.
+
 
 ### Addendum goal
 

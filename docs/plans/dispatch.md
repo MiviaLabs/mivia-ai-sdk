@@ -815,6 +815,8 @@ Every test above runs under `go test -race ./dispatch/...`.
   `taskrun` doc commit.
 
 ## Addendum: drop the placeholder bus handlers in New
+Status: shipped.
+
 
 `New` no longer subscribes placeholder bus handlers for `MessageDeliveredEvent`
 and `MessageAckedEvent`. `events.Bus.Emit` returns nil for a name with
@@ -830,6 +832,8 @@ Every commit in this change that rewrites a mandated test carries an
 rewrites. See docs/plans/events.md, Verification.
 
 ## Addendum: maintenance batch — NDJSON content type and write errors
+Status: shipped.
+
 
 ### Goal
 

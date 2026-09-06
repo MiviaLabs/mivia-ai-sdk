@@ -348,6 +348,8 @@ list. No conformance vector change: `channel` still carries no signed
 or hash-chained wire form.
 
 ## Addendum: inlining wire.go's wrappers is rejected
+Status: shipped.
+
 
 ### Addendum goal
 

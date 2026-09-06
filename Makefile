@@ -25,6 +25,7 @@ verify-fast:
 	python3 scripts/check_test_tampering.py
 	python3 scripts/agent_hook_guard.py --probe
 	python3 scripts/check_timeout_saturation.py --probe
+	python3 scripts/check_docs.py --probe
 	python3 scripts/check_timeout_saturation.py
 	$(SEMGREP_SCAN)
 	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi

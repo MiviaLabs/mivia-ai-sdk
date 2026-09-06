@@ -636,6 +636,8 @@ format; it wraps a separate, already-specified protocol.
 check it.
 
 ## Addendum: maintenance batch — progress handler growth documented
+Status: shipped.
+
 
 ### Goal
 

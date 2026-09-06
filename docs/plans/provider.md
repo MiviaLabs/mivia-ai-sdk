@@ -867,6 +867,8 @@ the channel it already returns.
   wire data.
 
 ## Addendum: maintenance batch — pass-through controls pinned by execution
+Status: shipped.
+
 
 ### Goal
 
@@ -907,6 +909,8 @@ the channel it already returns.
 - No `api/` diff; no `policy/layers.json` change.
 
 ## Addendum: first concrete adapter
+Status: shipped.
+
 
 ### Goal
 

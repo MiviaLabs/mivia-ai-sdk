@@ -114,6 +114,8 @@ onto a caller-owned bus. Phase 20 wires the envelope delivery through
 the composition layer. See the phase plans for each unit.
 
 ## Addendum: Emit accepts an unobserved event
+Status: shipped.
+
 
 Approved change. `Emit` no longer fails when no handler is subscribed.
 
@@ -294,12 +296,16 @@ record the deleted loops in those packages' plans.
   blocks the change.
 
 ## Addendum: agentrun and dispatch carry the same rule
+Status: shipped.
+
 
 Each rewriting commit in `docs/plans/agentrun.md` and
 `docs/plans/dispatch.md` scope carries the same `Allow-Test-Change`
 trailer. It names the rewrites those addenda mandate.
 
 ## Addendum: the zero-value Bus is usable
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 6d.

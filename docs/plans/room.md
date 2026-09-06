@@ -139,6 +139,8 @@ already-benchmarked lock, with no allocation-sensitive hot path.
   wire form of its own.
 
 ## Addendum: maintenance batch — liveness surfaces stay as documented public API
+Status: shipped.
+
 
 ### Goal
 
@@ -172,6 +174,8 @@ already-benchmarked lock, with no allocation-sensitive hot path.
   `scripts/check_prose.py`, and `scripts/check_labels.py` pass.
 
 ## Addendum: ErrUnsigned covers a failed signature check
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 6e.
@@ -204,6 +208,8 @@ no change.
 - No `policy/layers.json` diff.
 
 ## Addendum: maintenance batch — drop StaleMembers and the heartbeat edge
+Status: shipped.
+
 
 This addendum is one of three that ship in one commit. The other two
 are "Addendum: maintenance batch — return an unnamed ack resolver" in

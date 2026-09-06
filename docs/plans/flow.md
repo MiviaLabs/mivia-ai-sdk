@@ -1096,6 +1096,8 @@ project 85 to 100 lines, plus a package declaration and imports.
   threaded wire form.
 
 ## Addendum: maintenance batch — knob caller gate
+Status: shipped.
+
 
 ### Goal
 
@@ -1123,6 +1125,8 @@ project 85 to 100 lines, plus a package declaration and imports.
   `scripts/check_labels.py` pass. No code, API, or policy diff.
 
 ## Addendum: runLoop drops its zero-step and one-step branches
+Status: shipped.
+
 
 ### Addendum goal
 

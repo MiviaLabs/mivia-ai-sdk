@@ -248,6 +248,8 @@ on no unshipped phase, matching how it records phase 51 and phase
 52.
 
 ## Addendum: maintenance batch — PointPostTool payload documented per fire site
+Status: shipped.
+
 
 ### Goal
 

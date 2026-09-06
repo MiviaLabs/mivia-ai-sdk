@@ -852,6 +852,8 @@ message-semantics rule and changes no module in the dependency map,
 only which package one existing module lives behind.
 
 ## Addendum: a mutation floor at 96
+Status: shipped.
+
 
 Superseded floor value: commit c5d0415 lowered this floor to 95; `scripts/mutation_denylist/a2aclient.json` holds the current value, so do not restore 96 from this section.
 
@@ -870,6 +872,8 @@ code, would have to be made to produce. `make mutation-gate` includes
 `a2aclient` at this floor.
 
 ## Addendum: mirror the whole upstream task state enum
+Status: shipped.
+
 
 This addendum is commit two of two. Commit one fixes
 `longtermmemory`; see `docs/plans/longtermmemory.md`. The two commits

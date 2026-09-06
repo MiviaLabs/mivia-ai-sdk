@@ -386,6 +386,8 @@ var (
 - No conformance vector: this package carries no wire format.
 
 ## Addendum: the merge survivor must stay a valid, addressable entry
+Status: shipped.
+
 
 This addendum is commit one of two. Commit two fixes `a2aclient` and
 `a2aack`; see `docs/plans/a2aclient.md`. The two commits do not share

@@ -199,6 +199,8 @@ round only adds tests and a small internal fallback, so it must not
 lower the floor.
 
 ## Addendum: Sign validates a normalized copy
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 6a.

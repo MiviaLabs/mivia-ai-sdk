@@ -189,7 +189,12 @@ follow reliably. Each has a gate behind it.
   section deliberately references, write
   `Status: planned, extends <symbol>` — that escape itself fails if
   the named symbol is locked, since a locked anchor means the addition
-  has shipped. Gate: `scripts/check_plan.py`.
+  has shipped. Every `## Addendum:` heading also carries a `Status:`
+  line inside its own section, so the gate sees a superseded addendum.
+  Gate: `scripts/check_plan.py`.
+- Do not let `docs/architecture.md`'s opening paragraph drift from the
+  tree: its spelled-out package count must equal `go list`'s
+  non-test package count. Gate: `scripts/check_docs.py`.
 - Do not leave a package with zero internal callers undeclared. List
   it in `policy/pending_wiring.json` with a reason and a target. A
   caller at any depth counts as a real caller. Gate:

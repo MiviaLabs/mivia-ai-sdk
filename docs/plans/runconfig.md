@@ -318,6 +318,8 @@ Verification:
   concurrent `agentloop` change and need their own plan review.
 
 ## Addendum: schema-decode and capability forwarding (phase 76)
+Status: shipped.
+
 
 Phase 76 closed the argument-decode gap phase 72 left open. `agentrun`'s
 `chain` decodes a step's payload through `tools.SchemaTool.DecodeArguments`
@@ -860,6 +862,8 @@ caller-built path still works when a document declares nothing.
   `scripts/check_orphan_packages.py` pass.
 
 ## Addendum: one step tool wrapper
+Status: shipped.
+
 
 ### Coupling and landing order
 
@@ -987,6 +991,8 @@ compiles. One change keeps one review surface.
   `scripts/check_labels.py` pass.
 
 ## Addendum: maintenance batch — budget validated at load time
+Status: shipped.
+
 
 ### Goal
 

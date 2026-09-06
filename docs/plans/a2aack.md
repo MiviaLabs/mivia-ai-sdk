@@ -76,6 +76,8 @@ errors, and one real `agent.Agent` resolving its step through `Wait`.
 and `envelope`. `make api-update` lands `api/a2aack.txt`. `make
 verify` passes and `a2aack` holds the 85 coverage floor.
 ## Addendum: states the poll loop cannot resolve
+Status: shipped.
+
 
 `a2aclient.State` gains four constants. See the addendum "Mirror the
 whole upstream task state enum" in `docs/plans/a2aclient.md` for the
@@ -100,6 +102,8 @@ state `a2aack` cannot resolve".
 symbol.
 
 ## Addendum: pin the result signer
+Status: shipped.
+
 
 `Options` gains one field, `ExpectSigner string`. When set, the
 result's `Signer` must equal it. A mismatch fails with the new
@@ -114,6 +118,8 @@ signature check and before `NewAck`.
 a2aack.md` states the pin contract beside the verification contract.
 
 ## Addendum: maintenance batch — return an unnamed ack resolver
+Status: shipped.
+
 
 This addendum is one of three that ship in one commit. See "Addendum:
 maintenance batch — drop StaleMembers and the heartbeat edge" in

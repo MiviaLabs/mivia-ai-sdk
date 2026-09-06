@@ -27,6 +27,8 @@ TestToolCallContextRoundTrip
 `make verify` runs tests, layers check, and coverage floor.
 
 ## Addendum: per-batch dispatch order ledger
+Status: shipped.
+
 
 ### Addendum goal
 

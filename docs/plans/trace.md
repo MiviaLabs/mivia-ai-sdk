@@ -186,6 +186,8 @@ later integration phase that wires `trace` into `flow`, `agent`, or
 `subagent` updates the module map then.
 
 ## Addendum: no exporter interface (2026-08-21)
+Status: shipped.
+
 
 A 2026-08-21 review asked whether `trace` needs a generic
 `Exporter` interface, given `Tracer` exposes only `Start` and

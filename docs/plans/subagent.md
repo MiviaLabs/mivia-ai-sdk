@@ -921,6 +921,8 @@ each wireable `Kind` to its constructor.
 - `go test -race ./subagent/... ./runconfig/...` passes.
 
 ## Addendum: maintenance batch — scheduler tool rejects non-positive every_ms
+Status: shipped.
+
 
 ### Goal
 

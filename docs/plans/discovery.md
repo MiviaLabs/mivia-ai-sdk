@@ -167,6 +167,8 @@ Card fixtures live in `discovery/discovery_test/testdata/`:
   reference in this change.
 
 ## Addendum: Validate rejects a padded capability entry
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 3.

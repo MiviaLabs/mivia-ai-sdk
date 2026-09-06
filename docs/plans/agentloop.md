@@ -3467,6 +3467,8 @@ In `agentloop/agentloop_test/`:
   same commit as the code.
 
 ## Addendum: pull-based steer injector (commit d914611)
+Status: shipped.
+
 
 This addendum is the fix spec for the six review findings of commit
 d914611. The original commit is "feat(agentloop): add pull-based
@@ -3668,6 +3670,8 @@ Exported symbols added to `api/agentloop.txt`:
 - `python3 scripts/check_prose.py` passes.
 
 ## Addendum: repeated tool failures early stop
+Status: shipped.
+
 
 Stop runs early when consecutive tool-calling turns repeatedly fail all tool calls.
 
@@ -3715,6 +3719,8 @@ Exported symbols added to `api/agentloop.txt`:
 - `python3 scripts/check_prose.py` passes.
 
 ## Addendum: a stop-decision hook
+Status: shipped.
+
 
 Let a caller observe a graceful stop and continue the run from inside
 the loop.
@@ -4135,6 +4141,8 @@ count is known.
 - `python3 scripts/check_prose.py` passes.
 
 ## Addendum: steer ack generation counter
+Status: shipped.
+
 
 ### Goal
 
@@ -4281,6 +4289,8 @@ package `agentloop_test`.
   `scripts/check_labels.py` pass.
 
 ## Addendum: maintenance batch — ConcludeToolCallsLeft removal and runIteration shape note
+Status: shipped.
+
 
 ### Goal
 
@@ -4331,6 +4341,8 @@ package `agentloop_test`.
   parameters. Record this as a caller gate, not a scheduled change.
 
 ## Addendum: maintenance batch — duplicate conclude term, dead stop field, sentinel promotion
+Status: shipped.
+
 
 ### Prior item closed
 
@@ -4753,6 +4765,8 @@ body hash. Both renames change the body, so no hash matches.
   finding and decides the trailer.
 
 ## Addendum: reserveTools drops its redundant Reserve check
+Status: shipped.
+
 
 ### Addendum goal
 

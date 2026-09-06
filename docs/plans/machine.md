@@ -298,6 +298,8 @@ the number before reporting. If it lands below 85, stop and
 escalate; do not weaken the gate.
 
 ## Addendum: Fire gains two sentinels
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 6b.

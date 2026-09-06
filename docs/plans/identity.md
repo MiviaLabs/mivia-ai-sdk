@@ -204,6 +204,8 @@ Every rejection asserts errors.Is against ErrKeyFormat.
   must pass.
 
 ## Addendum: the Load comment names a live check
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 4.

@@ -341,6 +341,8 @@ that file would grow past its current focus.
 - `go test -race ./agentrun/...` passes.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
 ## Addendum: schema probe in the ack chain
+Status: shipped.
+
 
 `Runner.chain` resolves the step tool and asserts `tools.SchemaTool`
 directly to gate payload decode. Change the gate to the published
@@ -360,6 +362,8 @@ plain-payload paths; they stay green. No exported surface changes and
 no `api/` diff is expected.
 
 ## Addendum: drop the default placeholder bus handlers
+Status: shipped.
+
 
 `New` no longer subscribes placeholder bus handlers for the three agent
 event names. `events.Bus.Emit` returns nil for a name with no subscriber,
@@ -374,6 +378,8 @@ Every commit in this change that rewrites a mandated test carries an
 rewrites. See docs/plans/events.md, Verification.
 
 ## Addendum: an equivalence test for ValidateMatrix
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 5.

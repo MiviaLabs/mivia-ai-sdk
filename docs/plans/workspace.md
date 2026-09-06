@@ -1088,6 +1088,8 @@ In `workspace/workspace_test/workspace_test.go`:
   the corrected code.
 
 ## Addendum: Options.Validate returns ErrBlankRoot
+Status: shipped.
+
 
 Part of the maintenance addenda batch. See
 docs/plans/agents/maintenance-addenda-batch.md, item 6c.

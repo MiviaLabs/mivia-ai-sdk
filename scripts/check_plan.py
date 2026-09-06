@@ -220,6 +220,30 @@ def _planned_section(lines: list[str], idx: int) -> tuple[int, int]:
             break
     return start, end
 
+_ADDENDUM_HEADING = re.compile(r"^## Addendum:")
+
+
+def _check_addendum_status(text: str) -> list[str]:
+    """_check_addendum_status applies the addendum-status rule: every
+    "## Addendum:" heading carries a Status line inside its own
+    section, so the plan-status gate can see a superseded or settled
+    addendum. A section without any Status line is a problem. Uses
+    _planned_section for the section boundaries."""
+    problems: list[str] = []
+    lines = text.splitlines()
+    for idx, line in enumerate(lines):
+        if not _ADDENDUM_HEADING.match(line):
+            continue
+        _, end = _planned_section(lines, idx)
+        body = lines[idx:end]
+        if not any(STATUS_LINE.match(candidate) for candidate in body):
+            problems.append(
+                f"addendum {line.strip()!r} carries no Status line; "
+                "add one, e.g. 'Status: superseded, see <later addendum>'" 
+            )
+    return problems
+
+
 def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
     """_check_planned_status applies the plan-status rule. Every status
     line other than one starting "shipped" or "superseded" governs a
@@ -293,6 +317,7 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
                 problems.append(f"{pkg}: plan lacks section {section!r}")
         sections = _collect_tests_sections(text)
         problems.extend(_check_planned_status(root, pkg, text))
+        problems.extend(_check_addendum_status(text))
         if not sections:
             continue
         declared = _declared_tests(root / pkg)
@@ -418,7 +443,7 @@ def _probe_addendum_tests_checked(root: Path) -> list[str]:
         "## Tests\n\n"
         "Names one test in this package: TestDirectRef.\n\n"
         "## Verification\n\nText.\n\n"
-        "## Addendum: feature shipped\n\n"
+        "## Addendum: feature shipped\n\nStatus: shipped.\n\n"
         "### Addendum tests\n\n"
         "Names the addendum claim: TestAddendumClaim.\n\n"
         "### Addendum verification\n\n"
@@ -465,7 +490,7 @@ def _probe_addendum_tests_passes_when_declared(root: Path) -> list[str]:
         "## Tests\n\n"
         "Names one test in this package: TestDirectRef.\n\n"
         "## Verification\n\nText.\n\n"
-        "## Addendum: feature shipped\n\n"
+        "## Addendum: feature shipped\n\nStatus: shipped.\n\n"
         "### Addendum tests\n\n"
         "Names the addendum claim: TestAddendumClaim.\n\n"
         "### Addendum verification\n\n"
@@ -527,6 +552,31 @@ def _probe_plan_status(root: Path) -> list[str]:
             problems.append(f"probe_plan_status/{name}: expected pass, got {got}")
     return problems
 
+def _probe_addendum_with_status_passes(sub) -> list[str]:
+    text = "# Plan: engine\n\nStatus: shipped.\n\n## Addendum: later fix\n\nStatus: superseded, see another.\n\nBody.\n"
+    return _check_addendum_status(text)
+
+
+def _probe_addendum_without_status_fails(sub) -> list[str]:
+    text = "# Plan: engine\n\nStatus: shipped.\n\n## Addendum: later fix\n\nBody without a status.\n"
+    problems = _check_addendum_status(text)
+    if len(problems) != 1:
+        return [f"probe_addendum_without_status_fails: expected 1 problem, got {problems}"]
+    return []
+
+
+def _probe_addendum_status_scoped_to_section(sub) -> list[str]:
+    text = (
+        "# Plan: engine\n\nStatus: shipped.\n\n"
+        "## Addendum: first\n\nStatus: shipped.\n\n"
+        "## Addendum: second\n\nBody without a status.\n"
+    )
+    problems = _check_addendum_status(text)
+    if len(problems) != 1:
+        return [f"probe_addendum_status_scoped_to_section: expected 1 problem, got {problems}"]
+    return []
+
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = check(root)
@@ -549,6 +599,9 @@ def run_probe() -> bool:
             _probe_addendum_tests_checked,
             _probe_addendum_tests_passes_when_declared,
             _probe_plan_status,
+            _probe_addendum_with_status_passes,
+            _probe_addendum_without_status_fails,
+            _probe_addendum_status_scoped_to_section,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()

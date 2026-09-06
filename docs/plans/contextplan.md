@@ -1334,6 +1334,8 @@ No other exported symbol changes.
   signature and `Elision.SpoolRef`, in the same commit as the code.
 
 ## Addendum: caller inventory for the two halves
+Status: shipped.
+
 
 The package serves two independent concerns. This addendum records
 which half has a caller and which half still awaits one. The orphan

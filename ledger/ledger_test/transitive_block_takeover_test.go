@@ -64,10 +64,12 @@ func takeoverShapeCases() []takeoverShapeCase {
 		{
 			name:           "self-need with no failure terminates",
 			claim:          "S",
-			plantSelfNeeds: []ledger.IdempotencyKey{"S"},
-			before:         noop,
-			after:          noop,
-			wantStatus:     ledger.StatusClaimed,
+			plantSelfNeeds: []ledger.IdempotencyKey{"S2"},
+			before: func(t *testing.T, l *ledger.Ledger, ctx context.Context) {
+				mustAdmit(t, l, ctx, "S", 1, "S2")
+			},
+			after:      noop,
+			wantStatus: ledger.StatusClaimed,
 		},
 		{
 			name:  "completed sibling beside a blocked need",

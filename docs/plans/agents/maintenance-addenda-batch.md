@@ -171,10 +171,12 @@ the fixture layer moves. Add two helpers to
 
 `MemStore.CompareAndSwap` runs no validation, so the plant succeeds.
 Give each case table a `plantSelfNeeds []ledger.IdempotencyKey` field.
-The two self-need rows set that field instead of an `admits` entry or
-a `mustAdmit` call. Both test bodies build a `ledger.NewMemStore()`,
-wrap it with `newLedgerOverStore`, and plant before the rest of the
-fixture runs.
+The two self-need rows set that field. The `Claim` row pairs it with
+an `admits` entry, and the `Takeover` row pairs it with a `before`
+hook calling `mustAdmit`; see "Addendum: the lease write paths
+validate" in `docs/plans/ledger.md`. Both test bodies build a
+`ledger.NewMemStore()`, wrap it with `newLedgerOverStore`, and plant
+before the rest of the fixture runs.
 
 Review confirmed the collateral is not vacuous. With a panic planted
 at the dedup branch, both self-need rows still reach the seen-set

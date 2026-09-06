@@ -96,7 +96,8 @@ func ancestorCases() []ancestorCase {
 		},
 		{
 			name:           "self-need with no failure",
-			plantSelfNeeds: []ledger.IdempotencyKey{"S"},
+			plantSelfNeeds: []ledger.IdempotencyKey{"S2"},
+			admits:         []admitSpec{{"S", []ledger.IdempotencyKey{"S2"}}},
 			claim:          "S",
 			wantStatus:     ledger.StatusClaimed,
 		},

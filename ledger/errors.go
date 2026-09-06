@@ -38,3 +38,8 @@ var ErrEmptyOwner = errors.New("ledger: owner must not be empty")
 // ErrInvalidMaxEntries is returned by NewMemStoreWithOptions when
 // MemStoreOptions.MaxEntries is negative.
 var ErrInvalidMaxEntries = errors.New("ledger: MaxEntries must not be negative")
+
+// ErrInvalidLease is returned by Claim, Renew, or Takeover when lease
+// is not positive. A lease at or below zero closes the moment it
+// opens, so the record it would write is stale on return.
+var ErrInvalidLease = errors.New("ledger: lease must be positive")

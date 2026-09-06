@@ -6,6 +6,16 @@ import (
 	"time"
 )
 
+// validateLease enforces the one lease rule: a lease must be
+// positive. Claim, Renew, and Takeover all call it, so the rule has
+// one enforcer. See validateLimit in workspace for the same shape.
+func validateLease(lease time.Duration) error {
+	if lease <= 0 {
+		return ErrInvalidLease
+	}
+	return nil
+}
+
 // Claim claims a StatusPending record, or a StatusClaimed record
 // whose LeaseUntil is at or before now. LeaseUntil versus now is the
 // only staleness signal Claim reads; ledger keeps no heartbeat or
@@ -27,9 +37,18 @@ import (
 // refusal writes: it moves the record to StatusBlocked through
 // blockOne, naming the nearest blocking ancestor in BlockedBy. See
 // blockingAncestor.
+//
+// Claim returns ErrInvalidLease when lease is at or below zero. That
+// check runs after the ErrEmptyOwner check and before any Store call.
+// Claim returns the TaskState.Validate error when the record it would
+// write is invalid. That check runs immediately before
+// CompareAndSwap, mirroring Admit.
 func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	if owner == "" {
 		return 0, ErrEmptyOwner
+	}
+	if err := validateLease(lease); err != nil {
+		return 0, err
 	}
 	for {
 		cur, found, err := l.store.Load(ctx, key)
@@ -66,6 +85,9 @@ func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, own
 		next.LeaseUntil = now.Add(lease)
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return 0, err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return 0, err
@@ -89,7 +111,15 @@ func (l *Ledger) Claim(ctx context.Context, actor Actor, key IdempotencyKey, own
 // fresh reload still shows the caller's fence owning a StatusClaimed
 // record, Renew retries; a fresh reload that fails either check
 // returns the matching sentinel error instead.
+//
+// Renew returns ErrInvalidLease when lease is at or below zero. That
+// check runs before any Store call. Renew returns the
+// TaskState.Validate error when the record it would write is invalid.
+// That check runs immediately before CompareAndSwap, mirroring Admit.
 func (l *Ledger) Renew(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, fence FenceToken, lease time.Duration, now time.Time) error {
+	if err := validateLease(lease); err != nil {
+		return err
+	}
 	for {
 		cur, found, err := l.store.Load(ctx, key)
 		if err != nil {
@@ -108,6 +138,9 @@ func (l *Ledger) Renew(ctx context.Context, actor Actor, key IdempotencyKey, own
 		next.LeaseUntil = now.Add(lease)
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err
@@ -183,9 +216,18 @@ func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, o
 // writes: it moves the record to StatusBlocked through blockOne,
 // naming the nearest blocking ancestor in BlockedBy. See
 // blockingAncestor.
+//
+// Takeover returns ErrInvalidLease when lease is at or below zero.
+// That check runs after the ErrEmptyOwner check and before any Store
+// call. Takeover returns the TaskState.Validate error when the record
+// it would write is invalid. That check runs immediately before
+// CompareAndSwap, mirroring Admit.
 func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error) {
 	if owner == "" {
 		return 0, ErrEmptyOwner
+	}
+	if err := validateLease(lease); err != nil {
+		return 0, err
 	}
 	for {
 		cur, found, err := l.store.Load(ctx, key)
@@ -218,6 +260,9 @@ func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, 
 		next.LeaseUntil = now.Add(lease)
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return 0, err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return 0, err

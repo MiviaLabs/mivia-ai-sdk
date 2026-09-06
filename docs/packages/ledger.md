@@ -78,20 +78,30 @@ surface below mirrors `api/ledger.txt`.
   unchanged, and clears `Owner` and `LeaseUntil`.
 - `Ledger.Claim(ctx, actor, key, owner, lease, now)` — claims a pending
   record, or a claimed record whose lease has expired. Returns
-  `ErrEmptyOwner` for a blank `owner`. Returns `ErrNotClaimed` when a
-  key in the record's transitive `Needs` closure holds `StatusFailed`
-  or `StatusBlocked`. That refusal writes: it moves the record to
-  `StatusBlocked`, naming the nearest blocking ancestor in
-  `BlockedBy`.
+  `ErrEmptyOwner` for a blank `owner`. Returns `ErrInvalidLease` for a
+  `lease` at or below zero, checked before any `Store` call. Returns
+  `ErrNotClaimed` when a key in the record's transitive `Needs`
+  closure holds `StatusFailed` or `StatusBlocked`. That refusal
+  writes: it moves the record to `StatusBlocked`, naming the nearest
+  blocking ancestor in `BlockedBy`. Returns the `TaskState.Validate`
+  error when the record it would write is invalid, checked immediately
+  before `CompareAndSwap`.
 - `Ledger.Renew(ctx, actor, key, owner, fence, lease, now)` — extends
-  the lease under the current fence.
+  the lease under the current fence. Returns `ErrInvalidLease` for a
+  `lease` at or below zero, checked before any `Store` call. Returns
+  the `TaskState.Validate` error when the record it would write is
+  invalid, checked immediately before `CompareAndSwap`.
 - `Ledger.Release(ctx, actor, key, owner, fence, now)` — returns a
   claimed record to pending.
 - `Ledger.Takeover(ctx, actor, key, owner, lease, now)` — claims a
   stale claimed record and fences the dispossessed owner's token.
-  Returns `ErrEmptyOwner` for a blank `owner`. Returns `ErrNotClaimed`
-  under the same transitive-`Needs` rule `Claim` applies, with the same
-  write side effect.
+  Returns `ErrEmptyOwner` for a blank `owner`. Returns
+  `ErrInvalidLease` for a `lease` at or below zero, checked before any
+  `Store` call. Returns `ErrNotClaimed` under the same
+  transitive-`Needs` rule `Claim` applies, with the same write side
+  effect. Returns the `TaskState.Validate` error when the record it
+  would write is invalid, checked immediately before
+  `CompareAndSwap`.
 - `Ledger.Complete(ctx, actor, key, owner, fence, status, now)` — marks
   a claimed record `StatusCompleted` or `StatusFailed`. A failed
   completion blocks every dependent, transitively.
@@ -156,6 +166,11 @@ surface below mirrors `api/ledger.txt`.
 - `ErrInvalidMaxEntries` ("ledger: MaxEntries must not be negative")
   — `NewMemStoreWithOptions` wraps it when `opts.MaxEntries` is
   negative. Pinned by `ledger_test/mem_store_options_test.go`.
+- `ErrInvalidLease` ("ledger: lease must be positive") — `Claim`,
+  `Renew`, and `Takeover` return it when `lease` is at or below zero.
+  One unexported helper, `validateLease`, holds the rule, and all
+  three methods call it. Pinned by
+  `ledger_test/lease_validation_test.go`.
 
 ## Invariants
 
@@ -163,8 +178,8 @@ surface below mirrors `api/ledger.txt`.
   five constants, a `Needs` entry equal to `Key`, a non-empty
   `BlockedBy` outside `StatusBlocked`, an empty `BlockedBy` inside
   `StatusBlocked`, and a `StatusClaimed` record with an empty `Owner`
-  or a zero `LeaseUntil`. `Admit`, `Restore`, and `Snapshot.Validate`
-  call it.
+  or a zero `LeaseUntil`. `Admit`, `Claim`, `Renew`, `Takeover`,
+  `Restore`, and `Snapshot.Validate` call it.
 - `Admit` rebases a `StatusPending` or `StatusClaimed` record at a
   higher sequence; it never rebases a terminal record.
 - A rebase carries `Fence` forward unchanged, so the next `Claim`
@@ -282,7 +297,7 @@ if err != nil || !ok {
 }
 fence, err := l.Claim(ctx, "scheduler", "task-1", "worker-a", time.Minute, now)
 if err != nil {
-    // ErrNoKey, ErrEmptyOwner, or ErrLeaseActive
+    // ErrNoKey, ErrEmptyOwner, ErrInvalidLease, or ErrLeaseActive
 }
 if err := l.Complete(ctx, "scheduler", "task-1", "worker-a", fence, ledger.StatusCompleted, time.Now()); err != nil {
     // ErrFenced or ErrNotClaimed

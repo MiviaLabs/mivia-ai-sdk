@@ -33,17 +33,19 @@ identifiers that look like exported Go symbols, strips a leading
 lowercase dotted package prefix, and reports the first symbol present
 in the lock.
 
-Escape hatch: a section that must legitimately stay planned while it
-names an already-locked symbol renames its status to `Status:
-planned, extends <symbol>`. The gate ignores that form.
+Escape hatch: a section that extends an already-shipped symbol
+renames its status to `Status: planned, extends <symbol>`. The gate
+rejects the form when the named anchor is itself locked: a locked
+anchor means the addition it names has shipped, so the section must
+rename its status to `Status: shipped` instead.
 
 ## Tests
 
 The probe suite in `check_plan.py --probe` covers the status rule:
 a planned section naming a locked symbol fails with the file, the
 line, and the symbol; a planned section naming no locked symbol
-passes; the `planned, extends` escape form naming a locked symbol
-passes. The existing probes keep covering the section structure and
+passes; the `planned, extends` escape form naming an unlocked symbol
+passes; the same escape form naming a locked anchor fails. The existing probes keep covering the section structure and
 the Tests cross-check.
 
 ## Verification

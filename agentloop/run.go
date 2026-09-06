@@ -138,7 +138,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 }
 
 // runIteration runs one loop iteration: trim, window plan, the
-// token-budget check, the ConcludeMargin nudge, the Completer call,
+// token-budget check, the Conclude.Margin nudge, the Completer call,
 // audit, the token-budget check, and tool-call dispatch. It mutates
 // history, iterations, totalUsage, runningTokens, and noticeSent in
 // place through st, matching run's prior inlined mutation. done
@@ -227,7 +227,7 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 // through runToolStage. Split from runIteration to keep both under
 // the structure gate's per-function line cap. noticeInRequest,
 // computed by runIteration, picks StopConcluded over StopNoToolCalls
-// when this iteration's Completer request carried the ConcludeMargin
+// when this iteration's Completer request carried the Conclude.Margin
 // nudge.
 func (l *Loop) afterChat(ctx context.Context, at chatAttempt, st *runState, noticeInRequest bool, surface runSurface) (Result, error, bool) {
 	resp, req := at.resp, at.req

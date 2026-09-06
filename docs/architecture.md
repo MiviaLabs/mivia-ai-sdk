@@ -506,7 +506,7 @@ flowchart LR
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Request.Validate`,
   `Response`, `Chunk`, `Chunk.Validate`, `ContextAccountant`,
-  `ReasoningPolicy`, `TokenEstimator`, `ReasoningEffort` and its four
+  `ReasoningPolicy`, `TokenEstimator`, `ReasoningEffort` and its six
   level constants, `ReasoningDialect`, `ToolChoice` and its two
   constants, `CacheStyle` and its three constants, `CacheUsage`,
   `WebSearchResult`, `ReasoningBlock`, `RedactBlock`,
@@ -515,14 +515,15 @@ flowchart LR
   `ErrChunkErrDoneConflict`, `ErrStreamClosedEarly`,
   `ErrNameUnexpected`, `ErrNameInvalid`, `ErrPromptTooLong`,
   `ErrReasoningContentUnexpected`, and `ErrToolChoiceInvalid`.
-  `Message` carries `ToolCalls` on an assistant turn and
-  `ReasoningContent` on an assistant turn only; `RunTurn` copies
+  `Message` carries `ToolCalls` and `ReasoningBlocks` on an assistant
+  turn only; `RunTurn` copies
   `ToolCalls` onto `Response.Message.ToolCalls` as well as
-  `Response.ToolCalls`, and copies the drained `ReasoningDelta` text
-  onto `Response.Message.ReasoningContent`. `Request` carries the
+  `Response.ToolCalls`, and collects the drained `ReasoningBlock`
+  chunks into `Response.Message.ReasoningBlocks`. `Request` carries the
   request controls a hosted-model client needs: `Temperature` and
-  `MaxTokens` as pointers, `ToolChoice`, `Timeout`, `SessionID`,
-  `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
+  `MaxTokens` as pointers, `ToolChoice`, `CacheStyle`, `Timeout`,
+  `SessionID`, `DisableProviderReplay`, `ReasoningEffort`, and
+  `ReasoningDialect`.
   `Response` and the terminal `Chunk` carry `CacheUsage` and
   `WebSearch` for provider-side cache and search accounting.
   `provider` defines the contract only; `provider/anthropic` provides

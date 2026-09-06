@@ -1,6 +1,6 @@
 # Phase 85: longtermmemory Scope normalization
 
-Status: plan, reviewed, not built.
+Status: shipped. The fix landed in commit 201cec5.
 
 ## Why this plan exists
 

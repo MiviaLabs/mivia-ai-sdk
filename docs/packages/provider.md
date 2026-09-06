@@ -13,21 +13,21 @@ supply its own concrete type. The exported surface below mirrors
 - `Role` — a message's role. Constants: `RoleSystem`, `RoleUser`,
   `RoleAssistant`, `RoleTool`.
 - `Message` — one turn in a conversation. `Role`, `Content`, `Name`,
-  `ToolCallID`, `ToolCalls`, `ReasoningContent`, `ReasoningSignature`,
-  `CreatedAt`. `Name` is legal only on `RoleUser` and `RoleTool`; an
-  empty `Name` is legal on every role. `ReasoningContent` is legal
-  only on `RoleAssistant`. `ReasoningSignature` is an opaque replay
-  token an adapter writes beside `ReasoningContent` and reads back on
-  a later turn; `provider` never validates or interprets it.
-  `CreatedAt` is wall-clock time for when the message entered the
-  caller's own history; its zero value means unknown, on every role.
+  `ToolCallID`, `ToolCalls`, `ReasoningBlocks`, `CreatedAt`. `Name` is
+  legal only on `RoleUser` and `RoleTool`; an empty `Name` is legal on
+  every role. `ReasoningBlocks` is legal only on `RoleAssistant` and
+  carries the turn's thinking and redacted_thinking blocks in arrival
+  order; a completer echoes them back on a later request. See
+  `ReasoningBlock` for the per-block fields. `CreatedAt` is wall-clock
+  time for when the message entered the caller's own history; its zero
+  value means unknown, on every role.
 - `ToolDefinition` — one tool a model may call.
 - `ToolCall` — one call the model requests, or one fragment while it
   streams.
 - `Usage` — token accounting for one completed turn.
 - `Request` — the input to every `Completer` method. Adds `Temperature`
   and `MaxTokens` (`*float64`/`*int`; nil means "use the completer's
-  own default"), `ToolChoice`, `Timeout`, `SessionID`,
+  own default"), `ToolChoice`, `CacheStyle`, `Timeout`, `SessionID`,
   `DisableProviderReplay`, `ReasoningEffort`, `ReasoningDialect`, and
   `StreamingWriter` (`io.Writer`; nil changes no behavior; no package
   in this SDK writes to `StreamingWriter`; it is an opt-in field a
@@ -40,10 +40,12 @@ supply its own concrete type. The exported surface below mirrors
   no closed set of dialect names; a concrete client owns its own
   vocabulary.
 - `Response` — the aggregated result of one turn. Adds `CacheUsage` and
-  `WebSearch`. Carries no separate reasoning-content field;
-  `Response.Message.ReasoningContent` already holds it.
+  `WebSearch`. Carries no separate reasoning field;
+  `Response.Message.ReasoningBlocks` already holds it.
 - `Chunk` — one increment of a streamed response. Adds
-  `ReasoningDelta`, `CacheUsage`, and `WebSearch`, zero until `Done`,
+  `ReasoningDelta` (a live-view text passthrough),
+  `ReasoningBlock` (one complete block, with signature or data),
+  `CacheUsage`, and `WebSearch`, zero until `Done`,
   the same convention `Usage` and `FinishReason` follow.
 - `CacheStyle` — names how a provider's wire format expresses
   prompt-cache reuse for one turn. Constants: `CacheStyleNone`,
@@ -64,11 +66,14 @@ supply its own concrete type. The exported surface below mirrors
   call.
 - `ReasoningEffort` — the provider-neutral reasoning-effort
   vocabulary. Constants: `ReasoningEffortNone`, `ReasoningEffortLow`,
-  `ReasoningEffortMedium`, `ReasoningEffortHigh`. `ReasoningPolicy`
+  `ReasoningEffortMedium`, `ReasoningEffortHigh`, `ReasoningEffortXHigh`,
+  `ReasoningEffortMax`. `ReasoningPolicy`
   reports one of these as a string.
 - `ReasoningBlock` — one reasoning segment a model produced. `Content`
-  is empty whenever `Redacted` is true. Never appears on `Message` or
-  `Response`; a caller carries it alongside its own session state.
+  is empty whenever `Redacted` is true. `Signature` is the block's
+  opaque replay token; `Data` holds a redacted block's opaque
+  payload. `Message.ReasoningBlocks` carries the blocks in arrival
+  order.
 - `ReasoningEventKind` — the `contextstate.SourceEvent.Kind` value
   that marks a reasoning trace. The one place the literal appears;
   `contextsession.IsReasoningEvent` compares against this constant.
@@ -94,7 +99,7 @@ without either importing the other.
   `ctx.Done()` while it drains a stream.
 - `Message.Validate()` — enforces the `ToolCallID`/`Role` pairing rule,
   the closed set of `Role` constants, the `Name` rule, the
-  `ToolCalls`/`Role` rule, and the `ReasoningContent`/`Role` rule.
+  `ToolCalls`/`Role` rule, and the `ReasoningBlocks`/`Role` rule.
 - `Chunk.Validate()` — enforces `Err` and `Done == true` are mutually
   exclusive on one `Chunk`.
 - `Request.Validate()` — enforces the closed `ToolChoice` vocabulary:
@@ -145,7 +150,8 @@ Use `errors.Is` to test these.
   its recovery path.
 - `ErrReasoningContentUnexpected` ("provider: reasoning content
   unexpected outside RoleAssistant") — `Message.Validate` returns it
-  when `ReasoningContent` is non-empty on a message whose `Role` is
+  when `ReasoningBlocks` is non-empty, or any block carries a
+  non-empty `Signature`, on a message whose `Role` is
   not `RoleAssistant`. Pinned by
   `provider/provider_test/types_test.go` and
   `provider/provider_test/validate_fuzz_test.go`.
@@ -171,16 +177,17 @@ below.
   for one of the four known roles.
 - `Message.Validate` rejects a non-empty `ToolCalls` on any known role
   other than `RoleAssistant`; the `ToolCallID` check runs first.
-- `Message.Validate` checks the `ReasoningContent` rule last, after
-  the `ToolCalls` check: a non-empty `ReasoningContent` outside
+- `Message.Validate` checks the `ReasoningBlocks` rule last, after
+  the `ToolCalls` check: a non-empty `ReasoningBlocks`, or any block
+  with a non-empty `Signature`, outside
   `RoleAssistant` returns `ErrReasoningContentUnexpected`.
 - `RunTurn` calls `req.Validate()` before it validates any
   `req.Messages` entry and before it dispatches; a `Validate` failure
   returns the zero `Response` and that error, unwrapped.
 - `RunTurn` sets `Response.Message.ToolCalls` to the same merged calls
-  it sets on `Response.ToolCalls`, and sets
-  `Response.Message.ReasoningContent` to the concatenated
-  `ReasoningDelta` text, on the streamed path.
+  it sets on `Response.ToolCalls`, and collects every complete
+  `Chunk.ReasoningBlock`, in arrival order, into
+  `Response.Message.ReasoningBlocks`, on the streamed path.
 - `RunTurn` copies the terminal `Chunk`'s `CacheUsage` and `WebSearch`
   onto `Response.CacheUsage` and `Response.WebSearch`, on the streamed
   path.

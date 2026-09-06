@@ -96,7 +96,7 @@ var (
 	// ErrTrimExcluded is Options.Validate's error when both Window and
 	// Trim are set. Test with errors.Is.
 	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
-	// ErrConcludeMargin is Validate's error when ConcludeMargin is
+	// ErrConcludeMargin is Validate's error when Conclude.Margin is
 	// negative. Test with errors.Is.
 	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
 	// ErrMaxConcurrentTools is Options.Validate's error when
@@ -122,7 +122,7 @@ var (
 	// is negative. Test with errors.Is.
 	ErrMaxTotalTokens = errors.New("agentloop: MaxTotalTokens must not be negative")
 	// ErrConcludeDeadline is Options.Validate's error when
-	// ConcludeDeadline is negative. Test with errors.Is.
+	// Conclude.Deadline is negative. Test with errors.Is.
 	ErrConcludeDeadline = errors.New("agentloop: ConcludeDeadline must be non-negative")
 )
 

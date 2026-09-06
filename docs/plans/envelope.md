@@ -267,6 +267,9 @@ docs/architecture.md's pipeline step one at line 695.
 
 ## Addendum: maintenance batch — delegate the ref-form check to contextstate
 
+Status: superseded, see "Addendum: migrate canonical ref delegation
+to contextref".
+
 This addendum is one of three that ship in one commit. See "Addendum:
 maintenance batch — drop StaleMembers and the heartbeat edge" in
 `docs/plans/room.md` for the batch.

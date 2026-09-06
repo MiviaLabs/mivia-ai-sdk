@@ -8,7 +8,7 @@ require.
 ## Goal
 
 Store and fetch context blobs by content address. `Put` computes the
-`sha256:` ref with `envelope.ContextRef` and returns it. `Get` fetches
+`sha256:` ref with `contextref.Mint` and returns it. `Get` fetches
 a blob by that ref. A size budget bounds the store. A `Put` larger
 than the whole budget fails; a `Put` that fits evicts the oldest blobs
 first.
@@ -16,7 +16,7 @@ first.
 ## Scope
 
 Inside: the `Store` type, `New`, `Put`, `Get`, and the size budget.
-`Put` stores content addressed by `envelope.ContextRef`. `Get`
+`Put` stores content addressed by the `contextref.Mint` ref. `Get`
 resolves a ref back to the stored bytes. `New` enforces a positive
 budget.
 

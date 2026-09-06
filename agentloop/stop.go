@@ -27,7 +27,7 @@ const (
 	// vetoes a tool call. The tool does not run.
 	StopHookVeto StopReason = "hook_veto"
 	// StopConcluded is Run's stop reason when the model returns no tool
-	// call on an iteration ConcludeMargin nudged. Graceful, same
+	// call on an iteration Conclude.Margin nudged. Graceful, same
 	// Result-shape rule as StopNoToolCalls.
 	StopConcluded StopReason = "concluded"
 	// StopSteered is Run's stop reason when a Steer.Trigger call requests

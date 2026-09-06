@@ -23,6 +23,9 @@ verbatim into package `a2aloopback`, plus a private copy of
 cannot be imported; the copy is eight lines and carries no
 independent invariant).
 
+Status: superseded, see "Addendum: the loopback speaks text"; the
+`dataFromRaw` copy this section describes is gone.
+
 Outside: any part of `a2aclient`'s production client surface
 (`Client`, `New`, `Close`, `Send`, `Status`, `Result`, `TaskHandle`,
 `State`). `a2aloopback` never imports `a2aclient`'s production code.

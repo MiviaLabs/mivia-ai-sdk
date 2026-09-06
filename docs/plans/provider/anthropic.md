@@ -91,7 +91,7 @@ type Options struct {
 	MaxTokensStreaming int
 	// MaxRetries bounds the number of retry attempts for retryable status codes.
 	MaxRetries int
-	// HTTPClient overrides http.DefaultClient.
+	// HTTPClient overrides the client's default 10-minute-timeout http.Client.
 	HTTPClient *http.Client
 	// ContextWindow sets the model context window size reported by ContextWindow().
 	ContextWindow int
@@ -146,7 +146,7 @@ var (
 - Headers: `x-api-key: <APIKey>`, `anthropic-version: 2023-06-01`, `content-type: application/json`.
 - Model: `Request.Model` if non-empty, otherwise `Options.Model` if set, otherwise `DefaultModel`.
 - Max Tokens: `*Request.MaxTokens` if non-nil. Otherwise `Options.MaxTokensNonStreaming` (or default 16000) for `Chat`, and `Options.MaxTokensStreaming` (or default 64000) for `ChatStream`.
-- Prompt caching: `Request.ReasoningDialect` carries the cache instruction. When `provider.CacheStyle(req.ReasoningDialect) != provider.CacheStyleNone` (or `req.ReasoningDialect == provider.ReasoningDialect(provider.CacheStyleExplicit)`), prompt caching is active.
+- Prompt caching: `Request.CacheStyle` carries the cache instruction. Prompt caching is active when `Request.CacheStyle` is set to any value other than `provider.CacheStyleNone` or the empty string.
 - System: Concatenate system message contents or map into system blocks. When prompt caching is active, place `cache_control: {"type": "ephemeral"}` on the last system block.
 - Messages: Map `provider.RoleUser` to `user` and `provider.RoleAssistant` to `assistant`. Map `provider.RoleTool` messages to user role turns containing `tool_result` blocks with `tool_use_id`, `content`, and optional `is_error`.
 - Tool calls: Map `provider.ToolCall` slices on assistant messages into `tool_use` blocks with `id`, `name`, and parsed JSON `input`.
@@ -157,13 +157,13 @@ var (
 
 ### Response and Stream Mapping Rules
 
-- Non-streaming: Concatenate text blocks into `Message.Content`. Extract `tool_use` blocks into `Response.ToolCalls`. Extract thinking blocks into `Message.ReasoningContent` only when `Options.ExposeReasoning` is true. If `Options.ExposeReasoning` is false, drop thinking content and invoke `Options.OnReasoning` with `provider.RedactBlock(block)` when `Options.OnReasoning` is non-nil.
+- Non-streaming: Concatenate text blocks into `Message.Content`. Extract `tool_use` blocks into `Response.ToolCalls`. Decode every thinking and redacted_thinking block into `Message.ReasoningBlocks`, in arrival order, whether or not `Options.ExposeReasoning` is set. When `Options.OnReasoning` is non-nil, invoke it with `provider.RedactBlock(block)` for every readable thinking block, beside `ExposeReasoning` rather than instead of it. A redacted_thinking block fires no callback.
 - Cache accounting: Extract `usage.cache_creation_input_tokens` and `usage.cache_read_input_tokens` into `provider.CacheUsage` and `Usage.CachedTokens`. Set `CacheUsage.Reported` to true when present.
 - Stop reason: Map `end_turn`, `max_tokens`, `tool_use`, `pause_turn`, and `refusal` directly to `FinishReason`. On `refusal`, inspect `stop_details.category` and `stop_details.explanation`, returning sentinel `ErrRefused` wrapping category.
 - Streaming: Parse SSE events (`message_start`, `content_block_start`, `content_block_delta`, `content_block_stop`, `message_delta`, `message_stop`, `ping`).
 - SSE delta mapping: Map `text_delta` to `Chunk.Delta`. Map `thinking_delta` to `Chunk.ReasoningDelta`. Accumulate `input_json_delta` fragments per block index, emitting one `Chunk.ToolCallDelta` on `content_block_stop`.
 - Terminal chunk: Combine `message_delta` and `message_stop` into a terminal chunk with `Done = true`, `Usage`, `FinishReason`, and `CacheUsage`.
-- Ignored stream events: Silently ignore `signature_delta` and `ping`.
+- Reasoning capture: Map `signature_delta` onto the in-flight thinking block. Emit one `Chunk.ReasoningBlock` per completed thinking or redacted_thinking block on `content_block_stop`, so the streamed carrier matches the non-streamed one. Silently ignore `ping`.
 
 ### Error Handling and Retry Rules
 
@@ -173,7 +173,7 @@ var (
 - Status 429 maps to `ErrRateLimited`. Retryable.
 - Status 408, 409, 429, and 5xx map to `ErrServer` (or `ErrRateLimited` for 429) and are retryable.
 - Retry loop executes at most `Options.MaxRetries` times with exponential backoff.
-- Honor `Retry-After` header when received on 429 responses.
+- Honor `Retry-After` header on every retryable response that carries one, whatever the status.
 - Respect context cancellation during backoff pauses and request execution.
 
 ## Tests
@@ -213,6 +213,9 @@ Positive control end-to-end test in `e2e/e2e_test/`:
 
 ## Addendum: thinking-signature replay
 
+Status: shipped, extended by the block-slice carrier; see the
+Reasoning capture rule above and `Message.ReasoningBlocks`.
+
 ### Goal
 
 Record the replay mapping rules for thinking blocks and their
@@ -221,22 +224,14 @@ reasoning-signature change section in `docs/plans/provider.md`.
 
 ### Scope
 
-Inside: the `Chat` decode path and the assistant-turn replay path in
-request mapping. Outside: the streamed path. `sseContentBlockDelta`
-decodes a signature field (`provider/anthropic/stream.go:48`), but
-`handleContentBlockDelta` has no `signature_delta` case, so streamed
-thinking loses its signature today. Full parity needs a
-`provider.Chunk` carrier plus aggregation in `drainStream` and
-`buildResponse`. That is a second exported-surface change on
-`provider`. No in-tree caller streams: grep finds `Stream:` only at
-`provider/anthropic/request.go:244`, the wire field, and `agentloop`
-calls `l.completer.Chat` only (`agentloop/compaction.go:186`,
-`agentloop/run.go:394`). This slice covers the `Chat` path only.
-Streamed signature parity is future work, recorded here. One more
-gap, recorded: `redacted_thinking` blocks are neither captured nor
-replayed today. The content switch ignores the type
-(`provider/anthropic/response.go:69`). This slice only records that
-gap; no code change accompanies it.
+Inside: the `Chat` decode path, the assistant-turn replay path in
+request mapping, the streamed `signature_delta` capture, and the
+`redacted_thinking` decode and replay. All four shipped in the
+block-slice carrier change: `Message.ReasoningBlocks` carries every
+thinking and redacted_thinking block in arrival order, the streamed
+path emits one `Chunk.ReasoningBlock` per completed block, and
+`Request.DisableProviderReplay` suppresses replay for a request whose
+history a caller rewrote.
 
 ### Replay mapping rules
 

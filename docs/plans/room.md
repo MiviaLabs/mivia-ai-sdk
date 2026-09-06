@@ -48,7 +48,8 @@ if err := r.Accepts(msg); err == nil {
 `StaleMembers`'s intersection line up without translation. `Room`
 gains no `Beat` passthrough method; `hb.Beat` already does the job.
 
-The package imports `heartbeat`. The policy row is
+Historical; removed, see the drop addendum. The package imported
+`heartbeat`. The policy row was
 `"room": ["envelope", "heartbeat"]`. `heartbeat`'s own row stays
 `["events"]`; it gains no new import and does not import `room`.
 

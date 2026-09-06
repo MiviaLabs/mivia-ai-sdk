@@ -1063,6 +1063,9 @@ is separate work. Do not change it here.
 
 ## Addendum: caller-supplied transport credentials
 
+Status: superseded, see "Addendum: text carrier, TLS constructor,
+unsigned guard, one fetch".
+
 `New` keeps its plaintext dial and now states that fact in its doc.
 One exported constructor joins: `NewWithCredentials(baseURL, creds)`.
 It dials with the caller's `credentials.TransportCredentials`, so a

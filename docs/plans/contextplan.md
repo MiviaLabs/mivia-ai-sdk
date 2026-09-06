@@ -7,28 +7,21 @@ reasoning vocabulary types into `provider`, documented in
 
 ## Goal
 
-Fit one session into a bounded provider request. `contextplan` reads
-a `contextstate.Session`, decides what fits a token window and what
-does not, and returns a `provider.Request` plus the list of
-decisions it made. Token estimates calibrate over time against a
-completed turn's real usage. Reasoning content never crosses a
-checkpoint boundary into the active context.
+Fit a message history into a bounded provider request. `contextplan`
+holds the compaction and calibration surface: `Compact` decides what
+fits a `Window` and what does not, and `Calibrated` calibrates token
+estimates over time against a completed turn's real usage. The
+durable planner half of the original design lives in
+`contextsession`; see `docs/plans/contextsession.md`.
 
 ## Scope
 
 Inside:
 
-- A `contextplan` package. `policy/layers.json` gains one row:
-  `contextplan` imports `contextstate`, `provider`, and `memory`
+- The `contextplan` package: `Compact`, `Window`, `Calibrated`, and
+  `Calibrate`. `policy/layers.json` carries one row:
+  `contextplan` imports `contextref` and `provider`
   only.
-- `Planner`, built over a `*contextstate.MemStore` (the durable
-  payload source) and a `*memory.Store` (a content-addressed decode
-  cache that `Plan` populates on a successful resolve; the
-  Correctness fix section below removes its role in skipping a
-  `store.Get` call, so it no longer changes what a repeated `Plan`
-  call observes). `Plan` is the planner's one method: a session and a
-  window budget in; a `provider.Request` and every elision decision
-  out.
 - Elision policy: newest-first inclusion, oldest-first drop, once the
   window budget is spent. A payload's `contextstate.RetentionClass`
   can protect it from an otherwise-due drop; `Plan` honors it before

@@ -158,13 +158,12 @@ func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scena
 // not wedge a CI run that interleaves many invariants concurrently.
 // A Takeover that exhausts the sub-deadline and reports a
 // context.DeadlineExceeded is reported via t.Skip rather than
-// t.Fatal: the same tolerance the storage-level contention twin
-// (TestTakeoverClaimConcurrentMutateSurvivesSQLiteBusy,
-// internal/storage/sqlite_claims_test.go) achieves by gating behind
-// testing.Short. t.Skip keeps the test in the report and makes a slow
-// CI a t.Log instead of a hard failure, while the post-deadline
-// non-context-DeadlineExceeded path (a real production bug) still
-// t.Fatal-fails as before.
+// t.Fatal: the same tolerance a slower backend's own busy-retry
+// contention test needs when gated behind testing.Short. t.Skip
+// keeps the test in the report and makes a slow CI a t.Log instead
+// of a hard failure, while the post-deadline non-context-
+// DeadlineExceeded path (a real production bug) still t.Fatal-fails
+// as before.
 func CheckTakeoverFencesConcurrentMutate(t testing.TB, ctx context.Context, s Scenario) {
 	t.Helper()
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {

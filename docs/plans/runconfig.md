@@ -985,3 +985,36 @@ compiles. One change keeps one review surface.
   `policy/layers.json` edge changes.
 - `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
   `scripts/check_labels.py` pass.
+
+## Addendum: maintenance batch — budget validated at load time
+
+### Goal
+
+- Reject a negative budget field when the document loads, not when
+  the runner starts. Behavior change; TDD.
+
+### Scope
+
+- Verified: `runconfig/loader.go:110-112` documents that a present
+  `options.budget` maps onto `Options.Budget` "with no range check;
+  Runner's call into agentrun.New rejects a negative field".
+  Deferral hides the error from a document-only validation pass.
+- Exact change: in `Load`, after building `def.Options.Budget` at
+  `loader.go:149-153`, call `Budget.Validate()`. Wrap the failure as
+  `fmt.Errorf("%w: %s", ErrBadDocument, err.Error())`, the pattern
+  every other `Load` rejection uses. Update the `Load` doc comment's
+  rejection list in the same change.
+
+### Addendum tests
+
+- Add a table-driven case in the runconfig loader test: a document
+  with `budget.max_bytes` negative returns an error that satisfies
+  `errors.Is(err, ErrBadDocument)`. A valid budget keeps loading,
+  covered by the existing rows.
+
+### Addendum verification
+
+- `go test ./runconfig/...` passes with the new case red before the
+  fix.
+- `make verify` passes; `runconfig` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

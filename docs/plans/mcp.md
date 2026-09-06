@@ -713,3 +713,38 @@ format; it wraps a separate, already-specified protocol.
 `mcp` holds a mutation-kill floor of 100, in
 `scripts/mutation_denylist/mcp.json`. Run `make mutation-gate` to
 check it.
+
+## Addendum: maintenance batch — progress handler growth documented
+
+### Goal
+
+- Address the unbounded per-call progress handler map. Doc-only.
+
+### Scope
+
+- Verified: `mcp/progress.go:16-30` registers one handler per
+  `CallToolWithProgress` call. Only `clearHandlers` on `Close` clears
+  the map. The growth rate is one small map entry per progress call
+  for the Client's lifetime.
+- Direction: document the growth rate, do not delete entries after a
+  grace window. The assessment preferred deletion, but the documented
+  rationale is real: the SDK dispatches notifications on its own
+  goroutine, unordered against `CallTool`'s return, so a late
+  notification can arrive for a finished call. Deleting after a grace
+  window needs a per-call timer and synchronization between that
+  timer and `handleProgress`'s map read; that is more than a small
+  fix, against the assessment's own risk rule.
+
+### Addendum tests
+
+- None. No behavior changes. The existing progress tests in
+  `mcp/client_progress_test.go` already pin correlation and the
+  `OnProgress` fallback.
+
+### Addendum verification
+
+- Exact change: extend the `ClientOptions.OnProgress` doc and the
+  `registerHandler` comment to state the growth rate and the
+  `Close`-bounded lifetime. No `api/` diff; comments are not locked.
+- `python3 scripts/check_docs.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass.

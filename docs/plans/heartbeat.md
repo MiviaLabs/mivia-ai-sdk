@@ -227,3 +227,30 @@ Test files live in `heartbeat/heartbeat_test/`:
   format; it tracks in-memory time, not envelope bytes.
 - docs/architecture.md gains the heartbeat entry in the package map.
 - AGENTS.md's Layout section gains a one-line heartbeat entry.
+
+## Addendum: maintenance batch — MissedEvent stays as documented public API
+
+### Goal
+
+- Decide `heartbeat.MissedEvent`'s fate. Doc-only. The full decision
+  lives in `docs/plans/room.md`'s maintenance-batch addendum.
+
+### Scope
+
+- Verified: `heartbeat/events.go:7` defines `MissedEvent` and no
+  module code emits or consumes it. The monitor's doc already states
+  it never emits the event itself; a caller does.
+- Direction: keep. `MissedEvent` is the named event kind application
+  code emits after it observes a dead peer; the zero-user state is
+  the intended pass-through shape, the same contract the provider
+  request controls pin. Trimming it would strand the event
+  vocabulary this package documents.
+
+### Addendum tests
+
+- None. No behavior changes.
+
+### Addendum verification
+
+- No code, API, or policy diff. `python3 scripts/check_plan.py`,
+  `scripts/check_prose.py`, and `scripts/check_labels.py` pass.

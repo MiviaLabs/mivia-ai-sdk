@@ -131,3 +131,36 @@ already-benchmarked lock, with no allocation-sensitive hot path.
   truth invariant, in the same change as the code.
 - This phase adds no conformance vector. `Room` still carries no JSON
   wire form of its own.
+
+## Addendum: maintenance batch — liveness surfaces stay as documented public API
+
+### Goal
+
+- Decide the fate of the liveness vocabulary with no internal
+  caller. Doc-only.
+
+### Scope
+
+- Verified: `room.StaleMembers` and `room.ErrNoMonitor`
+  (`room/liveness.go:13,25`) have no callers outside room's tests.
+  `heartbeat.MissedEvent` has zero users. The real consumer,
+  `subagent/heartbeattool.go:63`, calls `monitor.Dead` directly.
+  `policy/pending_wiring.json` says nothing about these symbols; the
+  orphan gate covers packages, not exported symbols.
+- Direction: keep, no wiring. Wiring is cheap import-wise, because
+  the `subagent` layers row already allows `room`. But
+  `HeartbeatTool` binds one monitor on purpose; adding a `*room.Room`
+  parameter couples two concerns into one tool and filters `OpDead`
+  output through a roster the caller may not have. Trimming would
+  delete a public composition primitive this SDK exists to export.
+  Both surfaces stay, as documented public API for application code.
+
+### Addendum tests
+
+- None. No behavior changes. The existing room tests already pin
+  `StaleMembers` and `ErrNoMonitor`.
+
+### Addendum verification
+
+- No code, API, or policy diff. `python3 scripts/check_plan.py`,
+  `scripts/check_prose.py`, and `scripts/check_labels.py` pass.

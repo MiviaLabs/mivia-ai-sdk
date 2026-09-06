@@ -246,3 +246,32 @@ bullet: package name, one-sentence purpose, and its import edges
 (none). `docs/plans/agents/PHASES.md` records phase 57's dependency
 on no unshipped phase, matching how it records phase 51 and phase
 52.
+
+## Addendum: maintenance batch — PointPostTool payload documented per fire site
+
+### Goal
+
+- Document the two payload types one `PointPostTool` fire carries.
+  Doc-only.
+
+### Scope
+
+- Verified: `hooks/point.go` says `PointPostTool` fires "after a
+  step's ack confirms". That is true at `agentrun/wire.go:203`, which
+  fires the point with an `envelope.Ack`. `agentloop/toolcall.go:327`
+  fires the same point with a `provider.ToolCall`. Handlers must
+  type-switch today, and no comment names both payloads.
+- Exact change: extend the `PointPostTool` doc comment in
+  `hooks/point.go` to name each fire site and its payload type. Do
+  not split the point: a new point constant is a locked API change,
+  disproportionate to a doc gap.
+
+### Addendum tests
+
+- None. No behavior changes.
+
+### Addendum verification
+
+- `make api-update` produces no diff; comments are not locked.
+- `python3 scripts/check_docs.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass.

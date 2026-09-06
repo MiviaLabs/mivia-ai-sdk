@@ -877,3 +877,38 @@ each wireable `Kind` to its constructor.
 - `make verify` passes. `subagent` holds the 85 coverage floor and the
   94 mutation floor.
 - `go test -race ./subagent/... ./runconfig/...` passes.
+
+## Addendum: maintenance batch — scheduler tool rejects non-positive every_ms
+
+### Goal
+
+- Make the scheduler tool fail loudly on a schedule that would never
+  fire. Behavior change; TDD.
+
+### Scope
+
+- Verified: `subagent/schedulertool.go:58` passes any JSON `every_ms`
+  to `scheduler.Every`, which maps non-positive durations to an inert
+  `neverSchedule` at `scheduler/schedule.go:49-54`. A negative value
+  silently schedules nothing.
+- Exact change: in `schedulerTool.Run`'s `OpEvery` case, reject
+  `cmd.EveryMs <= 0` before calling `scheduler.Every`. Return the
+  package's existing malformed-command error, `badCommand(t.name)`,
+  matching the unknown-op and decode-failure style. One line of
+  behavior, no API change. `scheduler.Every` itself stays unchanged;
+  its plan-locked, error-free signature is correct for direct
+  callers.
+
+### Addendum tests
+
+- Add a case in `subagent/subagent_test/commandtools_test.go`: an
+  `every_ms` of zero and of -1000 return an error from `Run`, and the
+  bound job never reaches `scheduler.Add`. Positive `every_ms` keeps
+  scheduling, covered by the existing rows.
+
+### Addendum verification
+
+- `go test ./subagent/...` passes with the new case red before the
+  fix.
+- `make verify` passes; `subagent` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

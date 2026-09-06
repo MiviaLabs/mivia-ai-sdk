@@ -809,3 +809,35 @@ test rewrites, and the verification set.
 Every commit in this change that rewrites a mandated test carries an
 `Allow-Test-Change` commit-message trailer. The trailer names the
 rewrites. See docs/plans/events.md, Verification.
+
+## Addendum: maintenance batch — NDJSON content type and write errors
+
+### Goal
+
+- Set one response content type and make the write-error choice
+  explicit. Behavior change; TDD.
+
+### Scope
+
+- Verified: `dispatch/endpoint.go` `serveHTTP` at lines 48-56 writes
+  one NDJSON line per request line. It sets no `Content-Type` header
+  and discards both `w.Write` return values.
+- Exact change: call `w.Header().Set("Content-Type",
+  "application/x-ndjson")` once before the loop. Handle or comment
+  the write error with one comment naming the choice: a mid-stream
+  client disconnect cannot be reported in-band, so the loop keeps
+  writing and the comment says why. Do not abort the stream on the
+  first write error; the stream's contract is one reply per line.
+
+### Addendum tests
+
+- Add a case in `dispatch/dispatch_test`: a response's
+  `Content-Type` is `application/x-ndjson` and the body still carries
+  one reply line per input line. Existing wire rows keep passing.
+
+### Addendum verification
+
+- `go test ./dispatch/...` passes with the new case red before the
+  header fix.
+- `make verify` passes; `dispatch` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

@@ -4274,3 +4274,53 @@ package `agentloop_test`.
   ten lines and stays well under the 500-line cap.
 - `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
   `scripts/check_labels.py` pass.
+
+## Addendum: maintenance batch — ConcludeToolCallsLeft removal and runIteration shape note
+
+### Goal
+
+- Two maintenance items in one batch. First, remove the dead
+  `ConcludeToolCallsLeft` option. Second, record a refactoring rule
+  for `runIteration`.
+
+### Scope
+
+- Item one, verified: `Options.ConcludeToolCallsLeft` is declared at
+  `agentloop/options.go:269-270`, validated at `options.go:449-451`,
+  and stored at `loop.go:152`. No code reads
+  `loop.concludeToolCallsLeft`. Grep finds no consumer outside
+  `agentloop` and its tests. Direction: remove the field. Removing a
+  dead exported field beats keeping a documented reservation, because
+  no caller exists to break and the lock can re-add the name later.
+- Exact change: delete the field, its `Validate` row, the
+  `loop.go:152` assignment, and the `loop.go:71` struct field.
+- Item two, verified: `agentloop/run.go` is 477 lines,
+  `options.go` 474, `toolcall.go` 458; all sit near the 500-line cap.
+  `runIteration` at `run.go:135` takes 10 parameters, 6 of them
+  pointers. Direction: no code change today.
+
+### Addendum tests
+
+- Delete `TestRunConcludeToolCallsLeftThresholdFires` in
+  `agentloop/agentloop_test/conclude_terms_test.go:152`: its subject,
+  the field's inertness, disappears with the field. The commit message
+  carries an `Allow-Test-Change` trailer, so
+  `scripts/check_test_tampering.py` waives the deletion.
+- Delete the three `ConcludeToolCallsLeft` rows in
+  `agentloop/agentloop_test/options_test.go` and the row at
+  `options_test.go:266`; same trailer covers them.
+- No new test: the change deletes surface, it adds none. Existing
+  conclude tests pin the other terms unchanged.
+
+### Addendum verification
+
+- `make api-update` removes the `ConcludeToolCallsLeft int` line from
+  `api/agentloop.txt`; commit the diff in the same change. This is
+  the batch's only API delta.
+- `make verify` passes, with two known-foreign failures in
+  `agentloop/steer_ack_test.go` from a parallel change, not this
+  batch.
+- Coverage floor of 85 holds for `agentloop`.
+- For `runIteration`: at the next feature that touches it, introduce
+  an unexported `runState` struct that carries the six pointer
+  parameters. Record this as a caller gate, not a scheduled change.

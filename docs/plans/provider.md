@@ -863,3 +863,43 @@ the channel it already returns.
   in the same change as the code.
 - No conformance vector: the field carries an in-process writer, not
   wire data.
+
+## Addendum: maintenance batch — pass-through controls pinned by execution
+
+### Goal
+
+- Close the residual gap between the lock-file contract and a
+  proven pass-through for the request controls. One new test.
+
+### Scope
+
+- Verified: `Temperature`, `MaxTokens`, `Timeout`, `SessionID`,
+  `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`
+  are already execution-pinned by
+  `TestRunTurnForwardsWidenedRequestFieldsNonStream` and its stream
+  counterpart in `provider/provider_test/request_forwarding_test.go`.
+  The uncovered surface is the response side: `CacheUsage` with its
+  `CacheStyle` constants, and `WebSearch []WebSearchResult`, which a
+  `Completer` produces and `RunTurn` aggregates. No in-tree code
+  constructs them; the contract is pass-through for external
+  clients.
+- Exact change: add one table-driven test in
+  `provider/provider_test/runturn_test.go`, reusing the existing
+  `fakeCompleter`. The table covers the streamed and non-streamed
+  paths. Each row proves a fake-reported `CacheUsage` (one row per
+  `CacheStyle` constant) and a `WebSearchResult` set reach
+  `RunTurn`'s `Response` unmodified.
+
+### Addendum tests
+
+- New test `TestRunTurnPreservesCacheUsageAndWebSearch` in
+  `provider/provider_test/runturn_test.go`. It fails against a
+  `RunTurn` that drops or rebuilds the terminal chunk's response-side
+  fields.
+
+### Addendum verification
+
+- `go test ./provider/...` passes with the new test red against a
+  deliberately broken aggregation.
+- `make verify` passes; `provider` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

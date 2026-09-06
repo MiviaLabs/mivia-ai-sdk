@@ -1087,3 +1087,30 @@ project 85 to 100 lines, plus a package declaration and imports.
   code.
 - No conformance-vector change: `Checkpoint` carries no signed or
   threaded wire form.
+
+## Addendum: maintenance batch — knob caller gate
+
+### Goal
+
+- Record a caller gate for flow's configuration knobs. Doc-only.
+
+### Scope
+
+- Verified: `flow`'s routing (`Step.Route`), checkpoint/resume, loop
+  guard, and retry hook knobs have zero production constructors in
+  this module. `runconfig/loader.go` `wireStep` at lines 37-48
+  expresses `needs`, `to`, `when`, `payload`, `retry`, and `loop`,
+  but not `route`, `payload_from`, or a retry hook. No removal: the
+  knobs are the package's public composition surface for application
+  code, and runconfig's gap is a feature request, not dead code.
+- Exact change: this sentence is the gate. No new flow knob lands
+  without a named production caller in its plan.
+
+### Addendum tests
+
+- None. No behavior changes.
+
+### Addendum verification
+
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass. No code, API, or policy diff.

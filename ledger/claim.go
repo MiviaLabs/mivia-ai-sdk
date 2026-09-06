@@ -185,6 +185,9 @@ func (l *Ledger) Release(ctx context.Context, actor Actor, key IdempotencyKey, o
 		next.LeaseUntil = time.Time{}
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err

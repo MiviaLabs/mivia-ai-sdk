@@ -48,6 +48,9 @@ func (l *Ledger) Complete(ctx context.Context, actor Actor, key IdempotencyKey, 
 		next.Status = status
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, key, cur, next)
 		if err != nil {
 			return err
@@ -119,6 +122,9 @@ func (l *Ledger) blockOne(ctx context.Context, actor Actor, now time.Time, k Ide
 		next.BlockedBy = failed
 		next.UpdatedBy = actor
 		next.UpdatedAt = now
+		if err := next.Validate(); err != nil {
+			return err
+		}
 		ok, err := l.store.CompareAndSwap(ctx, k, cur, next)
 		if err != nil {
 			return err

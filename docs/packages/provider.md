@@ -13,9 +13,12 @@ supply its own concrete type. The exported surface below mirrors
 - `Role` — a message's role. Constants: `RoleSystem`, `RoleUser`,
   `RoleAssistant`, `RoleTool`.
 - `Message` — one turn in a conversation. `Role`, `Content`, `Name`,
-  `ToolCallID`, `ToolCalls`, `ReasoningContent`, `CreatedAt`. `Name` is
-  legal only on `RoleUser` and `RoleTool`; an empty `Name` is legal on
-  every role. `ReasoningContent` is legal only on `RoleAssistant`.
+  `ToolCallID`, `ToolCalls`, `ReasoningContent`, `ReasoningSignature`,
+  `CreatedAt`. `Name` is legal only on `RoleUser` and `RoleTool`; an
+  empty `Name` is legal on every role. `ReasoningContent` is legal
+  only on `RoleAssistant`. `ReasoningSignature` is an opaque replay
+  token an adapter writes beside `ReasoningContent` and reads back on
+  a later turn; `provider` never validates or interprets it.
   `CreatedAt` is wall-clock time for when the message entered the
   caller's own history; its zero value means unknown, on every role.
 - `ToolDefinition` — one tool a model may call.

@@ -55,6 +55,7 @@ package provider
   ToolCallID string
   ToolCalls []ToolCall
   ReasoningContent string
+  ReasoningSignature string
   CreatedAt time.Time
 }
   type ReasoningBlock struct {

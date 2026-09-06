@@ -69,17 +69,22 @@ const (
 // ReasoningContent carries a model's chain-of-thought for one
 // assistant turn, verbatim, for a completer whose provider requires
 // the caller to echo it back on a later tool-call turn; it is legal
-// only on RoleAssistant. CreatedAt is wall-clock time for when the
-// message entered the caller's own history; its zero value means
-// unknown, and every role may carry it or omit it.
+// only on RoleAssistant. ReasoningSignature is the opaque replay
+// token an adapter writes beside ReasoningContent and reads back on a
+// later turn. provider never validates or interprets it. It is
+// meaningful only beside ReasoningContent on a RoleAssistant message.
+// CreatedAt is wall-clock time for when the message entered the
+// caller's own history; its zero value means unknown, and every role
+// may carry it or omit it.
 type Message struct {
-	Role             Role
-	Content          string
-	Name             string
-	ToolCallID       string
-	ToolCalls        []ToolCall
-	ReasoningContent string
-	CreatedAt        time.Time
+	Role               Role
+	Content            string
+	Name               string
+	ToolCallID         string
+	ToolCalls          []ToolCall
+	ReasoningContent   string
+	ReasoningSignature string
+	CreatedAt          time.Time
 }
 
 // Validate enforces the ToolCallID/Role pairing rule, the closed set

@@ -39,6 +39,8 @@ type anthropicMessage struct {
 type anthropicContentPart struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
+	Thinking  string          `json:"thinking,omitempty"`
+	Signature string          `json:"signature,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
@@ -97,7 +99,7 @@ func resolveMaxTokens(c *Client, req provider.Request, isStream bool) int {
 	return DefaultMaxTokensNonStreaming
 }
 
-func convertMessages(reqMsgs []provider.Message) ([]anthropicSystem, []anthropicMessage) {
+func convertMessages(reqMsgs []provider.Message, reasoningEnabled bool) ([]anthropicSystem, []anthropicMessage) {
 	var systemBlocks []anthropicSystem
 	var anthropicMsgs []anthropicMessage
 
@@ -109,7 +111,7 @@ func convertMessages(reqMsgs []provider.Message) ([]anthropicSystem, []anthropic
 			})
 			continue
 		}
-		appendTurnMessage(&anthropicMsgs, msg)
+		appendTurnMessage(&anthropicMsgs, msg, reasoningEnabled)
 	}
 	return systemBlocks, anthropicMsgs
 }
@@ -119,7 +121,7 @@ const (
 	anthropicRoleAssistant = "assistant"
 )
 
-func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message) {
+func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, reasoningEnabled bool) {
 	switch msg.Role {
 	case provider.RoleUser:
 		*anthropicMsgs = append(*anthropicMsgs, anthropicMessage{
@@ -128,6 +130,16 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message) 
 		})
 	case provider.RoleAssistant:
 		var parts []anthropicContentPart
+		// Replay the signed thinking block first: the Messages API
+		// requires an assistant turn to echo its own thinking block
+		// before text and tool_use parts.
+		if reasoningEnabled && msg.ReasoningContent != "" && msg.ReasoningSignature != "" {
+			parts = append(parts, anthropicContentPart{
+				Type:      "thinking",
+				Thinking:  msg.ReasoningContent,
+				Signature: msg.ReasoningSignature,
+			})
+		}
 		if msg.Content != "" {
 			parts = append(parts, anthropicContentPart{Type: "text", Text: msg.Content})
 		}
@@ -144,10 +156,11 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message) 
 			})
 		}
 		if len(parts) == 0 {
-			// A turn with no visible text and no tool call (a
-			// thinking-only or empty response) carries nothing worth
-			// replaying; sending an empty text block risks rejection
-			// by the Messages API, so the turn is dropped instead.
+			// A turn with no text, no tool call, and no replayed
+			// thinking block carries nothing worth replaying. Sending
+			// an empty text block risks rejection by the Messages API,
+			// so the turn is dropped. A thinking-only turn that
+			// replayed its block above is non-empty and survives here.
 			return
 		}
 		*anthropicMsgs = append(*anthropicMsgs, anthropicMessage{Role: anthropicRoleAssistant, Content: parts})
@@ -200,7 +213,19 @@ func buildRequestBody(c *Client, req provider.Request, isStream bool) (*anthropi
 
 	maxTokens := resolveMaxTokens(c, req, isStream)
 	promptCaching := isPromptCachingActive(req)
-	systemBlocks, anthropicMsgs := convertMessages(req.Messages)
+
+	// Resolve the effort before message conversion. The replay guard
+	// reads the same resolved value the wire thinking field uses.
+	effort := req.ReasoningEffort
+	if effort == "" {
+		effort = c.opts.DefaultEffort
+	}
+	reasoningEnabled := effort != "" && effort != provider.ReasoningEffortNone
+	if reasoningEnabled && !isValidReasoningEffort(effort) {
+		return nil, fmt.Errorf("%w: reasoning effort %q is not one of low, medium, high, xhigh, max", ErrInvalidOptions, effort)
+	}
+
+	systemBlocks, anthropicMsgs := convertMessages(req.Messages, reasoningEnabled)
 
 	if promptCaching && len(systemBlocks) > 0 {
 		systemBlocks[len(systemBlocks)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}
@@ -215,16 +240,9 @@ func buildRequestBody(c *Client, req provider.Request, isStream bool) (*anthropi
 		toolChoice = &anthropicToolChoice{Type: "none"}
 	}
 
-	effort := req.ReasoningEffort
-	if effort == "" {
-		effort = c.opts.DefaultEffort
-	}
 	var thinking *anthropicThinking
 	var outCfg *anthropicOutputCfg
-	if effort != "" && effort != provider.ReasoningEffortNone {
-		if !isValidReasoningEffort(effort) {
-			return nil, fmt.Errorf("%w: reasoning effort %q is not one of low, medium, high, xhigh, max", ErrInvalidOptions, effort)
-		}
+	if reasoningEnabled {
 		thinking = &anthropicThinking{Type: "adaptive"}
 		if c.opts.ExposeReasoning || c.opts.OnReasoning != nil {
 			// The API omits thinking text by default; ExposeReasoning

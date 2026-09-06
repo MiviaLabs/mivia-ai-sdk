@@ -14,6 +14,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // transport is the remote operation set Client needs to run one task's
@@ -33,6 +35,10 @@ var ErrNoBaseURL = errors.New("a2aclient: baseURL is required")
 // ErrNoTransport reports a newFromTransport call whose tr is nil.
 // Test with errors.Is.
 var ErrNoTransport = errors.New("a2aclient: transport is required")
+
+// ErrNoCredentials reports a NewWithCredentials call whose credentials
+// are nil. Test with errors.Is.
+var ErrNoCredentials = errors.New("a2aclient: transport credentials are required")
 
 // ErrNoTaskID reports a Send call whose transport returned an empty
 // task id. Test with errors.Is.
@@ -74,16 +80,32 @@ type Client struct {
 	closeErr  error
 }
 
-// New builds a Client that talks to the A2A agent at baseURL. New
-// validates baseURL and opens the underlying a2a-go gRPC transport,
-// which holds a persistent connection. It returns an error, not a
-// partial Client, when baseURL is empty or the transport fails to
-// open. The caller must call Close when done with the Client.
+// New builds a Client that talks to the A2A agent at baseURL over a
+// plaintext gRPC channel. It suits loopback and otherwise trusted
+// links only. New validates baseURL and opens the underlying a2a-go
+// gRPC transport, which holds a persistent connection. It returns an
+// error, not a partial Client, when baseURL is empty or the transport
+// fails to open. The caller must call Close when done with the
+// Client. Use NewWithCredentials for a remote link that needs TLS.
 func New(baseURL string) (*Client, error) {
+	return NewWithCredentials(baseURL, insecure.NewCredentials())
+}
+
+// NewWithCredentials builds a Client that talks to the A2A agent at
+// baseURL over a gRPC channel secured by creds. Pass a TLS
+// credentials value for a remote link; nil fails with
+// ErrNoCredentials, never an implicit dial mode. It returns an error,
+// not a partial Client, when baseURL is empty, creds is nil, or the
+// transport fails to open. The caller must call Close when done with
+// the Client.
+func NewWithCredentials(baseURL string, creds credentials.TransportCredentials) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, ErrNoBaseURL
 	}
-	tr, err := newGRPCTransport(baseURL)
+	if creds == nil {
+		return nil, ErrNoCredentials
+	}
+	tr, err := newGRPCTransport(baseURL, creds)
 	if err != nil {
 		return nil, fmt.Errorf("a2aclient: open transport: %w", err)
 	}

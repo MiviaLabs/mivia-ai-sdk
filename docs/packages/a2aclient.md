@@ -39,9 +39,14 @@ test seam.
 ## Functions
 
 - `New(baseURL)` — validates `baseURL` and opens the underlying
-  a2a-go gRPC transport, which holds a persistent connection. Returns
-  an error, not a partial `Client`, when `baseURL` is empty or the
-  transport fails to open.
+  a2a-go gRPC transport over a plaintext channel, which holds a
+  persistent connection. It suits loopback and trusted links only.
+  Returns an error, not a partial `Client`, when `baseURL` is empty
+  or the transport fails to open.
+- `NewWithCredentials(baseURL, creds)` — the same construction with
+  caller-supplied gRPC transport credentials. Pass a TLS credentials
+  value for a remote link. A nil `creds` returns
+  `ErrNoCredentials`; the constructor never guesses a dial mode.
 
 ## Methods
 

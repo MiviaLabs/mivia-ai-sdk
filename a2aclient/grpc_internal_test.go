@@ -9,6 +9,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	a2acore "github.com/a2aproject/a2a-go/a2a"
 	a2asdk "github.com/a2aproject/a2a-go/a2aclient"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // fakeSDKTransport implements a2asdk.Transport for the subset of
@@ -37,7 +38,7 @@ func (f *fakeSDKTransport) Destroy() error {
 }
 
 func TestNewGRPCTransportDialsLazilyAndCloses(t *testing.T) {
-	tr, err := newGRPCTransport("dns:///agent.example.invalid:443")
+	tr, err := newGRPCTransport("dns:///agent.example.invalid:443", insecure.NewCredentials())
 	if err != nil {
 		t.Fatalf("newGRPCTransport: %v", err)
 	}

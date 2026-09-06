@@ -23,14 +23,15 @@ package's own tests, the same convention `durablefence` uses. See
   failure. `stop` is idempotent: it runs its shutdown exactly once even
   under repeated calls.
 - `loopbackExecutor.Execute(ctx, reqCtx, queue)` — completes every task
-  it receives. It reads the payload string from the request's first
-  `a2acore.DataPart`, signs a fresh `envelope.Message` restating that
-  payload, binds the response envelope's `ID` to the message ID it
-  mints and its `ThreadID` to the server-assigned `ContextID`, maps the
-  signed envelope to an A2A data part, and writes a final
-  `TaskStateCompleted` status event carrying it. Returns an error when
-  the request carries no message or no payload part, or when signing
-  or the A2A part mapping fails.
+  it receives. It decodes the request's first `a2acore.TextPart` into
+  an `envelope.Message`, signs a fresh `envelope.Message` restating
+  that message's `Payload` and `MaxHops`, binds the response
+  envelope's `ID` to the message ID it mints and its `ThreadID` to the
+  server-assigned `ContextID`, maps the signed envelope to an A2A text
+  part, and writes a final `TaskStateCompleted` status event carrying
+  it. Returns an error when the request carries no message or no text
+  part, when the text fails to decode, or when signing or the A2A
+  part mapping fails.
 - `loopbackExecutor.Cancel(ctx, reqCtx, queue)` — writes a final
   `TaskStateCanceled` status event with no message body. `Loopback`'s
   own server flow never reaches this path; it exists to satisfy
@@ -47,9 +48,10 @@ package's own tests, the same convention `durablefence` uses. See
 - `stop` is safe to call more than once: a `sync.Once` guards the
   underlying `grpc.Server.Stop` call and the wait for the serving
   goroutine to exit.
-- `Execute` never echoes anything from the request beyond the payload
-  string it was asked to restate; it mints its own message ID and
-  reads the context ID assigned by `reqCtx.TaskInfo()`.
+- `Execute` never echoes anything from the request beyond the
+  `Payload` and `MaxHops` it was asked to restate; it mints its own
+  message ID and reads the context ID assigned by
+  `reqCtx.TaskInfo()`.
 
 ## Cross-references
 

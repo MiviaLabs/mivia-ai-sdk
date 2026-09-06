@@ -15,9 +15,10 @@ import (
 func BenchmarkSendStatusResult(b *testing.B) {
 	msg := signedMessage(b)
 	tr := &stubTransport{
-		taskID: "task-bench",
-		states: []State{StateCompleted},
-		result: mappedResult(b, msg),
+		taskID:      "task-bench",
+		states:      []State{StateCompleted},
+		resultState: StateCompleted,
+		result:      mappedResult(b, msg),
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
@@ -54,9 +55,10 @@ func BenchmarkSendStatusResult(b *testing.B) {
 func BenchmarkAllocsSendStatusResult(b *testing.B) {
 	msg := signedMessage(b)
 	tr := &stubTransport{
-		taskID: "task-bench-allocs",
-		states: []State{StateCompleted},
-		result: mappedResult(b, msg),
+		taskID:      "task-bench-allocs",
+		states:      []State{StateCompleted},
+		resultState: StateCompleted,
+		result:      mappedResult(b, msg),
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {

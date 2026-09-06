@@ -1,12 +1,9 @@
 package a2aclient
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"strconv"
-	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	a2acore "github.com/a2aproject/a2a-go/a2a"
@@ -34,18 +31,9 @@ var ErrNoTask = errors.New("a2aclient: send did not return a task")
 // errors.Is.
 var ErrNoResultMessage = errors.New("a2aclient: task carries no result message")
 
-// ErrNoDataPart reports a Result call whose result message carries no
-// DataPart. Test with errors.Is.
-var ErrNoDataPart = errors.New("a2aclient: result message carries no data part")
-
-// numPrefix marks a string that carries a JSON number the proto
-// struct hop cannot hold in a float64. dataFromRaw encodes, and
-// dataFromParts restores. The marker is in-band, so a message whose
-// own string value equals numPrefix plus a lossy literal is
-// indistinguishable from an encoded number; restoreNumbers rewrites
-// it. That class is degenerate input, and the failure is a decode
-// error, never silent corruption.
-const numPrefix = "urn:mivia:json-number:"
+// ErrNoTextPart reports a Result call whose result message carries no
+// TextPart. Test with errors.Is.
+var ErrNoTextPart = errors.New("a2aclient: result message carries no text part")
 
 // newGRPCTransport dials baseURL with creds and wraps the resulting
 // connection in a2a-go's gRPC transport. The dial is lazy
@@ -60,17 +48,14 @@ func newGRPCTransport(baseURL string, creds credentials.TransportCredentials) (*
 }
 
 // Send maps mapped onto an a2a-go message and calls SendMessage. The
-// remote agent's response must be a Task; Send returns its id.
+// remote agent's response must be a Task; Send returns its id. Send
+// reads only Part.Text and parses no part content.
 func (g *grpcTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, error) {
-	data, err := dataFromRaw(mapped.Part.Data)
-	if err != nil {
-		return "", err
-	}
 	msg := &a2acore.Message{
 		ID:        a2acore.NewMessageID(),
 		ContextID: mapped.ContextID,
 		Role:      a2acore.MessageRoleUser,
-		Parts:     a2acore.ContentParts{a2acore.DataPart{Data: data}},
+		Parts:     a2acore.ContentParts{a2acore.TextPart{Text: mapped.Part.Text}},
 	}
 	result, err := g.tr.SendMessage(ctx, &a2acore.MessageSendParams{Message: msg})
 	if err != nil {
@@ -94,27 +79,57 @@ func (g *grpcTransport) State(ctx context.Context, taskID string) (State, error)
 	return stateFromTaskState(task.Status.State), nil
 }
 
-// Result fetches the task named by taskID and maps its result message
-// onto a Mapped value.
-func (g *grpcTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, error) {
+// Result performs one GetTask and maps the task's result message onto
+// a Mapped value. It returns the task's state beside the part, so the
+// caller needs no second fetch to gate on a terminal state.
+func (g *grpcTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, State, error) {
 	task, err := g.tr.GetTask(ctx, &a2acore.TaskQueryParams{ID: a2acore.TaskID(taskID)})
 	if err != nil {
-		return a2a.Mapped{}, err
+		return a2a.Mapped{}, StateUnspecified, err
 	}
 	msg := resultMessage(task)
 	if msg == nil {
-		return a2a.Mapped{}, ErrNoResultMessage
+		return a2a.Mapped{}, StateUnspecified, ErrNoResultMessage
 	}
-	data, err := dataFromParts(msg.Parts)
+	part, err := mappedFromParts(msg.Parts)
 	if err != nil {
-		return a2a.Mapped{}, err
+		return a2a.Mapped{}, StateUnspecified, err
 	}
-	return a2a.Mapped{Part: a2a.Part{Data: data}, ContextID: task.ContextID, MessageID: msg.ID}, nil
+	mapped := a2a.Mapped{Part: part, ContextID: task.ContextID, MessageID: msg.ID}
+	return mapped, stateFromTaskState(task.Status.State), nil
 }
 
 // Close forwards to the underlying gRPC transport's teardown call.
 func (g *grpcTransport) Close() error {
 	return g.tr.Destroy()
+}
+
+// mappedFromParts maps parts onto a Part. The first TextPart fills
+// Part.Text. With no TextPart present, the first DataPart re-marshals
+// through json.Marshal into Part.Data, so FromPart's fallback decodes
+// an old peer until v0.4.0. That re-marshal passes through float64
+// and cannot restore the deleted numPrefix markers; a legacy marker
+// string fails the closed decode, and the sender must upgrade within
+// the window. See docs/plans/a2aclient.md's text-carrier addendum.
+func mappedFromParts(parts a2acore.ContentParts) (a2a.Part, error) {
+	var data a2acore.DataPart
+	hasData := false
+	for _, p := range parts {
+		if tp, ok := p.(a2acore.TextPart); ok {
+			return a2a.Part{Text: tp.Text}, nil
+		}
+		if dp, ok := p.(a2acore.DataPart); ok && !hasData {
+			data, hasData = dp, true
+		}
+	}
+	if !hasData {
+		return a2a.Part{}, ErrNoTextPart
+	}
+	body, err := json.Marshal(data.Data)
+	if err != nil {
+		return a2a.Part{}, err
+	}
+	return a2a.Part{Data: body}, nil
 }
 
 // resultMessage picks the message that carries a task's result: the
@@ -128,113 +143,6 @@ func resultMessage(task *a2acore.Task) *a2acore.Message {
 		return task.History[n-1]
 	}
 	return nil
-}
-
-// dataFromRaw unmarshals raw envelope JSON into the map[string]any
-// shape a2a-go's DataPart carries. It decodes numbers as
-// json.Number. A number float64 cannot hold exactly travels as a
-// numPrefix string: the proto struct hop converts every value
-// through float64 and would round it, and a rounded integer breaks
-// the remote's signature check. Small numbers stay plain numbers.
-func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	var m map[string]any
-	if err := dec.Decode(&m); err != nil {
-		return nil, err
-	}
-	encodeInexactNumbers(m)
-	return m, nil
-}
-
-// dataFromParts finds the first DataPart in parts and re-marshals its
-// content back to raw JSON. It restores the numPrefix strings
-// dataFromRaw encoded, so the re-marshaled bytes carry the same
-// integer literals the sender signed.
-func dataFromParts(parts a2acore.ContentParts) (json.RawMessage, error) {
-	for _, p := range parts {
-		if dp, ok := p.(a2acore.DataPart); ok {
-			restoreNumbers(dp.Data)
-			return json.Marshal(dp.Data)
-		}
-	}
-	return nil, ErrNoDataPart
-}
-
-// encodeInexactNumbers walks v in place. Each json.Number whose
-// literal does not survive a float64 round trip becomes a numPrefix
-// string; exactly representable numbers keep their type.
-func encodeInexactNumbers(v any) {
-	switch t := v.(type) {
-	case map[string]any:
-		for k, e := range t {
-			if n, ok := e.(json.Number); ok && !float64Exact(n.String()) {
-				t[k] = numPrefix + n.String()
-			} else {
-				encodeInexactNumbers(e)
-			}
-		}
-	case []any:
-		for i, e := range t {
-			if n, ok := e.(json.Number); ok && !float64Exact(n.String()) {
-				t[i] = numPrefix + n.String()
-			} else {
-				encodeInexactNumbers(e)
-			}
-		}
-	}
-}
-
-// float64Exact reports whether the JSON number literal s parses to a
-// float64 whose shortest exact decimal form equals s.
-func float64Exact(s string) bool {
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return false
-	}
-	return strconv.FormatFloat(f, 'f', -1, 64) == s
-}
-
-// lossyNumberLiteral reports the JSON number literal s carries when a
-// float64 round trip loses it. encodeInexactNumbers mints exactly this
-// class, so restoreNumbers rewrites only these strings; a plain string
-// value that happens to carry the marker prefix stays a string.
-func lossyNumberLiteral(s string) (json.Number, bool) {
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil || strconv.FormatFloat(f, 'f', -1, 64) == s {
-		return "", false
-	}
-	return json.Number(s), true
-}
-
-// restoreNumbers walks v in place. Each string a float64 round trip
-// cannot hold becomes the json.Number literal it carries; that is the
-// only string class encodeInexactNumbers mints. A structpb hop
-// delivers maps and slices as fresh values, so the walk mutates the
-// transport-local copy.
-func restoreNumbers(v any) {
-	switch t := v.(type) {
-	case map[string]any:
-		for k, e := range t {
-			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
-				if n, ok := lossyNumberLiteral(strings.TrimPrefix(s, numPrefix)); ok {
-					t[k] = n
-				}
-			} else {
-				restoreNumbers(e)
-			}
-		}
-	case []any:
-		for i, e := range t {
-			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
-				if n, ok := lossyNumberLiteral(strings.TrimPrefix(s, numPrefix)); ok {
-					t[i] = n
-				}
-			} else {
-				restoreNumbers(e)
-			}
-		}
-	}
 }
 
 // stateFromTaskState maps an a2a-go TaskState onto a State. It names

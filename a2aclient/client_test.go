@@ -143,6 +143,39 @@ func TestSendPropagatesTransportFailure(t *testing.T) {
 	}
 }
 
+// TestSendRejectsUnsignedMessage proves Send enforces the signed
+// message rule itself: a valid but unsigned message fails with
+// ErrUnsigned before the transport sees any call.
+func TestSendRejectsUnsignedMessage(t *testing.T) {
+	tr := &stubTransport{taskID: "task-1"}
+	c, err := newFromTransport(testBaseURL, tr)
+	if err != nil {
+		t.Fatalf("newFromTransport: %v", err)
+	}
+	unsigned := envelope.Message{
+		Version:    envelope.Version,
+		ID:         "msg-1",
+		ThreadID:   "thread-1",
+		Intent:     envelope.IntentAssert,
+		Epistemic:  envelope.EpistemicAssumed,
+		Confidence: 0.5,
+		Payload:    "hello remote agent",
+	}
+	h, err := c.Send(context.Background(), unsigned)
+	if err == nil {
+		t.Fatal("Send accepted an unsigned message")
+	}
+	if !errors.Is(err, ErrUnsigned) {
+		t.Fatalf("Send error = %v, want errors.Is ErrUnsigned", err)
+	}
+	if h != (TaskHandle{}) {
+		t.Fatal("Send returned a non-zero TaskHandle on an unsigned message")
+	}
+	if got := tr.sendCalls.Load(); got != 0 {
+		t.Fatalf("transport Send called %d times, want 0", got)
+	}
+}
+
 func TestStatusReturnsEachStateValue(t *testing.T) {
 	cases := []State{
 		StateSubmitted,
@@ -209,7 +242,7 @@ func TestResultRejectsZeroTaskHandle(t *testing.T) {
 }
 
 func TestResultRejectsNonTerminalState(t *testing.T) {
-	tr := &stubTransport{taskID: "task-1", states: []State{StateWorking}}
+	tr := &stubTransport{taskID: "task-1", resultState: StateWorking}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
 		t.Fatalf("newFromTransport: %v", err)
@@ -231,12 +264,12 @@ func TestResultRejectsTamperedSignature(t *testing.T) {
 	// Tamper the signed payload after mapping; the signature no longer
 	// matches the content, so VerifySignature must reject it.
 	tampered := []byte(`{"version":"v1","id":"msg-1","thread_id":"thread-1","intent":"assert","epistemic":"assumed","confidence":0.5,"payload":"tampered","signer":"` + msg.Signer + `","signature":"` + msg.Signature + `"}`)
-	mapped.Part.Data = tampered
+	mapped.Part.Text = string(tampered)
 
 	tr := &stubTransport{
-		taskID: "task-1",
-		states: []State{StateCompleted},
-		result: mapped,
+		taskID:      "task-1",
+		resultState: StateCompleted,
+		result:      mapped,
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
@@ -263,9 +296,9 @@ func TestResultRejectsTamperedSignature(t *testing.T) {
 
 func TestResultPropagatesTransportFailure(t *testing.T) {
 	tr := &stubTransport{
-		taskID:    "task-1",
-		states:    []State{StateCompleted},
-		resultErr: errors.New("connection reset"),
+		taskID:      "task-1",
+		resultState: StateCompleted,
+		resultErr:   errors.New("connection reset"),
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
@@ -298,25 +331,12 @@ func TestSendRejectsEmptyTaskID(t *testing.T) {
 	}
 }
 
-func TestResultPropagatesStateFailure(t *testing.T) {
-	tr := &stubTransport{taskID: "task-1", stateErr: errors.New("unavailable")}
-	c, err := newFromTransport(testBaseURL, tr)
-	if err != nil {
-		t.Fatalf("newFromTransport: %v", err)
-	}
-	h, err := c.Send(context.Background(), signedMessage(t))
-	if err != nil {
-		t.Fatalf("Send: %v", err)
-	}
-	if _, err := c.Result(context.Background(), h); err == nil {
-		t.Fatal("Result accepted a State failure")
-	}
-}
-
 func TestResultRejectsUnmappableData(t *testing.T) {
 	tr := &stubTransport{
-		taskID: "task-1",
-		states: []State{StateCompleted},
+		taskID:      "task-1",
+		resultState: StateCompleted,
+		// Data-only, with no Text: with the text carrier shipped this
+		// stub proves FromPart's Data fallback decode fails closed.
 		result: a2a.Mapped{Part: a2a.Part{Data: []byte("not json")}},
 	}
 	c, err := newFromTransport(testBaseURL, tr)
@@ -329,6 +349,36 @@ func TestResultRejectsUnmappableData(t *testing.T) {
 	}
 	if _, err := c.Result(context.Background(), h); err == nil {
 		t.Fatal("Result accepted data a2a.FromPart cannot map")
+	}
+}
+
+// TestResultFetchesTaskOnce proves one Client.Result call performs
+// one transport read: the transport's Result runs exactly once and
+// its State never runs, so no second round trip can hide behind the
+// terminal-state check.
+func TestResultFetchesTaskOnce(t *testing.T) {
+	msg := signedMessage(t)
+	tr := &stubTransport{
+		taskID:      "task-1",
+		resultState: StateCompleted,
+		result:      mappedResult(t, msg),
+	}
+	c, err := newFromTransport(testBaseURL, tr)
+	if err != nil {
+		t.Fatalf("newFromTransport: %v", err)
+	}
+	h, err := c.Send(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if _, err := c.Result(context.Background(), h); err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if got := tr.resultCalls.Load(); got != 1 {
+		t.Fatalf("transport Result called %d times, want 1", got)
+	}
+	if got := tr.stateCalls.Load(); got != 0 {
+		t.Fatalf("transport State called %d times, want 0", got)
 	}
 }
 
@@ -396,7 +446,7 @@ func TestStatusEnforcesDeadlineBetweenPolls(t *testing.T) {
 // ignores ctx entirely, so this test can only pass if Client.Result
 // performs its own ctx.Err() check before calling the transport.
 func TestResultEnforcesExpiredDeadlineItself(t *testing.T) {
-	tr := &stubTransport{taskID: "task-1", states: []State{StateCompleted}, ignoreCtx: true}
+	tr := &stubTransport{taskID: "task-1", resultState: StateCompleted, ignoreCtx: true}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
 		t.Fatalf("newFromTransport: %v", err)

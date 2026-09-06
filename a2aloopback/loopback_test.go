@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"strings"
 	"testing"
 
 	a2acore "github.com/a2aproject/a2a-go/a2a"
@@ -49,7 +50,7 @@ func signedMessage(t *testing.T) envelope.Message {
 // TestLoopbackRoundTrip starts Loopback, sends one signed message
 // through a real a2aclient.Client, and asserts the reply verifies and
 // carries the same payload. This exercises Loopback,
-// loopbackExecutor.Execute, and loopbackPayload's success path.
+// loopbackExecutor.Execute, and loopbackRequest's success path.
 func TestLoopbackRoundTrip(t *testing.T) {
 	addr, stop, err := Loopback()
 	if err != nil {
@@ -93,6 +94,77 @@ func TestLoopbackRoundTrip(t *testing.T) {
 	}
 	if got.Payload != sent.Payload {
 		t.Fatalf("Result payload = %q, want %q", got.Payload, sent.Payload)
+	}
+}
+
+// TestLoopbackRoundTripKeepsLargeIntegers sends a message with MaxHops
+// 9007199254740993 through the real loopback hop, polls to completion,
+// and calls Result. The executor restates MaxHops in the response
+// envelope, so VerifySignature passes only when the text carrier kept
+// the integer byte-exact across the gRPC hop in both directions. This
+// is the replacement fidelity proof for the deleted a2aclient
+// proto-hop tests.
+func TestLoopbackRoundTripKeepsLargeIntegers(t *testing.T) {
+	addr, stop, err := Loopback()
+	if err != nil {
+		t.Fatalf("Loopback: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := stop(); err != nil {
+			t.Errorf("stop: %v", err)
+		}
+	})
+
+	c, err := a2aclient.New(addr)
+	if err != nil {
+		t.Fatalf("a2aclient.New: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	})
+
+	const maxHops = 9007199254740993
+	_, key, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	sent, err := envelope.Sign(key, envelope.Message{
+		Version:    envelope.Version,
+		ID:         "msg-large-1",
+		ThreadID:   "thread-1",
+		Intent:     envelope.IntentAssert,
+		Epistemic:  envelope.EpistemicAssumed,
+		Confidence: 0.5,
+		MaxHops:    maxHops,
+		Payload:    "hop fidelity",
+	})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	h, err := c.Send(context.Background(), sent)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	state, err := c.Status(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if state != a2aclient.StateCompleted {
+		t.Fatalf("Status = %s immediately after Send, want %s", state, a2aclient.StateCompleted)
+	}
+
+	got, err := c.Result(context.Background(), h)
+	if err != nil {
+		t.Fatalf("Result: %v", err)
+	}
+	if err := got.VerifySignature(); err != nil {
+		t.Fatalf("VerifySignature after the real gRPC hop: %v", err)
+	}
+	if got.MaxHops != maxHops {
+		t.Fatalf("MaxHops = %d, want %d", got.MaxHops, maxHops)
 	}
 }
 
@@ -147,20 +219,33 @@ func TestLoopbackExecutorCancel(t *testing.T) {
 }
 
 // TestLoopbackExecutorExecuteRejectsMissingContextID exercises
-// Execute's a2a.ToPart error branch: an empty ContextID maps to an
-// empty envelope.Message.ThreadID, which Validate rejects. Unlike
-// loopbackPayload's two branches, this path is reachable through the
-// real a2a-go server: a malformed RequestContext with no ContextID.
+// Execute's sign error branch. Sign validates before it signs, and the
+// empty ContextID gives the response envelope an empty ThreadID, which
+// Validate rejects. The request's TextPart carries a valid encoded
+// envelope, so the loopbackRequest decode step succeeds and the
+// failure lands in the sign step.
 func TestLoopbackExecutorExecuteRejectsMissingContextID(t *testing.T) {
 	_, key, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		t.Fatalf("GenerateKey: %v", err)
 	}
 	e := &loopbackExecutor{key: key}
+	encoded, err := envelope.Message{
+		Version:    envelope.Version,
+		ID:         "msg-1",
+		ThreadID:   "thread-1",
+		Intent:     envelope.IntentAssert,
+		Epistemic:  envelope.EpistemicAssumed,
+		Confidence: 0.5,
+		Payload:    "hello",
+	}.Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
 	reqCtx := &a2asrv.RequestContext{
 		TaskID: a2acore.NewTaskID(),
 		Message: &a2acore.Message{
-			Parts: a2acore.ContentParts{a2acore.DataPart{Data: map[string]any{"payload": "hello"}}},
+			Parts: a2acore.ContentParts{a2acore.TextPart{Text: string(encoded)}},
 		},
 	}
 	if err := e.Execute(context.Background(), reqCtx, nil); err == nil {
@@ -168,12 +253,20 @@ func TestLoopbackExecutorExecuteRejectsMissingContextID(t *testing.T) {
 	}
 }
 
-// TestDataFromRawRejectsMalformedJSON exercises dataFromRaw's own
-// json.Unmarshal error branch directly; no real caller produces this
-// input, since a2a.ToPart's own Encode always emits valid JSON.
-func TestDataFromRawRejectsMalformedJSON(t *testing.T) {
-	if _, err := dataFromRaw([]byte("{not json")); err == nil {
-		t.Fatal("dataFromRaw with malformed JSON succeeded, want an error")
+// TestLoopbackRequestRejectsMalformedText covers loopbackRequest's
+// decode error branch: a TextPart whose text is not envelope JSON
+// returns the decode error, wrapped, not a silent zero Message.
+func TestLoopbackRequestRejectsMalformedText(t *testing.T) {
+	reqCtx := &a2asrv.RequestContext{
+		TaskID:  a2acore.NewTaskID(),
+		Message: &a2acore.Message{Parts: a2acore.ContentParts{a2acore.TextPart{Text: "{not json"}}},
+	}
+	_, err := loopbackRequest(reqCtx)
+	if err == nil {
+		t.Fatal("loopbackRequest accepted malformed text, want an error")
+	}
+	if !strings.Contains(err.Error(), "loopback: decode request") {
+		t.Fatalf("error = %v, want the wrapped decode error", err)
 	}
 }
 

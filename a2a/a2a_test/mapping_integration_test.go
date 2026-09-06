@@ -80,3 +80,44 @@ func TestSignedMessageRoundTripsThroughPart(t *testing.T) {
 		t.Fatalf("round-tripped message differs from the original:\ngot:  %+v\nwant: %+v", got, signed)
 	}
 }
+
+// TestSignedRoundTripKeepsLargeIntegers proves the text carrier keeps
+// an integer above 2^53 exact across a signed round trip. The
+// signature covers the canonical JSON of max_hops, so a rounded value
+// breaks VerifySignature; the assertion below fails first if the
+// value itself drifts.
+func TestSignedRoundTripKeepsLargeIntegers(t *testing.T) {
+	_, key, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	const maxHops = 9007199254740993
+	signed, err := envelope.Sign(key, envelope.Message{
+		Version:    envelope.Version,
+		ID:         "msg-large-1",
+		ThreadID:   "thread-1",
+		Intent:     envelope.IntentAssert,
+		Epistemic:  envelope.EpistemicAssumed,
+		Confidence: 0.5,
+		MaxHops:    maxHops,
+		Payload:    "hop fidelity",
+	})
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+
+	mapped, err := a2a.ToPart(signed)
+	if err != nil {
+		t.Fatalf("ToPart: %v", err)
+	}
+	got, err := a2a.FromPart(mapped)
+	if err != nil {
+		t.Fatalf("FromPart: %v", err)
+	}
+	if err := got.VerifySignature(); err != nil {
+		t.Fatalf("VerifySignature: %v", err)
+	}
+	if got.MaxHops != maxHops {
+		t.Fatalf("MaxHops = %d, want %d", got.MaxHops, maxHops)
+	}
+}

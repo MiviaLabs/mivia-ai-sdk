@@ -43,18 +43,21 @@ test seam.
   persistent connection. It suits loopback and trusted links only.
   Returns an error, not a partial `Client`, when `baseURL` is empty
   or the transport fails to open.
-- `NewWithCredentials(baseURL, creds)` — the same construction with
-  caller-supplied gRPC transport credentials. Pass a TLS credentials
-  value for a remote link. A nil `creds` returns
-  `ErrNoCredentials`; the constructor never guesses a dial mode.
+- `NewWithTLS(baseURL, cfg)` — the same construction with a
+  `crypto/tls` config for a remote link. A nil `cfg` returns
+  `ErrNoTLSConfig`; the constructor never guesses a dial mode. `New`
+  dials plaintext itself and no longer delegates to this
+  constructor.
 
 ## Methods
 
 - `(*Client) Close() error` — releases the resources `New` opened.
   Idempotent: a second call returns nil.
 - `(*Client) Send(ctx, msg) (TaskHandle, error)` — maps `msg` to an
-  A2A part through `a2a.ToPart`, then sends it as a new task. `msg`
-  must already be signed. Returns an error and a zero `TaskHandle`,
+  A2A part through `a2a.ToPart`, then sends it as a new task. Send
+  rejects an empty `msg.Signer` with `ErrUnsigned` before it maps
+  and before the transport touches the network: Send performs no
+  signing of its own. Returns an error and a zero `TaskHandle`,
   never a partial one, on a transport failure or a canceled or
   expired `ctx`.
 - `(*Client) Status(ctx, h) (State, error)` — reads the current state
@@ -62,10 +65,12 @@ test seam.
   or expired `ctx` returns that `ctx` error, unwrapped.
 - `(*Client) Result(ctx, h) (envelope.Message, error)` — fetches the
   task's output and maps it back through `a2a.FromPart`, then calls
-  `VerifySignature` on the result before returning it. Returns an
-  error, not a partial `Message`, when the task is not yet terminal,
-  when `FromPart` fails, when the signature check fails, or when
-  `ctx` is canceled or expired.
+  `VerifySignature` on the result before returning it. One transport
+  call returns the mapped part and the task's state together, so
+  Result performs exactly one fetch per call. Returns an error, not
+  a partial `Message`, when the task is not yet terminal, when
+  `FromPart` fails, when the signature check fails, or when `ctx` is
+  canceled or expired.
 
 ## Invariants
 
@@ -105,6 +110,9 @@ caller matches one with `errors.Is`.
   wraps it, with the task's current state in the message, when the
   task has not yet reached a terminal state. Pinned by
   `TestResultRejectsNonTerminalState` in `a2aclient/client_test.go`.
+- `ErrUnsigned` (`"a2aclient: message must be signed"`): `Send`
+  returns it when `msg.Signer` is empty. Pinned by
+  `TestSendRejectsUnsignedMessage` in `a2aclient/client_test.go`.
 - `ErrSignatureCheckFailed` (`"a2aclient: signature check failed"`):
   `Result` wraps it, alongside the underlying `VerifySignature` error,
   when the mapped message's signature fails after the remote hop.
@@ -122,11 +130,15 @@ caller matches one with `errors.Is`.
   returns it when the task carries no status message and no history
   entry. Pinned by `TestGRPCTransportResultRejectsNoMessage` in
   `a2aclient/grpc_internal_test.go`.
-- `ErrNoDataPart` (`"a2aclient: result message carries no data part"`,
+- `ErrNoTextPart` (`"a2aclient: result message carries no text part"`,
   in `a2aclient/grpc.go`): the internal gRPC transport's `Result`
-  returns it when the result message carries no `DataPart`. Pinned by
-  `TestGRPCTransportResultRejectsNoDataPart` in
+  returns it when the result message carries no `TextPart`. Pinned by
+  `TestGRPCTransportResultRejectsNoTextPart` in
   `a2aclient/grpc_internal_test.go`.
+- `ErrNoTLSConfig` (`"a2aclient: TLS config is required"`): `NewWithTLS`
+  returns it when `cfg` is nil. Pinned by
+  `TestNewWithTLSRejectsBadInput` in
+  `a2aclient/grpc_tls_internal_test.go`.
 
 ## Why this shape
 

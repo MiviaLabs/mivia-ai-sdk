@@ -250,3 +250,88 @@ See `docs/plans/a2aclient.md`'s addendum for the exact sentence and
 layout-bullet edits this plan needs in `AGENTS.md`, applied by the
 builder in the same change as the code, per that file's own
 write-scope rule.
+
+## Addendum: the loopback speaks text
+
+Status: shipped.
+
+### Addendum goal
+
+Drop this package's `dataFromRaw` copy. Carry requests and responses
+as `TextPart` values, matching the `a2a` and `a2aclient` text
+carrier. Restate the request's `MaxHops` in the response, so a live
+round trip proves integer fidelity end to end.
+
+### Addendum scope
+
+`a2aloopback/loopback.go`:
+
+- Delete `dataFromRaw`. Its only callers are `Execute` and the
+  malformed-JSON test this addendum deletes.
+- Replace `loopbackPayload` with `loopbackRequest`. It finds the
+  request's first `a2acore.TextPart` and unmarshals its text into an
+  `envelope.Message`. The decoded struct is the clean read: the
+  executor needs the request's fields, and unmarshaling reuses the
+  envelope's own parser instead of a substring search. A nil request
+  message keeps its existing error. A request with no `TextPart`
+  keeps the existing "no payload" error. A text value that fails to
+  unmarshal returns the decode error wrapped with `%w`.
+- `Execute` restates `req.Payload` and `req.MaxHops` in the response
+  envelope. It then maps the signed response with `a2a.ToPart` and
+  wraps `mapped.Part.Text` in an `a2acore.TextPart`. Restating
+  `MaxHops` puts an integer above 2^53 into the response bytes, so
+  the caller's post-hop signature check proves byte fidelity across a
+  real gRPC hop in both directions. Update the doc comments of
+  `loopbackExecutor` and `Execute` to name both restated fields.
+- The two error branches of `loopbackRequest` that no real caller can
+  reach stay uncovered by design. The reasoning in this plan's Tests
+  section carries forward: `a2a.ToPart` always emits a decodable
+  text part. The new decode-error branch is reachable and needs its
+  own test, named below.
+- Update `docs/packages/a2aloopback.md` in the same commit: the
+  `Execute` bullet, the echo invariant that names the payload string,
+  and the `a2acore.DataPart` mention.
+
+`policy/layers.json` needs no change. `policy/thirdparty.json` needs
+no row change: this package keeps both granted modules, and
+`loopback.go` adds no import outside the standard library and the
+already-granted modules.
+
+### Addendum tests
+
+All test names below live in `a2aloopback/loopback_test.go`, package
+`a2aloopback`:
+
+- `TestDataFromRawRejectsMalformedJSON`: delete. The helper it
+  exercises is gone.
+- `TestLoopbackRoundTripKeepsLargeIntegers`: new. It signs a message
+  with `MaxHops` 9007199254740993, sends it through `Loopback` with a
+  real `a2aclient.Client`, polls to completion, and calls `Result`.
+  It asserts `VerifySignature` passes and `MaxHops` equals
+  9007199254740993. This is the replacement fidelity proof for the
+  deleted `a2aclient` proto-hop tests.
+- `TestLoopbackRequestRejectsMalformedText`: new. A `TextPart` whose
+  text is not envelope JSON makes `loopbackRequest` return the decode
+  error. This covers the new error branch.
+- `TestLoopbackExecutorExecuteRejectsMissingContextID`: rework the
+  fixture from a `DataPart` to a `TextPart` carrying an encoded
+  envelope. `Sign` validates before it signs, so the empty
+  `ContextID` fails the sign step. Correct the test's comment to name
+  the sign step, not `ToPart`.
+- `TestLoopbackRoundTrip`, `TestLoopbackExecutorCancel`,
+  `TestLoopbackStopIsIdempotent`, and
+  `TestLoopbackRejectsKeyGenerationFailure` stay unchanged.
+
+### Addendum verification
+
+`make api-update` produces no diff. `Loopback` keeps its signature,
+`Execute` and `Cancel` keep theirs, and `loopbackRequest` is
+unexported. A non-empty `api/` diff is a failure.
+
+`python3 scripts/check_plan.py`, `check_deps.py`, `check_prose.py`,
+and `check_labels.py` pass. `make verify` passes, including the
+coverage floor at 85 for `a2aloopback`.
+
+The tampering trailer inventory for the slice's commit lives in
+`docs/plans/a2aclient.md`'s addendum. This package's share is the
+`TestDataFromRawRejectsMalformedJSON` deletion, already named there.

@@ -7,9 +7,9 @@ The exported surface below mirrors `api/a2a.txt`.
 ## Types
 
 - `Part` — one A2A v1.0 message part. A2A v1.0 has no `kind` field
-  and no separate part classes: one part carries text, raw bytes, a
-  url, or a data object. `Part` carries no message-level field.
-  Fields: `Text`, `Data` (`json.RawMessage`), `Raw`, `URL`.
+  and no separate part classes: one part carries text or a data
+  object. `Part` carries no message-level field. Fields: `Text`,
+  `Data` (`json.RawMessage`).
 - `Mapped` — the result of `ToPart` and the input to `FromPart`. It
   pairs a `Part` with the two A2A message-level fields `Part` cannot
   carry: `ContextID` (the envelope `ThreadID`) and `MessageID` (the
@@ -17,15 +17,18 @@ The exported surface below mirrors `api/a2a.txt`.
 
 ## Functions
 
-- `ToPart(m)` — builds `Part.Data` by calling `m.Encode` and wrapping
-  the result in `json.RawMessage`. `m.Encode` validates `m` before it
-  marshals, so `ToPart` returns an error, not a zero `Mapped`, on a
-  `Validate` failure. Signs nothing and does not modify `m`.
-- `FromPart(mapped)` — unmarshals `mapped.Part.Data` into an
-  `envelope.Message`, overwrites `ThreadID` with `mapped.ContextID`
-  and `ID` with `mapped.MessageID`, then calls `Validate` before
-  returning. Returns an error, not a partial `Message`, on a decode
-  or a `Validate` failure.
+- `ToPart(m)` — sets `Part.Text` to the exact bytes `m.Encode`
+  returns. `m.Encode` validates `m` before it marshals, so `ToPart`
+  returns an error, not a zero `Mapped`, on a `Validate` failure.
+  Signs nothing and does not modify `m`. `Data` stays empty.
+- `FromPart(mapped)` — unmarshals `mapped.Part.Text` into an
+  `envelope.Message`. An empty `Text` falls back to `Part.Data`, so
+  an old peer's data part still decodes until v0.4.0. `Text` wins
+  when both are set; both empty fails the decode. It then overwrites
+  `ThreadID` with `mapped.ContextID` and `ID` with
+  `mapped.MessageID`, then calls `Validate` before returning. Returns
+  an error, not a partial `Message`, on a decode or a `Validate`
+  failure.
 
 ## Invariants
 
@@ -35,16 +38,19 @@ The exported surface below mirrors `api/a2a.txt`.
   error. A malformed or invalid part never crosses the a2a boundary.
 - `FromPart` applies the `ContextID`/`MessageID` override before it
   calls `Validate`. The override wins over any `thread_id`/`id`
-  already embedded in `Part.Data`, even when the override empties an
-  otherwise-valid embedded message.
+  already embedded in `Part.Text` or a fallback `Part.Data`, even
+  when the override empties an otherwise-valid embedded message.
 
 ## Wire contract
 
-- `Part.Data` carries the exact bytes `envelope.Message.Encode`
-  produces. `FromPart` reads it with `encoding/json.Unmarshal`, not
-  `envelope.Decode`, because the `ContextID`/`MessageID` override must
-  run before `Validate`.
-- `Text`, `Raw`, and `URL` stay empty. `ToPart` sets only `Part.Data`.
+- `Part.Text` carries the exact bytes `envelope.Message.Encode`
+  produces. A proto string hop preserves those bytes byte-exact, so
+  integer literals above 2^53 survive a round trip. `FromPart` reads
+  it with `encoding/json.Unmarshal`, not `envelope.Decode`, because
+  the `ContextID`/`MessageID` override must run before `Validate`.
+- `ToPart` sets only `Part.Text`; `Data` stays empty. `FromPart`'s
+  `Data` fallback exists for one release, until v0.4.0, and dies in
+  the same change as `a2aclient`'s data-part fallback.
 - Conformance vectors live in `a2a/testdata/vectors/`, `valid_`
   prefixed. A vector pairs the source `envelope.Message` with its
   mapped `Part`, `ContextID`, and `MessageID`.
@@ -64,8 +70,9 @@ match them with `errors.Is`.
 
 - `ToPart` fails when `m.Validate()` fails, for example on an unset
   `Version` or an invalid `Intent`. Pinned by `a2a_test/mapping_test.go`.
-- `FromPart` fails when `mapped.Part.Data` does not unmarshal into an
-  `envelope.Message`. Pinned by `a2a_test/mapping_test.go`.
+- `FromPart` fails when `mapped.Part.Text`, or a fallback
+  `mapped.Part.Data`, does not unmarshal into an `envelope.Message`.
+  Pinned by `a2a_test/mapping_test.go`.
 - `FromPart` fails when the mapped message, after the `ContextID`/
   `MessageID` override, fails `Validate`. Pinned by
   `a2a_test/mapping_test.go`.

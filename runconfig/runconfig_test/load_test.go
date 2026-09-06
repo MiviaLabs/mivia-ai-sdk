@@ -60,7 +60,8 @@ func TestLoadRoundTrip(t *testing.T) {
 			"steps": [
 				{"id": "a", "to": "run", "payload": "hello", "tool": "grep"},
 				{"id": "b", "needs": ["a"], "to": "done", "when": "on_finished",
-				 "retry": {"max_attempts": 3, "base_delay": "1ms", "max_delay": "5ms"}},
+				 "retry": {"max_attempts": 3, "base_delay": "1ms", "max_delay": "5ms"},
+				 "internal": "flow"},
 				{"id": "c", "needs": ["b"], "to": "done", "when": "on_failed",
 				 "internal": "flow"}
 			],
@@ -109,6 +110,7 @@ func TestLoadRoundTrip(t *testing.T) {
 
 	want := []runconfig.Binding{
 		{Step: "a", Tool: "grep"},
+		{Step: "b", Kind: runconfig.FlowKind, Internal: true},
 		{Step: "c", Kind: runconfig.FlowKind, Internal: true},
 	}
 	if len(d.Bindings) != len(want) {
@@ -129,8 +131,8 @@ func TestLoadPanels(t *testing.T) {
 		]},
 		"plan": {
 			"steps": [
-				{"id": "a", "to": "done"},
-				{"id": "b", "to": "done", "needs": ["a"]}
+				{"id": "a", "to": "done", "internal": "flow"},
+				{"id": "b", "to": "done", "needs": ["a"], "internal": "flow"}
 			],
 			"panels": [["a"]]
 		},
@@ -139,6 +141,32 @@ func TestLoadPanels(t *testing.T) {
 	panels := d.Plan.Panels()
 	if len(panels) != 1 || len(panels[0]) != 1 || panels[0][0] != "a" {
 		t.Fatalf("panels = %+v", panels)
+	}
+}
+
+// TestLoadUnboundStepInsideTwoMemberPanel proves the panel exemption
+// to the binding rule: a step with no tool, internal, or sub binding
+// loads when its panel has two or more members. Members agree on To,
+// carry no PayloadFrom, and close no Needs inside the panel.
+func TestLoadUnboundStepInsideTwoMemberPanel(t *testing.T) {
+	d := loadDoc(t, `{
+		"machine": {"initial": "queued", "transitions": [
+			{"from": "queued", "to": "done", "trigger": "run"}
+		]},
+		"plan": {
+			"steps": [
+				{"id": "a", "to": "done", "tool": "grep"},
+				{"id": "b", "to": "done"}
+			],
+			"panels": [["a", "b"]]
+		},
+		"tools": ["grep"]
+	}`)
+	if len(d.Bindings) != 1 {
+		t.Fatalf("bindings = %+v, want one", d.Bindings)
+	}
+	if d.Bindings[0].Step != "a" || d.Bindings[0].Tool != "grep" {
+		t.Fatalf("binding = %+v, want step a bound to grep", d.Bindings[0])
 	}
 }
 
@@ -151,7 +179,7 @@ func TestLoadSubAndLoop(t *testing.T) {
 		"plan": {"steps": [{
 			"id": "outer", "to": "done",
 			"loop": {"max": 2},
-			"sub": {"steps": [{"id": "inner", "to": "done"}]}
+			"sub": {"steps": [{"id": "inner", "to": "done", "internal": "flow"}]}
 		}]},
 		"tools": []
 	}`)
@@ -163,8 +191,11 @@ func TestLoadSubAndLoop(t *testing.T) {
 		steps[0].Sub.Steps()[0].ID != "inner" {
 		t.Fatalf("sub = %+v", steps[0].Sub)
 	}
-	if len(d.Bindings) != 0 {
-		t.Fatalf("bindings = %+v, want none", d.Bindings)
+	if len(d.Bindings) != 1 {
+		t.Fatalf("bindings = %+v, want one", d.Bindings)
+	}
+	if b := d.Bindings[0]; b.Step != "inner" || !b.Internal || b.Kind != runconfig.FlowKind {
+		t.Fatalf("binding = %+v, want inner bound to flow", b)
 	}
 }
 
@@ -222,7 +253,7 @@ func TestLoadOptionsBudget(t *testing.T) {
 			"machine": {"initial": "q", "transitions": [
 				{"from": "q", "to": "d", "trigger": "r"}
 			]},
-			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"plan": {"steps": [{"id": "s", "to": "d", "internal": "flow"}]},
 			"options": {"budget": {"max_bytes": 200000, "max_events": 500}},
 			"tools": []
 		}`)
@@ -236,7 +267,7 @@ func TestLoadOptionsBudget(t *testing.T) {
 			"machine": {"initial": "q", "transitions": [
 				{"from": "q", "to": "d", "trigger": "r"}
 			]},
-			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"plan": {"steps": [{"id": "s", "to": "d", "internal": "flow"}]},
 			"options": {"room": "team"},
 			"tools": []
 		}`)
@@ -254,7 +285,7 @@ func TestLoadOptionsTrace(t *testing.T) {
 			"machine": {"initial": "q", "transitions": [
 				{"from": "q", "to": "d", "trigger": "r"}
 			]},
-			"plan": {"steps": [{"id": "s", "to": "d"}]},
+			"plan": {"steps": [{"id": "s", "to": "d", "internal": "flow"}]},
 			"options": {` + trace + `},
 			"tools": []
 		}`
@@ -286,7 +317,7 @@ func TestLoadUnknownFieldsIgnored(t *testing.T) {
 		"machine": {"initial": "q", "transitions": [
 			{"from": "q", "to": "d", "trigger": "r", "guard": "no"}
 		]},
-		"plan": {"steps": [{"id": "s", "to": "d", "future": 1}]},
+		"plan": {"steps": [{"id": "s", "to": "d", "future": 1, "internal": "flow"}]},
 		"extra": true,
 		"tools": []
 	}`)

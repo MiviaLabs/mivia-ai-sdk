@@ -43,16 +43,17 @@ func docWithInternal(kind, cfg, payload string) string {
 	}`
 }
 
-// docWithSection returns a document with one unbound step and the raw
-// internal section JSON, so a rejection row isolates one section key.
+// docWithSection returns a document with one step bound to the
+// declared external tool grep, plus the raw internal section JSON, so
+// a rejection row isolates one section key.
 func docWithSection(section string) string {
 	return `{
 		"machine": {"initial": "queued", "transitions": [
 			{"from": "queued", "to": "done", "trigger": "run"}
 		]},
-		"plan": {"steps": [{"id": "s1", "to": "done"}]},
+		"plan": {"steps": [{"id": "s1", "to": "done", "tool": "grep"}]},
 		"internal": ` + section + `,
-		"tools": []
+		"tools": ["grep"]
 	}`
 }
 

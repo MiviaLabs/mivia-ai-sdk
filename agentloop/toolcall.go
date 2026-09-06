@@ -204,7 +204,10 @@ func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, itera
 // DuplicateCallNotice; every other plan appends its dispatched
 // outcome, shaped against the turn's running byte budget. History
 // order, audit order, and the veto short-circuit therefore match the
-// serial path regardless of dispatch overlap.
+// serial path regardless of dispatch overlap. A veto or hard error
+// short-circuits at its own index; later calls the worker pool
+// already ran are appended and audited first, so an executed side
+// effect stays traceable.
 func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, bool, bool, error) {
 	runningTotal := 0
 	dispatched := 0
@@ -220,9 +223,17 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 		dispatched++
 		out := outcomes[i]
 		if out.err != nil {
+			history, err := l.recordRanOutcomes(ctx, history, plans[i+1:], outcomes[i+1:], iteration)
+			if err != nil {
+				return history, false, false, err
+			}
 			return history, false, false, out.err
 		}
 		if out.veto {
+			history, err := l.recordRanOutcomes(ctx, history, plans[i+1:], outcomes[i+1:], iteration)
+			if err != nil {
+				return history, false, false, err
+			}
 			return history, true, false, nil
 		}
 		if errors.Is(out.reported, tools.ErrUnknownName) {
@@ -243,6 +254,30 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 	}
 	allFailed := dispatched > 0 && dispatched == failed
 	return history, false, allFailed, nil
+}
+
+// recordRanOutcomes appends history and audit entries for the later
+// calls the worker pool already ran when an earlier index's veto or
+// hard error stops the batch. A call claimed before the abort flag
+// was stored runs to completion, and its side effect needs its
+// history entry and audit record. A plan the abort stopped before it
+// ran has a zero outcome and is skipped. plans and outcomes must be
+// aligned slices.
+func (l *Loop) recordRanOutcomes(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, error) {
+	for j, p := range plans {
+		if p.duplicate {
+			continue
+		}
+		out := outcomes[j]
+		if isZeroMessage(out.msg) {
+			continue
+		}
+		history = append(history, out.msg)
+		if err := l.auditToolCall(ctx, iteration, p.call, out.msg, out.reported); err != nil {
+			return history, err
+		}
+	}
+	return history, nil
 }
 
 // dedupKeyFor builds call's dedup key when l.dedupWithinTurn is true

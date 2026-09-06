@@ -262,13 +262,12 @@ type budgetPrivilegedTool struct{ stringTool }
 func (t budgetPrivilegedTool) MaxResultBytes() int { return 42 }
 func (t budgetPrivilegedTool) Privileged() bool    { return true }
 
-// TestSpoolToolPartialInterfaceCombinations exercises the 6 of 8
-// SpoolTool wrapper-type switch branches TestSpoolToolForwardsOptionalInterfaces
-// and TestSpoolToolNoOptionalInterfacesReportsUnimplemented leave
-// untested: exactly one or exactly two of ProfiledTool, ResultBudgetTool,
-// and PrivilegedTool. Each case asserts the declared interfaces forward
-// inner's values and the undeclared ones report the not-implemented
-// zero value, so a swapped capability struct in the switch fails.
+// TestSpoolToolPartialInterfaceCombinations covers the inners that
+// declare exactly one or exactly two of ProfiledTool,
+// ResultBudgetTool, and PrivilegedTool. The wrapper declares all
+// three for every inner. Each case asserts the three forward inner's
+// own values, so a capability wired to the wrong forwarding helper
+// fails here.
 func TestSpoolToolPartialInterfaceCombinations(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -298,10 +297,13 @@ func TestSpoolToolPartialInterfaceCombinations(t *testing.T) {
 				t.Errorf("ExecutionProfileOf(wrapper) = %+v, want %+v", gotProfile, wantProfile)
 			}
 
-			wantBudget, wantOK := tools.ResultBudgetOf(tt.inner)
+			// The wrapper declares ResultBudgetTool for every
+			// inner, so the bool is true even when inner
+			// declares no budget.
+			wantBudget, _ := tools.ResultBudgetOf(tt.inner)
 			gotBudget, gotOK := tools.ResultBudgetOf(wrapped)
-			if gotBudget != wantBudget || gotOK != wantOK {
-				t.Errorf("ResultBudgetOf(wrapper) = %d,%v, want %d,%v", gotBudget, gotOK, wantBudget, wantOK)
+			if gotBudget != wantBudget || !gotOK {
+				t.Errorf("ResultBudgetOf(wrapper) = %d,%v, want %d,true", gotBudget, gotOK, wantBudget)
 			}
 
 			if got, want := tools.IsPrivileged(wrapped), tools.IsPrivileged(tt.inner); got != want {
@@ -417,7 +419,7 @@ func TestSpoolToolForwardsOptionalInterfaces(t *testing.T) {
 	}
 }
 
-func TestSpoolToolNoOptionalInterfacesReportsUnimplemented(t *testing.T) {
+func TestSpoolToolOverPlainInnerForwardsDefaults(t *testing.T) {
 	store := newFakeStore()
 	sp, err := spool.NewSpool(store, 1<<20)
 	if err != nil {
@@ -430,8 +432,8 @@ func TestSpoolToolNoOptionalInterfacesReportsUnimplemented(t *testing.T) {
 	}
 
 	gotBudget, gotOK := tools.ResultBudgetOf(wrapped)
-	if gotOK {
-		t.Errorf("ResultBudgetOf(wrapper over non-implementing inner) = %d,%v, want _,false", gotBudget, gotOK)
+	if !gotOK {
+		t.Errorf("ResultBudgetOf(wrapper over non-implementing inner) = %d,%v, want _,true", gotBudget, gotOK)
 	}
 	if gotBudget != 0 {
 		t.Errorf("ResultBudgetOf(wrapper) budget = %d, want 0", gotBudget)
@@ -444,5 +446,9 @@ func TestSpoolToolNoOptionalInterfacesReportsUnimplemented(t *testing.T) {
 
 	if tools.IsPrivileged(wrapped) {
 		t.Errorf("IsPrivileged(wrapper) = true, want false")
+	}
+
+	if gotSchema, gotSchemaOK := tools.SchemaOf(wrapped); gotSchemaOK || gotSchema != nil {
+		t.Errorf("SchemaOf(wrapper) = %q,%v, want nil,false", gotSchema, gotSchemaOK)
 	}
 }

@@ -416,8 +416,9 @@ flowchart LR
   evicts the oldest grants, by insertion order, once a new grant would
   exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
   `maxBytes` spools instead of returning in full, and the wrapper
-  forwards `ExecutionProfile`, `MaxResultBytes`, `Privileged`, and
-  `SchemaTool` from the wrapped tool whenever it implements them.
+  always forwards `ExecutionProfile`, `MaxResultBytes`, and
+  `Privileged` through the `tools` helpers. It forwards `SchemaTool`
+  only when the wrapped tool implements it.
   `spool` imports `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,

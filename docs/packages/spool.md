@@ -109,12 +109,18 @@ Use `errors.Is` to test these.
   string, or one at or under `maxBytes`, passes through unchanged with
   no store write. `inner`'s own error passes through unchanged, with
   no spooling attempted.
-- `SpoolTool`'s returned `tools.Tool` implements `tools.ProfiledTool`,
-  `tools.ResultBudgetTool`, `tools.PrivilegedTool`, and
-  `tools.SchemaTool` only when `inner` itself does, forwarding each
-  call straight to `inner`. `SpoolTool` changes only `Run`'s result
-  handling, never `inner`'s declared execution class, result budget,
-  privilege, or schema.
+- `SpoolTool`'s returned `tools.Tool` always implements
+  `tools.ProfiledTool`, `tools.ResultBudgetTool`, and
+  `tools.PrivilegedTool`. Each forwards through
+  `tools.ExecutionProfileOf`, `tools.ResultBudgetOf`, and
+  `tools.IsPrivileged`, so a caller reading `inner`'s published values
+  through those helpers sees no difference. It implements
+  `tools.SchemaTool` only when `inner` does. That one bit stays
+  conditional because `agentloop.Definitions` skips a tool whose
+  `tools.SchemaOf` reports false; an unconditional declaration would
+  offer the model a nil schema instead of failing closed. `SpoolTool`
+  changes only `Run`'s result handling, never `inner`'s declared
+  execution class, result budget, privilege, or schema.
 
 ## Why this shape
 

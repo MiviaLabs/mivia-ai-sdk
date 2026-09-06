@@ -936,7 +936,7 @@ the same registry a live `agentrun` composition wires.
 
 ## Change: collapse the wrapper variants to two
 
-Status: planned. One commit. No exported symbol changes.
+Status: shipped. One commit. No exported symbol changes.
 
 ### Change goal
 

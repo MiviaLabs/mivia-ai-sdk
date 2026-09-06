@@ -1,14 +1,17 @@
-// Parity test: the SpoolTool wrapper implements exactly the optional
-// tools interfaces inner implements, no more and no less. Enumerates
-// every subset of the known interfaces, so a variant missed by the
-// combinatorial switch in SpoolTool fails here, not in a live run.
+// Parity test: the SpoolTool wrapper always implements
+// tools.ProfiledTool, tools.ResultBudgetTool, and
+// tools.PrivilegedTool, and it mirrors inner only for
+// tools.SchemaTool. Enumerates every subset of the known interfaces,
+// so a wrapper that dropped an unconditional capability, or that
+// widened the conditional schema bit, fails here, not in a live run.
 // When tools gains a new optional interface, add it to probes and to
-// SpoolTool's switch in the same change. See docs/plans/spool.md.
+// SpoolTool in the same change. See docs/plans/spool.md.
 package spool_test
 
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -16,13 +19,22 @@ import (
 
 // The four cap markers below each add exactly the methods of one
 // optional interface. The sixteen inner* types compose them into
-// every subset, mirroring the wrapper variants under test. Bit 0 is
-// ProfiledTool, bit 1 is ResultBudgetTool, bit 2 is PrivilegedTool,
-// bit 3 is SchemaTool.
+// every subset. Bit 0 is ProfiledTool, bit 1 is ResultBudgetTool,
+// bit 2 is PrivilegedTool, bit 3 is SchemaTool.
 type profCapT struct{}
 
+// parityProfile is profCapT's distinctive published profile. It
+// differs from the zero ExecutionProfile in every field, so a value
+// assertion tells a forwarded profile apart from the
+// not-implemented default.
+var parityProfile = tools.ExecutionProfile{
+	Class:       tools.ExecutionClassExternal,
+	ResourceKey: "parity-key",
+	Timeout:     7 * time.Millisecond,
+}
+
 func (profCapT) ExecutionProfile() tools.ExecutionProfile {
-	return tools.ExecutionProfile{}
+	return parityProfile
 }
 
 type budCapT struct{}
@@ -226,12 +238,60 @@ func TestSpoolToolInterfaceParity(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}
-		for _, p := range probes {
-			want := p.satisfy(inner)
+		for i, p := range probes {
+			// Probes 0, 1 and 2 are unconditional; probe 3
+			// mirrors inner.
+			want := true
+			if i == 3 {
+				want = p.satisfy(inner)
+			}
 			if got := p.satisfy(wrapped); got != want {
 				t.Errorf("subset %04b: wrapper satisfies %s = %v, want %v", mask, p.name, got, want)
 			}
 		}
+		assertParityValues(t, mask, inner, wrapped)
+	}
+}
+
+// assertParityValues checks that wrapped forwards inner's published
+// values for every optional interface, and reports each helper's
+// documented default when inner declares nothing.
+func assertParityValues(t *testing.T, mask int, inner, wrapped tools.Tool) {
+	t.Helper()
+
+	wantProfile := tools.ExecutionProfile{}
+	if mask&1 != 0 {
+		wantProfile = parityProfile
+	}
+	gotProfile := tools.ExecutionProfileOf(wrapped)
+	if gotProfile != wantProfile || gotProfile != tools.ExecutionProfileOf(inner) {
+		t.Errorf("subset %04b: ExecutionProfileOf(wrapper) = %+v, want %+v", mask, gotProfile, wantProfile)
+	}
+
+	wantBudget := 0
+	if mask&2 != 0 {
+		wantBudget = 1
+	}
+	gotBudget, gotBudgetOK := tools.ResultBudgetOf(wrapped)
+	if gotBudget != wantBudget || !gotBudgetOK {
+		t.Errorf("subset %04b: ResultBudgetOf(wrapper) = %d,%v, want %d,true", mask, gotBudget, gotBudgetOK, wantBudget)
+	}
+
+	wantPriv := mask&4 != 0
+	if got := tools.IsPrivileged(wrapped); got != wantPriv {
+		t.Errorf("subset %04b: IsPrivileged(wrapper) = %v, want %v", mask, got, wantPriv)
+	}
+
+	wantSchema, wantSchemaOK := "", false
+	if mask&8 != 0 {
+		wantSchema, wantSchemaOK = "{}", true
+	}
+	gotSchema, gotSchemaOK := tools.SchemaOf(wrapped)
+	if string(gotSchema) != wantSchema || gotSchemaOK != wantSchemaOK {
+		t.Errorf("subset %04b: SchemaOf(wrapper) = %q,%v, want %q,%v", mask, gotSchema, gotSchemaOK, wantSchema, wantSchemaOK)
+	}
+	if !wantSchemaOK && gotSchema != nil {
+		t.Errorf("subset %04b: SchemaOf(wrapper) schema = %v, want nil", mask, gotSchema)
 	}
 }
 

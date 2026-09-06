@@ -32,9 +32,19 @@ BYPASS = re.compile(
 NO_VERIFY = re.compile(r"--no-verify")
 GIT_TOKEN = re.compile(r"\bgit\b")
 # core.hooksPath overrides; the one sanctioned command is exempted first.
+# The config subcommand run accepts any token, not just flags, so
+# git's subcommand syntax (set, unset, get, add) is caught the same
+# as its dash-flag syntax (--unset, --get). remove-section and
+# rename-section drop core.hooksPath by dropping its whole section instead
+# of naming the key, so they get their own alternative. Case-
+# insensitive: git config keys are case-insensitive, so core.HooksPath
+# still writes core.hooksPath.
 HOOKS_PATH = re.compile(
     r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*"
-    r"(?:-c\s+\S*core\.hooksPath|config\s+(?:-\S+(?:\s+\S+)?\s+)*core\.hooksPath)"
+    r"(?:-c\s+\S*core\.hooksPath\b"
+    r"|config\s+(?:\S+\s+)*"
+    r"(?:core\.hooksPath\b|(?:--)?(?:remove|rename)-section\s+core\b))",
+    re.IGNORECASE,
 )
 # go test -fuzz without -parallel spawns one worker per core, each with
 # unbounded memory; it OOM-kills the desktop session that launched it.
@@ -265,8 +275,8 @@ def locked_target(path: str) -> str:
 
 def check_command(cmd: str) -> str:
     """Check command for forbidden bypass or writes. Return reason if
-    blocked. The bypass, hooks-path, and fuzz scans read one command
-    segment each. The write-target scan reads the whole command."""
+    blocked. Every scan reads one command segment each, so a write-
+    target token from one command can never block a different one."""
     segments = [strip_comment(seg) for seg in command_segments(cmd)]
     for seg in segments:
         norm = normalize(seg)
@@ -286,9 +296,10 @@ def check_command(cmd: str) -> str:
             NO_VERIFY.search(stripped) and GIT_TOKEN.search(stripped)
         ):
             return "blocked: Git hook bypass is forbidden; fix the gate failure instead"
-    for target in write_targets(normalize(cmd)):
-        if locked_target(clean_token(target)):
-            return "blocked: api/ locks and .semgrepignore are generated; run `make api-update` and commit the diff"
+    for seg in segments:
+        for target in write_targets(normalize(seg)):
+            if locked_target(clean_token(target)):
+                return "blocked: api/ locks and .semgrepignore are generated; run `make api-update` and commit the diff"
     return ""
 
 
@@ -302,134 +313,28 @@ def check_file_target(path: str) -> str:
     return ""
 
 
-# Probe cases. Each list is asserted on one reason word. A pin holds one
-# verdict across the segment split. A discriminator changes verdict.
-PROBE_FUZZ_BLOCKED = [
-    # Pins: a fuzz run with no -parallel flag.
-    "go test ./agentloop/ -run XXXX -fuzz FuzzCanonicalizeArgs -fuzztime 90s",
-    "go test -fuzz=FuzzTruncateContent ./agentloop/",
-    "go test ./... -fuzz FuzzDecode",
-    # Discriminator: an unrelated -parallel must not exempt the run.
-    "go test -fuzz FuzzDecode ./mcp/ | grep -parallel 2",
-    # Pin: a comment ends at its own newline. An unbounded strip would
-    # delete the fuzz run from this merged segment.
-    "echo hi # n\ngo test -fuzz FuzzX ./p/ ; echo don't",
-]
-PROBE_BYPASS_BLOCKED = [
-    # Pins: bypass shapes that must not move.
-    "git commit -n -m x",
-    "git commit -an -m x",
-    "git commit --no-verify -m x",
-    "git push --no-verify origin main",
-    "git -c user.name=x commit -n -m y",
-    "git commit \\\n-n -m x",
-    "HUSKY=0 git commit -m x",
-    "HUSKY_SKIP_HOOKS=1 git commit -m x",
-    "SKIP_GIT_HOOKS=1 git commit -m x",
-    "LEFTHOOK=0 git commit -m x",
-    "(go build ./... ; git commit -n -m x)",
-    "git commit -n -m x # note",
-    "/usr/bin/git commit --no-verify",
-    "env git commit --no-verify",
-    # Discriminators against a splitter with no redirect rule.
-    "git commit 2>&1 -n -m x",
-    "git commit >&2 -n -m x",
-    "git commit &>log -n -m x",
-    # Discriminators against a splitter with no substitution tracking.
-    "git commit -m $(echo a | head -1) -n",
-    "git commit -m $(echo a; echo b) -n",
-    "git commit -m $(true && echo b) -n",
-    "git commit -m `echo a | head -1` -n",
-    "git commit -m <(echo a | head -1) -n",
-    # Discriminator: a true positive the segment split regains.
-    "ls -lm\ngit commit -n -m x",
-    # Pin: a comment ends at its own newline. An unbounded strip would
-    # delete the commit from this merged segment.
-    "echo hi # note\ngit commit -n -m x ; echo don't",
-]
-PROBE_HOOKS_BLOCKED = [
-    # Pins: every hooks-path write stays blocked.
-    "git config core.hooksPath /evil",
-    "git config --unset core.hooksPath",
-    "git -c core.hooksPath=/tmp commit -m x",
-    "git -c core.hooksPath=/tmp commit -m '--get'",
-    "git -c core.hooksPath=/tmp commit -m --list",
-    "git config core.hooksPath /evil --get",
-    "git config --global core.hooksPath /evil\n# git config --list",
-    "git config core.hooksPath /evil\n# git config --get core.hooksPath",
-    "git config --add core.hooksPath /evil\n# git config --get core.hooksPath",
-    "git config core.hooksPath $(git config --get user.name)",
-    "git config core.hooksPath `git config --get user.name`",
-    "git config core.hooksPath /evil #",
-    "git config --get core.hooksPath; git config core.hooksPath /evil",
-    "git config --get core.hooksPath && git config core.hooksPath /evil",
-    "git config --get $(git config core.hooksPath /evil)",
-    "git config --get `git config core.hooksPath /evil`",
-    "git config --get core.hooksPath\ngit config core.hooksPath /evil # don't",
-    "git -c core.hooksPath=/tmp commit -m x -- --get.txt",
-    # Pins: the read forms have no exemption and stay blocked.
-    "git config --get core.hooksPath",
-    "git config --get-all core.hooksPath",
-    "git config --get-regexp core.hooksPath",
-    "git config --local --get core.hooksPath",
-    "FOO=1 git config --get core.hooksPath",
-    # Pin: a comment ends at its own newline. An unbounded strip would
-    # delete the hooks-path write from this merged segment.
-    "echo hi # n\ngit config core.hooksPath /evil ; echo don't",
-]
-PROBE_ALLOWED = [
-    # Discriminators: false positives the segment split fixes.
-    "git commit -m x\ngit rev-list -n 1 HEAD",
-    "git commit -m x\nhead -n 5 file",
-    "git commit -m x && go build -n ./...",
-    "git commit -m x | tee log\nhead -n 2 log",
-    "git commit -m \"don't\"\nhead -n 5 f",
-    "git commit -m x 2>&1\nhead -n 5 f",
-    "(git commit -m x; head -n 5 f)",
-    "make install-hooks\ngit config core.hooksPath .githooks",
-    "git config --get user.name\n# git config core.hooksPath /evil",
-    "git commit -m 'wip $( fix'\nhead -n 5 f",
-    "git commit -m \"wip $( fix\"\nhead -n 5 f",
-    "git commit -m \"line one\nline two\"\nhead -n 5 f",
-    "go test ./...\necho use -fuzz next time",
-    # Discriminators: the git anchor clears the bare flag in prose.
-    "cat <<'EOF'\nnever use --no-verify\nEOF",
-    "echo \"never pass --no-verify\"",
-    "command grep -r \"--no-verify\" docs/",
-    "python3 -c \"print('--no-verify')\"",
-    "cat notes/--no-verify.md",
-    # Pins: false positives that must stay fixed.
-    "git commit -m \"wip; --no-verify\"",
-    "git commit -m 'wip; --no-verify'",
-    "git commit -m \"wip \\\" ; --no-verify\"",
-    "git commit -m \"fix; git commit -n later\"",
-    "git commit -m 'fix; git commit -n later'",
-    "git commit -m \"wip #1\"\nhead -n 5 f",
-    "git commit -m x\ncat foo#bar.txt",
-    "git config --list | grep hooks",
-    "go test ./agentloop/ -run XXXX -fuzz FuzzCanonicalizeArgs -fuzztime 90s -parallel 2",
-    "go test -fuzz FuzzDecode -parallel=4 ./mcp/",
-    "go test ./agentloop/... ",
-    "go test ./agentloop/ -fuzztime 90s",
-    "git commit -m 'run go test -fuzz next'",
-]
+# Probe cases live in agent_hook_guard_cases.py, imported inside probe().
 
 
 def probe() -> int:
     """Assert every scan fires on its violations and stays silent on
     clean commands. Wired into make verify-fast, following the --probe
-    convention of the other gates. The case tables are module-level."""
+    convention of the other gates. The case tables live in their own
+    module, imported here so a normal tool call never loads them."""
+    import agent_hook_guard_cases as cases_mod
+
     tables = (
-        ("fuzz", PROBE_FUZZ_BLOCKED),
-        ("bypass", PROBE_BYPASS_BLOCKED),
-        ("hooksPath", PROBE_HOOKS_BLOCKED),
+        ("fuzz", cases_mod.PROBE_FUZZ_BLOCKED),
+        ("bypass", cases_mod.PROBE_BYPASS_BLOCKED),
+        ("hooksPath", cases_mod.PROBE_HOOKS_BLOCKED),
+        ("api", cases_mod.PROBE_API_BLOCKED),
     )
-    for word, cases in tables:
-        for cmd in cases:
+    for word, cmds in tables:
+        for cmd in cmds:
             if word not in check_command(cmd):
                 print(f"probe failed to block ({word}): {cmd!r}", file=sys.stderr)
                 return 1
-    for cmd in PROBE_ALLOWED:
+    for cmd in cases_mod.PROBE_ALLOWED:
         if reason := check_command(cmd):
             print(f"probe blocked a clean command ({reason}): {cmd!r}", file=sys.stderr)
             return 1

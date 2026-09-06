@@ -1,9 +1,10 @@
 # Plan: hook guard command segmentation
 
-Status: planned, not yet built. This plan covers
-`scripts/agent_hook_guard.py` and one paragraph of
-`docs/architecture.md`. It adds no Go package, no `api/` lock row, and
-no `policy/layers.json` row.
+Status: the segmentation change shipped in commit `33fa632`. This
+revision fixes the two defects that commit recorded as open. It covers
+`scripts/agent_hook_guard.py`, one new sibling case-table module, and
+one sentence of `docs/architecture.md`. It adds no Go package, no
+`api/` lock row, and no `policy/layers.json` row.
 
 ## Goal
 
@@ -15,6 +16,14 @@ Today one `git commit` anywhere in a multi-command script, plus any
 later token holding an `n`, blocks the whole script. Every bypass
 shape the guard blocks today must stay blocked, except where this
 plan names the exception and its reason.
+
+This revision closes the last two members of that class. The
+write-target scan moves to the same per-segment rule. The hooks-path
+pattern learns git's newer `git config` subcommand syntax. Both
+changes only add blocked shapes or remove false positives. The only
+shapes that stop blocking are the false positives named under defect
+class three. No real write and no real hooks-path override stops
+blocking.
 
 ## Scope
 
@@ -30,7 +39,15 @@ Inside:
 - One `git config` narrowing: the sanctioned-command equality is
   compared per segment. No read form is exempted; see the rejected
   fix below.
-- New probe cases in the file's own `probe()` function.
+- Per-segment matching for the write-target scan, which reads
+  `REDIRECT`, `TEE`, and `SED_TARGET`. This is defect class three
+  below.
+- One widened `HOOKS_PATH` pattern that reaches git's newer
+  `git config` subcommand syntax. This is defect class four below.
+- New probe cases in the guard's own probe tables.
+- One new module, `scripts/agent_hook_guard_cases.py`, holding those
+  tables. The guard file cannot hold them and stay at or below 500
+  lines.
 - One rewritten paragraph in `docs/architecture.md`.
 
 Outside:
@@ -38,20 +55,15 @@ Outside:
 - The `git commit` alternative of `BYPASS` and the `HUSKY`,
   `HUSKY_SKIP_HOOKS`, `SKIP_GIT_HOOKS`, and `LEFTHOOK` alternative.
   Both stay as written.
-- The write-target checks: `REDIRECT`, `TEE`, `SED_TARGET`,
-  `write_targets`, `clean_token`, `target_paths`, and
-  `locked_target`. Each keeps reading the whole normalized command.
-  `REDIRECT`, `TEE`, and the path checks are per operator, so a
-  command boundary costs them nothing. `SED_TARGET` is the exception
-  and leaves one live false positive of the same class as defect one.
-  Its `[^\n|;&>]*?` run is bounded by a newline, but `normalize`
-  turned every newline into a space before it runs, so the run walks
-  into the next command. A `sed -i` on one line, then
-  `cat api/envelope.txt` on the next, reports the lock file as a
-  write target. That case is blocked today and stays blocked after
-  this change. Class one is therefore narrowed, not closed. The fix
-  needs its own decision, because it changes which writes the guard
-  sees.
+- The four write-target patterns themselves. `REDIRECT`, `TEE`,
+  `SED_TARGET`, and `API_LOCK` keep the text they have today. Only
+  the text they read changes. `clean_token`, `target_paths`, and
+  `locked_target` are untouched.
+- The one sanctioned-command exemption,
+  `git config core.hooksPath .githooks`. It stays one exact string,
+  compared per segment. No second spelling is exempted, so
+  `git config set core.hooksPath .githooks` blocks. Use
+  `make install-hooks`.
 - `bypass_text`'s message-stripping and option-cluster branches. The
   builder must not edit that function's body.
 - `scripts/check_test_tampering.py` and
@@ -95,6 +107,150 @@ quoted string, a comment, a search pattern, or a file path.
 Segmentation alone does not fix it, because the literal sits inside
 one segment.
 
+### Defect class three: the write-target scan crosses boundaries
+
+`check_command` calls `write_targets(normalize(cmd))` on the whole
+command. `normalize` turns every newline into one space. The scan
+therefore reads one line that holds every command.
+
+`SED_TARGET` holds a lazy run, `[^\n|;&>]*?`, between the `sed -i`
+flag and the captured path. The run looks newline-bounded. That bound
+is dead, because no newline survives `normalize`. The run walks into
+the next command.
+
+The defect has two measured symptoms.
+
+- A false positive. `sed -i 's/a/b/' foo.go` on one line, then
+  `cat api/envelope.txt` on the next, reports the lock file as a write
+  target. The whole script is blocked. `head -5` in place of `cat`
+  behaves the same way.
+- A lost true positive. `sed -i 's/a/b/' api/envelope.txt` on one
+  line, then any command on the next line, is allowed today. The lazy
+  run backtracks past the real target. It then captures the last token
+  of the script, because the trailing `\s*(?:[|;&()>]|$)` anchor only
+  matches at the end of the joined line. A semicolon or an
+  and-operator in place of the newline still blocks, because the
+  anchor finds its separator there.
+
+The fix is the rule the other three scans already follow. Run the
+scan once per segment, on that segment's normalized text.
+`check_command` already holds the comment-stripped segment list.
+
+### Why per-segment costs `REDIRECT` and `TEE` nothing
+
+Both patterns are per operator. Each starts at its own operator and
+captures the next path token. `TOKEN` excludes whitespace, quotes,
+`;`, `|`, `&`, and parentheses, so a captured path can never hold a
+segment separator. No genuine redirect can straddle a boundary.
+
+The `&` of `2>&1`, `>&2`, and `&>log` is not a separator, by the
+`_separates` rule that shipped in `33fa632`. Those three shapes stay
+in one segment, so their targets stay visible.
+
+This was proved, not reasoned. A differential sweep ran 1535 generated
+commands through the shipped guard and the prototype. It paired 15
+real write shapes with 8 benign commands across 5 separators, in both
+orders. Four verdicts changed from blocked to allowed. All four are
+the `sed -i` false positive above. Sixteen changed from allowed to
+blocked. All sixteen are the `sed -i` lost true positive above. Every
+real write still blocks, alone and inside a two-command script.
+
+### Why `SED_TARGET` keeps its character class
+
+Leave `[^\n|;&>]*?` as written. The class still does work in the
+merged fallback segment. An unterminated quote returns the whole
+script as one segment, and that segment holds every command. The
+`|`, `;`, and `&` members bound the run there.
+
+The `\n` member is inert, because `normalize` runs first in both
+paths. Removing it changes no verdict. Leave it, and do not widen the
+class. A wider class would reopen the walk inside the fallback
+segment.
+
+### The comment strip now reaches the write-target scan
+
+The segments `check_command` holds are already comment-stripped. The
+write-target scan therefore stops seeing a write named only inside a
+`#` comment. `echo hi # > api/envelope.txt` is blocked today and
+allowed after the change. A shell never runs a comment, so no true
+positive is lost. This is the same argument the comment strip already
+carries for the other three scans.
+
+### Defect class four: the hooks-path pattern misses a syntax
+
+`HOOKS_PATH` holds the run `(?:-\S+(?:\s+\S+)?\s+)*` between `config`
+and the key. Every token in that run must start with `-`. Git 2.46
+added a subcommand syntax whose first token is a bare word. The run
+cannot cross it, so the pattern never reaches the key.
+
+Three shapes are allowed by the shipped guard and were confirmed
+against real git: `git config set core.hooksPath /evil`,
+`git config set --global core.hooksPath /evil`, and
+`git config unset core.hooksPath`. The first exits zero and sets the
+key. This is a live hook-path override, which is the exact action the
+guard exists to prevent.
+
+Two more holes of the same shape were found by attacking the fix.
+
+- A config key name is case-insensitive in git. `git config set
+  core.HooksPath /evil` and `git -c CORE.hooksPath=/tmp` both work.
+  The shipped pattern is case-sensitive, so both are allowed today.
+- A section drop takes the key with it. `git config remove-section
+  core` and `git config rename-section core mine` both remove
+  `core.hooksPath`, which restores the default hooks path. Both the
+  classic `--remove-section` spelling and the subcommand spelling are
+  allowed today.
+
+### The fix: one widened pattern
+
+Replace the option run after `config` with a generic token run, add
+the section alternative, and compile the pattern case-insensitively.
+
+```python
+HOOKS_PATH = re.compile(
+    r"\bgit\s+(?:-\S+(?:\s+\S+)?\s+)*"
+    r"(?:-c\s+\S*core\.hooksPath|"
+    r"config\s+(?:\S+\s+)*(?:core\.hooksPath|(?:--)?(?:remove|rename)-section\s+core\b))",
+    re.IGNORECASE,
+)
+```
+
+The generic run `(?:\S+\s+)*` accepts any token between `config` and
+the key. No token spelling can escape it. A future git subcommand
+needs no further change here.
+
+The run only fires in a segment that already names the key, so it
+adds no reach of its own. The segment must also name `git`. The scan
+is per segment, so a later command cannot lend the key to an earlier
+one.
+
+The run costs no time. A no-match segment holding 160 option tokens
+and 160 word tokens takes 1.1 milliseconds. The measured growth is
+linear across 20, 40, 80, and 160 tokens.
+
+### Decisions this fix records
+
+- The read subcommand `get` blocks. The classic `--get core.hooksPath`
+  is blocked today as an accepted cost. Blocking
+  `git config get core.hooksPath` is the consistent choice. The read
+  forms write nothing, so each is a false positive, and the project
+  keeps them. See the rejected read-form exemption below.
+- `remove-section` and `rename-section` block, and only on the `core`
+  section. `git config remove-section alias` stays allowed. Dropping
+  the `core` section is a hooks-path change by another name.
+- The pattern is case-insensitive. `GIT CONFIG` is not a real command,
+  so the widened case costs nothing but an unreachable over-block.
+- No exemption is added. The sanctioned command keeps its one exact
+  spelling.
+
+### Rejected fix: a subcommand allowlist
+
+An allowlist of the `git config` subcommands was rejected. Git names
+seven today: `list`, `get`, `set`, `unset`, `rename-section`,
+`remove-section`, and `edit`. A new git release adds a row and the
+guard silently loses it. The generic token run needs no maintenance
+and cannot be outspelled. Prefer the run.
+
 ### Rejected fix: a read-form exemption
 
 `HOOKS_PATH` also matches the `git config` read forms, which write
@@ -124,6 +280,36 @@ and only changes the text it reads.
   from one segment.
 
 `BYPASS` loses its first alternative and keeps the other two.
+
+### This revision's surface
+
+No function signature changes. `write_targets`, `clean_token`,
+`target_paths`, and `locked_target` keep their signatures and their
+bodies. `check_command` changes one loop and one docstring sentence.
+`HOOKS_PATH` gains the pattern text above and the `re.IGNORECASE`
+flag.
+
+One module is added: `scripts/agent_hook_guard_cases.py`. It holds
+the five probe tables and nothing else. `probe()` imports it inside
+the function body, so the hook path never loads it. The guard runs on
+every tool call, and a probe-only import must not cost that path a
+file read.
+
+The split is required, not preferred. The guard file is 479 lines
+today. The new cases add about 40 lines and the code changes add
+about 6. Moving the tables out leaves the guard at 376 lines and the
+new module at 165. Both stay under the 500-line limit. Do not raise
+the limit.
+
+`scripts/check_names.py` and `scripts/check_structure.py` read Go
+files only, so neither gate sees either Python file. The 500-line
+limit is the AGENTS.md rule, applied by hand.
+
+`scripts/check_test_tampering.py` already imports sibling modules by
+bare name, so the import style is the repository's own. The guard is
+invoked by absolute path from `.claude/settings.json` and by relative
+path from the `Makefile`. Both put the script's directory first on
+`sys.path`, so the bare import resolves.
 
 ### The comment strip
 
@@ -296,8 +482,15 @@ the bypass reason only, not in the fuzz reason and not in the
 `core.hooksPath` reason. Add a third list for the hooks-path reason,
 asserted with `"hooksPath" not in check_command(cmd)`.
 
-Keep `probe()` at or below 80 lines. Move the case tables to
-module-level constants if the function grows past that.
+This revision adds a fourth blocked list, `PROBE_LOCK_BLOCKED`,
+asserted with `"locks" not in check_command(cmd)`. The word `locks`
+appears in the api-lock reason only. It is absent from the fuzz, the
+bypass, and the `core.hooksPath` reasons, so the four tables stay
+separable.
+
+Keep `probe()` at or below 80 lines. The case tables move to
+`scripts/agent_hook_guard_cases.py` in this revision, so the function
+holds the loop and nothing else.
 
 Two rules bind the probe's own text. Do not write a case name that is
 a letter A through G followed by a digit; `scripts/check_labels.py`
@@ -442,6 +635,104 @@ Each row is allowed today and after the change.
 - A fuzz run that already carries `-parallel 2`.
 - The existing entry whose commit message names the fuzz flag.
 
+### This revision's probe cases
+
+Every row below was run against the shipped guard and against a
+prototype of this design. The role is measured, not asserted. The
+prototype passed all 36 new rows and every row already in the tables.
+
+Twenty-four rows are discriminators. Twelve are pins.
+
+Defect class three, `PROBE_ALLOWED`. Each row is blocked today and
+allowed after the change.
+
+- `sed -i` on `foo.go`, then `cat` of an api lock. DISCRIMINATOR.
+- The same with `head -5` in place of `cat`. DISCRIMINATOR.
+- The same with `grep foo` in place of `cat`. DISCRIMINATOR.
+- `echo hi`, then a `#` comment holding a redirect to an api lock.
+  DISCRIMINATOR. The comment strip now reaches this scan.
+
+Defect class three, `PROBE_LOCK_BLOCKED`. Each row must block after
+the change.
+
+- `sed -i` writing an api lock, then `go build`. DISCRIMINATOR. Today
+  the lazy run backtracks past the target and the write escapes.
+- `sed -i.bak` writing an api lock, then `make verify`.
+  DISCRIMINATOR, for the same reason with a flag suffix.
+- `sed -i` writing an api lock, alone. PIN.
+- A redirect into an api lock. PIN.
+- An appending redirect into `.semgrepignore`. PIN.
+- A redirect into an api lock after `2>&1`. PIN. This pins the
+  redirect rule inside one segment.
+- A benign `echo`, a semicolon, then a redirect into an api lock.
+  PIN. This proves a later segment is still scanned.
+- A redirect whose path holds a `$( )` span. PIN.
+- `make api`, then a `tee` write to an api lock on the next line.
+  PIN. This proves `TEE` loses nothing at a boundary.
+
+Defect class four, `PROBE_HOOKS_BLOCKED`. Each row must block after
+the change.
+
+- `git config set core.hooksPath /evil`. DISCRIMINATOR.
+- The same with `--global` before the key. DISCRIMINATOR.
+- `git config unset core.hooksPath`. DISCRIMINATOR.
+- `git config unset --all core.hooksPath`. DISCRIMINATOR.
+- `git config get core.hooksPath`. DISCRIMINATOR. The read form
+  blocks, as the classic `--get` does.
+- `git config set --type path core.hooksPath /evil`. DISCRIMINATOR.
+  A flag sits between the subcommand and the key.
+- `git -C /tmp/repo config set core.hooksPath /evil`. DISCRIMINATOR.
+  A global option with a value sits before `config`.
+- `git config --file .git/config set core.hooksPath /evil`.
+  DISCRIMINATOR. An option with a value sits before the subcommand.
+- An environment assignment, then the same write. DISCRIMINATOR.
+- The same write with the key in single quotes. DISCRIMINATOR.
+- The same write with the value in double quotes. DISCRIMINATOR.
+- The same write, then a `#` comment naming a read. DISCRIMINATOR.
+- A `get` of the key, a semicolon, then the subcommand write.
+  DISCRIMINATOR.
+- `git config set core.HooksPath /evil`. DISCRIMINATOR. The key name
+  is case-insensitive in git.
+- `git -c CORE.hooksPath=/tmp commit`. DISCRIMINATOR, for the same
+  reason on the `-c` path.
+- `git config remove-section core`. DISCRIMINATOR.
+- `git config --remove-section core`. DISCRIMINATOR.
+- `git config rename-section core mine`. DISCRIMINATOR.
+- `git config --global set core.hooksPath /evil`. PIN. The
+  option-with-value branch already swallowed `set` in this one shape,
+  so it blocks today.
+
+Defect class four, `PROBE_ALLOWED`. Each row is allowed today and
+after the change.
+
+- `git config set user.name mac`. PIN.
+- `git config get user.email`. PIN.
+- `git config list` piped into `grep hooks`. PIN.
+- `git config remove-section alias`. PIN. Only the `core` section
+  blocks.
+
+Two rules still bind the probe text. Do not write a case name that is
+a letter A through G followed by a digit. Do not write a probe string
+that holds both `git` and the bypass literal in one segment through an
+inline heredoc. The label scan was run over both prototype files and
+reported no hit.
+
+## Defects this revision closes
+
+- The write-target scan crossed command boundaries. It read the whole
+  normalized command, so `SED_TARGET`'s lazy run walked into the next
+  command. Fixed by running the scan once per comment-stripped
+  segment, the rule the other three scans already follow. This closes
+  the false positive on a `sed -i` of a source file followed by a read
+  of an api lock. It also regains the true positive on a `sed -i` of
+  an api lock followed by any newline-separated command.
+- `git config set core.hooksPath /evil`, git's newer subcommand
+  syntax, escaped `HOOKS_PATH`. Fixed by replacing the option run
+  after `config` with a generic token run. Two further holes found
+  while attacking that fix are closed in the same pattern: a
+  case-varied key name, and a `remove-section` or `rename-section` of
+  the `core` section. See defect class four above.
+
 ## Known defects that stay open
 
 - An invocation through a shell variable, an alias, or a wrapper name
@@ -456,14 +747,19 @@ Each row is allowed today and after the change.
   launcher both still block, because the word boundary holds after a
   slash and after a space. Do not attempt a fix here. Naming every
   wrapper is a different mechanism and needs its own decision.
-- `git config set core.hooksPath /evil`, git's newer subcommand
-  syntax, is allowed today and stays allowed. `HOOKS_PATH`'s option
-  run cannot cross the bare `set` token. This was run against real
-  git: the command exits zero and the key holds the new value. The
-  hole is pre-existing and is not this change's to fix. Record it and
-  leave it.
+- `git config --edit` opens an editor, so the command string never
+  names the key. An editor set to a writing command changes the key.
+  This is the wrapper class above, reached by another route. The
+  guard reads a command string and cannot follow an editor. Do not
+  attempt a fix.
+- `git config get-regexp core.hooks` names a key prefix, not the key.
+  The pattern needs the literal `core.hooksPath`, so the prefix read
+  is allowed. A regex read writes nothing, so this is a read-form
+  miss and not a bypass. The classic `--get-regexp` spelling of the
+  same prefix is equally allowed, today and after the change.
 - Every `git config` read of `core.hooksPath` stays blocked: `--get`,
-  `--get-all`, `--get-regexp`, and `--local --get`. None of them
+  `--get-all`, `--get-regexp`, `--local --get`, and the `get`
+  subcommand. None of them
   writes anything, so each is a false positive. An exemption was
   designed four times and attacked four times. Every version
   produced a working `core.hooksPath` override, confirmed against real
@@ -540,3 +836,45 @@ Doc update:
   segment, and that the bypass literal counts only in a segment that
   names `git`.
 - Do not claim the heredoc false positive is fixed. It stays open.
+
+### This revision's verification
+
+The diff holds four files: `scripts/agent_hook_guard.py`,
+`scripts/agent_hook_guard_cases.py`, `docs/plans/hook-guard.md`, and
+`docs/architecture.md`.
+
+Gate outcome, measured against the rule source:
+
+- `_DOC_COMPANION_DIR_PREFIXES` in
+  `scripts/test_tampering_rules_infra.py` is
+  `("docs/plans/", "docs/packages/")`. `check_self_reference_guard`
+  fires only when the diff holds a file that is neither gate infra nor
+  a doc companion. Two `scripts/` files plus this plan would therefore
+  raise no TT11 finding and need no trailer.
+- `docs/architecture.md` is not a doc companion, so it makes TT11
+  fire. A trailer is needed. The plan does not author it. The
+  orchestrator reads the diff and writes `Allow-Gate-Change` with at
+  least 15 significant words.
+- The doc edit is required, so the trailer is required. The sentence
+  in `docs/architecture.md` names the bypass, hooks-path, and fuzz
+  scans as the scans that run per segment. This change adds the
+  write-target scan to that set. Leaving the sentence alone makes it
+  stale by omission. Do not drop the doc edit to avoid the trailer.
+- Rewrite that sentence to name four scans, not three. Change nothing
+  else in the paragraph. The heredoc false positive stays open.
+- TT14 does not fire. `_is_checker_source` covers
+  `scripts/check_test_tampering.py`, the `scripts/test_tampering_*`
+  modules, and `.githooks/commit-msg`. This change touches none of
+  them.
+- A branch trailer does not carry to a merge commit, and the gate is
+  merge-aware. See
+  `.agents/memories/override_trailers_dont_carry_to_merge_commits.md`.
+
+No `api/` lock row changes and no `policy/layers.json` row changes.
+`scripts/` holds no Go package, so `scripts/go_packages.py` never
+enumerates either file. `python3 scripts/check_api.py` and
+`python3 scripts/check_deps.py` were run and both pass.
+
+File sizes after the change: the guard at 376 lines and the case
+module at 165. Both are under 500. `probe()` stays under 80 lines.
+Every other function is unchanged.

@@ -939,13 +939,17 @@ heredoc body before the scan runs into an unparseable-body-extent
 problem: when two heredoc operators appear on one line, one accepted
 and one rejected, the rejected operator's un-stripped body is
 silently swallowed by the accepted operator's terminator search, so a
-general fix is not available. The bypass, hooks-path, and fuzz scans
-each run once per shell command segment, so one command never lends
-its text to another. A backslash-newline continuation joins into one
-segment before the split. A quoted span, a `$( )` span, and a
-backtick span each stay inside one segment. The bare bypass literal
-counts only in a segment that also names `git`. The heredoc false
-positive above stays open.
+general fix is not available. The bypass, hooks-path, fuzz, and
+write-target scans each run once per shell command segment, so one
+command never lends its text to another. A backslash-newline
+continuation joins into one segment before the split. A quoted
+span, a `$( )` span, and a backtick span each stay inside one
+segment. The bare bypass literal counts only in a segment that
+also names `git`. The hooks-path pattern matches git's subcommand
+syntax (`set`, `unset`, `get`) the same as its dash-flag syntax,
+case-insensitively, and matches `remove-section` or `rename-section`
+of `core`, which drops core.hooksPath by dropping its whole section.
+The heredoc false positive above stays open.
 
 `make verify-fast` runs gofmt, vet, one test pass, the python gates,
 the semgrep scan, and the suppression-marker scan. `make verify` runs

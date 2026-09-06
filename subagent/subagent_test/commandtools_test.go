@@ -3,6 +3,7 @@ package subagent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -71,6 +72,38 @@ func TestSchedulerToolSchedulesAndCancels(t *testing.T) {
 	out, err = tool.Run(ctx, inString(string(cancel)))
 	if err != nil || out.Value != "absent" {
 		t.Fatalf("cancel again = %v,%v, want absent", out.Value, err)
+	}
+}
+
+// TestSchedulerToolRejectsNonPositiveEvery proves an every_ms that
+// would never fire fails the call and registers nothing on the bound
+// scheduler.
+func TestSchedulerToolRejectsNonPositiveEvery(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		everyMs int64
+	}{
+		{"zero", 0},
+		{"negative", -1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := scheduler.New()
+			job := func(ctx context.Context) error { return nil }
+			tool := subagent.SchedulerTool("sched", s, job)
+			cmd, err := json.Marshal(subagent.SchedulerCommand{
+				Op: subagent.OpEvery, ID: "ghost", EveryMs: tc.everyMs,
+			})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if _, err := tool.Run(ctx, inString(string(cmd))); !errors.Is(err, subagent.ErrBadCommand) {
+				t.Fatalf("every_ms %d: err = %v, want ErrBadCommand", tc.everyMs, err)
+			}
+			if err := s.Add("ghost", scheduler.At(time.Now().Add(time.Hour)), job); err != nil {
+				t.Fatalf("rejected call kept the id: %v", err)
+			}
+		})
 	}
 }
 

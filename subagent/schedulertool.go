@@ -55,6 +55,11 @@ func (t *schedulerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, err
 	}
 	switch cmd.Op {
 	case OpEvery:
+		// scheduler.Every turns a non-positive duration into an inert
+		// never-firing Schedule. Reject the value here instead.
+		if cmd.EveryMs <= 0 {
+			return tools.Out{}, badCommand(t.name)
+		}
 		return t.add(cmd.ID, scheduler.Every(time.Duration(cmd.EveryMs)*time.Millisecond))
 	case OpAt:
 		return t.add(cmd.ID, scheduler.At(time.UnixMilli(cmd.AtMs)))

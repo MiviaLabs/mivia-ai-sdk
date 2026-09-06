@@ -47,6 +47,59 @@ type anthropicError struct {
 	Message string `json:"message"`
 }
 
+// decodedContent aggregates one response's content blocks in wire
+// order.
+type decodedContent struct {
+	text      string
+	reasoning string
+	signature string
+	toolCalls []provider.ToolCall
+}
+
+// decodeContent walks one response's content blocks. Text and thinking
+// concatenate. With ExposeReasoning off, thinking text stays out and
+// OnReasoning receives the redacted block. The last non-empty thinking
+// signature wins.
+func (c *Client) decodeContent(parts []anthropicRespContent) decodedContent {
+	var out decodedContent
+	var textBuilder strings.Builder
+	var reasoningBuilder strings.Builder
+
+	for i, part := range parts {
+		switch part.Type {
+		case "text":
+			textBuilder.WriteString(part.Text)
+		case "thinking":
+			if c.opts.ExposeReasoning {
+				reasoningBuilder.WriteString(part.Thinking)
+				if part.Signature != "" {
+					out.signature = part.Signature
+				}
+			} else if c.opts.OnReasoning != nil {
+				c.opts.OnReasoning(provider.RedactBlock(provider.ReasoningBlock{
+					Content:  part.Thinking,
+					Redacted: false,
+				}))
+			}
+		case "tool_use":
+			argBytes := []byte(part.Input)
+			if len(argBytes) == 0 {
+				argBytes = []byte("{}")
+			}
+			out.toolCalls = append(out.toolCalls, provider.ToolCall{
+				Index:     i,
+				ID:        part.ID,
+				Name:      part.Name,
+				Arguments: argBytes,
+			})
+		}
+	}
+
+	out.text = textBuilder.String()
+	out.reasoning = reasoningBuilder.String()
+	return out
+}
+
 func parseResponse(c *Client, data []byte) (provider.Response, error) {
 	var resp anthropicResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
@@ -61,36 +114,7 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 		return provider.Response{}, fmt.Errorf("%w: %s", ErrRefused, cat)
 	}
 
-	var textBuilder strings.Builder
-	var reasoningBuilder strings.Builder
-	var toolCalls []provider.ToolCall
-
-	for i, part := range resp.Content {
-		switch part.Type {
-		case "text":
-			textBuilder.WriteString(part.Text)
-		case "thinking":
-			if c.opts.ExposeReasoning {
-				reasoningBuilder.WriteString(part.Thinking)
-			} else if c.opts.OnReasoning != nil {
-				c.opts.OnReasoning(provider.RedactBlock(provider.ReasoningBlock{
-					Content:  part.Thinking,
-					Redacted: false,
-				}))
-			}
-		case "tool_use":
-			argBytes := []byte(part.Input)
-			if len(argBytes) == 0 {
-				argBytes = []byte("{}")
-			}
-			toolCalls = append(toolCalls, provider.ToolCall{
-				Index:     i,
-				ID:        part.ID,
-				Name:      part.Name,
-				Arguments: argBytes,
-			})
-		}
-	}
+	decoded := c.decodeContent(resp.Content)
 
 	totalTokens := resp.Usage.InputTokens + resp.Usage.OutputTokens
 	usage := provider.Usage{
@@ -114,12 +138,13 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 	return provider.Response{
 		Model: resp.Model,
 		Message: provider.Message{
-			Role:             provider.RoleAssistant,
-			Content:          textBuilder.String(),
-			ReasoningContent: reasoningBuilder.String(),
-			ToolCalls:        toolCalls,
+			Role:               provider.RoleAssistant,
+			Content:            decoded.text,
+			ReasoningContent:   decoded.reasoning,
+			ReasoningSignature: decoded.signature,
+			ToolCalls:          decoded.toolCalls,
 		},
-		ToolCalls:    toolCalls,
+		ToolCalls:    decoded.toolCalls,
 		Usage:        usage,
 		FinishReason: resp.StopReason,
 		CacheUsage:   cacheUsage,

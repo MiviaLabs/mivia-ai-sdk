@@ -49,3 +49,18 @@ packages `net/http` and `encoding/json` alone.
 - `ErrBadRequest` — wraps 400 HTTP responses.
 - `ErrServer` — wraps 5xx HTTP responses.
 - `ErrRefused` — wraps model refusal responses with stop category.
+
+## Mapping rules
+
+- Decode, `Chat` only: when `ExposeReasoning` is on, each thinking
+  block's `signature` lands in `Message.ReasoningSignature` beside the
+  thinking text; the last non-empty signature wins. `ExposeReasoning`
+  off keeps decode unchanged and captures no signature.
+- Replay: when both `Message.ReasoningContent` and
+  `Message.ReasoningSignature` are non-empty and the request enables
+  reasoning, the assistant turn prepends one thinking part carrying
+  both values, before text and `tool_use` parts. When reasoning is
+  disabled, no thinking part is sent.
+- A thinking-only assistant turn that carries the replay carrier is no
+  longer dropped as empty. The same turn without a signature still
+  drops.

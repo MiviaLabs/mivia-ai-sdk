@@ -928,3 +928,236 @@ Name `provider/anthropic` as the first concrete implementer of the
 
 - `go test ./provider/...` passes.
 - `make verify` passes.
+
+## Change: reasoning-signature replay carrier
+
+Status: shipped. One field lands on `Message`. The Anthropic adapter
+writes it on decode and reads it on replay. Code, tests, and this
+section land in one change.
+
+### Change goal
+
+The Messages API requires an assistant turn to echo its own thinking
+block first on the next request. The echo needs the original
+signature. Today the adapter decodes the signature and never
+reads it (`provider/anthropic/response.go:27`). The replay path
+builds assistant turns from text and tool calls only
+(`provider/anthropic/request.go:129`). A tool-calling loop with
+extended thinking omits the required block on every replay. This
+change carries the signature beside the thinking text and replays
+both under one guard.
+
+### Change scope
+
+Inside:
+
+- `ReasoningSignature string` on `provider.Message`, beside
+  `ReasoningContent`.
+- Decode: `provider/anthropic` captures the thinking block's
+  signature into the new field when `Options.ExposeReasoning` is on.
+- Replay: `provider/anthropic` prepends a thinking content part from
+  the two carrier fields when the outgoing request enables reasoning.
+- `anthropicContentPart` gains `Thinking` and `Signature`, both
+  `omitempty`.
+- A split of `parseResponse` in `provider/anthropic/response.go`.
+  The function spans lines 50 to 127, which is 78 lines under
+  `scripts/check_structure.py`. The decode edits add about five
+  lines, and 83 crosses the 80-line function cap. The sanctioned
+  shape extracts the content-block switch into one helper. The
+  precedent is `agentloop`'s `runIteration`/`afterChat` split, made
+  for the same cap (`agentloop/run.go:193`). The builder must not
+  compress code into one-line ifs to duck the counter.
+
+Outside:
+
+- `Message.Validate`. The new field is opaque to `provider`. It is
+  never validated and never interpreted. The zero value changes no
+  behavior.
+- `Request.DisableProviderReplay`. The replay guard does not consult
+  it. The field governs provider-side stateful session replay, a
+  caller-to-completer hint. The request-forwarding tests pin it as
+  pass-through only
+  (`provider/provider_test/request_forwarding_test.go`). It governs
+  no caller-side history echo. Honoring it would reintroduce the
+  400 this change fixes.
+- `agentloop`. No source change there; the reader table below shows
+  why none is needed.
+- The streamed path. The `provider/anthropic` addendum records that
+  gap and its grep evidence.
+
+Design decision, stated: the carrier is a provider-neutral sibling
+field (Option A). The two rejected shapes:
+
+- Adapter-owned history (Option B). Rejected. `RunTurn` is stateless
+  validation plus dispatch over caller-supplied `Messages`
+  (`provider/runturn.go:31-48`). The `Completer` interface holds
+  `Name`, `Chat`, and `ChatStream` only; no statefulness hook exists.
+  A history-owning `Client` would also break shared use through
+  `providerregistry`, which stores named `provider.Completer` values
+  in one map (`providerregistry/registry.go:45`).
+- Signature encoded inside `ReasoningContent` (Option C). Rejected.
+  `ReasoningContent` is provider-neutral surface other code reads as
+  plain text. An encoded signature would corrupt those readers.
+
+Reader evidence, gathered by grep over the whole tree, not by
+reasoning. Every non-test reader of `ReasoningContent`, and why it
+survives:
+
+| Site | What the reader does | Why it survives |
+| --- | --- | --- |
+| `provider/types.go:81,171` | `Validate` role rule | Untouched; the new field is a sibling the rule never reads |
+| `provider/runturn.go:130` | Sets it from streamed reasoning text | New field stays zero there; that is the recorded streaming gap |
+| `provider/anthropic/response.go:119` | Decode writes it | This change makes the same decode write the sibling field |
+| `agentloop/run.go:212` | Reads it as plain text for thinking events | Option A leaves the text alone; Option C would corrupt this payload |
+| `agentloop/run.go:224` | Copies it into `AuditRecord.ThinkingContent` | Same survival argument |
+| `agentloop/options.go:372` | Documents it as plain text | Same |
+| `agentloop/heartbeat.go:126` | Emptiness gate on the same string | Same |
+| `agentloop/run.go:203` | Appends the whole `Message` into the next request | A sibling field reaches the wire with zero `agentloop` changes |
+
+Every non-test reader of `ReasoningBlock`:
+`provider/reasoning.go:30,38`, `provider/anthropic/response.go:76`,
+`provider/anthropic/stream.go:225`, and
+`provider/anthropic/options.go:87`. `ReasoningBlock` never appears
+on `Message` or `Response`; the new field does not touch it.
+
+Literal safety, by grep: no positional `provider.Message{`
+composite literal exists in the tree, tests included. Adding a field
+breaks no literal. `ReasoningSignature` names no existing symbol;
+the grep returns nothing before this change.
+
+### Change API
+
+`api/provider.txt` gains one field through `make api-update`, in the
+same change as the code:
+
+```go
+type Message struct {
+    Role               Role
+    Content            string
+    Name               string
+    ToolCallID         string
+    ToolCalls          []ToolCall
+    ReasoningContent   string
+    ReasoningSignature string
+    CreatedAt          time.Time
+}
+```
+
+- `ReasoningSignature string` is an opaque adapter replay token.
+  `provider` never validates or interprets it. It is meaningful only
+  beside `ReasoningContent` on a `RoleAssistant` message. An adapter
+  that needs signed-reasoning replay writes it on decode and reads
+  it on replay. The field states no invariant, so `Validate`
+  enforces none.
+- No new method, sentinel, or type. The `Completer` interface is
+  unchanged.
+
+Decode rules, `provider/anthropic`:
+
+- With `ExposeReasoning` on, `parseResponse` captures each thinking
+  block's signature into `Message.ReasoningSignature`. The last
+  non-empty signature wins.
+- The adapter never enables interleaved thinking, so one thinking
+  block per assistant turn is the wire reality. If a response ever
+  carries several, text still concatenates and the last signature
+  wins. This sentence records that limitation.
+- With `ExposeReasoning` off, decode is unchanged:
+  `ReasoningContent` stays empty, `OnReasoning` still receives
+  redacted blocks, and no signature is captured.
+- Replay therefore requires `ExposeReasoning`. `ReasoningContent` is
+  the only content carrier; a signature without text cannot form a
+  valid thinking block.
+
+Replay rules, `provider/anthropic`:
+
+- `buildRequestBody` resolves the reasoning effort before it calls
+  `convertMessages`. The resolved value is `Request.ReasoningEffort`,
+  else `Options.DefaultEffort`; it is the same value that sets the
+  wire `thinking` field (`provider/anthropic/request.go:218`).
+  Reordering is safe: resolution is a pure read.
+- `buildRequestBody` threads one bool, reasoning enabled, into
+  `convertMessages` and `appendTurnMessage`. The bool is true when
+  the resolved effort is non-empty, not `ReasoningEffortNone`, and
+  valid.
+- `appendTurnMessage`, `RoleAssistant` case, prepends one content
+  part when the bool is true and both carrier fields are non-empty:
+  `{"type": "thinking", "thinking": <ReasoningContent>,
+  "signature": <ReasoningSignature>}`. The part goes before every
+  text and tool_use part.
+- The reasoning-enabled guard is load-bearing. The API requires
+  thinking enabled on any request that passes thinking blocks back.
+  A caller who turns thinking off mid-conversation must not get a
+  400 from stale history.
+- Empty-turn rule: the `len(parts) == 0` drop
+  (`provider/anthropic/request.go:146`) keeps its behavior. The
+  thinking part is prepended before the emptiness check, so a turn
+  carrying a replayable thinking block is no longer empty and must
+  not be dropped. The branch comment and its logic change together.
+- `TestChatEmptyAssistantMessageDropped` uses a zero-value assistant
+  message with no reasoning. Its fixture and assertions stay valid
+  unchanged; the builder does not rewrite it.
+- `encodeRequestBody` stays a plain marshal. No signature goes out
+  unless the replay rule fires.
+
+### Addendum tests
+
+In `provider/anthropic/anthropic_test/`, on the `newTestServer` plus
+`writeJSON` fixture. Requests are captured through `json.Unmarshal`
+of the body. A request counter serves different content per call,
+the `TestChatRateLimitRetry` pattern. The five adapter names below
+stay backticked here as references; the `provider/anthropic` plan
+carries them as plain-prose commitments:
+
+- `TestChatReplaysThinkingSignatureBeforeToolUse` — turn one answers
+  with a thinking block plus signature, text, and one tool_use
+  block. The test replays the assistant message plus a `RoleTool`
+  tool_result in a second `Chat` call, with the reasoning effort set
+  and `ExposeReasoning` on. It asserts the wire carries a thinking
+  content part with that exact signature, first in the assistant
+  turn, before text and tool_use.
+- `TestChatReplayKeepsThinkingOnlyAssistantTurn` — a thinking-only
+  response with no text and no tool call stays in replayed history
+  once it carries reasoning content plus signature. The same
+  response without a signature is still dropped. Pins both the
+  changed empty-turn rule and the signature gate.
+- `TestChatReplayPlainHistoryHasNoThinkingPart` — a plain text-only
+  response replayed as history carries no thinking part.
+- `TestChatReplaySkippedWhenReasoningDisabled` — the reasoning
+  effort is unset and `Options.DefaultEffort` is empty, so the
+  outgoing request disables thinking. History carries both carrier
+  fields; the wire carries no thinking part.
+- `TestChatDecodeLastNonEmptySignatureWins` — the decode-side
+  last-non-empty-signature rule; the `provider/anthropic` addendum
+  states the fixture.
+
+In `provider/provider_test/`, on the `fakeCompleter` pattern,
+TestMessageReasoningSignatureRoundTrip proves the new field
+round-trips through `RunTurn` unchanged: the fake records it from
+`Request.Messages` and echoes it back on `Response.Message`. A
+`Message` that never sets the field behaves as before: the zero
+value passes `Validate` on all four roles.
+
+### Change verification
+
+- `make verify` passes; `provider` and `provider/anthropic` hold the
+  85 coverage floor.
+- `api/provider.txt` gains `ReasoningSignature` through
+  `make api-update`, committed in the same change as the code.
+- `policy/layers.json` needs no edit. `provider` stays a leaf with an
+  empty import list. `provider/anthropic` keeps its single
+  `provider` import.
+- `docs/packages/provider.md` gains one sentence on the `Message`
+  bullet, naming the field and its opaque role, in the same change
+  as the code.
+- `docs/packages/provider/anthropic.md` gains the decode and replay
+  sentences in the same change as the code.
+- `python3 scripts/check_plan.py`, `check_deps.py`,
+  `check_prose.py`, and `check_labels.py` pass.
+- `python3 scripts/check_structure.py` passes on the split
+  `parseResponse` file. The split extracts a helper; it does not
+  compress conditions.
+- The `### Addendum tests` names are commitments under
+  `check_plan.py`. They pass once the builder lands the tests in
+  this same change.
+- No conformance vector: `envelope` owns the SDK's wire; the
+  Anthropic wire contract stays pinned by the adapter tests above.

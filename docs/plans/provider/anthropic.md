@@ -210,3 +210,110 @@ Positive control end-to-end test in `e2e/e2e_test/`:
 - `make verify` passes once the builder implements code, tests, and API lock.
 - Package files must stay under 500 lines and functions under 80 lines per `scripts/check_structure.py`.
 - Package coverage reaches or exceeds 85% floor.
+
+## Addendum: thinking-signature replay
+
+### Goal
+
+Record the replay mapping rules for thinking blocks and their
+signatures. The carrier field lives on `provider.Message`; see the
+reasoning-signature change section in `docs/plans/provider.md`.
+
+### Scope
+
+Inside: the `Chat` decode path and the assistant-turn replay path in
+request mapping. Outside: the streamed path. `sseContentBlockDelta`
+decodes a signature field (`provider/anthropic/stream.go:48`), but
+`handleContentBlockDelta` has no `signature_delta` case, so streamed
+thinking loses its signature today. Full parity needs a
+`provider.Chunk` carrier plus aggregation in `drainStream` and
+`buildResponse`. That is a second exported-surface change on
+`provider`. No in-tree caller streams: grep finds `Stream:` only at
+`provider/anthropic/request.go:244`, the wire field, and `agentloop`
+calls `l.completer.Chat` only (`agentloop/compaction.go:186`,
+`agentloop/run.go:394`). This slice covers the `Chat` path only.
+Streamed signature parity is future work, recorded here. One more
+gap, recorded: `redacted_thinking` blocks are neither captured nor
+replayed today. The content switch ignores the type
+(`provider/anthropic/response.go:69`). This slice only records that
+gap; no code change accompanies it.
+
+### Replay mapping rules
+
+These bullets extend the shipped Request Mapping Rules and the
+shipped Response mapping bullets. The shipped sections stay as
+written.
+
+Decode, `Chat` only:
+
+- With `ExposeReasoning` on, a thinking block's `signature` lands in
+  `Message.ReasoningSignature` beside the thinking text. The last
+  non-empty signature wins. The adapter never enables interleaved
+  thinking, so one thinking block per assistant turn is the wire
+  reality; last-wins is the stated limit for any other shape.
+- With `ExposeReasoning` off, decode is unchanged and no signature
+  is captured. `ReasoningContent` stays empty, and a signature
+  without text cannot form a valid thinking block. Replay therefore
+  requires `ExposeReasoning`.
+
+Replay, assistant turns:
+
+- The request builder resolves the reasoning effort first and
+  threads one reasoning-enabled bool into turn conversion. The bool
+  uses the same resolved effort the wire `thinking` field uses.
+- When reasoning is enabled and both `ReasoningContent` and
+  `ReasoningSignature` are non-empty, the assistant turn prepends a
+  thinking part carrying both values, before any text or `tool_use`
+  part.
+- When reasoning is disabled, no thinking part is sent, even when
+  history carries both carrier fields. Stale history must not cause
+  a 400 after a caller turns thinking off.
+- A thinking-only assistant turn carrying a replayable thinking part
+  is no longer empty and survives the empty-turn drop. The same turn
+  without a signature still drops.
+
+### Addendum tests
+
+The five adapter tests land in `provider/anthropic/anthropic_test/`,
+on the `newTestServer` plus `writeJSON` fixture. Requests are
+captured through `json.Unmarshal` of the body. A request counter
+serves different content per call, the `TestChatRateLimitRetry`
+pattern. `docs/plans/provider.md`, the reasoning-signature change
+section, carries the same names as backticked references.
+
+TestChatReplaysThinkingSignatureBeforeToolUse covers the full
+tool-loop shape. Turn one answers with a thinking block plus
+signature, text, and one tool_use block. The test replays the
+assistant message plus a RoleTool tool_result in a second Chat call,
+with the reasoning effort set and ExposeReasoning on. The assertion
+checks the wire for a thinking content part with that exact
+signature. The part sits first in the assistant turn, before text
+and tool_use.
+
+TestChatReplayKeepsThinkingOnlyAssistantTurn keeps a thinking-only
+response, with no text and no tool call, in replayed history once it
+carries reasoning content plus signature. The same response without
+a signature is still dropped.
+
+TestChatReplayPlainHistoryHasNoThinkingPart proves a plain
+text-only response replayed as history carries no thinking part.
+
+TestChatReplaySkippedWhenReasoningDisabled leaves the reasoning
+effort unset and `Options.DefaultEffort` empty, so the outgoing
+request disables thinking. History carries both carrier fields. The
+wire carries no thinking part.
+
+TestChatDecodeLastNonEmptySignatureWins pins the decode rule that
+the last non-empty signature wins. The fixture returns two thinking
+blocks with distinct signatures plus a text block. The test asserts
+the text concatenates and the last non-empty signature lands on
+`Message.ReasoningSignature`.
+
+### Verification
+
+- `make verify` passes.
+- `docs/packages/provider/anthropic.md` gains the decode and replay
+  sentences above in the same change as the code.
+- No `policy/` edit and no new import. The package's allowed import
+  stays `provider` alone.
+

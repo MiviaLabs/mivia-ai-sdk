@@ -16,9 +16,8 @@ func (c Checkpoint) Encode() ([]byte, error) {
 	return json.Marshal(c)
 }
 
-// Decode parses JSON and validates the result. Mirrors machine.Decode's
-// shape without its registry, since Checkpoint binds no guard or
-// action.
+// Decode parses JSON and validates the result. Checkpoint binds no
+// guard or action, so no registry is needed.
 func Decode(data []byte) (Checkpoint, error) {
 	var c Checkpoint
 	if err := json.Unmarshal(data, &c); err != nil {

@@ -174,8 +174,7 @@ flowchart LR
 - `machine/` — the status model. It provides `Status`, `Trigger`,
   `Guard`, `Action`, `Transition`, `InOut`, `Definition`, `New`,
   `Initial`, `Transitions`, `AllowedTransitions`, `AllowedTriggers`,
-  `Validate`, `Fire`, and the JSON wire form: `Encode`, `Decode`,
-  `Registry`, `NewRegistry`, and `MoveEvent`. See
+  `Validate`, `Fire`, and `MoveEvent`. See
   [packages/machine.md](packages/machine.md).
 - `flow/` — the step graph, the sequential runner, and the parallel
   panel waves. It provides `Step`, `Panel`, `Definition`, `New`,

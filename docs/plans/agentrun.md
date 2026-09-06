@@ -183,7 +183,7 @@ Inside:
 - `(*Artifacts).Encode() ([]byte, error)`, reading `values` and `runs`
   under the existing mutex.
 - `DecodeArtifacts(data []byte) (*Artifacts, error)`, a package-level
-  function, matching the `flow.Decode` and `machine.Decode`
+  function, matching the `flow.Decode`
   convention of a package-level decode paired with a method-form
   encode.
 - `(*Artifacts).Validate() error`, checking that every step named in
@@ -195,11 +195,9 @@ Inside:
 - An unexported `wireArtifacts` struct carrying `Values` and `Runs` as
   exported fields, needed because `Artifacts.values` and
   `Artifacts.runs` are unexported and `encoding/json` cannot see them
-  directly. This mirrors `machine.wireDefinition`, which exists for
-  the same reason: `Definition`'s fields are unexported too. This
-  differs from `flow.Checkpoint`, whose fields are already exported,
-  so `Checkpoint.Encode` marshals the public struct with no
-  intermediate type.
+  directly. This differs from `flow.Checkpoint`, whose fields are
+  already exported, so `Checkpoint.Encode` marshals the public struct
+  with no intermediate type.
 
 Outside:
 
@@ -216,14 +214,14 @@ Outside:
 
 ### Addendum design: why a method Encode and a function DecodeArtifacts
 
-`flow.Checkpoint.Encode` and `machine.Definition.Encode` are both
-methods; `flow.Decode` and `machine.Decode` are both package-level
-functions. `Encode` follows that method convention:
+`flow.Checkpoint.Encode` is a
+method; `flow.Decode` is a package-level
+function. `Encode` follows that method convention:
 `(a *Artifacts) Encode() ([]byte, error)`.
 
-The decode side departs from the bare `Decode` name `flow` and
-`machine` use, because each of those packages has exactly one wire
-type, so `flow.Decode` and `machine.Decode` read unambiguously.
+The decode side departs from the bare `Decode` name `flow`
+uses, because that package has exactly one wire
+type, so `flow.Decode` reads unambiguously.
 `agentrun` already exports several types (`Options`, `Runner`,
 `Artifacts`, `Run`); a bare `agentrun.Decode` would not say what it
 decodes. `DecodeArtifacts` keeps the function-not-method convention

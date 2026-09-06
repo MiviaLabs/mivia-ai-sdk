@@ -1,8 +1,8 @@
 # Package reference: machine
 
 The machine package is the state-machine building block. It owns the
-status model, the move dispatch `Fire`, and the JSON wire form with a
-name registry. The exported surface below mirrors `api/machine.txt`.
+status model and the move dispatch `Fire`. The exported surface below
+mirrors `api/machine.txt`.
 
 ## Constants
 
@@ -26,11 +26,6 @@ name registry. The exported surface below mirrors `api/machine.txt`.
 - `Definition` — an initial status and the transition table. The
   fields are unexported. Callers read them through `Initial` and
   `Transitions`.
-- `Registry` — the named guards and actions the wire form rebinds.
-  Fields: `Actions` and `Guards`. The two name sets are separate
-  namespaces. A registered name never maps to a nil function; `Decode`
-  rejects such a name.
-
 ## Functions and methods
 
 - `New(initial, transitions...)` — builds a `Definition` and validates
@@ -47,11 +42,6 @@ name registry. The exported surface below mirrors `api/machine.txt`.
 - `Definition.Validate()` — checks the transition table.
 - `Definition.Fire(ctx, from, trigger, in)` — moves the record through
   the row and returns the target status and the output record.
-- `NewRegistry()` — builds an empty `Registry`.
-- `Definition.Encode(reg)` — serializes the definition to JSON. Each
-  bound name must resolve in `reg`.
-- `Decode(data, reg)` — parses JSON and rebinds each name through the
-  `Registry`. It returns a `Definition`.
 
 ## Invariants
 
@@ -78,23 +68,6 @@ name registry. The exported surface below mirrors `api/machine.txt`.
   output record through the `InOut` it receives. `Fire` returns that
   record in the result `InOut`.
 
-## Wire contract
-
-- `Encode(reg)` serializes a definition to JSON. Guard and action names
-  are pointers in the wire form. A nil pointer means the field is
-  absent. `omitempty` skips absent fields.
-- `Decode(data, reg)` parses JSON and rebinds each name through `reg`.
-  A name that is missing from the registry returns an error. An empty
-  name returns an error. A name that resolves to a nil function returns
-  an error. Unknown fields are ignored.
-- A function does not serialize. The wire form stores a name for each
-  guard and action. `New` never records a name, so an anonymous
-  function cannot encode. Only a name that `Decode` read back can
-  encode.
-- Conformance vectors live in `machine/testdata/vectors/`. The prefix
-  `valid_` means the vector decodes. The prefix `invalid_decode_`
-  means the vector fails `Decode`.
-
 ## Failure modes
 
 This package returns plain errors, not sentinels. A caller cannot
@@ -107,14 +80,6 @@ match them with `errors.Is`.
 - `Definition.Fire` fails when no transition row matches the current
   status and trigger, or when the row's `Guard` rejects the move.
   Pinned by `machine_test/fire_test.go`.
-- `Decode` fails on malformed JSON, on a guard or action name that is
-  empty, unregistered, or resolves to a nil function in `reg`, and
-  when the decoded definition then fails `Validate`. Pinned by
-  `machine_test/wire_test.go` and the `invalid_decode_` vectors in
-  `machine/testdata/vectors/`.
-- `Encode` fails when a bound guard or action carries no name, since
-  an anonymous function cannot serialize. Pinned by
-  `machine_test/wire_test.go`.
 
 ## Usage
 

@@ -332,8 +332,7 @@ func PayloadOf(step string, a *Artifacts) func(machine.InOut) string {
 
 // wireArtifacts is the JSON form of an Artifacts value. It is
 // unexported because Artifacts.values and Artifacts.runs are
-// unexported and encoding/json cannot see them directly. This mirrors
-// machine.wireDefinition, which exists for the same reason.
+// unexported and encoding/json cannot see them directly.
 type wireArtifacts struct {
 	Values map[string]string `json:"values"`
 	Runs   map[string][]Run  `json:"runs"`

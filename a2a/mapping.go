@@ -10,15 +10,13 @@ import (
 )
 
 // Part is one A2A v1.0 message part. A2A v1.0 has no kind field and
-// no separate part classes: one part carries text, raw bytes, a url,
-// or a data object. Part carries no message-level field. ContextID
-// and MessageID belong to the wrapping A2A Message, not to Part, so
-// they live on Mapped, alongside Part, not on Part itself.
+// no separate part classes: one part carries text or a data object.
+// Part carries no message-level field. ContextID and MessageID belong
+// to the wrapping A2A Message, not to Part, so they live on Mapped,
+// alongside Part, not on Part itself.
 type Part struct {
 	Text string          `json:"text,omitempty"`
 	Data json.RawMessage `json:"data,omitempty"`
-	Raw  []byte          `json:"raw,omitempty"`
-	URL  string          `json:"url,omitempty"`
 }
 
 // Mapped is the result of ToPart and the input to FromPart. It holds
@@ -34,32 +32,37 @@ type Mapped struct {
 // ToPart maps a signed or unsigned envelope.Message onto a Mapped
 // value. It returns an error, not a zero Mapped, on failure: m.Encode
 // validates m before it marshals, so an invalid message never reaches
-// Part.Data. It signs nothing and does not modify m. ToPart
-// builds Part.Data by calling m.Encode and wrapping the result in
-// json.RawMessage, reusing envelope's wire encoder instead of a
-// second marshal call; Text, Raw, and URL stay empty. Mapped.ContextID
-// carries m.ThreadID and Mapped.MessageID carries m.ID.
+// Part.Text. It signs nothing and does not modify m. ToPart sets
+// Part.Text to the exact bytes m.Encode returns; Data stays empty.
+// Mapped.ContextID carries m.ThreadID and Mapped.MessageID carries
+// m.ID.
 func ToPart(m envelope.Message) (Mapped, error) {
 	data, err := m.Encode()
 	if err != nil {
 		return Mapped{}, err
 	}
 	return Mapped{
-		Part:      Part{Data: json.RawMessage(data)},
+		Part:      Part{Text: string(data)},
 		ContextID: m.ThreadID,
 		MessageID: m.ID,
 	}, nil
 }
 
 // FromPart maps a Mapped value back to an envelope.Message. It
-// unmarshals mapped.Part.Data into an envelope.Message, then
-// overwrites ThreadID with mapped.ContextID and ID with
-// mapped.MessageID before calling Validate. FromPart returns an
-// error instead of an invalid Message: no malformed part crosses the
-// a2a boundary silently.
+// unmarshals mapped.Part.Text first; an empty Text decodes
+// mapped.Part.Data instead, so an old peer's data part still maps
+// until v0.4.0. Text wins over Data when both are set; both empty
+// fails the decode. FromPart then overwrites ThreadID with
+// mapped.ContextID and ID with mapped.MessageID before calling
+// Validate. It returns an error instead of an invalid Message: no
+// malformed part crosses the a2a boundary silently.
 func FromPart(mapped Mapped) (envelope.Message, error) {
 	var m envelope.Message
-	if err := json.Unmarshal(mapped.Part.Data, &m); err != nil {
+	text := mapped.Part.Text
+	if text == "" {
+		text = string(mapped.Part.Data)
+	}
+	if err := json.Unmarshal([]byte(text), &m); err != nil {
 		return envelope.Message{}, err
 	}
 	m.ThreadID = mapped.ContextID

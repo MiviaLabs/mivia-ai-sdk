@@ -45,15 +45,13 @@ a future discovery phase.
 package a2a
 
 // Part is one A2A v1.0 message part. A2A v1.0 has no kind field and
-// no separate part classes: one part carries text, raw bytes, a url,
-// or a data object. Part carries no message-level field. ContextID
-// and MessageID belong to the wrapping A2A Message, not to Part, so
-// they live on Mapped, alongside Part, not on Part itself.
+// no separate part classes: one part carries text or a data object.
+// Part carries no message-level field. ContextID and MessageID belong
+// to the wrapping A2A Message, not to Part, so they live on Mapped,
+// alongside Part, not on Part itself.
 type Part struct {
 	Text string          `json:"text,omitempty"`
 	Data json.RawMessage `json:"data,omitempty"`
-	Raw  []byte          `json:"raw,omitempty"`
-	URL  string          `json:"url,omitempty"`
 }
 
 // Mapped is the result of ToPart and the input to FromPart. It holds
@@ -69,19 +67,20 @@ type Mapped struct {
 // ToPart maps a signed or unsigned envelope.Message onto a Mapped
 // value. It returns an error, not a zero Mapped, on failure: m.Encode
 // validates m before it marshals, so an invalid message never reaches
-// Part.Data. It signs nothing and does not modify m. ToPart
-// builds Part.Data by calling m.Encode and wrapping the result in
-// json.RawMessage, reusing envelope's wire encoder instead of a
-// second marshal call; Text, Raw, and URL stay empty. Mapped.ContextID
-// carries m.ThreadID and Mapped.MessageID carries m.ID.
+// Part.Text. It signs nothing and does not modify m. ToPart sets
+// Part.Text to the exact bytes m.Encode returns; Data stays empty.
+// Mapped.ContextID carries m.ThreadID and Mapped.MessageID carries
+// m.ID.
 func ToPart(m envelope.Message) (Mapped, error)
 
 // FromPart maps a Mapped value back to an envelope.Message. It
-// unmarshals mapped.Part.Data into an envelope.Message, then
-// overwrites ThreadID with mapped.ContextID and ID with
-// mapped.MessageID before calling Validate. FromPart returns an
-// error instead of an invalid Message: no malformed part crosses the
-// a2a boundary silently.
+// unmarshals mapped.Part.Text first; an empty Text decodes
+// mapped.Part.Data instead, so an old peer's data part still maps
+// until v0.4.0. Text wins over Data when both are set; both empty
+// fails the decode. FromPart then overwrites ThreadID with
+// mapped.ContextID and ID with mapped.MessageID before calling
+// Validate. It returns an error instead of an invalid Message: no
+// malformed part crosses the a2a boundary silently.
 func FromPart(mapped Mapped) (envelope.Message, error)
 ```
 
@@ -94,38 +93,38 @@ Design notes:
   and onto a separate return value. The semantic mapping contract
   still holds under the new shape: `contextId` maps to `thread_id`,
   and `messageId` maps to `id`.
-- `Part` carries only part-level content: `Text`, `Data`, `Raw`,
-  `URL`. `ContextID` and `MessageID` are A2A Message-level fields in
-  the real wire shape, so they never sit on `Part`; they live on
-  `Mapped` instead. `a2aclient` wires `Mapped.ContextID` and
-  `Mapped.MessageID` into `a2aproject/a2a-go`'s `Message` type without
-  touching `Part`'s shape.
+- `Part` carries only part-level content: `Text` and `Data`.
+  `ContextID` and `MessageID` are A2A Message-level fields in the
+  real wire shape, so they never sit on `Part`; they live on `Mapped`
+  instead. `a2aclient` wires `Mapped.ContextID` and `Mapped.MessageID`
+  into `a2aproject/a2a-go`'s `Message` type without touching `Part`'s
+  shape.
 - `ToPart` performs no signing and no mutation. The caller signs
   `m` with `envelope.Sign` or `identity.Sign` before calling `ToPart`,
   the same way `envelope.Encode` expects a caller-prepared message.
-- `ToPart` builds `Part.Data` through `m.Encode()`, not a direct
+- `ToPart` builds `Part.Text` through `m.Encode()`, not a direct
   `json.Marshal` call. `semgrep/sdk-standards.yml`'s
   `sdk.go.marshal-via-encode` rule forbids `json.Marshal` outside
   `envelope`'s own `message.go`, `sign.go`, `ack.go`, `wire.go`, and
   test files. `a2a` is not on that exemption list, so `ToPart` reuses
-  `envelope.Message.Encode` and wraps the returned bytes in
-  `json.RawMessage`. `FromPart`'s `json.Unmarshal(mapped.Part.Data,
-  &m)` is not a marshal-side call, so the rule does not apply there.
+  `envelope.Message.Encode` and converts the returned bytes to a
+  string. A conversion to string is not a marshal, so the rule stays
+  silent. `FromPart`'s `json.Unmarshal` is not a marshal-side call,
+  so the rule does not apply there either.
 - `FromPart` mirrors `envelope.Decode`'s parse-then-validate order
-  (`docs/architecture.md`, Message flow, step 4): unmarshal
-  `mapped.Part.Data` into `envelope.Message`, overwrite `ThreadID`
-  with `mapped.ContextID` and `ID` with `mapped.MessageID`, then call
+  (`docs/architecture.md`, Message flow, step 4): unmarshal the
+  carrier into `envelope.Message`, overwrite `ThreadID` with
+  `mapped.ContextID` and `ID` with `mapped.MessageID`, then call
   `Validate`. The `Mapped.ContextID`/`Mapped.MessageID` fields win
   over any `thread_id`/`id` already present in `Data`. A parse success
   with a failed `Validate` still returns an error, never a partial
-  `Message`. A malformed `Data` object that fails to unmarshal into
+  `Message`. A carrier that fails to unmarshal into
   `envelope.Message` also returns an error, before `Validate` ever
   runs.
-- `ToPart` returns `Mapped`, not a four-value tuple. No function in
-  this codebase (`envelope`, `identity`, `room`, `machine`, `flow`)
-  returns more than two values, and two adjacent string returns
-  (`contextID`, `messageID`) invite an accidental swap at the call
-  site. `Mapped` is exported because `a2aclient` callers need `Part`,
+- `ToPart` returns `Mapped`, not a wider tuple. No function in this
+  codebase (`envelope`, `identity`, `room`, `machine`, `flow`) needs
+  a wider result, and two adjacent string returns (`contextID`,
+  `messageID`) invite an accidental swap at the call site. `Mapped` is exported because `a2aclient` callers need `Part`,
   `ContextID`, and `MessageID` together.
 - `Part` carries no `Metadata` field. No caller reads or writes A2A
   part metadata; a future phase adds it only when a concrete caller
@@ -300,3 +299,123 @@ exported symbol. A non-empty `api/` diff is a failure.
 
 Predicted `scripts/check_test_tampering.py` findings: none. The change
 deletes no test and adds one. The builder does not add a trailer.
+
+## Addendum: the envelope crosses A2A as text
+
+Status: shipped.
+
+### Addendum goal
+
+Carry the envelope's signed JSON bytes as `Part.Text`, a plain Go
+string. Stop carrying them as `Part.Data`, whose `map[string]any` hop
+rounds integers through a proto float64. The signature covers exact
+bytes. A string carrier removes the numeric-precision class of bugs.
+
+Remove `Part.Raw` and `Part.URL` as well. A grep over `a2a`,
+`a2aclient`, `a2aloopback`, and `a2aack` finds no setter and no reader
+of either field. Both are dead exported surface.
+
+### Why text is the lossless carrier
+
+`a2a-go` v0.3.15 declares `TextPart` with one Go string field
+(`a2a/core.go:581`). The proto hop carries that field as a proto
+string. A proto string preserves arbitrary UTF-8 bytes byte-exact.
+`m.Encode()` emits UTF-8 JSON, so the text hop preserves every byte,
+including integer literals above 2^53. The `DataPart` hop instead
+carries `map[string]any`, and proto converts every value through
+float64, which rounds those literals and breaks the signature check.
+The string carrier is therefore the lossless choice, and no in-band
+marker scheme is needed.
+
+### Addendum scope
+
+`a2a/mapping.go`:
+
+- `Part` keeps `Text` and `Data`. It loses `Raw` and `URL`.
+- `ToPart` sets `Part.Text` to `string(m.Encode())`. It no longer
+  sets `Data`. It keeps `m.Encode()` as its byte source and adds no
+  `json.Marshal` call. `sdk.go.marshal-via-encode` excludes no `a2a`
+  file, so a marshal call here would fail the scan; a conversion to
+  string is not a marshal.
+- `FromPart` reads `Text` first. When `Text` is empty, it decodes
+  `Data` instead, so an old peer's data part still decodes. When both
+  are set, `Text` wins and `Data` is ignored. An empty `Text` and an
+  empty `Data` fail the decode and return an error.
+- The `Data` fallback exists for one release. It ships in v0.3.0, the
+  release after the current v0.2.1 tag. Delete the fallback in
+  v0.4.0, in the same change that deletes `a2aclient`'s data-part
+  fallback and this package's `valid_mapped.json` vector.
+
+Rewrite `ToPart`'s and `FromPart`'s doc comments for the new carrier
+and the fallback. Update this plan's own `## API` code block and its
+design notes to the post-change shape in the same commit. Update
+`docs/packages/a2a.md` the same way: the field list, the `ToPart(m)`
+bullet, the `FromPart(mapped)` bullet, the invariants naming
+`Part.Data`, and the line that says `Text`, `Raw`, and `URL` stay
+empty. Update `docs/examples/a2a-mapping-roundtrip.md`: its diagram
+node, its example code, and its prose that names `Part.Data`.
+
+`api/a2a.txt`: `make api-update` removes the `Raw` and `URL` lines of
+the `Part` entry. Commit the lock diff in the same change.
+
+`policy/layers.json` needs no change. `policy/thirdparty.json` needs
+no change: `a2a` imports nothing new and stays standard-library only.
+
+Conformance vectors: add `a2a/testdata/vectors/valid_mapped_text.json`
+alongside the existing `valid_mapped.json`. Use the existing
+`vectorFixture` shape: `message`, `part`, `context_id`, and
+`message_id` as sibling fields. The new vector's `part` holds only
+`"text"`, carrying the exact `m.Encode()` bytes of `message` as one
+JSON string. Generate the file by running the new `ToPart`; do not
+hand-write the bytes. Keep `valid_mapped.json` unchanged while the
+fallback exists. Adding a vector file fires no tampering rule; do not
+modify the old file in place.
+
+### Addendum tests
+
+All test names below live in `a2a/a2a_test/`, package `a2a_test`:
+
+- `TestToPartRoundTrip` in `mapping_test.go`: replace the `Part.Data`
+  assertion. Assert `Part.Text` is non-empty and `Part.Data` is empty.
+- `TestFromPartReadsTextFirst` in `mapping_test.go`: new. Build a
+  `Part` with a valid `Text` and a different valid `Data`. `FromPart`
+  returns the message decoded from `Text`.
+- `TestFromPartRejectsMalformedText` in `mapping_test.go`: new. A
+  `Text` holding a malformed JSON value fails `FromPart` with a
+  decode error and a zero `Message`.
+- `TestFromPartRejectsEmptyPart` in `mapping_test.go`: new. Empty
+  `Text` and empty `Data` fail `FromPart` and return no `Message`.
+- `TestSignedRoundTripKeepsLargeIntegers` in
+  `mapping_integration_test.go`: new. Sign a message with `MaxHops`
+  9007199254740993, map through `ToPart` and `FromPart`, and assert
+  `VerifySignature` passes and `MaxHops` equals the original.
+- `TestConformanceVectors` in `mapping_test.go`: rework. Drop the
+  `Part.Data` byte comparison. For every vector, assert `FromPart` on
+  the fixture part reproduces the fixture message, and assert the
+  same for a fresh `ToPart` mapping of the fixture message.
+- `TestTextVectorByteExact` in `mapping_test.go`: new. Load
+  `valid_mapped_text.json` and assert `ToPart` of the fixture message
+  reproduces the fixture's `part.text`, byte for byte.
+- `TestFromPartRejectsEmptyData` and `TestFromPartRejectsMalformedData`
+  in `mapping_test.go` stay. They now pin the `Data` fallback's two
+  error paths.
+- `FuzzFromPart` in `fuzz_test.go`: run the fixed-point body over both
+  carriers, `Part{Text: string(data)}` and `Part{Data: data}`.
+
+Fallback coverage needs no new case: `TestFromPartOverridesEmbeddedIDs`
+and the two data failure cases already drive `Data` through
+`FromPart`.
+
+### Addendum verification
+
+`make api-update` produces exactly one lock diff: `api/a2a.txt` loses
+the `Raw` and `URL` lines of `Part`. Commit it in the same change.
+
+`python3 scripts/check_plan.py`, `check_deps.py`, `check_prose.py`,
+and `check_labels.py` pass. `make verify` passes, including the
+coverage floor at 85 for `a2a`.
+
+Predicted tampering findings: none from this package. The change
+deletes no test function and no vector, and it adds assertion sites.
+The slice's commit-level trailer inventory lives in
+`docs/plans/a2aclient.md`'s addendum.

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 
@@ -23,10 +24,10 @@ import (
 const loopbackBind = "127.0.0.1:0"
 
 // loopbackExecutor completes each task with a result message carrying a
-// freshly signed envelope that restates the request's payload. The
-// response envelope binds its ID and ThreadID to the A2A ids the server
-// mints, exactly as a real responding agent must, so the post-hop
-// signature check passes.
+// freshly signed envelope that restates the request's payload and
+// MaxHops. The response envelope binds its ID and ThreadID to the A2A
+// ids the server mints, exactly as a real responding agent must, so
+// the post-hop signature check passes.
 type loopbackExecutor struct {
 	key ed25519.PrivateKey
 }
@@ -34,9 +35,9 @@ type loopbackExecutor struct {
 var _ a2asrv.AgentExecutor = (*loopbackExecutor)(nil)
 
 // Execute writes one completed status event whose message carries a
-// signed envelope restating the request's payload.
+// signed envelope restating the request's payload and MaxHops.
 func (e *loopbackExecutor) Execute(ctx context.Context, reqCtx *a2asrv.RequestContext, queue eventqueue.Queue) error {
-	payload, err := loopbackPayload(reqCtx)
+	req, err := loopbackRequest(reqCtx)
 	if err != nil {
 		return err
 	}
@@ -49,7 +50,8 @@ func (e *loopbackExecutor) Execute(ctx context.Context, reqCtx *a2asrv.RequestCo
 		Intent:     envelope.IntentAssert,
 		Epistemic:  envelope.EpistemicAssumed,
 		Confidence: 0.5,
-		Payload:    payload,
+		Payload:    req.Payload,
+		MaxHops:    req.MaxHops,
 	})
 	if err != nil {
 		return err
@@ -58,16 +60,12 @@ func (e *loopbackExecutor) Execute(ctx context.Context, reqCtx *a2asrv.RequestCo
 	if err != nil {
 		return err
 	}
-	body, err := dataFromRaw(mapped.Part.Data)
-	if err != nil {
-		return err
-	}
 	msg := &a2acore.Message{
 		ID:        msgID,
 		Role:      a2acore.MessageRoleAgent,
 		TaskID:    info.TaskID,
 		ContextID: info.ContextID,
-		Parts:     a2acore.ContentParts{a2acore.DataPart{Data: body}},
+		Parts:     a2acore.ContentParts{a2acore.TextPart{Text: mapped.Part.Text}},
 	}
 	event := a2acore.NewStatusUpdateEvent(reqCtx, a2acore.TaskStateCompleted, msg)
 	event.Final = true
@@ -82,32 +80,23 @@ func (e *loopbackExecutor) Cancel(ctx context.Context, reqCtx *a2asrv.RequestCon
 	return queue.Write(ctx, event)
 }
 
-// loopbackPayload finds the payload string of the request's first data
-// part.
-func loopbackPayload(reqCtx *a2asrv.RequestContext) (string, error) {
+// loopbackRequest decodes the request's first a2acore.TextPart into
+// an envelope.Message. The executor restates the decoded Payload and
+// MaxHops in its response envelope.
+func loopbackRequest(reqCtx *a2asrv.RequestContext) (envelope.Message, error) {
 	if reqCtx.Message == nil {
-		return "", errors.New("loopback: request carries no message")
+		return envelope.Message{}, errors.New("loopback: request carries no message")
 	}
 	for _, p := range reqCtx.Message.Parts {
-		if dp, ok := p.(a2acore.DataPart); ok {
-			if s, ok := dp.Data["payload"].(string); ok {
-				return s, nil
+		if tp, ok := p.(a2acore.TextPart); ok {
+			var m envelope.Message
+			if err := json.Unmarshal([]byte(tp.Text), &m); err != nil {
+				return envelope.Message{}, fmt.Errorf("loopback: decode request: %w", err)
 			}
+			return m, nil
 		}
 	}
-	return "", errors.New("loopback: request carries no payload")
-}
-
-// dataFromRaw unmarshals raw envelope JSON into the map[string]any
-// shape a2a-go's DataPart carries. A private copy of
-// a2aclient/grpc.go's unexported helper of the same name: that
-// original cannot be imported across packages.
-func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return envelope.Message{}, errors.New("loopback: request carries no payload")
 }
 
 // Loopback starts a gRPC A2A server on a 127.0.0.1 loopback port. It

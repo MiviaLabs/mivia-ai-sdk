@@ -19,7 +19,8 @@ func TestSendStatusResultRoundTrip(t *testing.T) {
 			StateWorking,
 			StateCompleted,
 		},
-		result: mappedResult(t, msg),
+		resultState: StateCompleted,
+		result:      mappedResult(t, msg),
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {

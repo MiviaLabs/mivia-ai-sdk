@@ -7,6 +7,7 @@ package a2aclient
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,9 +37,13 @@ var ErrNoBaseURL = errors.New("a2aclient: baseURL is required")
 // Test with errors.Is.
 var ErrNoTransport = errors.New("a2aclient: transport is required")
 
-// ErrNoCredentials reports a NewWithCredentials call whose credentials
-// are nil. Test with errors.Is.
-var ErrNoCredentials = errors.New("a2aclient: transport credentials are required")
+// ErrNoTLSConfig reports a NewWithTLS call whose cfg is nil. Test
+// with errors.Is.
+var ErrNoTLSConfig = errors.New("a2aclient: TLS config is required")
+
+// ErrUnsigned reports a Send call whose message carries no signer.
+// Test with errors.Is.
+var ErrUnsigned = errors.New("a2aclient: message must be signed")
 
 // ErrNoTaskID reports a Send call whose transport returned an empty
 // task id. Test with errors.Is.
@@ -62,8 +67,10 @@ type transport interface {
 	Send(ctx context.Context, mapped a2a.Mapped) (taskID string, err error)
 	// State reads the current state of the task named by taskID.
 	State(ctx context.Context, taskID string) (State, error)
-	// Result fetches the mapped output of the task named by taskID.
-	Result(ctx context.Context, taskID string) (a2a.Mapped, error)
+	// Result performs one fetch of the task named by taskID and
+	// returns its mapped output beside its state, so the caller gates
+	// on a terminal state without a second call.
+	Result(ctx context.Context, taskID string) (mapped a2a.Mapped, state State, err error)
 	// Close releases the transport's resources. Idempotent.
 	Close() error
 }
@@ -86,26 +93,32 @@ type Client struct {
 // gRPC transport, which holds a persistent connection. It returns an
 // error, not a partial Client, when baseURL is empty or the transport
 // fails to open. The caller must call Close when done with the
-// Client. Use NewWithCredentials for a remote link that needs TLS.
+// Client. Use NewWithTLS for a remote link that needs TLS.
 func New(baseURL string) (*Client, error) {
-	return NewWithCredentials(baseURL, insecure.NewCredentials())
-}
-
-// NewWithCredentials builds a Client that talks to the A2A agent at
-// baseURL over a gRPC channel secured by creds. Pass a TLS
-// credentials value for a remote link; nil fails with
-// ErrNoCredentials, never an implicit dial mode. It returns an error,
-// not a partial Client, when baseURL is empty, creds is nil, or the
-// transport fails to open. The caller must call Close when done with
-// the Client.
-func NewWithCredentials(baseURL string, creds credentials.TransportCredentials) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, ErrNoBaseURL
 	}
-	if creds == nil {
-		return nil, ErrNoCredentials
+	tr, err := newGRPCTransport(baseURL, insecure.NewCredentials())
+	if err != nil {
+		return nil, fmt.Errorf("a2aclient: open transport: %w", err)
 	}
-	tr, err := newGRPCTransport(baseURL, creds)
+	return &Client{baseURL: baseURL, transport: tr}, nil
+}
+
+// NewWithTLS builds a Client that talks to the A2A agent at baseURL
+// over a gRPC channel secured by cfg. A nil cfg fails with
+// ErrNoTLSConfig, never an implicit dial mode. It returns an error,
+// not a partial Client, when baseURL is empty, cfg is nil, or the
+// transport fails to open. The caller must call Close when done with
+// the Client.
+func NewWithTLS(baseURL string, cfg *tls.Config) (*Client, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, ErrNoBaseURL
+	}
+	if cfg == nil {
+		return nil, ErrNoTLSConfig
+	}
+	tr, err := newGRPCTransport(baseURL, credentials.NewTLS(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("a2aclient: open transport: %w", err)
 	}
@@ -153,13 +166,18 @@ func (h TaskHandle) isZero() bool {
 
 // Send maps msg to an A2A part through a2a.ToPart, then sends it to
 // the remote agent as a new task. Send returns the TaskHandle
-// identifying the created task. msg must already be signed; Send
-// performs no signing of its own, matching a2a.ToPart's contract. A
-// transport failure, a canceled ctx, or an expired ctx deadline
-// returns an error and a zero TaskHandle, never a partial one.
+// identifying the created task. Send enforces the signed-message
+// rule: an empty msg.Signer fails with ErrUnsigned before ToPart and
+// before the transport, since Send performs no signing of its own,
+// matching a2a.ToPart's contract. A transport failure, a canceled
+// ctx, or an expired ctx deadline returns an error and a zero
+// TaskHandle, never a partial one.
 func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, error) {
 	if err := ctx.Err(); err != nil {
 		return TaskHandle{}, err
+	}
+	if msg.Signer == "" {
+		return TaskHandle{}, ErrUnsigned
 	}
 	mapped, err := a2a.ToPart(msg)
 	if err != nil {
@@ -191,7 +209,9 @@ func (c *Client) Status(ctx context.Context, h TaskHandle) (State, error) {
 }
 
 // Result fetches the output of the task identified by h and maps it
-// back to an envelope.Message through a2a.FromPart. Result calls
+// back to an envelope.Message through a2a.FromPart. One transport
+// call returns the mapped part and the task's state together; Result
+// checks the state is terminal before it maps. Result calls
 // msg.VerifySignature on the mapped message before returning it: the
 // signature must still verify after the remote hop. Result returns an
 // error, not a partial Message, when the task is not yet in a
@@ -204,16 +224,12 @@ func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, er
 	if err := ctx.Err(); err != nil {
 		return envelope.Message{}, err
 	}
-	state, err := c.transport.State(ctx, h.taskID)
+	mapped, state, err := c.transport.Result(ctx, h.taskID)
 	if err != nil {
 		return envelope.Message{}, err
 	}
 	if !state.terminal() {
 		return envelope.Message{}, fmt.Errorf("a2aclient: task is %s, not terminal: %w", state, ErrNotTerminal)
-	}
-	mapped, err := c.transport.Result(ctx, h.taskID)
-	if err != nil {
-		return envelope.Message{}, err
 	}
 	msg, err := a2a.FromPart(mapped)
 	if err != nil {

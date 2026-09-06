@@ -20,8 +20,9 @@ const testBaseURL = "https://agent.example.invalid"
 type stubTransport struct {
 	mu sync.Mutex
 
-	sendErr error
-	taskID  string
+	sendErr   error
+	taskID    string
+	sendCalls atomic.Int64
 
 	// states is consumed one entry per State call; the last entry
 	// repeats once exhausted, so a caller can poll past the recorded
@@ -30,8 +31,10 @@ type stubTransport struct {
 	stateErr   error
 	stateCalls atomic.Int64
 
-	result    a2a.Mapped
-	resultErr error
+	result      a2a.Mapped
+	resultState State
+	resultErr   error
+	resultCalls atomic.Int64
 
 	// ignoreCtx makes Send/State/Result skip their own ctx.Err() check,
 	// so a test using it proves Client enforces the ctx check itself
@@ -46,6 +49,7 @@ type stubTransport struct {
 var _ transport = (*stubTransport)(nil)
 
 func (s *stubTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, error) {
+	s.sendCalls.Add(1)
 	if !s.ignoreCtx {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -78,16 +82,17 @@ func (s *stubTransport) State(ctx context.Context, taskID string) (State, error)
 	return s.states[idx], nil
 }
 
-func (s *stubTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, error) {
+func (s *stubTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, State, error) {
+	s.resultCalls.Add(1)
 	if !s.ignoreCtx {
 		if err := ctx.Err(); err != nil {
-			return a2a.Mapped{}, err
+			return a2a.Mapped{}, StateUnspecified, err
 		}
 	}
 	if s.resultErr != nil {
-		return a2a.Mapped{}, s.resultErr
+		return a2a.Mapped{}, StateUnspecified, s.resultErr
 	}
-	return s.result, nil
+	return s.result, s.resultState, nil
 }
 
 func (s *stubTransport) Close() error {

@@ -9,6 +9,4 @@ package a2a
   type Part struct {
   Text string `json:"text,omitempty"`
   Data json.RawMessage `json:"data,omitempty"`
-  Raw []byte `json:"raw,omitempty"`
-  URL string `json:"url,omitempty"`
 }

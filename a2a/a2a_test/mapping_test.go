@@ -41,8 +41,11 @@ func TestToPartRoundTrip(t *testing.T) {
 	if mapped.MessageID != m.ID {
 		t.Fatalf("MessageID = %q, want %q", mapped.MessageID, m.ID)
 	}
-	if len(mapped.Part.Data) == 0 {
-		t.Fatal("Part.Data is empty")
+	if mapped.Part.Text == "" {
+		t.Fatal("Part.Text is empty")
+	}
+	if len(mapped.Part.Data) != 0 {
+		t.Fatal("Part.Data is set, want empty: ToPart fills only Text")
 	}
 
 	got, err := a2a.FromPart(mapped)
@@ -91,8 +94,9 @@ func TestToPartInvalidMessageErrorMatchesValidate(t *testing.T) {
 	}
 }
 
-// TestFromPartRejectsEmptyData proves a Mapped whose Part.Data is an
-// empty JSON object fails FromPart through Validate (missing id,
+// TestFromPartRejectsEmptyData pins the Data fallback's Validate
+// failure path: with Text empty, a Mapped whose Part.Data is an empty
+// JSON object decodes but fails FromPart through Validate (missing id,
 // thread_id fields are overwritten by Mapped, but payload stays
 // empty).
 func TestFromPartRejectsEmptyData(t *testing.T) {
@@ -107,11 +111,11 @@ func TestFromPartRejectsEmptyData(t *testing.T) {
 	}
 }
 
-// TestFromPartRejectsMalformedData proves a Mapped whose Part.Data
-// fails to unmarshal into envelope.Message fails FromPart before
-// Validate ever runs, and returns no Message value. The failure
-// string must be a decode error, not a Validate error, to prove
-// Validate never ran.
+// TestFromPartRejectsMalformedData pins the Data fallback's decode
+// error path: with Text empty, a Mapped whose Part.Data fails to
+// unmarshal into envelope.Message fails FromPart before Validate ever
+// runs, and returns no Message value. The failure string must be a
+// decode error, not a Validate error, to prove Validate never ran.
 func TestFromPartRejectsMalformedData(t *testing.T) {
 	mapped := a2a.Mapped{
 		Part:      a2a.Part{Data: json.RawMessage(`{"confidence":"not-a-number"}`)},
@@ -214,6 +218,73 @@ func TestFromPartOverrideOrderPrecedesValidate(t *testing.T) {
 	}
 }
 
+// TestFromPartReadsTextFirst proves Text wins over Data: a Part with
+// a valid Text and a different valid Data decodes the Text side, and
+// the Data content is ignored.
+func TestFromPartReadsTextFirst(t *testing.T) {
+	text, err := validMessage().Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	other := validMessage()
+	other.Payload = "The data side."
+	data, err := other.Encode()
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+
+	mapped := a2a.Mapped{
+		Part:      a2a.Part{Text: string(text), Data: data},
+		ContextID: "thread-1",
+		MessageID: "msg-1",
+	}
+	got, err := a2a.FromPart(mapped)
+	if err != nil {
+		t.Fatalf("FromPart: %v", err)
+	}
+	if got.Payload != "The build is green." {
+		t.Fatalf("Payload = %q, want the Text side's payload, not the Data side's", got.Payload)
+	}
+}
+
+// TestFromPartRejectsMalformedText proves a Part whose Text holds a
+// malformed JSON value fails FromPart with a decode error and a zero
+// Message.
+func TestFromPartRejectsMalformedText(t *testing.T) {
+	mapped := a2a.Mapped{
+		Part:      a2a.Part{Text: "{not json"},
+		ContextID: "thread-1",
+		MessageID: "msg-1",
+	}
+	got, err := a2a.FromPart(mapped)
+	if err == nil {
+		t.Fatal("FromPart accepted malformed text")
+	}
+	if strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("error looks like a Validate error, want a decode error: %v", err)
+	}
+	if !reflect.DeepEqual(got, envelope.Message{}) {
+		t.Fatalf("FromPart returned a non-zero Message on decode failure: %+v", got)
+	}
+}
+
+// TestFromPartRejectsEmptyPart proves an empty Text and an empty Data
+// fail the decode and return no Message value.
+func TestFromPartRejectsEmptyPart(t *testing.T) {
+	mapped := a2a.Mapped{
+		Part:      a2a.Part{},
+		ContextID: "thread-1",
+		MessageID: "msg-1",
+	}
+	got, err := a2a.FromPart(mapped)
+	if err == nil {
+		t.Fatal("FromPart accepted a part with no text and no data")
+	}
+	if !reflect.DeepEqual(got, envelope.Message{}) {
+		t.Fatalf("FromPart returned a non-zero Message on an empty part: %+v", got)
+	}
+}
+
 // vectorFixture mirrors a2a/testdata/vectors' JSON shape: the source
 // envelope.Message and its mapped Part side by side, with ContextID
 // and MessageID as sibling fields outside the part object.
@@ -225,9 +296,9 @@ type vectorFixture struct {
 }
 
 // TestConformanceVectors pins the a2a wire mapping. Every valid_
-// prefixed file in testdata/vectors must round-trip: ToPart(message)
-// reproduces part/context_id/message_id, and FromPart on the fixture
-// reproduces message.
+// prefixed file in testdata/vectors must round-trip: FromPart on the
+// fixture part reproduces the fixture message, and FromPart on a
+// fresh ToPart mapping of the fixture message reproduces it too.
 func TestConformanceVectors(t *testing.T) {
 	entries, err := os.ReadDir("../testdata/vectors")
 	if err != nil {
@@ -261,9 +332,6 @@ func TestConformanceVectors(t *testing.T) {
 			if mapped.MessageID != fixture.MessageID {
 				t.Fatalf("MessageID = %q, want %q", mapped.MessageID, fixture.MessageID)
 			}
-			if string(mapped.Part.Data) != string(fixture.Part.Data) {
-				t.Fatalf("Part.Data = %s, want %s", mapped.Part.Data, fixture.Part.Data)
-			}
 
 			got, err := a2a.FromPart(a2a.Mapped{
 				Part:      fixture.Part,
@@ -276,6 +344,39 @@ func TestConformanceVectors(t *testing.T) {
 			if !reflect.DeepEqual(got, fixture.Message) {
 				t.Fatalf("round trip = %+v, want %+v", got, fixture.Message)
 			}
+
+			fresh, err := a2a.FromPart(a2a.Mapped{
+				Part:      mapped.Part,
+				ContextID: fixture.ContextID,
+				MessageID: fixture.MessageID,
+			})
+			if err != nil {
+				t.Fatalf("FromPart on the fresh mapping: %v", err)
+			}
+			if !reflect.DeepEqual(fresh, fixture.Message) {
+				t.Fatalf("fresh mapping round trip = %+v, want %+v", fresh, fixture.Message)
+			}
 		})
+	}
+}
+
+// TestTextVectorByteExact proves ToPart of the text vector's message
+// reproduces the vector's part text byte for byte: the carrier holds
+// the exact Encode bytes.
+func TestTextVectorByteExact(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("../testdata/vectors", "valid_mapped_text.json"))
+	if err != nil {
+		t.Fatalf("read vector: %v", err)
+	}
+	var fixture vectorFixture
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatalf("unmarshal vector: %v", err)
+	}
+	mapped, err := a2a.ToPart(fixture.Message)
+	if err != nil {
+		t.Fatalf("ToPart: %v", err)
+	}
+	if mapped.Part.Text != fixture.Part.Text {
+		t.Fatalf("Part.Text = %s, want %s", mapped.Part.Text, fixture.Part.Text)
 	}
 }

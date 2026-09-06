@@ -19,7 +19,7 @@ sequenceDiagram
     E-->>A: JSON bytes
     A-->>P: Mapped (Part, ContextID, MessageID)
     P->>A: FromPart(mapped)
-    A->>A: unmarshal Part.Data
+    A->>A: unmarshal Part.Text
     A->>A: set ThreadID, ID from Mapped
     A->>E: m.Validate()
     A-->>P: envelope.Message
@@ -61,16 +61,16 @@ func main() {
 		fmt.Println("sign:", err)
 	}
 
-	// ToPart validates, then encodes the message into Part.Data.
+	// ToPart validates, then encodes the message into Part.Text.
 	mapped, err := a2a.ToPart(signed)
 	if err != nil {
 		fmt.Println("to part:", err)
 	}
 	fmt.Println("context id:", mapped.ContextID)
 	fmt.Println("message id:", mapped.MessageID)
-	fmt.Println("part data:", string(mapped.Part.Data))
+	fmt.Println("part text:", string(mapped.Part.Text))
 
-	// FromPart decodes Part.Data, then reapplies ContextID and MessageID.
+	// FromPart decodes Part.Text, then reapplies ContextID and MessageID.
 	got, err := a2a.FromPart(mapped)
 	if err != nil {
 		fmt.Println("from part:", err)
@@ -97,7 +97,7 @@ Output:
 ```
 context id: task-42
 message id: msg-1
-part data: {"version":"v1","id":"msg-1","thread_id":"task-42","intent":"assert","epistemic":"inferred","confidence":0.9,"provenance":{"source":"model:self"},"payload":"The build is green.","signer":"<hex ed25519 public key>","signature":"<hex ed25519 signature>"}
+part text: {"version":"v1","id":"msg-1","thread_id":"task-42","intent":"assert","epistemic":"inferred","confidence":0.9,"provenance":{"source":"model:self"},"payload":"The build is green.","signer":"<hex ed25519 public key>","signature":"<hex ed25519 signature>"}
 verify: ok
 fields identical: true
 ```
@@ -107,12 +107,12 @@ fields identical: true
 ## What the program shows
 
 `ToPart` validates the signed message, then reuses `Message.Encode` to
-fill `Part.Data`. It carries `ThreadID` and `ID` separately, on
+fill `Part.Text`. It carries `ThreadID` and `ID` separately, on
 `Mapped`, because A2A v1.0 keeps those two fields on the wrapping
-message, not on a `Part`. `FromPart` unmarshals `Part.Data`, then
+message, not on a `Part`. `FromPart` unmarshals `Part.Text`, then
 overwrites `ThreadID` with `ContextID` and `ID` with `MessageID`
 before it validates. Here both overwrites restore the same values the
 message already carried, so the round trip changes nothing. The
-signature survives inside `Part.Data` untouched, so `VerifySignature`
+signature survives inside `Part.Text` untouched, so `VerifySignature`
 still succeeds on the far side. `reflect.DeepEqual` confirms every
 field, not only the signature, comes back identical.

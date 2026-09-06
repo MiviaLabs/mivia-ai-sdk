@@ -11,9 +11,9 @@ import (
 func TestResultAcceptsRejectedTask(t *testing.T) {
 	msg := signedMessage(t)
 	tr := &stubTransport{
-		taskID: "task-1",
-		states: []State{StateRejected},
-		result: mappedResult(t, msg),
+		taskID:      "task-1",
+		resultState: StateRejected,
+		result:      mappedResult(t, msg),
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
@@ -37,7 +37,7 @@ func TestResultAcceptsRejectedTask(t *testing.T) {
 func TestResultRejectsBlockedTask(t *testing.T) {
 	for _, state := range []State{StateAuthRequired, StateInputRequired} {
 		t.Run(state.String(), func(t *testing.T) {
-			tr := &stubTransport{taskID: "task-1", states: []State{state}}
+			tr := &stubTransport{taskID: "task-1", resultState: state}
 			c, err := newFromTransport(testBaseURL, tr)
 			if err != nil {
 				t.Fatalf("newFromTransport: %v", err)

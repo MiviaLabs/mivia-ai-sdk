@@ -7,8 +7,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 )
 
-// FuzzFromPart feeds arbitrary bytes to FromPart as Part.Data. It
-// must never panic. Anything it accepts must re-encode cleanly
+// FuzzFromPart feeds arbitrary bytes to FromPart over both carriers:
+// as Part.Text and, for the one-release Data fallback, as Part.Data.
+// It must never panic. Anything it accepts must re-encode cleanly
 // through ToPart, and once mapped, a further FromPart/ToPart pass must
 // reproduce the exact same envelope.Message: mapped output must settle
 // into a stable fixed point, not drift or silently corrupt on repeated
@@ -43,40 +44,45 @@ func FuzzFromPart(f *testing.F) {
 	f.Add([]byte{})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		mapped := a2a.Mapped{
-			Part:      a2a.Part{Data: data},
-			ContextID: "thread-1",
-			MessageID: "msg-1",
-		}
-		m, err := a2a.FromPart(mapped)
-		if err != nil {
-			return
-		}
-		if err := m.Validate(); err != nil {
-			t.Fatalf("FromPart returned a message that fails its own Validate: %v", err)
-		}
+		for _, part := range []a2a.Part{
+			{Text: string(data)},
+			{Data: data},
+		} {
+			mapped := a2a.Mapped{
+				Part:      part,
+				ContextID: "thread-1",
+				MessageID: "msg-1",
+			}
+			m, err := a2a.FromPart(mapped)
+			if err != nil {
+				continue
+			}
+			if err := m.Validate(); err != nil {
+				t.Fatalf("FromPart returned a message that fails its own Validate: %v", err)
+			}
 
-		remapped, err := a2a.ToPart(m)
-		if err != nil {
-			t.Fatalf("decoded but cannot re-encode: %v", err)
-		}
-		m2, err := a2a.FromPart(remapped)
-		if err != nil {
-			t.Fatalf("re-encoded data cannot be decoded again: %v", err)
-		}
+			remapped, err := a2a.ToPart(m)
+			if err != nil {
+				t.Fatalf("decoded but cannot re-encode: %v", err)
+			}
+			m2, err := a2a.FromPart(remapped)
+			if err != nil {
+				t.Fatalf("re-encoded data cannot be decoded again: %v", err)
+			}
 
-		// From here on, mapping must be a stable fixed point: cycling
-		// m2 through ToPart/FromPart again must reproduce m2 exactly.
-		remapped2, err := a2a.ToPart(m2)
-		if err != nil {
-			t.Fatalf("m2 decoded but cannot re-encode: %v", err)
-		}
-		m3, err := a2a.FromPart(remapped2)
-		if err != nil {
-			t.Fatalf("m2 re-encoded data cannot be decoded again: %v", err)
-		}
-		if !reflect.DeepEqual(m2, m3) {
-			t.Fatalf("round trip is not a fixed point:\nm2: %+v\nm3: %+v", m2, m3)
+			// From here on, mapping must be a stable fixed point: cycling
+			// m2 through ToPart/FromPart again must reproduce m2 exactly.
+			remapped2, err := a2a.ToPart(m2)
+			if err != nil {
+				t.Fatalf("m2 decoded but cannot re-encode: %v", err)
+			}
+			m3, err := a2a.FromPart(remapped2)
+			if err != nil {
+				t.Fatalf("m2 re-encoded data cannot be decoded again: %v", err)
+			}
+			if !reflect.DeepEqual(m2, m3) {
+				t.Fatalf("round trip is not a fixed point:\nm2: %+v\nm3: %+v", m2, m3)
+			}
 		}
 	})
 }

@@ -49,6 +49,11 @@ var (
 // MaxNameBytes bounds Message.Name when set.
 const MaxNameBytes = 128
 
+// ToolErrorPrefix marks RoleTool message Content as an untrusted
+// tool-run error report. One definition serves every adapter that
+// inspects or writes the marker.
+const ToolErrorPrefix = "[tool-error] "
+
 // Role names a message's role in a chat turn.
 type Role string
 

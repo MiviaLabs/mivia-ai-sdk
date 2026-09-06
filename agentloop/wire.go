@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"io"
 	"strings"
 	"unicode/utf8"
@@ -26,8 +27,9 @@ const truncationMarker = "...[truncated]"
 // path both prefix error-report Content with it under
 // ErrorPolicyReport, so the model-facing transcript distinguishes a
 // reported failure from a normal tool result without a
-// provider.Message schema change.
-const ToolErrorPrefix = "[tool-error] "
+// provider.Message schema change. The value lives on provider; this
+// name re-exports it so existing callers keep one import.
+const ToolErrorPrefix = provider.ToolErrorPrefix
 
 // BatchTruncationNotice replaces a tool result's content when
 // TurnResultBudget is exhausted before that call's turn in Index

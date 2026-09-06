@@ -31,6 +31,12 @@ own plan review. Outside: retry, backoff, rate limiting, and cost
 tracking. Those are caller or future-phase concerns layered on top of
 one `Chat` call, not part of the contract itself.
 
+Named callers, for the zero-caller Request controls: an external
+`Completer` implementation honors `Request.Timeout` as a caller-side
+deadline override, and a session-keyed client multiplexer uses
+`Request.SessionID`. `provider` itself reads neither; `RunTurn`
+forwards both untouched, and every in-tree adapter may ignore them.
+
 `provider` imports nothing internal. No third-party import. Stdlib
 only: `context`, `errors`, `fmt`, `time`. A leaf package stays easiest to test
 and depend on: any future package that needs a model binding imports

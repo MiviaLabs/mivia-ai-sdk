@@ -16,6 +16,7 @@ package provider
   const RoleUser = "user"
   const ToolChoiceAuto = "auto"
   const ToolChoiceNone = "none"
+  const ToolErrorPrefix = "[tool-error] "
   func (c Chunk) Validate() (error)
   func (m Message) Validate() (error)
   func (r Request) Validate() (error)

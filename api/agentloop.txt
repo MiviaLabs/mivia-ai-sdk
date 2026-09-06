@@ -28,7 +28,7 @@ package agentloop
   const StopNoToolCalls = "no_tool_calls"
   const StopRepeatedToolFailures = "repeated_tool_failures"
   const StopSteered = "steered"
-  const ToolErrorPrefix = "[tool-error] "
+  const ToolErrorPrefix = provider.ToolErrorPrefix
   func (b Bounds) Validate() (error)
   func (c Conclude) Validate() (error)
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)

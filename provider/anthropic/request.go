@@ -185,7 +185,7 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, 
 			Type:      "tool_result",
 			ToolUseID: msg.ToolCallID,
 			Content:   msg.Content,
-			IsError:   strings.HasPrefix(msg.Content, "[tool-error]"),
+			IsError:   strings.HasPrefix(msg.Content, provider.ToolErrorPrefix),
 		}
 		n := len(*anthropicMsgs)
 		if n > 0 && (*anthropicMsgs)[n-1].Role == anthropicRoleUser {

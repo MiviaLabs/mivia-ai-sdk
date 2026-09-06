@@ -413,7 +413,11 @@ Inside:
   `WithPrincipal`/`PrincipalFrom` pair: the tool loads under the ctx
   principal.
 - `SpoolExpiring`, `Expire`, and `GrantExpiry`: grant creation with a
-  TTL, immediate marking, and observation.
+  TTL, immediate marking, and observation. The expiry surface names
+  its caller: a durable session runner that bounds grant lifetime
+  with a TTL sweep. No in-tree package sweeps today; `contextsession`
+  reads spooled grants through `Load`, whose `ErrExpired` path shares
+  this surface.
 - `ErrExpired`, returned by `Load` after expiry.
 
 Outside:

@@ -22,7 +22,11 @@ Inside:
   one named user-role message that compaction preserves through
   `PreserveNames`.
 - Token pricing for summary bytes: `TokenEstimate`, bytes divided by
-  four.
+  four. `TokenEstimate` names its caller: an external budget planner
+  that prices summary bytes against a window budget. No in-tree
+  package calls it today; it stays because the pricing rule is part
+  of the summary contract, and dropping it would push every caller to
+  re-derive the divide-by-four rule.
 
 Outside:
 

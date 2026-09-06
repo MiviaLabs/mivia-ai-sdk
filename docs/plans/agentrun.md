@@ -360,3 +360,17 @@ when the tool implements `tools.SchemaTool`. Existing tests in
 `agentrun/agentrun_test/schema_decode_test.go` pin the decode and
 plain-payload paths; they stay green. No exported surface changes and
 no `api/` diff is expected.
+
+## Addendum: drop the default no-op subscriptions
+
+`New` no longer subscribes no-op handlers for the three agent event
+names. `events.Bus.Emit` returns nil for a name with no subscriber,
+so the workaround is dead weight. Delete the loop and the `noop`
+closure at `agentrun/options.go:147-152`. The Scope bullet naming the
+default no-op wiring is removed with the code. See
+docs/plans/events.md, "Addendum: Emit accepts an unobserved event",
+for the contract, the test rewrites, and the verification set.
+
+Every commit in this change that rewrites a mandated test carries an
+`Allow-Test-Change` commit-message trailer. The trailer names the
+rewrites. See docs/plans/events.md, Verification.

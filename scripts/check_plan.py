@@ -26,7 +26,12 @@ grep can distinguish addendum cross-check failures from top-level
 A package tree with zero `*_test.go` files (including zero in
 `<pkg>/<pkg>_test/`) skips the cross-check: there is nothing to
 compare the section's claims against. The structural section check
-still applies."""
+still applies.
+
+The plan-status rule: a `Status: planned, not yet built` section must
+name no exported symbol locked in `api/<pkg>.txt`. A section that must
+stay planned renames its status to `Status: planned, extends <symbol>`;
+the gate ignores that form."""
 import argparse
 import re
 import sys
@@ -163,6 +168,75 @@ def _declared_tests(pkg_dir: Path) -> set[str]:
     return names
 
 
+# --- plan-status rule -----------------------------------------------
+
+# _LOCK_LINE parses one api/<pkg>.txt line; the trailing identifier is
+# the symbol (method and top-level forms). _SYMBOL matches an exported
+# Go symbol, optionally after a lowercase dotted package prefix; group
+# 1 keeps the exported part (`tools.SchemaTool` -> `SchemaTool`).
+STATUS_PLANNED = re.compile(r"^Status: planned, not yet built")
+_HEADING = re.compile(r"^(#{1,6})\s")
+_LOCK_LINE = re.compile(r"^(?:func\s+\([^)]*\)\s+|(?:func|const|var|type)\s+)(\w+)")
+_SPAN = re.compile(r"`([^`\n]+)`")
+_SYMBOL = re.compile(r"(?:[a-z][a-z0-9_]*\.)?([A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)*)")
+
+def _locked_symbols(path: Path) -> set[str]:
+    """_locked_symbols parses one api lock into its symbol set."""
+    return {
+        m.group(1)
+        for line in path.read_text().splitlines()
+        if (m := _LOCK_LINE.match(line.strip()))
+    }
+
+def _planned_section(lines: list[str], idx: int) -> tuple[int, int]:
+    """_planned_section returns the [start, end) span of the section
+    governing lines[idx]: nearest preceding heading to the next heading
+    of the same or higher level. No preceding heading means the file."""
+    level, start = 0, 0
+    for i in range(idx - 1, -1, -1):
+        if (m := _HEADING.match(lines[i])):
+            level, start = len(m.group(1)), i
+            break
+    end = len(lines)
+    for i in range(idx + 1, len(lines)):
+        if (m := _HEADING.match(lines[i])) and len(m.group(1)) <= level:
+            end = i
+            break
+    return start, end
+
+def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
+    """_check_planned_status applies the plan-status rule. Every
+    `Status: planned, not yet built` section must name no symbol locked
+    in api/<pkg>.txt. One problem per status line: the first match."""
+    problems: list[str] = []
+    lines = text.splitlines()
+    locked: set[str] | None = None
+    for idx, line in enumerate(lines):
+        if not STATUS_PLANNED.match(line):
+            continue
+        if locked is None:
+            locked = _locked_symbols(root / "api" / f"{pkg}.txt")
+        start, end = _planned_section(lines, idx)
+        syms: list[str] = []
+        for body in lines[start:end]:
+            syms += [
+                m.group(1)
+                for span in _SPAN.finditer(body)
+                for m in _SYMBOL.finditer(span.group(1))
+                if m.group(1) not in syms
+            ]
+        for sym in syms:
+            hit = next((part for part in sym.split(".") if part in locked), None)
+            if hit is None:
+                continue
+            problems.append(
+                f"docs/plans/{pkg}.md:{idx + 1}: status 'planned, not yet built' "
+                f"names locked symbol {hit!r} from api/{pkg}.txt; ship the section "
+                f"or write 'Status: planned, extends {hit}'"
+            )
+            break
+    return problems
+
 def check(root: Path, env_extra: dict | None = None) -> list[str]:
     """check runs the plan gate against one repo root. Returns problem
     strings; empty means the gate passes.
@@ -182,6 +256,7 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
             if not re.search(rf"^{re.escape(section)}\s*$", text, re.M):
                 problems.append(f"{pkg}: plan lacks section {section!r}")
         sections = _collect_tests_sections(text)
+        problems.extend(_check_planned_status(root, pkg, text))
         if not sections:
             continue
         declared = _declared_tests(root / pkg)
@@ -370,6 +445,38 @@ def _probe_addendum_tests_passes_when_declared(root: Path) -> list[str]:
     return []
 
 
+_STATUS_LOCK = "package engine\n\n  func New() (*Engine)\n  type Engine struct {\n"
+
+def _probe_plan_status(root: Path) -> list[str]:
+    """_probe_plan_status covers the plan-status rule: a planned section
+    naming a symbol locked in api/flow/engine.txt must fail; one naming
+    an unlocked symbol must pass; the `planned, extends` escape form
+    naming a locked symbol must pass."""
+    cases = [
+        ("locked", "Status: planned, not yet built.", "`engine.New`", True),
+        ("unlocked", "Status: planned, not yet built.", "`engine.Missing`", False),
+        ("escape", "Status: planned, extends New.", "`engine.New`", False),
+    ]
+    problems: list[str] = []
+    for name, status_line, ref, want_fail in cases:
+        sub = root / name
+        sub.mkdir()
+        _write_fixture(sub)
+        go_packages.write_file(sub, "api/flow/engine.txt", _STATUS_LOCK)
+        plan = (
+            "# Plan\n\n## Goal\n\nText.\n\n## Scope\n\nText.\n\n## API\n\n"
+            f"{status_line}\n\nUses {ref} from this package.\n\n"
+            "## Tests\n\nText.\n\n## Verification\n\nText.\n"
+        )
+        go_packages.write_file(sub, "docs/plans/flow/engine.md", plan)
+        got = check(sub, go_packages.probe_env())
+        failed = any("docs/plans/flow/engine.md" in p and "'New'" in p for p in got)
+        if want_fail and not failed:
+            problems.append(f"probe_plan_status/{name}: expected a locked-symbol problem, got {got}")
+        if not want_fail and got:
+            problems.append(f"probe_plan_status/{name}: expected pass, got {got}")
+    return problems
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = check(root)
@@ -391,6 +498,7 @@ def run_probe() -> bool:
             _probe_no_test_files_skips,
             _probe_addendum_tests_checked,
             _probe_addendum_tests_passes_when_declared,
+            _probe_plan_status,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()

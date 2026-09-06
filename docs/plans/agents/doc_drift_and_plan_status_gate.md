@@ -153,3 +153,13 @@ untouched. Add probe cases, not Go tests.
 - The probe fails on a locked symbol and passes without one.
 - The check run against `f2c0edf` in a scratch worktree reports
   thirteen sites.
+
+## Positive control
+
+The orchestrator ran the new check against commit `f2c0edf` in a
+scratch worktree on 2026-09-06. It reported thirteen findings, one per
+site listed in this plan: a2aclient 205 and 640, a2aloopback 3,
+agentloop 3128, contextplan 872, dispatch 180 and 274,
+longtermmemory 47, 624, and 791, mcp 587, tools 469 and 496. The rule
+is not too narrow. The control exits 1 on that tree and exits 0 on the
+fixed tree.

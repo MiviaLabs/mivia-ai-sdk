@@ -12,7 +12,7 @@ import (
 	a2acore "github.com/a2aproject/a2a-go/a2a"
 	a2asdk "github.com/a2aproject/a2a-go/a2aclient"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 // grpcTransport implements transport over a2a-go's gRPC transport.
@@ -40,14 +40,19 @@ var ErrNoDataPart = errors.New("a2aclient: result message carries no data part")
 
 // numPrefix marks a string that carries a JSON number the proto
 // struct hop cannot hold in a float64. dataFromRaw encodes, and
-// dataFromParts restores.
+// dataFromParts restores. The marker is in-band, so a message whose
+// own string value equals numPrefix plus a lossy literal is
+// indistinguishable from an encoded number; restoreNumbers rewrites
+// it. That class is degenerate input, and the failure is a decode
+// error, never silent corruption.
 const numPrefix = "urn:mivia:json-number:"
 
-// newGRPCTransport dials baseURL and wraps the resulting connection in
-// a2a-go's gRPC transport. The dial is lazy (grpc.NewClient does not
-// block), so a bad address surfaces on the first call, not here.
-func newGRPCTransport(baseURL string) (*grpcTransport, error) {
-	conn, err := grpc.NewClient(baseURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+// newGRPCTransport dials baseURL with creds and wraps the resulting
+// connection in a2a-go's gRPC transport. The dial is lazy
+// (grpc.NewClient does not block), so a bad address surfaces on the
+// first call, not here.
+func newGRPCTransport(baseURL string, creds credentials.TransportCredentials) (*grpcTransport, error) {
+	conn, err := grpc.NewClient(baseURL, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		return nil, err
 	}
@@ -190,15 +195,31 @@ func float64Exact(s string) bool {
 	return strconv.FormatFloat(f, 'f', -1, 64) == s
 }
 
-// restoreNumbers walks v in place. Each numPrefix string becomes the
-// json.Number it carries. A structpb hop delivers maps and slices as
-// fresh values, so the walk mutates the transport-local copy.
+// lossyNumberLiteral reports the JSON number literal s carries when a
+// float64 round trip loses it. encodeInexactNumbers mints exactly this
+// class, so restoreNumbers rewrites only these strings; a plain string
+// value that happens to carry the marker prefix stays a string.
+func lossyNumberLiteral(s string) (json.Number, bool) {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || strconv.FormatFloat(f, 'f', -1, 64) == s {
+		return "", false
+	}
+	return json.Number(s), true
+}
+
+// restoreNumbers walks v in place. Each string a float64 round trip
+// cannot hold becomes the json.Number literal it carries; that is the
+// only string class encodeInexactNumbers mints. A structpb hop
+// delivers maps and slices as fresh values, so the walk mutates the
+// transport-local copy.
 func restoreNumbers(v any) {
 	switch t := v.(type) {
 	case map[string]any:
 		for k, e := range t {
 			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
-				t[k] = json.Number(strings.TrimPrefix(s, numPrefix))
+				if n, ok := lossyNumberLiteral(strings.TrimPrefix(s, numPrefix)); ok {
+					t[k] = n
+				}
 			} else {
 				restoreNumbers(e)
 			}
@@ -206,7 +227,9 @@ func restoreNumbers(v any) {
 	case []any:
 		for i, e := range t {
 			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
-				t[i] = json.Number(strings.TrimPrefix(s, numPrefix))
+				if n, ok := lossyNumberLiteral(strings.TrimPrefix(s, numPrefix)); ok {
+					t[i] = n
+				}
 			} else {
 				restoreNumbers(e)
 			}

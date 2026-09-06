@@ -19,12 +19,14 @@ package a2aclient
   func (g *grpcTransport) State(ctx context.Context, taskID string) (State, error)
   func (s State) String() (string)
   func New(baseURL string) (*Client, error)
+  func NewWithCredentials(baseURL string, creds credentials.TransportCredentials) (*Client, error)
   type Client struct {
 }
   type State int
   type TaskHandle struct {
 }
   var ErrNoBaseURL
+  var ErrNoCredentials
   var ErrNoDataPart
   var ErrNoResultMessage
   var ErrNoTask

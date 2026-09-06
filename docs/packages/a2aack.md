@@ -56,6 +56,13 @@ The ack references the sent step message, not the server reply.
 signature is re-verified on the caller's side of the transport, so a
 forged or tampered restatement never reaches the confirmed ack.
 
+`Options.ExpectSigner` pins the remote identity. When set, the
+result's `Signer` must equal it or the exchange fails with
+`ErrSignerMismatch` instead of a confirmed ack. Verification alone
+proves only that the result signer controls its own key; a remote
+over a plaintext channel needs the pin. An empty pin accepts any
+verifying signer and suits loopback and tests only.
+
 ## Failure modes
 
 - `ErrNoClient` ("a2aack: client is required") — `Wait` returns it

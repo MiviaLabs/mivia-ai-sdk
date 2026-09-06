@@ -33,7 +33,7 @@ func (s *Store) CoreFrame(ctx context.Context, scope string, maxBytes int) (stri
 	}
 	s.mu.Lock()
 	core := make([]Entry, 0, CoreTierCap)
-	for id := range s.scopes[scope] {
+	for id := range s.scopes[normalizeScope(scope)] {
 		if s.rows[id].core {
 			core = append(core, s.rows[id].entry)
 		}

@@ -4,6 +4,7 @@ package a2aack
   type Options struct {
   Poll time.Duration
   Timeout time.Duration
+  ExpectSigner string
 }
   type Remote interface {
 	Send(ctx context.Context, msg envelope.Message) (a2aclient.TaskHandle, error)
@@ -14,4 +15,5 @@ package a2aack
   var ErrNoPoll
   var ErrRemoteFailed
   var ErrShortTimeout
+  var ErrSignerMismatch
   var ErrTimeout

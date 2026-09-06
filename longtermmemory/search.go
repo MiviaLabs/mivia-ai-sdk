@@ -41,7 +41,7 @@ func (s *Store) Search(ctx context.Context, q Query) ([]Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var hits []Result
-	for id := range s.scopes[q.Scope] {
+	for id := range s.scopes[normalizeScope(q.Scope)] {
 		e := s.rows[id].entry
 		if !matches(e, tokens, phrase) {
 			continue

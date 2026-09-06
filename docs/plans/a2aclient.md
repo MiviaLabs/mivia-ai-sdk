@@ -1058,3 +1058,24 @@ The envelope wire format does not change, so
 `insecure.NewCredentials()`. Envelope payloads cross the network in
 plaintext. That needs an options struct and a product decision, so it
 is separate work. Do not change it here.
+
+## Addendum: caller-supplied transport credentials
+
+`New` keeps its plaintext dial and now states that fact in its doc.
+One exported constructor joins: `NewWithCredentials(baseURL, creds)`.
+It dials with the caller's `credentials.TransportCredentials`, so a
+remote link can use TLS. A nil `creds` fails with the new exported
+error `ErrNoCredentials`; the constructor never guesses a dial mode.
+`New` delegates to `NewWithCredentials` with insecure credentials.
+
+`google.golang.org/grpc/credentials` stays inside the granted
+`google.golang.org/grpc` module; `policy/thirdparty.json` needs no
+row. `api/a2aclient.txt` gains the constructor and the error.
+
+### Known limitation: in-band number marker
+
+The `numPrefix` marker is in-band, so a payload string whose whole
+value equals the prefix plus a lossy number literal still rewrites to
+a number on restore, and the decode fails closed. A structural
+sentinel would remove the collision but changes the wire convention
+the remote peer must understand. That change needs its own plan.

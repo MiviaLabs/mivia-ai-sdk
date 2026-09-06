@@ -98,3 +98,17 @@ state `a2aack` cannot resolve".
 
 `api/a2aack.txt` does not change. The package gains no exported
 symbol.
+
+## Addendum: pin the result signer
+
+`Options` gains one field, `ExpectSigner string`. When set, the
+result's `Signer` must equal it. A mismatch fails with the new
+exported error `ErrSignerMismatch`, and the step never confirms.
+`VerifySignature` proves only that the result signer controls its own
+key. Over a plaintext channel, an injected self-signed result would
+otherwise confirm a step. An empty pin accepts any verifying signer;
+loopback and tests use that form. The mismatch check runs after the
+signature check and before `NewAck`.
+
+`api/a2aack.txt` gains the field and the error. `docs/packages/
+a2aack.md` states the pin contract beside the verification contract.

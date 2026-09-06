@@ -19,6 +19,10 @@ import (
 type Options struct {
 	Poll    time.Duration // between Status calls; required, positive
 	Timeout time.Duration // whole-exchange deadline; at least Poll
+	// ExpectSigner pins the remote: when set, the confirmed ack
+	// requires the result's Signer to equal it. Empty accepts any
+	// signer that verifies, which suits loopback and tests only.
+	ExpectSigner string
 }
 
 // Validate checks that Poll is positive and Timeout covers at least one Poll.
@@ -44,6 +48,9 @@ var (
 	ErrRemoteFailed = errors.New("a2aack: remote task failed")
 	// ErrTimeout means the exchange outran its deadline or ctx.
 	ErrTimeout = errors.New("a2aack: remote task timed out")
+	// ErrSignerMismatch means the result verified but its signer is
+	// not the pinned Options.ExpectSigner.
+	ErrSignerMismatch = errors.New("a2aack: result signer is not the expected remote")
 )
 
 // Remote is the remote-task round trip a2aack polls: send, status,
@@ -101,7 +108,7 @@ func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, m
 				if err != nil {
 					return envelope.Ack{}, timeoutWrap(err, last)
 				}
-				return ackFromResult(msg, result)
+				return ackFromResult(msg, result, opts.ExpectSigner)
 			case a2aclient.StateFailed, a2aclient.StateCanceled, a2aclient.StateRejected:
 				return envelope.Ack{}, fmt.Errorf("%w: %s", ErrRemoteFailed, state)
 			case a2aclient.StateAuthRequired, a2aclient.StateInputRequired:
@@ -114,12 +121,17 @@ func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, m
 }
 
 // ackFromResult verifies the result's signature and builds the
-// confirmed ack that references msg. Only the result's Signer and
-// Payload come from the remote; MessageID keys off msg.ID, the sent
-// step's own id, not the server-minted result id.
-func ackFromResult(msg, result envelope.Message) (envelope.Ack, error) {
+// confirmed ack that references msg. When expect is set, the result's
+// Signer must equal it: a self-consistent signature from any other key
+// fails ErrSignerMismatch and never confirms the step. Only the
+// result's Signer and Payload come from the remote; MessageID keys off
+// msg.ID, the sent step's own id, not the server-minted result id.
+func ackFromResult(msg, result envelope.Message, expect string) (envelope.Ack, error) {
 	if err := result.VerifySignature(); err != nil {
 		return envelope.Ack{}, fmt.Errorf("a2aack: result signature check failed: %w", err)
+	}
+	if expect != "" && result.Signer != expect {
+		return envelope.Ack{}, fmt.Errorf("%w: got signer %s", ErrSignerMismatch, result.Signer)
 	}
 	ack, err := envelope.NewAck(msg, result.Signer, result.Payload)
 	if err != nil {

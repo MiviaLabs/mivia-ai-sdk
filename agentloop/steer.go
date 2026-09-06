@@ -20,7 +20,12 @@ import (
 type Steer struct {
 	mu        sync.Mutex
 	triggered bool
-	cancel    context.CancelFunc
+	// gen counts Trigger calls since the last reset. ackedGen holds
+	// the generation wasTriggered last observed. The ack clears the
+	// flag only when the two match.
+	gen      uint
+	ackedGen uint
+	cancel   context.CancelFunc
 	// injector is the caller-supplied pull-based message source the
 	// loop consults at every iteration boundary and at every steered
 	// stop decision. A nil injector means no injection (the default);
@@ -53,6 +58,7 @@ func (s *Steer) Trigger() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.triggered = true
+	s.gen++
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -62,9 +68,10 @@ func (s *Steer) Trigger() {
 // consults at every iteration boundary and at every steered-stop
 // decision. A non-nil return appends those messages to the run
 // history and the run CONTINUES (a pending StopSteered is downgraded
-// in that case). An empty return keeps existing Trigger semantics:
-// the run still stops at the next iteration boundary with
-// Stop == StopSteered. Passing nil removes the injector.
+// in that case). An empty return continues the run too: with an
+// injector installed, every steered stop soft-continues and the
+// return value never gates the stop. Stop the run by removing the
+// injector or canceling ctx. Passing nil removes the injector.
 //
 // SetInjector is meant to be called BEFORE RunSteerable starts.
 // Once the run is in flight, SetInjector's effect on the next
@@ -141,11 +148,15 @@ func (s *Steer) HasActiveCall() bool {
 // acknowledgment at the downgrade point, the sticky triggered flag
 // is exactly what breaks the continue-after-inject shape; reset()
 // clears it only at the start of the next RunSteerable call, which
-// is too late.
+// is too late. The clear runs only when no newer Trigger fired
+// since wasTriggered observed one. The comparison is equality, not
+// ordering: a newer generation must survive the ack.
 func (s *Steer) ackTriggered() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.triggered = false
+	if s.gen == s.ackedGen {
+		s.triggered = false
+	}
 }
 
 // reset clears triggered and cancel back to their zero values, but
@@ -157,6 +168,8 @@ func (s *Steer) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.triggered = false
+	s.gen = 0
+	s.ackedGen = 0
 	s.cancel = nil
 }
 
@@ -179,9 +192,13 @@ func (s *Steer) disarm() {
 }
 
 // wasTriggered reports whether Trigger has fired since the last
-// reset. isSteerStop is the only caller.
+// reset. When it reports true it records the observed generation
+// for ackTriggered. isSteerStop is the only caller.
 func (s *Steer) wasTriggered() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.triggered {
+		s.ackedGen = s.gen
+	}
 	return s.triggered
 }

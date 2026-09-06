@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	a2acore "github.com/a2aproject/a2a-go/a2a"
@@ -35,6 +37,11 @@ var ErrNoResultMessage = errors.New("a2aclient: task carries no result message")
 // ErrNoDataPart reports a Result call whose result message carries no
 // DataPart. Test with errors.Is.
 var ErrNoDataPart = errors.New("a2aclient: result message carries no data part")
+
+// numPrefix marks a string that carries a JSON number the proto
+// struct hop cannot hold in a float64. dataFromRaw encodes, and
+// dataFromParts restores.
+const numPrefix = "urn:mivia:json-number:"
 
 // newGRPCTransport dials baseURL and wraps the resulting connection in
 // a2a-go's gRPC transport. The dial is lazy (grpc.NewClient does not
@@ -119,11 +126,11 @@ func resultMessage(task *a2acore.Task) *a2acore.Message {
 }
 
 // dataFromRaw unmarshals raw envelope JSON into the map[string]any
-// shape a2a-go's DataPart carries. It decodes numbers as json.Number,
-// so envelope integer fields round-trip byte-exact; a float64 decode
-// would round values above 2^53 and break the remote's signature
-// check. The inbound DataPart decode inside a2a-go has no such
-// decoder hook and stays float64.
+// shape a2a-go's DataPart carries. It decodes numbers as
+// json.Number. A number float64 cannot hold exactly travels as a
+// numPrefix string: the proto struct hop converts every value
+// through float64 and would round it, and a rounded integer breaks
+// the remote's signature check. Small numbers stay plain numbers.
 func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -131,18 +138,80 @@ func dataFromRaw(raw json.RawMessage) (map[string]any, error) {
 	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
+	encodeInexactNumbers(m)
 	return m, nil
 }
 
 // dataFromParts finds the first DataPart in parts and re-marshals its
-// content back to raw JSON.
+// content back to raw JSON. It restores the numPrefix strings
+// dataFromRaw encoded, so the re-marshaled bytes carry the same
+// integer literals the sender signed.
 func dataFromParts(parts a2acore.ContentParts) (json.RawMessage, error) {
 	for _, p := range parts {
 		if dp, ok := p.(a2acore.DataPart); ok {
+			restoreNumbers(dp.Data)
 			return json.Marshal(dp.Data)
 		}
 	}
 	return nil, ErrNoDataPart
+}
+
+// encodeInexactNumbers walks v in place. Each json.Number whose
+// literal does not survive a float64 round trip becomes a numPrefix
+// string; exactly representable numbers keep their type.
+func encodeInexactNumbers(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, e := range t {
+			if n, ok := e.(json.Number); ok && !float64Exact(n.String()) {
+				t[k] = numPrefix + n.String()
+			} else {
+				encodeInexactNumbers(e)
+			}
+		}
+	case []any:
+		for i, e := range t {
+			if n, ok := e.(json.Number); ok && !float64Exact(n.String()) {
+				t[i] = numPrefix + n.String()
+			} else {
+				encodeInexactNumbers(e)
+			}
+		}
+	}
+}
+
+// float64Exact reports whether the JSON number literal s parses to a
+// float64 whose shortest exact decimal form equals s.
+func float64Exact(s string) bool {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return false
+	}
+	return strconv.FormatFloat(f, 'f', -1, 64) == s
+}
+
+// restoreNumbers walks v in place. Each numPrefix string becomes the
+// json.Number it carries. A structpb hop delivers maps and slices as
+// fresh values, so the walk mutates the transport-local copy.
+func restoreNumbers(v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, e := range t {
+			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
+				t[k] = json.Number(strings.TrimPrefix(s, numPrefix))
+			} else {
+				restoreNumbers(e)
+			}
+		}
+	case []any:
+		for i, e := range t {
+			if s, ok := e.(string); ok && strings.HasPrefix(s, numPrefix) {
+				t[i] = json.Number(strings.TrimPrefix(s, numPrefix))
+			} else {
+				restoreNumbers(e)
+			}
+		}
+	}
 }
 
 // stateFromTaskState maps an a2a-go TaskState onto a State. It names

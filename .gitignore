@@ -6,3 +6,4 @@ __pycache__/
 
 # ZCode session artifacts (plans, scratch)
 .zcode/
+.codex/

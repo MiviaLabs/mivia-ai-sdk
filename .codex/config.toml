@@ -1,0 +1,3 @@
+[mcp_servers.gopls]
+command = "gopls"
+args = ["mcp"]

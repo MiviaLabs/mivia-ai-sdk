@@ -309,10 +309,10 @@ func TestEmitNilBusReturnsErrNoBus(t *testing.T) {
 	}
 }
 
-// TestEmitNoSubscriberReturnsBusError proves each EmitX function
-// surfaces events.Bus.Emit's own "no subscriber" error, unwrapped,
-// when nothing subscribed to its event name.
-func TestEmitNoSubscriberReturnsBusError(t *testing.T) {
+// TestEmitNoSubscriberReturnsNil proves each EmitX function returns
+// a nil error when nothing subscribed to its event name. An
+// unobserved event is a no-op on the bus.
+func TestEmitNoSubscriberReturnsNil(t *testing.T) {
 	cases := []struct {
 		name string
 		run  func(bus *events.Bus) error
@@ -330,12 +330,8 @@ func TestEmitNoSubscriberReturnsBusError(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			bus := events.New()
-			err := tt.run(bus)
-			if err == nil {
-				t.Fatal("expected the bus's no-subscriber error, got nil")
-			}
-			if !strings.Contains(err.Error(), "no subscriber") {
-				t.Fatalf("%s() error = %q, want it to contain %q", tt.name, err.Error(), "no subscriber")
+			if err := tt.run(bus); err != nil {
+				t.Fatalf("%s() error = %v, want nil with no subscriber", tt.name, err)
 			}
 		})
 	}

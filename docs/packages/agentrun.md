@@ -36,7 +36,7 @@ mirrors `api/agentrun.txt`.
 ## Functions and methods
 
 - `New(opts)` — validates `opts`, then wires the blocks into a `Runner`.
-  It subscribes one no-op handler to each of the three agent event names.
+  It builds a bus when `Options.Bus` is nil.
 - `Runner.Run(ctx, threadID, in)` — drives the wired agent through the
   wired machine. An empty `threadID` fails before any block runs.
 - `Runner.Bus()` — returns the resolved event bus `New` subscribed.
@@ -117,10 +117,9 @@ escalates to a human. Pinned by `agentrun_test/options_test.go` and
 ## Invariants
 
 - `New` runs every check in a fixed order and returns the first failure.
-- `New` subscribes one no-op handler to each of `MessageDeliveredEvent`,
-  `MessageAckedEvent`, and `ThreadVerifiedEvent` on the resolved bus,
-  so `Bus().Emit` never raises the "no subscriber" fault for the three
-  agent event names.
+- `New` subscribes no handlers to the resolved bus. `Bus().Emit`
+  returns nil for an event name with no subscriber, so the three
+  agent event names need no fixture subscriptions.
 - `ValidateMatrix` simulates the runner's declaration-order walk on
   the all-run path. Sequential roots and siblings chain: each step's
   rows start from the statuses the walk rests on, not from the

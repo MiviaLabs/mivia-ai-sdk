@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
@@ -158,11 +157,9 @@ func resolveReplayCapacity(configured int) int {
 	return configured
 }
 
-// New validates opts, builds a Bus when opts.Bus is nil, subscribes a
-// no-op handler for MessageDeliveredEvent and MessageAckedEvent on the
-// resolved bus, and returns the wired Endpoint. The subscription keeps
-// EmitMessageDelivered and EmitMessageAcked from ever seeing an
-// unsubscribed-name error.
+// New validates opts, builds a Bus when opts.Bus is nil, and returns
+// the wired Endpoint. Emit accepts an event name with no subscriber,
+// so the endpoint needs no fixture subscriptions on the bus.
 func New(opts Options) (*Endpoint, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
@@ -170,12 +167,6 @@ func New(opts Options) (*Endpoint, error) {
 	bus := opts.Bus
 	if bus == nil {
 		bus = events.New()
-	}
-	noop := func(context.Context, events.Event) error { return nil }
-	for _, name := range []events.Name{agent.MessageDeliveredEvent, agent.MessageAckedEvent} {
-		if err := bus.Subscribe(name, noop); err != nil {
-			return nil, err
-		}
 	}
 	maxBody := opts.MaxBodyBytes
 	if maxBody == 0 {

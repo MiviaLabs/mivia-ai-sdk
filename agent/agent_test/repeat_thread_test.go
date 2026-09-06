@@ -14,22 +14,12 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
-// repeatBus builds a bus subscribed to the three agent event names,
-// because Emit fails a name with no subscriber and Run propagates
-// that failure.
+// repeatBus returns a fresh bus for the repeat-thread tests. Emit
+// accepts a name with no subscriber, so no fixture subscriptions are
+// needed.
 func repeatBus(t *testing.T) *events.Bus {
 	t.Helper()
-	bus := events.New()
-	noop := func(context.Context, events.Event) error { return nil }
-	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent, agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
-	} {
-		if err := bus.Subscribe(name, noop); err != nil {
-			t.Fatalf("Subscribe(%s): %v", name, err)
-		}
-	}
-	return bus
+	return events.New()
 }
 
 // repeatAgent builds an agent over plan under a fresh identity.

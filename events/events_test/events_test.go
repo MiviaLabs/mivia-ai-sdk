@@ -57,22 +57,31 @@ func TestEmitRejectsInvalidEvent(t *testing.T) {
 	}
 }
 
-// TestEmitRejectsUnknownName proves Emit returns an error for an
-// unsubscribed event name.
-func TestEmitRejectsUnknownName(t *testing.T) {
+// TestEmitAcceptsUnknownName proves Emit returns nil for an
+// unsubscribed event name. An unobserved event is a no-op, not a
+// failure.
+func TestEmitAcceptsUnknownName(t *testing.T) {
 	b := events.New()
 	if err := b.Subscribe("move", func(context.Context, events.Event) error { return nil }); err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
-	err := b.Emit(context.Background(), events.Event{Name: "unknown", Data: "x"})
-	if err == nil {
-		t.Fatal("Emit accepted an unknown name")
+	if err := b.Emit(context.Background(), events.Event{Name: "unknown", Data: "x"}); err != nil {
+		t.Fatalf("Emit rejected an unsubscribed name: %v", err)
+	}
+}
+
+// TestEmitWithNoSubscriberReturnsNil proves Emit on a bus with zero
+// subscribers returns nil.
+func TestEmitWithNoSubscriberReturnsNil(t *testing.T) {
+	b := events.New()
+	if err := b.Emit(context.Background(), events.Event{Name: "move", Data: "x"}); err != nil {
+		t.Fatalf("Emit on a bus with zero subscribers: %v, want nil", err)
 	}
 }
 
 // TestZeroValueBusPinsConstructorOnly proves the zero value is unusable.
 // Subscribe on the zero value panics on the nil subscription map.
-// Emit on the zero value returns a normal no-subscriber error.
+// Emit on the zero value finds no subscriber and returns nil.
 // The invariant is constructor-only; New is the only sanctioned build.
 func TestZeroValueBusPinsConstructorOnly(t *testing.T) {
 	var b events.Bus
@@ -85,8 +94,7 @@ func TestZeroValueBusPinsConstructorOnly(t *testing.T) {
 		_ = b.Subscribe("move", func(context.Context, events.Event) error { return nil })
 	}()
 	var c events.Bus
-	err := c.Emit(context.Background(), events.Event{Name: "move", Data: "x"})
-	if err == nil {
-		t.Fatal("zero-value Emit accepted an event")
+	if err := c.Emit(context.Background(), events.Event{Name: "move", Data: "x"}); err != nil {
+		t.Fatalf("zero-value Emit returned an error with no subscriber: %v", err)
 	}
 }

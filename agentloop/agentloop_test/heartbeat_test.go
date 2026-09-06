@@ -245,12 +245,11 @@ func TestRunCompletionHeartbeatZeroIntervalNone(t *testing.T) {
 	assertNoEvent(t, ch, 1*time.Millisecond)
 }
 
-// TestRunHeartbeatEmitSwallowsNoSubscriberError proves the heartbeat
-// path swallows events.Bus.Emit's "no subscriber for name" error
-// exactly like fireStop already swallows a hooks.Registry.Fire error:
-// a Bus with no heartbeat-name subscriber still lets Run complete
-// normally.
-func TestRunHeartbeatEmitSwallowsNoSubscriberError(t *testing.T) {
+// TestRunHeartbeatUnobservedEventKeepsRunAlive proves the heartbeat
+// path keeps the run alive when no handler subscribes to the
+// heartbeat names: a Bus with no heartbeat-name subscriber still lets
+// Run complete normally.
+func TestRunHeartbeatUnobservedEventKeepsRunAlive(t *testing.T) {
 	bus := events.New()
 	completer := &slowCompleter{delay: heartbeatTestBlock, resp: provider.Response{Message: textMessage(provider.RoleAssistant, "done")}}
 	loop, err := agentloop.New(agentloop.Options{

@@ -107,8 +107,8 @@ any stage means stop and escalate to the user.
   report done. `make verify` is the full gate: gofmt, vet, tests,
   doc gate, structure gate, Semgrep scan, and probes.
 - Never bypass Git hooks (no `--no-verify`, no skip env vars).
-- The GitHub remote for this repo must be **private**. Never create a
-  public remote or push to one.
+- The GitHub remote for this repo is public by intent. Pushing to it
+  is allowed. Keep credentials and secrets out of the tree.
 - No third-party dependencies. Standard library only.
   `policy/thirdparty.json` names the direct exceptions: the packages
   allowed one, the modules each may import, and the build tag (if

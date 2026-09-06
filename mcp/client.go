@@ -26,6 +26,9 @@ type ClientOptions struct {
 	// registered through CallToolWithProgress. A call made through
 	// the mapped tools.Tool returned by ListTools, or through
 	// Registry.Run, only ever reaches this session-wide handler.
+	// Each CallToolWithProgress call registers one handler entry.
+	// Entries stay until Close clears them, so the handler map grows
+	// by one small entry per progress call for the Client's lifetime.
 	OnProgress ProgressHandler
 }
 

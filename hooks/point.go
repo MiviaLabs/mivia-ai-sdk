@@ -11,7 +11,10 @@ const (
 	pointUnset Point = iota
 	// PointPreTool fires before a tool call runs.
 	PointPreTool
-	// PointPostTool fires after a step's ack confirms, tool or Ask round trip.
+	// PointPostTool fires once one tool call completes. The payload
+	// type depends on the fire site: agentrun/wire.go sends the
+	// confirmed envelope.Ack; agentloop/toolcall.go sends the
+	// provider.ToolCall. Handlers must type-switch the payload.
 	PointPostTool
 	// PointStop fires at a run's stop.
 	PointStop

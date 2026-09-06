@@ -223,3 +223,23 @@ func TestStateTerminalMatchesUpstream(t *testing.T) {
 		}
 	}
 }
+
+// TestDataFromRawPreservesLargeIntegers proves the map[string]any hop
+// keeps envelope integer fields above 2^53 byte-exact. Sign covers the
+// canonical JSON of max_hops and cost_budget, so any float64 rounding
+// through the DataPart hop breaks VerifySignature on the remote.
+func TestDataFromRawPreservesLargeIntegers(t *testing.T) {
+	raw := json.RawMessage(`{"max_hops":9007199254740993,"cost_budget":9007199254740993}`)
+	m, err := dataFromRaw(raw)
+	if err != nil {
+		t.Fatalf("dataFromRaw: %v", err)
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	want := `{"cost_budget":9007199254740993,"max_hops":9007199254740993}`
+	if string(out) != want {
+		t.Fatalf("round trip = %s, want %s", out, want)
+	}
+}

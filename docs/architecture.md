@@ -28,7 +28,7 @@ imports. `channel`, `contextbudget`, `contextref`,
 package in this module. `envelope` imports `contextref` alone.
 `contextstate` imports `contextref` alone.
 `contextplan` imports `contextref` and `provider`.
-`contextsession` imports `contextplan`, `contextstate`, `contextref`,
+`contextsession` imports `contextplan`, `contextstate`,
 `provider`, and `spool`. `spool` imports `tools` alone.
 `a2aloopback` imports `a2a` and `envelope`, the same two internal
 packages `a2aclient` imports. `workspace` imports `secretpath` alone.
@@ -51,7 +51,6 @@ flowchart LR
     contextplan --> provider
     contextsession --> contextplan
     contextsession --> contextstate
-    contextsession --> contextref
     contextsession --> provider
     contextsession --> spool
     flow --> events
@@ -61,7 +60,7 @@ flowchart LR
     machine --> events
     ledger --> machine
     ledger --> events
-    memory --> envelope
+    memory --> contextref
     room --> envelope
     a2a --> envelope
     a2aclient --> a2a
@@ -87,7 +86,6 @@ flowchart LR
     providerregistry --> provider
     scheduler --> events
     a2aack --> a2aclient
-    a2aack --> agent
     a2aack --> envelope
     dispatch --> agent
     dispatch --> envelope
@@ -314,13 +312,16 @@ flowchart LR
   `a2aack`'s tests do.
 - `a2aack/` — the remote step ack. It provides `Options`,
   `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
-  an `agent.AckWait` that sends a gated step as a remote task, polls
-  `Status`, fetches `Result`, re-verifies its signature, and builds a
-  confirmed ack keyed off the sent message. A failed, canceled, or
-  rejected task ends the poll with `ErrRemoteFailed`, and so does a
-  state the loop cannot resolve. `a2aack` imports
-  `a2aclient`, `agent`, and `envelope`. It carries no a2a-go import of
-  its own. See [packages/a2aack.md](packages/a2aack.md).
+  a func matching `agent.AckWait`'s signature, `func(context.Context,
+  envelope.Message) (envelope.Ack, error)`, that sends a gated step as
+  a remote task, polls `Status`, fetches `Result`, re-verifies its
+  signature, and builds a confirmed ack keyed off the sent message. A
+  failed, canceled, or rejected task ends the poll with
+  `ErrRemoteFailed`, and so does a state the loop cannot resolve.
+  `a2aack` imports `a2aclient` and `envelope`; it returns an unnamed
+  func rather than importing `agent` for the `AckWait` name. It
+  carries no a2a-go import of its own. See
+  [packages/a2aack.md](packages/a2aack.md).
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
   `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST
@@ -448,10 +449,10 @@ flowchart LR
 - `memory/` — the content-addressed context store. It provides
   `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's
-  ref with `envelope.ContextRef` and stores it under a fixed byte
+  ref with `contextref.Mint` and stores it under a fixed byte
   budget; a blob that would exceed the budget evicts the
   oldest-inserted blobs, in insertion order, until it fits. `memory`
-  imports `envelope` only, for `ContextRef`. See
+  imports `contextref` only, for `Mint`. See
   [packages/memory.md](packages/memory.md).
 - `mcp/` — the MCP tool-calling client. It provides `Transport`,
   `NewStdioTransport`, `NewStreamableHTTPTransport`, `ClientInfo`,
@@ -561,7 +562,7 @@ flowchart LR
   never enters the built `provider.Request`. A wired `Spool` receives
   the full payload behind every window-overflow and retention-expired
   `Elision`, keyed to the payload's own `SubjectID`. `contextsession`
-  imports `contextplan`, `contextref`, `contextstate`, `provider`, and
+  imports `contextplan`, `contextstate`, `provider`, and
   `spool`. See [packages/contextsession.md](packages/contextsession.md).
 - `contextsummary/` — the LLM summarizer for compaction. It provides
   `Summary` with `Validate` and `Render`, `SummaryMessage`,

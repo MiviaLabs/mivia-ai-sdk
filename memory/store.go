@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
 )
 
 // Sentinel errors for Store operations; test with errors.Is.
@@ -45,15 +45,15 @@ func New(maxBytes int) (*Store, error) {
 	}, nil
 }
 
-// Put computes ref as envelope.ContextRef(string(content)) and
-// stores content under it. A content whose length exceeds the
-// store's budget wraps ErrBudgetExceeded and stores nothing. A
-// content that fits evicts the oldest-inserted blobs, in insertion
-// order, until the new blob fits within the budget, then stores it.
-// Putting a content whose ref already exists overwrites the stored
-// bytes and refreshes its insertion order to most-recent.
+// Put computes ref as contextref.Mint(content) and stores content
+// under it. A content whose length exceeds the store's budget wraps
+// ErrBudgetExceeded and stores nothing. A content that fits evicts
+// the oldest-inserted blobs, in insertion order, until the new blob
+// fits within the budget, then stores it. Putting a content whose ref
+// already exists overwrites the stored bytes and refreshes its
+// insertion order to most-recent.
 func (s *Store) Put(content []byte) (ref string, err error) {
-	ref = envelope.ContextRef(string(content))
+	ref = contextref.Mint(content)
 	if len(content) > s.maxBytes {
 		return "", fmt.Errorf("%w: %d bytes over %d budget", ErrBudgetExceeded, len(content), s.maxBytes)
 	}

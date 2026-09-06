@@ -63,7 +63,6 @@
     "contextref": [],
     "contextsession": [
       "contextplan",
-      "contextref",
       "contextstate",
       "provider",
       "spool"
@@ -124,7 +123,7 @@
       "tools"
     ],
     "memory": [
-      "envelope"
+      "contextref"
     ],
     "provider": [],
     "provider/anthropic": [

@@ -476,13 +476,12 @@ grep evidence alone on the "goes" side and assertion alone on the
   tag and drops the `replace` directive.
 - Rule: no stage closes with a `replace` directive committed. A gate
   on the consumer's `go.mod` checks this.
-- The SDK remote is private, per AGENTS.md. Set
-  `GOPRIVATE=github.com/MiviaLabs/*` in the consumer only — local dev
-  and every Go-running consumer CI job, not just the one most jobs
-  share. This repo's own CI needs no `GOPRIVATE`: this repo imports no
-  other MiviaLabs module today, so setting it here is dead config with
-  no caller. Re-add it if that changes. This is a stage 1 prerequisite
-  in the consumer. A tag pin fails without it there.
+- Correction: the SDK remote is public by intent, per AGENTS.md;
+  `GOPRIVATE` is not required for module resolution once a tag is
+  pushed. This section's earlier "private, set GOPRIVATE" premise no
+  longer holds; a `go get` of a pinned tag works against the public
+  proxy without it. This repo's own CI still needs no `GOPRIVATE`:
+  this repo imports no other MiviaLabs module today.
 - Rollback rule: an SDK import and the matching consumer deletion land
   in separate commits. The import lands first. Reverting a regression
   is then one commit, not a merge.
@@ -599,9 +598,8 @@ Exit criteria, all mechanically checkable:
 
 Build the oracle before moving any code.
 
-- Set `GOPRIVATE` in the consumer, local dev and every Go-running CI
-  job. Not in this repo; see the "Module wiring" section's corrected
-  bullet above.
+- `GOPRIVATE` is not required: the SDK remote is public. See the
+  "Module wiring" section's corrected bullet above.
 - Define a recorded provider fixture format. Neither repository
   records provider traffic. Write one scripted-response format. Load
   it from a consumer fake and from an SDK fake. Record real traffic

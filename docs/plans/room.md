@@ -1,7 +1,9 @@
 # Plan: room
 
-Status: shipped. The roster, admission, and membership-staleness
-surface below are all live.
+Status: shipped. The roster and admission surface below is live; see
+"Addendum: maintenance batch — drop StaleMembers and the heartbeat
+edge" for the membership-staleness surface this file originally
+shipped and later removed.
 
 ## Goal
 
@@ -54,7 +56,10 @@ The package imports `heartbeat`. The policy row is
 
 Room, Role types; New, sentinel errors; Admit/Remove/Promote/Leave/
 IsMember/Members/ID/Accepts methods. Locked in `api/room.txt`.
-Allowed imports are `envelope` and `heartbeat` (policy/layers.json).
+Allowed imports are `envelope` alone (policy/layers.json); the
+`heartbeat` edge shipped with `StaleMembers` and was dropped with it,
+see "Addendum: maintenance batch — drop StaleMembers and the
+heartbeat edge" below.
 Accepts verifies signatures itself so callers cannot skip authentication.
 The lock gains the six sentinel `var` lines when api_surface learns vars;
 see gates.md; the api_surface fixes changed no symbol.

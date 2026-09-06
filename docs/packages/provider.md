@@ -2,9 +2,10 @@
 
 The provider package defines one interface a caller uses to complete
 a chat turn against a language model, plus the request and response
-shapes the interface carries. The interface has no implementation in
-this SDK; a caller supplies a concrete type. The exported surface
-below mirrors `api/provider.txt`.
+shapes the interface carries. `provider/anthropic` is this SDK's one
+implementation, the Anthropic Messages API adapter; a caller may also
+supply its own concrete type. The exported surface below mirrors
+`api/provider.txt`.
 
 ## Types
 

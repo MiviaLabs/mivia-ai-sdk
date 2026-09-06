@@ -1,5 +1,6 @@
 package contextref
   const HashPrefix = "sha256:"
   func Digest(chunks ...[]byte) (string)
+  func IsLowerHex(s string, n int) (bool)
   func IsRef(ref string) (bool)
   func Mint(chunks ...[]byte) (string)

@@ -75,3 +75,44 @@ Tests will live in `contextref/contextref_test/`:
 ### Semgrep alignment
 
 The rule `sdk.go.hash-prefix-centralized` in `semgrep/sdk-standards.yml` will update its message to name `contextref/ref.go`.
+
+## Addendum: export IsLowerHex
+
+Status: shipped.
+
+### Addendum goal
+
+`envelope` carried its own private copy of the lowercase-hex scan
+`IsRef` already uses internally, to validate `Signer` and `Signature`
+fields (64 and 128 hex characters, not the 64-character content
+digest `IsRef` checks). Export the existing scan instead of leaving
+two copies in the tree.
+
+### Addendum scope
+
+Inside:
+
+- Rename the unexported `isLowerHex` to `IsLowerHex` in
+  `contextref/ref.go`; `IsRef` calls the exported form.
+- Delete `envelope/message.go`'s private copy; `Message.Validate`
+  calls `contextref.IsLowerHex` for the `Signer` and `Signature`
+  checks.
+- `api/contextref.txt` gains `func IsLowerHex(s string, n int) bool`
+  through `make api-update`.
+
+Outside:
+
+- No change to `IsRef`'s behavior or wire form.
+
+### Addendum tests
+
+`contextref/contextref_test/ref_test.go`'s existing `IsRef` cases
+exercise `IsLowerHex` transitively. `envelope`'s existing Signer and
+Signature validation tests keep passing unchanged; they exercise the
+same rule through the new call.
+
+### Addendum verification
+
+- `grep -rn "func isLowerHex" --include='*.go'` over the tree returns
+  zero: one function, one name, one home.
+- `make verify` passes.

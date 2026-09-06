@@ -1,29 +1,16 @@
 # Package reference: contextstate
 
-`contextstate` holds the durable context contract and the single
-canonical content-reference minter. The minter turns bytes into a
-`sha256:`-prefixed ref. The contract types describe sessions,
-checkpoints, commits, and payloads. The `MemStore` applies commits in
-memory under caller-owned volume bounds. The exported surface below
-mirrors `api/contextstate.txt`.
+`contextstate` holds the durable context contract. The contract types
+describe sessions, checkpoints, commits, and payloads. The `MemStore`
+applies commits in memory under caller-owned volume bounds. The
+exported surface below mirrors `api/contextstate.txt`.
 
-## The minter
-
-- `HashPrefix` — the `"sha256:"` prefix of every canonical ref. The
-  literal appears here only; Semgrep enforces this.
-- `Digest(chunks ...[]byte) string` — the SHA-256 of the ordered
-  concatenation of the chunks, as 64 lowercase hex characters.
-- `Mint(chunks ...[]byte) string` — `HashPrefix` plus `Digest`. This
-  is the canonical ref string. Minting over the concatenation of
-  chunks equals minting over the concatenated bytes.
-- `IsRef(ref string) bool` — reports whether `ref` is the canonical
-  form: `HashPrefix`, then exactly 64 lowercase hex characters, and
-  nothing else.
-
-`envelope.ContextRef` delegates to `Mint`, and `memory` delegates
-transitively through `envelope`. Every ref in this SDK therefore has
-one form. Pin this with a conformance test before you change the
-minter.
+The canonical content-reference minter lives in `contextref`, a leaf
+package `contextstate` imports; see
+[contextref.md](contextref.md) for `HashPrefix`, `Digest`, `Mint`, and
+`IsRef`. `envelope.ContextRef` delegates to `contextref.Mint`
+directly, and `contextstate`'s own `ContentRef.Validate` calls
+`contextref.IsRef`. Every ref in this SDK has one form.
 
 ## Types
 
@@ -58,9 +45,9 @@ minter.
 
 ## Methods
 
-- `ContentRef.Validate` — enforces `IsRef(Ref)`, that `Ref` equals
-  `HashPrefix` plus `SHA256`, the identifier bounds, and a
-  non-negative `Size`.
+- `ContentRef.Validate` — enforces `contextref.IsRef(Ref)`, that `Ref`
+  equals `contextref.HashPrefix` plus `SHA256`, the identifier bounds,
+  and a non-negative `Size`.
 - `PayloadRecord.Validate` — enforces a valid ref and a non-empty
   retention class. When `Data` is present, its length must equal
   `Ref.Size` and its digest must equal `Ref.SHA256`.
@@ -132,7 +119,10 @@ Match these with `errors.Is`.
 
 ## Cross-references
 
-- [envelope.md](envelope.md) — `ContextRef` delegates to `Mint`.
+- [contextref.md](contextref.md) — the canonical reference minter this
+  package's contract types validate against.
+- [envelope.md](envelope.md) — `ContextRef` delegates to
+  `contextref.Mint` directly.
 - [memory.md](memory.md) — the store's `Put` mints refs through
   `envelope.ContextRef`.
 - [contextbudget.md](contextbudget.md) — the same zero-means-uncapped

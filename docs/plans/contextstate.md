@@ -746,3 +746,54 @@ All existing tests in `contextstate/contextstate_test/ref_test.go` and `ref_fuzz
 - `policy/layers.json` updates `contextstate` imports to include `contextref`.
 - `make verify` passes.
 - `api/contextstate.txt` produces no diff.
+
+## Addendum: remove the aliases the carve-out kept
+
+Status: shipped.
+
+### Addendum goal
+
+Delete `HashPrefix`, `Digest`, `Mint`, and `IsRef` from `contextstate`.
+The carve-out above kept them as forwarders "for backward
+compatibility," but no production caller ever used them: every real
+site (`contracts.go`) already called `contextref` directly once the
+carve-out landed, and `envelope` imports `contextref`, not
+`contextstate`, for the same reason. The four forwarders had zero
+non-test callers; a review found this and this addendum acts on it.
+
+### Addendum scope
+
+Inside:
+
+- Delete `contextstate/ref.go` (the four forwarders and the second
+  `HashPrefix` literal).
+- Delete `contextstate/contextstate_test/ref_test.go`,
+  `ref_fuzz_test.go`, `minter_bench_test.go`, and
+  `minter_conformance_integration_test.go`: each is an exact
+  duplicate, package name and import path aside, of the file of the
+  same name in `contextref/contextref_test/`, which already covers the
+  minter directly.
+- `api/contextstate.txt` drops the four symbols through `make
+  api-update`.
+- `docs/packages/contextstate.md` drops the minter API bullets and
+  points a reader at `docs/packages/contextref.md` instead.
+
+Outside:
+
+- `contextstate`'s `policy/layers.json` row keeps the `contextref`
+  import: `contracts.go` still calls `contextref.Digest`,
+  `contextref.Mint`, `contextref.IsRef`, and `contextref.HashPrefix`
+  directly.
+
+### Addendum tests
+
+No new test: `contextref/contextref_test/` already carries the four
+deleted files' coverage under `contextref`'s own name. `go test -race
+./contextstate/...` and `./contextref/...` both pass.
+
+### Addendum verification
+
+- `grep -rn "contextstate\.\(Digest\|Mint\|IsRef\|HashPrefix\)"
+  --include='*.go'` over the tree returns zero.
+- `make api-update` produces a diff that only removes the four
+  symbols; `make verify` passes.

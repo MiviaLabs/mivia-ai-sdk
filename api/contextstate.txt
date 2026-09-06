@@ -1,5 +1,4 @@
 package contextstate
-  const HashPrefix = "sha256:"
   const MaxIdentifierBytes = 128
   const MaxPayloadReferenceBytes = 256
   const MaxSourceRangeEvents = 100_000
@@ -23,9 +22,6 @@ package contextstate
   func (r CommitRequest) Validate() (error)
   func (r ContentRef) Validate() (error)
   func (r SourceRange) Validate() (error)
-  func Digest(chunks ...[]byte) (string)
-  func IsRef(ref string) (bool)
-  func Mint(chunks ...[]byte) (string)
   func New(limits Limits) (*MemStore, error)
   func NewCommitRequest(sessionID string, expected Revision, expectedBinding BindingRevision, events []SourceEvent, payloads []PayloadRecord, checkpoint Checkpoint, newBinding BindingRevision, turnID uint64) (CommitRequest, error)
   func NewContentRef(namespace string, workspaceID string, sessionID string, subjectID string, chunks ...[]byte) (ContentRef, error)

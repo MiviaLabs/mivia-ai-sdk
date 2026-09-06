@@ -4,8 +4,10 @@ The `a2aack` package turns a remote A2A task round trip into the
 composition layer's `AckWait`. One `Wait` call sends a gated step as
 a remote task, polls the task's state, fetches its result, and
 resolves the step's ack. It is an edge adapter: it exists only to
-open the remote-transport edge the `a2aclient` plan reserves, so it
-imports `agent` for the `AckWait` type. The exported surface below
+open the remote-transport edge the `a2aclient` plan reserves. `Wait`
+returns an unnamed func matching `agent.AckWait`'s signature rather
+than importing `agent` for the name, so `a2aack` imports only
+`a2aclient` and `envelope`. The exported surface below
 mirrors `api/a2aack.txt`.
 
 ## Types

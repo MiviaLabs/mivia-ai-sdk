@@ -8,8 +8,10 @@ client ships in this package.
 
 Define one interface a caller uses to complete a chat turn against a
 language model, plus the request and response shapes the interface
-carries. The interface has no implementation in this SDK. A caller
-supplies a concrete type; the SDK only names the contract.
+carries. `provider` itself defines the contract only; `provider/anthropic`
+is this SDK's one implementation, the Anthropic Messages API adapter
+(see `docs/plans/provider/anthropic.md`). A caller may also supply its
+own concrete type.
 
 ## Scope
 

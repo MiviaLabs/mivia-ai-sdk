@@ -18,7 +18,7 @@ Inside:
 - `planState` is allocated per `Plan` call, so `Planner` remains stateless and safe for concurrent use.
 - Sentinels: `ErrNilStore`, `ErrNilSession`.
 - Reasoning event detection: `IsReasoningEvent`.
-- Integration with `contextplan`, `contextref`, `contextstate`, `provider`, and `spool`.
+- Integration with `contextplan`, `contextstate`, `provider`, and `spool`.
 
 Outside:
 
@@ -107,15 +107,16 @@ Tests will live in `contextsession/contextsession_test/`:
 
 ## Verification
 
-- `policy/layers.json` gains `"contextsession": ["contextplan", "contextref", "contextstate", "provider", "spool"]`.
+- `policy/layers.json` gains `"contextsession": ["contextplan", "contextstate", "provider", "spool"]`.
 - `policy/pending_wiring.json` records `contextsession`:
   ```json
   "contextsession": {
     "reason": "Durable session planner carved out of contextplan. Intended caller is external application code adapting Plan to agentloop.Options.Trim.",
-    "target": "external application code (outside this module)",
-    "permanent": true
+    "target": "agentloop or an external session-backed runner; see docs/plans/spool.md's read-back section",
+    "permanent": false
   }
   ```
+  `permanent: false` because an internal caller — an `agentloop.Options.Trim` adapter over `Planner` — is the named, expected target, not only external application code.
 - `api/contextsession.txt` is generated via `make api-update`.
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_deps.py` passes.
@@ -123,3 +124,42 @@ Tests will live in `contextsession/contextsession_test/`:
 - `python3 scripts/check_prose.py docs/plans/contextsession.md` passes.
 - `python3 scripts/check_labels.py` passes.
 - Test coverage reaches at least 85 percent.
+
+## Addendum: drop the unused contextref grant, fix the wiring quote
+
+Status: shipped.
+
+### Addendum goal
+
+Two claims in this plan never matched what shipped. The `policy/layers.json`
+row granted `contextsession` an edge to `contextref` that
+`contextsession/*.go` never imports (`grep -h "mivia-ai-sdk/"
+contextsession/*.go | grep -v _test` shows `contextplan`,
+`contextstate`, `provider`, `spool` only). And this plan's own
+Verification section quoted a `pending_wiring.json` block with
+`permanent: true` and an external-only target, while the row actually
+committed reads `permanent: false` with `agentloop or an external
+session-backed runner` as the target.
+
+### Addendum scope
+
+Inside:
+
+- Drop `contextref` from `contextsession`'s `policy/layers.json` row.
+- Drop `contextref` from the two prose mentions in
+  `docs/architecture.md` and the mermaid edge
+  `contextsession --> contextref`.
+- Fix this plan's Scope section and its quoted
+  `pending_wiring.json` block to match the committed row.
+
+Outside:
+
+- No code change: `contextsession` never used the edge, so nothing
+  behavioral moves.
+
+### Addendum verification
+
+- `python3 scripts/check_deps.py` passes with the narrowed row.
+- `grep -n contextref policy/layers.json` shows no `contextsession`
+  entry.
+- `make verify` passes.

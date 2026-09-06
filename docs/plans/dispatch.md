@@ -456,25 +456,41 @@ New sentinel, in `dispatch/options.go`:
 var ErrReplay = errors.New("dispatch: message already processed")
 ```
 
-`dispatch/ladder.go` maps four ledger/taskrun outcomes to `ErrReplay`:
+`dispatch/ladder.go` maps five ledger/taskrun outcomes to `ErrReplay`:
 `taskrun.ErrTaskDone`, `taskrun.ErrTaskFailed`, `taskrun.ErrTaskBlocked`,
-and `ledger.ErrLeaseActive` (an in-flight duplicate: the original
-claim has not completed yet). Any other error `taskrun.Run` returns
-is either the work func's own error, already prefixed `"resolve: "`
-or `"handle: "` from inside the closure, or an operational ledger/
-store fault; both cases pass through `encodeErrorLine` unchanged, so
-existing stage-prefixed error text is unaffected.
+`ledger.ErrLeaseActive` (an in-flight duplicate: the original claim
+has not completed yet), and `ledger.ErrNotClaimed` (the race window
+between `taskrun.Run`'s own `State` check and its `Claim` call; see
+the "replay sentinel list gains ledger.ErrNotClaimed" addendum below).
+Any other error `taskrun.Run` returns is either the work func's own
+error, already prefixed `"resolve: "` or `"handle: "` from inside the
+closure, or an operational ledger/store fault; both cases pass
+through `encodeErrorLine` unchanged, so existing stage-prefixed error
+text is unaffected.
 
 ```go
-// isReplay reports whether err is one of the ledger outcomes that
-// mean "this key already has, or is already getting, an admitted
-// outcome": a terminal record, or a live claim held by an in-flight
-// duplicate.
+// replaySentinels lists every taskrun.Run outcome that means "this
+// key already has, or is already getting, an admitted outcome": a
+// terminal record, or a live claim held by an in-flight duplicate.
+// isReplay walks this list instead of a chained boolean expression,
+// so a mutation to one comparison cannot regroup neighboring terms
+// through operator precedence and stay undetected.
+var replaySentinels = []error{
+	taskrun.ErrTaskDone,
+	taskrun.ErrTaskFailed,
+	taskrun.ErrTaskBlocked,
+	ledger.ErrLeaseActive,
+	ledger.ErrNotClaimed,
+}
+
+// isReplay reports whether err matches one of replaySentinels.
 func isReplay(err error) bool {
-	return errors.Is(err, taskrun.ErrTaskDone) ||
-		errors.Is(err, taskrun.ErrTaskFailed) ||
-		errors.Is(err, taskrun.ErrTaskBlocked) ||
-		errors.Is(err, ledger.ErrLeaseActive)
+	for _, sentinel := range replaySentinels {
+		if errors.Is(err, sentinel) {
+			return true
+		}
+	}
+	return false
 }
 ```
 
@@ -844,3 +860,43 @@ rewrites. See docs/plans/events.md, Verification.
   header fix.
 - `make verify` passes; `dispatch` holds the 85 coverage floor.
 - No `api/` diff; no `policy/layers.json` change.
+
+## Addendum: replay sentinel list gains ledger.ErrNotClaimed
+
+Status: shipped.
+
+### Addendum goal
+
+The original replay design above lists four sentinels
+(`taskrun.ErrTaskDone`, `taskrun.ErrTaskFailed`, `taskrun.ErrTaskBlocked`,
+`ledger.ErrLeaseActive`) checked through a boolean-OR `isReplay`. The
+shipped code adds a fifth: `ledger.ErrNotClaimed`, which covers the
+race window between `taskrun.Run`'s own `State` check and its `Claim`
+call. A concurrent duplicate can pass `State` while the record still
+reads Pending, then find it already completed by the time its own
+`Claim` runs; `Claim` reports that through its default terminal-status
+branch as `ErrNotClaimed`, not one of the four original sentinels.
+The shape also changed: `isReplay` walks a `replaySentinels` slice
+(`dispatch/ladder.go:24-47`) instead of a chained boolean expression,
+so a mutation to one comparison cannot regroup neighboring terms
+through operator precedence and stay undetected. Both changes are
+documented in `docs/packages/dispatch.md`'s `ErrReplay` entry; this
+addendum brings the plan's own code block in line.
+
+### Addendum scope
+
+Inside:
+
+- Update this file's `isReplay` code block and the sentinel-count
+  prose to name all five sentinels and the slice-walk shape.
+
+Outside:
+
+- No further code change: `dispatch/ladder.go` already ships the
+  fifth sentinel and the slice-walk shape.
+
+### Addendum verification
+
+- `docs/packages/dispatch.md`'s `ErrReplay` entry already names
+  `ledger.ErrNotClaimed`; this addendum makes the plan agree with it.
+- `make verify` passes.

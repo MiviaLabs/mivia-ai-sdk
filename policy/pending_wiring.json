@@ -13,8 +13,8 @@
     },
     "longtermmemory": {
       "reason": "Ported from mivia-agent as a leaf package. The intended SDK hook is an agentloop system-prompt hook rendering CoreFrame plus a subagent save/search tool; until then no package wires it into a running agent.",
-      "target": "external application code",
-      "permanent": true
+      "target": "an agentloop system-prompt hook rendering CoreFrame, plus a subagent save/search tool",
+      "permanent": false
     },
     "mcp": {
       "reason": "MCP client leaf. Docs/plans/mcp.md ships it ahead of a caller by design, matching the tools and ledger precedent.",

@@ -187,10 +187,10 @@ func (m Message) validateSignature() error {
 	if m.Signer == "" && m.Signature == "" {
 		return nil
 	}
-	if !isLowerHex(m.Signer, 64) {
+	if !contextref.IsLowerHex(m.Signer, 64) {
 		return errors.New("signer must be 64 lowercase hex chars (ed25519 public key)")
 	}
-	if !isLowerHex(m.Signature, 128) {
+	if !contextref.IsLowerHex(m.Signature, 128) {
 		return errors.New("signature must be 128 lowercase hex chars (ed25519 signature)")
 	}
 	return nil
@@ -219,19 +219,4 @@ func Decode(data []byte) (Message, error) {
 // isHashRef reports whether ref is a canonical "sha256:<64 lowercase hex>".
 func isHashRef(ref string) bool {
 	return contextref.IsRef(ref)
-}
-
-// isLowerHex reports whether s is exactly n lowercase hex chars.
-// It scans instead of allocating like strings.ToLower would.
-func isLowerHex(s string, n int) bool {
-	if len(s) != n {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
 }

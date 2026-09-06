@@ -1,8 +1,9 @@
 # Plan: memory
 
-Status: shipped. `memory` depends on envelope only, for
-`ContextRef`. This file is the package plan docs/plans/TEMPLATE.md
-and scripts/check_plan.py require.
+Status: shipped. `memory` depends on `contextref` only, for `Mint`.
+See the "mint directly through contextref" addendum below. This file
+is the package plan docs/plans/TEMPLATE.md and scripts/check_plan.py
+require.
 
 ## Goal
 
@@ -186,7 +187,51 @@ Table-driven; one `TestMetamorphic*` function per property.
   `make api-update` must produce no diff for `api/memory.txt` in that
   change. `go test -race ./memory/...` covers the new file.
 - The phase adds no conformance vectors. Memory carries no wire
-  format of its own; it reuses `envelope.ContextRef` for addressing
+  format of its own; it reuses the canonical minter for addressing
   and stores opaque bytes.
 - docs/architecture.md gains the memory/ entry in the package map;
   docs/packages/memory.md is added and linked from docs/README.md.
+
+## Addendum: mint directly through contextref
+
+Status: shipped.
+
+### Addendum goal
+
+`Put` computed its ref through `envelope.ContextRef`, which itself is
+one call into `contextref.Mint` (see `docs/plans/envelope.md`'s
+carve-out addenda). Once `contextref` existed as its own leaf,
+`memory` importing `envelope` for one hash pulled the whole wire,
+signing, and ed25519 surface into `memory`'s closure for no reason:
+`memory` never builds or reads an `envelope.Message`.
+
+### Addendum scope
+
+Inside:
+
+- `store.go`'s `Put` calls `contextref.Mint(content)` directly, in
+  place of `envelope.ContextRef(string(content))`. The two produce
+  byte-identical refs: `string([]byte)` then `[]byte(string)` is a
+  lossless round trip, and `envelope.ContextRef` was itself only
+  `contextref.Mint([]byte(content))`.
+- `policy/layers.json`'s `memory` row becomes `["contextref"]`.
+- `doc.go` and `docs/packages/memory.md` name `contextref.Mint`
+  instead of `envelope.ContextRef`.
+
+Outside:
+
+- No change to the ref format, `Get`, eviction, or any exported
+  signature.
+
+### Addendum tests
+
+Every existing `memory` test passes unchanged: they assert on the
+returned ref string and on hit/miss behavior, not on which package
+computed the hash.
+
+### Addendum verification
+
+- `grep -n "envelope" memory/*.go` returns nothing outside comments
+  that still explain memory does not know about `envelope.Message`.
+- `go list -deps ./memory` no longer includes `envelope`.
+- `make verify` passes.

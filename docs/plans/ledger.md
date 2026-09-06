@@ -2101,3 +2101,61 @@ lease.
 - `go test -race ./ledger/...` passes.
 - `api/ledger.txt` gains one line, `var ErrInvalidLease`. No
   `policy/layers.json` diff. No new conformance vector.
+
+## Addendum: the completion and release write paths validate too
+
+Status: shipped.
+
+### The gap this closes
+
+"Addendum: the lease write paths validate" above closed `Claim`,
+`Renew`, and `Takeover`. It left `Complete`, `blockOne`, and `Release`
+open: each carries `next := cur` forward and writes it with no
+`next.Validate()` call. A record a direct `Store` write corrupted (a
+`StatusClaimed` record with `BlockedBy` set, the same shape the lease
+addendum reproduced) passes `Complete` and `Release` unchanged and
+then fails `Snapshot.Encode`.
+
+`blockOne` is shared: `Claim` calls it directly when a claim discovers
+its blocking ancestor, and `blockDependents` calls it once per
+affected key after `Complete(..., StatusFailed, ...)`. Fixing
+`blockOne` closes both paths in one change.
+
+### What changed
+
+`Complete`, `blockOne`, and `Release` each call `next.Validate()`
+immediately before `Store.CompareAndSwap`, mirroring `Admit`, `Claim`,
+`Renew`, and `Takeover`. All seven mutating methods on `*Ledger` now
+validate the record they write.
+
+### Public contract change
+
+`Complete` and `Release` now return an error where they used to
+succeed: a record `TaskState.Validate` rejects returns that error
+instead of being written. `blockOne`, an unexported helper, returns
+the same error to its two callers, `Claim` and `blockDependents`.
+
+No legitimate transition is rejected: `TaskState.Validate` accepts a
+`StatusBlocked` record with a non-empty `BlockedBy`, which is exactly
+what `blockOne` writes, and accepts every `Status` transition
+`Complete` and `Release` make. Only a record already invalid before
+the call, such as the planted `BlockedBy` corruption, fails.
+
+### Addendum tests
+
+- `ledger/ledger_test/complete_release_validation_test.go` adds
+  `TestCompleteRejectsInvalidRecord` and
+  `TestReleaseRejectsInvalidRecord`, each planting a `StatusClaimed`
+  record with `BlockedBy` set through the `Store` directly, then
+  asserting `Complete` and `Release` return the `TaskState.Validate`
+  error and leave the stored record unchanged.
+- Every existing `ledger` and `ledger_test` test passes unchanged; the
+  reachable, non-corrupted paths through `Complete`, `blockOne`, and
+  `Release` write records `Validate` already accepts.
+
+### Addendum verification
+
+- `make verify` passes. The `ledger` coverage floor holds.
+- `go test -race ./ledger/...` passes.
+- No `api/ledger.txt` diff: no exported symbol changes.
+- No `policy/layers.json` diff. No new conformance vector.

@@ -6,7 +6,7 @@ The agentrun package turns an agent, a machine, and optional blocks
 into a runnable pipeline. One `New` call validates the transition
 matrix, the tool names, the budget, and the option combinations. One
 `Run` method drives the wired run. It removes the hand-written `AckWait`
-closure and the three no-op bus subscriptions every caller repeats.
+closure every caller repeats.
 
 ## Scope
 

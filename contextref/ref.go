@@ -29,11 +29,14 @@ func Mint(chunks ...[]byte) string {
 // IsRef reports whether ref matches HashPrefix followed by 64 lowercase hex characters.
 func IsRef(ref string) bool {
 	hexPart, ok := strings.CutPrefix(ref, HashPrefix)
-	return ok && isLowerHex(hexPart, digestHexLen)
+	return ok && IsLowerHex(hexPart, digestHexLen)
 }
 
-// isLowerHex reports whether s is exactly n lowercase hex characters.
-func isLowerHex(s string, n int) bool {
+// IsLowerHex reports whether s is exactly n lowercase hex characters.
+// It scans instead of allocating like strings.ToLower would. Exported
+// so a caller checking its own fixed-length hex field (a signature, a
+// public key) does not need a second copy of this scan.
+func IsLowerHex(s string, n int) bool {
 	if len(s) != n {
 		return false
 	}

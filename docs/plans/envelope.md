@@ -423,3 +423,46 @@ All existing tests in `envelope/` must continue to pass without changes.
 - `policy/layers.json` updates `envelope`'s allowed imports to `["contextref"]`.
 - `make verify` passes.
 - `api/envelope.txt` produces no diff.
+
+## Addendum: drop the last private isLowerHex copy
+
+Status: shipped.
+
+### Addendum goal
+
+The "Delegate isHashRef" addendum above kept `envelope`'s private
+`isLowerHex`, reasoning that `contextstate.IsRef` could not serve
+`Signer` and `Signature`'s different lengths and prefix-free form.
+That reasoning did not require the scan to stay unexported; it only
+showed `IsRef` itself was the wrong function. `contextref/ref.go`
+gained an exported `IsLowerHex` (see `docs/plans/contextref.md`'s
+"Export IsLowerHex" addendum), so the reason to keep a second copy is
+gone.
+
+### Addendum scope
+
+Inside:
+
+- Delete `envelope/message.go`'s private `isLowerHex`.
+- `Message.Validate`'s `Signer` and `Signature` checks call
+  `contextref.IsLowerHex` directly, at the same two call sites named
+  in the addendum above.
+
+Outside:
+
+- No change to `isHashRef`, `ContextRef`, or the wire form.
+
+### Addendum API
+
+No exported symbol changes in `api/envelope.txt`.
+
+### Addendum tests
+
+All existing `envelope` tests pass unchanged; they exercise the rule
+through `Validate`, not the helper by name.
+
+### Addendum verification
+
+- `grep -rn "func isLowerHex" --include='*.go'` over the tree returns
+  zero.
+- `make verify` passes.

@@ -27,8 +27,10 @@ func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
 // caller request a soft-cancel of the current iteration's in-flight
 // Completer.Chat call from another goroutine, through steer.Trigger.
 // ctx cancellation still ends the run as a hard failure, unchanged
-// from Run. A triggered steer ends the run gracefully instead, at the
-// next iteration boundary, with Stop == StopSteered. Final holds the
+// from Run. Without an injector, a triggered steer ends the run
+// gracefully at the next iteration boundary with Stop == StopSteered.
+// With an injector installed, the run soft-continues and StopSteered
+// never fires. See SetInjector. Final holds the
 // zero value, except when Options.StreamingWriter is set: then Final
 // carries the bytes the Completer wrote before the steer, the same
 // rule every other pre-response graceful stop already follows.

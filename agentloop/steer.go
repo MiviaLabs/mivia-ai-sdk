@@ -96,10 +96,10 @@ func (s *Steer) SetInjector(f func() []provider.Message) {
 
 // drainInjected returns the injector's current messages, or nil when
 // no injector is installed. Each call invokes the injector once.
-// The loop calls drainInjected at the top of every iteration and at
-// every steered-stop downgrade point. The caller is responsible for
-// appending the returned slice to history and observing its
-// emptiness to decide between continuing and stopping.
+// The loop calls drainInjected exactly once per iteration, at the
+// iteration top in run. The steered-stop branch calls hasInjector,
+// never this method. The caller appends a non-empty return to
+// history. Emptiness gates nothing.
 func (s *Steer) drainInjected() []provider.Message {
 	s.mu.Lock()
 	f := s.injector
@@ -139,18 +139,14 @@ func (s *Steer) HasActiveCall() bool {
 }
 
 // ackTriggered clears the triggered flag. Used by the steered-stop
-// downgrade point AFTER a non-empty injector delivers messages that
-// the loop has appended to history: the next iteration's Chat call
-// must NOT arm a still-triggered Steer, or the post-injection Chat
-// call would cancel instantly, the next drainInjected would return
-// empty, and the run would stop with zero Final — the opposite of
-// the intended continue-after-inject. Without this explicit
-// acknowledgment at the downgrade point, the sticky triggered flag
-// is exactly what breaks the continue-after-inject shape; reset()
-// clears it only at the start of the next RunSteerable call, which
-// is too late. The clear runs only when no newer Trigger fired
-// since wasTriggered observed one. The comparison is equality, not
-// ordering: a newer generation must survive the ack.
+// branch when an injector is installed, before the next iteration's
+// drainInjected call. The next Chat call must not arm a
+// still-triggered Steer. An armed trigger cancels that Chat
+// instantly and wastes one iteration. reset() clears the flag only
+// at the start of the next RunSteerable call, which is too late.
+// The clear runs only when no newer Trigger fired since wasTriggered
+// observed one. The comparison is equality, not ordering: a newer
+// generation must survive the ack.
 func (s *Steer) ackTriggered() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

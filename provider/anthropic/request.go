@@ -100,7 +100,7 @@ func resolveMaxTokens(c *Client, req provider.Request, isStream bool) int {
 	return DefaultMaxTokensNonStreaming
 }
 
-func convertMessages(reqMsgs []provider.Message, reasoningEnabled bool) ([]anthropicSystem, []anthropicMessage) {
+func convertMessages(reqMsgs []provider.Message, replayEnabled bool) ([]anthropicSystem, []anthropicMessage) {
 	var systemBlocks []anthropicSystem
 	var anthropicMsgs []anthropicMessage
 
@@ -112,7 +112,7 @@ func convertMessages(reqMsgs []provider.Message, reasoningEnabled bool) ([]anthr
 			})
 			continue
 		}
-		appendTurnMessage(&anthropicMsgs, msg, reasoningEnabled)
+		appendTurnMessage(&anthropicMsgs, msg, replayEnabled)
 	}
 	return systemBlocks, anthropicMsgs
 }
@@ -122,7 +122,7 @@ const (
 	anthropicRoleAssistant = "assistant"
 )
 
-func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, reasoningEnabled bool) {
+func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, replayEnabled bool) {
 	switch msg.Role {
 	case provider.RoleUser:
 		*anthropicMsgs = append(*anthropicMsgs, anthropicMessage{
@@ -137,7 +137,7 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, 
 		// before text and tool_use parts. A readable block replays
 		// when it carries a signature, even when its text is empty. A
 		// redacted block replays its opaque data payload verbatim.
-		if reasoningEnabled {
+		if replayEnabled {
 			for _, block := range msg.ReasoningBlocks {
 				if block.Redacted {
 					parts = append(parts, anthropicContentPart{
@@ -241,7 +241,10 @@ func buildRequestBody(c *Client, req provider.Request, isStream bool) (*anthropi
 		return nil, fmt.Errorf("%w: reasoning effort %q is not one of low, medium, high, xhigh, max", ErrInvalidOptions, effort)
 	}
 
-	systemBlocks, anthropicMsgs := convertMessages(req.Messages, reasoningEnabled)
+	// Replay is a correctness duty, but a caller may forbid it: a
+	// rewritten history must not carry blocks minted against turns the
+	// provider no longer sees.
+	systemBlocks, anthropicMsgs := convertMessages(req.Messages, reasoningEnabled && !req.DisableProviderReplay)
 
 	if promptCaching && len(systemBlocks) > 0 {
 		systemBlocks[len(systemBlocks)-1].CacheControl = &anthropicCacheControl{Type: "ephemeral"}

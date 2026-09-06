@@ -7,3 +7,10 @@
 // response translation; stream.go = SSE event streaming; wire.go =
 // wire payload serialization.
 package anthropic
+
+//
+// Replay: an assistant turn's thinking and redacted_thinking blocks
+// ride on Message.ReasoningBlocks and replay on later requests. A
+// block is valid only beside the Model that minted it; the adapter
+// does not guard the pairing, so a caller that switches Request.Model
+// between turns must set Request.DisableProviderReplay.

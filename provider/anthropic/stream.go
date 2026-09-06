@@ -77,6 +77,17 @@ type streamState struct {
 	stopReason          string
 	stopDetails         *anthropicStopDetails
 	toolCalls           map[int]*toolCallAccumulator
+	reasoning           map[int]*reasoningAccumulator
+}
+
+// reasoningAccumulator assembles one streamed thinking or
+// redacted_thinking block. The finished block carries the replay
+// signature, so a streamed turn replays like a non-streamed one.
+type reasoningAccumulator struct {
+	content   strings.Builder
+	signature string
+	redacted  bool
+	data      string
 }
 
 func readSSEEvents(r io.Reader, done <-chan struct{}) <-chan sseEvent {
@@ -147,7 +158,10 @@ func (c *Client) handleStream(ctx context.Context, body io.ReadCloser) <-chan pr
 		done := make(chan struct{})
 		defer close(done)
 		eventsCh := readSSEEvents(body, done)
-		state := &streamState{toolCalls: make(map[int]*toolCallAccumulator)}
+		state := &streamState{
+			toolCalls: make(map[int]*toolCallAccumulator),
+			reasoning: make(map[int]*reasoningAccumulator),
+		}
 
 		for {
 			select {
@@ -182,8 +196,15 @@ func (c *Client) processSSEEvent(ctx context.Context, ev sseEvent, s *streamStat
 		}
 	case "content_block_start":
 		var bs sseContentBlockStart
-		if err := json.Unmarshal(ev.Data, &bs); err == nil && bs.ContentBlock.Type == "tool_use" {
-			s.toolCalls[bs.Index] = &toolCallAccumulator{id: bs.ContentBlock.ID, name: bs.ContentBlock.Name}
+		if err := json.Unmarshal(ev.Data, &bs); err == nil {
+			switch bs.ContentBlock.Type {
+			case "tool_use":
+				s.toolCalls[bs.Index] = &toolCallAccumulator{id: bs.ContentBlock.ID, name: bs.ContentBlock.Name}
+			case "thinking":
+				s.reasoning[bs.Index] = &reasoningAccumulator{}
+			case "redacted_thinking":
+				s.reasoning[bs.Index] = &reasoningAccumulator{redacted: true, data: bs.ContentBlock.Data}
+			}
 		}
 	case "content_block_delta":
 		return c.handleContentBlockDelta(ctx, ev.Data, s, out)
@@ -219,10 +240,14 @@ func (c *Client) handleContentBlockDelta(ctx context.Context, data []byte, s *st
 	case "text_delta":
 		return !sendChunkOrDone(ctx, out, provider.Chunk{Delta: bd.Delta.Text})
 	case "thinking_delta":
+		acc := s.reasoningBlock(bd.Index)
+		acc.content.WriteString(bd.Delta.Thinking)
 		if c.opts.ExposeReasoning {
 			return !sendChunkOrDone(ctx, out, provider.Chunk{ReasoningDelta: bd.Delta.Thinking})
-		} else if c.opts.OnReasoning != nil {
-			c.opts.OnReasoning(provider.RedactBlock(provider.ReasoningBlock{Content: bd.Delta.Thinking}))
+		}
+	case "signature_delta":
+		if acc, exists := s.reasoning[bd.Index]; exists {
+			acc.signature = bd.Delta.Signature
 		}
 	case "input_json_delta":
 		if acc, exists := s.toolCalls[bd.Index]; exists {
@@ -230,6 +255,18 @@ func (c *Client) handleContentBlockDelta(ctx context.Context, data []byte, s *st
 		}
 	}
 	return false
+}
+
+// reasoningBlock returns the accumulator for one content-block index,
+// creating an implicit one when a delta arrived without a matching
+// content_block_start.
+func (s *streamState) reasoningBlock(index int) *reasoningAccumulator {
+	acc, exists := s.reasoning[index]
+	if !exists {
+		acc = &reasoningAccumulator{}
+		s.reasoning[index] = acc
+	}
+	return acc
 }
 
 func (c *Client) handleContentBlockStop(ctx context.Context, data []byte, s *streamState, out chan<- provider.Chunk) bool {
@@ -249,6 +286,21 @@ func (c *Client) handleContentBlockStop(ctx context.Context, data []byte, s *str
 			Arguments: []byte(argsStr),
 		}
 		return !sendChunkOrDone(ctx, out, provider.Chunk{ToolCallDelta: tc})
+	}
+	if racc, exists := s.reasoning[bstop.Index]; exists {
+		delete(s.reasoning, bstop.Index)
+		block := provider.ReasoningBlock{
+			Content:   racc.content.String(),
+			Signature: racc.signature,
+			Redacted:  racc.redacted,
+			Data:      racc.data,
+		}
+		// The callback mirrors the non-streamed decode: every readable
+		// block fires once, in redacted form, when OnReasoning is set.
+		if c.opts.OnReasoning != nil && !block.Redacted {
+			c.opts.OnReasoning(provider.RedactBlock(provider.ReasoningBlock{Content: block.Content}))
+		}
+		return !sendChunkOrDone(ctx, out, provider.Chunk{ReasoningBlock: &block})
 	}
 	return false
 }

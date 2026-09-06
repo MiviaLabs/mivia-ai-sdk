@@ -180,6 +180,8 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 		return provider.Response{}, nil, provider.Request{}, orig
 	}
 	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: surface.defs}
+	// The rebuilt history lost the dropped turns' blocks.
+	req.DisableProviderReplay = true
 	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {
 		return provider.Response{}, nil, provider.Request{}, rerr
 	}
@@ -189,4 +191,42 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 		return provider.Response{}, nil, provider.Request{}, err
 	}
 	return resp, rebuilt, req, nil
+}
+
+// historyRewritten reports whether a planning pass changed the
+// history: a different length, or any message whose content differs.
+// It compares by value, so a pass that reorders or edits one turn
+// counts as a rewrite.
+func historyRewritten(before, after []provider.Message) bool {
+	if len(before) != len(after) {
+		return true
+	}
+	for i := range before {
+		if !messagesEqual(before[i], after[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// messagesEqual compares two messages field by field. ReasoningBlocks
+// compares element-wise in order.
+func messagesEqual(a, b provider.Message) bool {
+	if a.Role != b.Role || a.Content != b.Content || a.Name != b.Name ||
+		a.ToolCallID != b.ToolCallID || len(a.ToolCalls) != len(b.ToolCalls) ||
+		len(a.ReasoningBlocks) != len(b.ReasoningBlocks) {
+		return false
+	}
+	for i := range a.ToolCalls {
+		if a.ToolCalls[i].Index != b.ToolCalls[i].Index || a.ToolCalls[i].ID != b.ToolCalls[i].ID ||
+			a.ToolCalls[i].Name != b.ToolCalls[i].Name || string(a.ToolCalls[i].Arguments) != string(b.ToolCalls[i].Arguments) {
+			return false
+		}
+	}
+	for i := range a.ReasoningBlocks {
+		if a.ReasoningBlocks[i] != b.ReasoningBlocks[i] {
+			return false
+		}
+	}
+	return true
 }

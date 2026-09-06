@@ -155,9 +155,17 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 	l.emitEvent(ctx, EventIterationStart, label)
 	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
 
+	// Any rewrite of the history prefix invalidates reasoning replay:
+	// a trimmed or compacted turn may have lost the thinking block the
+	// next request must echo. The flag rides on this iteration's
+	// request as DisableProviderReplay.
+	replayUnsafe := false
 	trimmed, terr := l.applyTrim(ctx, *st.history, *st.iterations)
 	if terr != nil {
 		return l.hardFail(*st.history, *st.iterations, *st.totalUsage), terr, true
+	}
+	if historyRewritten(*st.history, trimmed) {
+		replayUnsafe = true
 	}
 	*st.history = trimmed
 
@@ -165,6 +173,9 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 		planned, perr := l.planHistory(ctx, *st.history, *st.iterations)
 		if perr != nil {
 			return l.hardFail(*st.history, *st.iterations, *st.totalUsage), perr, true
+		}
+		if historyRewritten(*st.history, planned) {
+			replayUnsafe = true
 		}
 		*st.history = planned
 	}
@@ -183,7 +194,7 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
 	at := func() chatAttempt {
 		defer stopHeartbeat()
-		return l.runChat(ctx, *st.history, *st.iterations, steer, stream, surface)
+		return l.runChat(ctx, *st.history, *st.iterations, steer, stream, surface, replayUnsafe)
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
@@ -352,12 +363,15 @@ type chatAttempt struct {
 // runChat builds this iteration's Request, reserves budget, calls
 // Completer.Chat, and catches ErrPromptTooLong to attempt one-shot
 // compaction recovery when Options.Window is set.
-func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer, surface runSurface) chatAttempt {
+func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer, surface runSurface, replayUnsafe bool) chatAttempt {
 	var span *trace.Span
 	if l.tracer != nil {
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
 	req := provider.Request{Model: l.model, Messages: history, Tools: surface.defs}
+	// A rewritten history must not carry a reasoning block minted
+	// against turns the provider no longer sees.
+	req.DisableProviderReplay = replayUnsafe
 	req.StreamingWriter = streamMirror(l.streamSink, stream)
 	estimated := l.estimateTokens(req)
 	// WorkBudget call points (agentloop/budget.go): reserve before the

@@ -3,9 +3,12 @@ package anthropic_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"reflect"
+	"sync/atomic"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -219,4 +222,137 @@ func TestOnReasoningFiresBesideExposeReasoning(t *testing.T) {
 	if len(resp.Message.ReasoningBlocks) != 2 {
 		t.Fatalf("ReasoningBlocks = %+v, want the replay carrier populated", resp.Message.ReasoningBlocks)
 	}
+}
+
+// streamThinkingFixture serves one streamed turn: a thinking block
+// with a signature_delta, then a text block. It captures every wire
+// request.
+func streamThinkingFixture(t *testing.T, captured *map[string]any) *testClientFixture {
+	t.Helper()
+	var attempts int32
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, captured)
+		if atomic.AddInt32(&attempts, 1) > 1 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": "msg_s2", "type": "message", "role": "assistant",
+				"model": "claude-opus-5", "stop_reason": "end_turn",
+				"content": []map[string]any{{"type": "text", "text": "done"}},
+				"usage":   map[string]any{"input_tokens": 9, "output_tokens": 2},
+			})
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			fmt.Fprintf(w, "event: message_start\ndata: {\"message\":{\"id\":\"msg_s\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-5\",\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n")
+			fmt.Fprintf(w, "event: content_block_start\ndata: {\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_delta\ndata: {\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"Streamed thought.\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_delta\ndata: {\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-stream\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_stop\ndata: {\"index\":0}\n\n")
+			fmt.Fprintf(w, "event: content_block_start\ndata: {\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_delta\ndata: {\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"Answer.\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_stop\ndata: {\"index\":1}\n\n")
+			fmt.Fprintf(w, "event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":9}}\n\n")
+			fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+			flusher.Flush()
+		}
+	})
+	return fix
+}
+
+// TestChatStreamCapturesSignatureAndReplays pins the streamed path:
+// the signature_delta event lands in the carrier, RunTurn's streamed
+// aggregation forwards the complete block, and the next Chat call
+// replays it like a non-streamed block.
+func TestChatStreamCapturesSignatureAndReplays(t *testing.T) {
+	var captured map[string]any
+	fix := streamThinkingFixture(t, &captured)
+	client := exposeClient(t, fix)
+
+	resp, err := client.ChatStream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	got, err := provider.RunTurn(context.Background(), chanCompleter{ch: resp},
+		provider.Request{Stream: true})
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	want := []provider.ReasoningBlock{{Content: "Streamed thought.", Signature: "sig-stream"}}
+	if !reflect.DeepEqual(got.Message.ReasoningBlocks, want) {
+		t.Fatalf("ReasoningBlocks = %+v, want the streamed signed block", got.Message.ReasoningBlocks)
+	}
+
+	_, err = client.Chat(context.Background(), provider.Request{
+		ReasoningEffort: provider.ReasoningEffortHigh,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: "go"},
+			got.Message,
+		},
+	})
+	if err != nil {
+		t.Fatalf("second Chat: %v", err)
+	}
+	assistant := assistantWireTurn(t, captured)
+	parts, ok := assistant["content"].([]any)
+	if !ok || len(parts) != 2 {
+		t.Fatalf("assistant content = %v, want thinking then text", assistant["content"])
+	}
+	thinking, _ := parts[0].(map[string]any)
+	if thinking["type"] != "thinking" || thinking["thinking"] != "Streamed thought." || thinking["signature"] != "sig-stream" {
+		t.Errorf("replayed part = %v, want the streamed block replayed exactly", thinking)
+	}
+}
+
+// TestChatReplaySuppressedWhenProviderReplayDisabled pins the
+// DisableProviderReplay contract: the request flag suppresses every
+// reasoning part on the wire, even when history carries signed
+// blocks.
+func TestChatReplaySuppressedWhenProviderReplayDisabled(t *testing.T) {
+	var captured map[string]any
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &captured)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_off", "type": "message", "role": "assistant",
+			"model": "claude-opus-5", "stop_reason": "end_turn",
+			"content": []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":   map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
+	client := exposeClient(t, fix)
+	_, err := client.Chat(context.Background(), provider.Request{
+		ReasoningEffort:       provider.ReasoningEffortHigh,
+		DisableProviderReplay: true,
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: "go"},
+			{Role: provider.RoleAssistant, Content: "answered",
+				ReasoningBlocks: []provider.ReasoningBlock{
+					{Content: "Deep thought.", Signature: "sig-abc"},
+					{Redacted: true, Data: "ErBCSkYPGkvblKQZEhJbCA=="},
+				}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	assertNoThinkingPart(t, captured)
+}
+
+// chanCompleter adapts one ChatStream channel to provider.Completer
+// so a streamed turn runs through RunTurn's aggregation.
+type chanCompleter struct {
+	ch <-chan provider.Chunk
+}
+
+func (c chanCompleter) Name() string { return "chan" }
+
+func (c chanCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+	return provider.Response{}, errors.New("chanCompleter: Chat is not supported")
+}
+
+func (c chanCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return c.ch, nil
 }

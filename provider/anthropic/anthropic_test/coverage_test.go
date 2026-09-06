@@ -405,7 +405,9 @@ func TestStreamThinkingBlockRedacted(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		if flusher, ok := w.(http.Flusher); ok {
-			fmt.Fprintf(w, "event: content_block_delta\ndata: {\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"streamed thoughts\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_start\ndata: {\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_delta\ndata: {\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"streamed thoughts\"}}\n\n")
+			fmt.Fprintf(w, "event: content_block_stop\ndata: {\"index\":0}\n\n")
 			fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
 			flusher.Flush()
 		}

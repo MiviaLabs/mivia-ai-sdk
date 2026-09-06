@@ -895,7 +895,7 @@ changes: `envelope` message semantics are untouched.
 
 ## Addendum: runconfig wiring
 
-Status: planned, extends DiscoveryTool.
+Status: shipped.
 
 `runconfig` becomes `subagent`'s first internal production caller. Its
 document `internal` section builds six tool families at `Load` time:

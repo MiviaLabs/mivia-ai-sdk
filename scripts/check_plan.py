@@ -28,10 +28,18 @@ A package tree with zero `*_test.go` files (including zero in
 compare the section's claims against. The structural section check
 still applies.
 
-The plan-status rule: a `Status: planned, not yet built` section must
-name no exported symbol locked in `api/<pkg>.txt`. A section that must
-stay planned renames its status to `Status: planned, extends <symbol>`;
-the gate ignores that form."""
+The plan-status rule: every `Status:` line other than one starting
+`shipped` or `superseded` must govern a section naming no exported
+symbol locked in `api/<pkg>.txt`. This is a closed allowlist, not a
+denylist of known-stale phrases: a status the gate has never seen
+before (a typo, a new phrase, "approved", "plan, ready for review")
+is scanned exactly like the canonical "planned, not yet built". A
+section that must stay planned while it deliberately references one
+already-shipped symbol as its anchor renames its status to
+`Status: planned, extends <symbol>`; the gate excuses only that one
+named symbol from the scan, and separately rejects the line if the
+anchor itself is locked, since a locked anchor means the addition it
+names has shipped and the status should say so."""
 import argparse
 import re
 import sys
@@ -174,7 +182,15 @@ def _declared_tests(pkg_dir: Path) -> set[str]:
 # the symbol (method and top-level forms). _SYMBOL matches an exported
 # Go symbol, optionally after a lowercase dotted package prefix; group
 # 1 keeps the exported part (`tools.SchemaTool` -> `SchemaTool`).
-STATUS_PLANNED = re.compile(r"^Status: (?:planned, not yet built|planned, not shipped|planned\.)")
+#
+# STATUS_LINE finds every status line, settled or not; STATUS_SETTLED
+# is the only exemption, so any other status text is scanned. This is
+# the closed-allowlist inversion: a status the gate has never seen
+# gets scanned, not ignored. STATUS_EXTENDS parses the one escape form
+# that survives scanning, to find its named anchor symbol.
+STATUS_LINE = re.compile(r"^Status: (.+)$")
+STATUS_SETTLED = re.compile(r"^(?:shipped|superseded)\b")
+STATUS_EXTENDS = re.compile(r"^planned, extends ([A-Za-z][\w.]*)\.")
 _HEADING = re.compile(r"^(#{1,6})\s")
 _LOCK_LINE = re.compile(r"^(?:func\s+\([^)]*\)\s+|(?:func|const|var|type)\s+)(\w+)")
 _SPAN = re.compile(r"`([^`\n]+)`")
@@ -205,17 +221,35 @@ def _planned_section(lines: list[str], idx: int) -> tuple[int, int]:
     return start, end
 
 def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
-    """_check_planned_status applies the plan-status rule. Every
-    `Status: planned, not yet built` section must name no symbol locked
-    in api/<pkg>.txt. One problem per status line: the first match."""
+    """_check_planned_status applies the plan-status rule. Every status
+    line other than one starting "shipped" or "superseded" governs a
+    section that must name no symbol locked in api/<pkg>.txt, except
+    the one anchor a "planned, extends <symbol>" line names; that
+    anchor itself must not be locked. One problem per status line: the
+    first match."""
     problems: list[str] = []
     lines = text.splitlines()
     locked: set[str] | None = None
     for idx, line in enumerate(lines):
-        if not STATUS_PLANNED.match(line):
+        status_match = STATUS_LINE.match(line)
+        if not status_match:
+            continue
+        status_text = status_match.group(1)
+        if STATUS_SETTLED.match(status_text):
             continue
         if locked is None:
             locked = _locked_symbols(root / "api" / f"{pkg}.txt")
+        extends_match = STATUS_EXTENDS.match(status_text)
+        anchor = extends_match.group(1) if extends_match else None
+        if anchor is not None:
+            anchor_hit = next((part for part in anchor.split(".") if part in locked), None)
+            if anchor_hit is not None:
+                problems.append(
+                    f"docs/plans/{pkg}.md:{idx + 1}: status 'planned, extends {anchor}' "
+                    f"names an anchor already locked in api/{pkg}.txt; the addition "
+                    f"has shipped, write 'Status: shipped'"
+                )
+                continue
         start, end = _planned_section(lines, idx)
         syms: list[str] = []
         for body in lines[start:end]:
@@ -226,13 +260,15 @@ def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
                 if m.group(1) not in syms
             ]
         for sym in syms:
+            if anchor is not None and sym == anchor:
+                continue
             hit = next((part for part in sym.split(".") if part in locked), None)
             if hit is None:
                 continue
             problems.append(
-                f"docs/plans/{pkg}.md:{idx + 1}: status 'planned, not yet built' "
-                f"names locked symbol {hit!r} from api/{pkg}.txt; ship the section "
-                f"or write 'Status: planned, extends {hit}'"
+                f"docs/plans/{pkg}.md:{idx + 1}: status {status_text!r} names locked "
+                f"symbol {hit!r} from api/{pkg}.txt; ship the section or write "
+                f"'Status: planned, extends {hit}'"
             )
             break
     return problems
@@ -451,13 +487,25 @@ def _probe_plan_status(root: Path) -> list[str]:
     """_probe_plan_status covers the plan-status rule: a planned section
     naming a symbol locked in api/flow/engine.txt must fail; one naming
     an unlocked symbol must pass; the `planned, extends` escape form
-    naming a locked symbol must pass."""
+    naming an unlocked anchor must pass; the same escape form naming a
+    locked anchor must fail, since a locked anchor means the addition
+    it names has shipped; any other status wording, seen or not, is
+    scanned the same as the canonical phrase, proving the rule is a
+    closed allowlist and not a denylist of known phrasings; "shipped"
+    and "superseded" are the only exemptions, regardless of what they
+    name."""
     cases = [
         ("locked", "Status: planned, not yet built.", "`engine.New`", True),
         ("locked_not_shipped", "Status: planned, not shipped.", "`engine.New`", True),
         ("locked_dot", "Status: planned.", "`engine.New`", True),
         ("unlocked", "Status: planned, not yet built.", "`engine.Missing`", False),
-        ("escape", "Status: planned, extends New.", "`engine.New`", False),
+        ("escape_unlocked_anchor", "Status: planned, extends Missing.", "`engine.Missing`", False),
+        ("escape_locked_anchor", "Status: planned, extends New.", "`engine.New`", True),
+        ("escape_anchor_exempt_but_other_locked", "Status: planned, extends Missing.", "`engine.Missing` and `engine.New`", True),
+        ("unseen_phrasing", "Status: approved.", "`engine.New`", True),
+        ("unseen_phrasing_unlocked", "Status: approved.", "`engine.Missing`", False),
+        ("shipped_exempt", "Status: shipped.", "`engine.New`", False),
+        ("superseded_exempt", "Status: superseded by the section below.", "`engine.New`", False),
     ]
     problems: list[str] = []
     for name, status_line, ref, want_fail in cases:
@@ -472,7 +520,7 @@ def _probe_plan_status(root: Path) -> list[str]:
         )
         go_packages.write_file(sub, "docs/plans/flow/engine.md", plan)
         got = check(sub, go_packages.probe_env())
-        failed = any("docs/plans/flow/engine.md" in p and "'New'" in p for p in got)
+        failed = any("docs/plans/flow/engine.md" in p for p in got)
         if want_fail and not failed:
             problems.append(f"probe_plan_status/{name}: expected a locked-symbol problem, got {got}")
         if not want_fail and got:

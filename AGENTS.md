@@ -181,9 +181,15 @@ follow reliably. Each has a gate behind it.
   `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
   The plan path mirrors the package path: a package at `foo/bar/`
   plans at `docs/plans/foo/bar.md`. Gate: `scripts/check_plan.py`.
-- Do not leave a plan section marked planned, not yet built once its
-  symbols are in the `api/` lock. Ship the section or write
-  `Status: planned, extends <symbol>`. Gate: `scripts/check_plan.py`.
+- Do not leave a plan section with any status other than `shipped` or
+  `superseded` once its symbols are in the `api/` lock. This is a
+  closed allowlist, not a list of known-stale phrases: an unfamiliar
+  status wording is scanned the same as `planned, not yet built`.
+  Ship the section, or, for one already-shipped symbol a still-planned
+  section deliberately references, write
+  `Status: planned, extends <symbol>` — that escape itself fails if
+  the named symbol is locked, since a locked anchor means the addition
+  has shipped. Gate: `scripts/check_plan.py`.
 - Do not leave a package with zero internal callers undeclared. List
   it in `policy/pending_wiring.json` with a reason and a target. A
   caller at any depth counts as a real caller. Gate:

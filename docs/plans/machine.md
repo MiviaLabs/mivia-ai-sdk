@@ -182,7 +182,7 @@ the exported fields and adds the two methods.
 
 ## Addendum: wire surface removal
 
-Status: approved. This addendum records the removal decision.
+Status: shipped. This addendum records the removal decision.
 
 ### Goal
 

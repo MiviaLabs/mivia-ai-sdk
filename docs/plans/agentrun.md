@@ -160,8 +160,8 @@ following files exist:
 
 ## Addendum: Artifacts wire form for cross-process resume
 
-Status: plan, ready for plan review. This addendum closes the
-step-output half of cross-process resume. `flow.Checkpoint` already
+Status: shipped. This addendum closes the step-output half of
+cross-process resume. `flow.Checkpoint` already
 carries which steps ran and their status across a pause and a
 `flow.Resume`. `Artifacts` carries what each step produced, but has no
 `Encode` or `Decode`, so a caller resuming a run in a new process

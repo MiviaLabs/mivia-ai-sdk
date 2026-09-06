@@ -785,7 +785,7 @@ value end to end, matching what a tool-registry caller needs.
 
 ## Change: prove ReadOutputTool reaches a live composition path
 
-Status: planned, extends ReadOutputTool.
+Status: shipped.
 
 ### Change goal
 

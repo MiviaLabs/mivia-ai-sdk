@@ -163,3 +163,54 @@ agentloop 3128, contextplan 872, dispatch 180 and 274,
 longtermmemory 47, 624, and 791, mcp 587, tools 469 and 496. The rule
 is not too narrow. The control exits 1 on that tree and exits 0 on the
 fixed tree.
+
+## Addendum: closing the extends escape hole
+
+Status: shipped. A later architecture review found the escape this
+plan documents had itself become the leak: seven package plans, listed
+below, renamed a shipped section to
+`Status: planned, extends <symbol>` where `<symbol>` was the very
+addition that had shipped, instead of `Status: shipped`. The gate
+never inspected the escape form's own claim, so it passed every one
+of them. A further six locked-symbol sections evaded the gate under
+status wordings the original regex never listed
+(`plan, ready for plan review`, `approved`, a bare descriptive
+sentence), because the rule was a denylist of known phrasings, not a
+closed allowlist.
+
+### Addendum fix
+
+`_check_planned_status` now scans every `Status:` line whose text does
+not start `shipped` or `superseded`; that is the only exemption. The
+`planned, extends <symbol>` form still excuses its own named symbol
+from the body scan, but the rule now also rejects the line outright
+when that named symbol is itself locked: a locked anchor means the
+addition it names has shipped, so the status must say `shipped`.
+
+Sites corrected in the same change: `docs/plans/contextstate.md:718`,
+`docs/plans/dispatch.md:668`, `docs/plans/envelope.md:393`,
+`docs/plans/runconfig.md:436` and `:594`, `docs/plans/spool.md:788`,
+`docs/plans/subagent.md:898` (the seven `extends` misuses), plus
+`docs/plans/agentloop.md:439`, `:881`, `:1078`,
+`docs/plans/agentrun.md:163`, `docs/plans/machine.md:185`, and
+`docs/plans/flow.md:3` (locked symbols under a status wording the old
+regex never matched).
+
+### Addendum tests
+
+`_probe_plan_status` gained cases for an escape naming a locked
+anchor (must fail), an escape naming an unlocked anchor with another,
+unrelated locked symbol still in the section body (must fail: the
+exemption covers only the named anchor), an unfamiliar status wording
+naming a locked symbol (must fail) and an unlocked one (must pass),
+and `shipped`/`superseded` naming a locked symbol (must pass, the
+only exemption).
+
+### Addendum verification
+
+`python3 scripts/check_plan.py --probe` passes. `python3
+scripts/check_plan.py` against the live tree exits 0. Re-running the
+positive control's script against a fresh `git archive f2c0edf`
+checkout reports the locked-symbol class of finding at every site this
+addendum names, confirming the widened rule still catches the
+original evidence and more.

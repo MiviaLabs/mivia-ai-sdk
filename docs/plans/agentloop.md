@@ -436,10 +436,10 @@ to check it.
 ## Addendum: argument validation, an audit hook, and an untrusted
 error marker
 
-Status: plan, ready for plan review. This addendum covers three
-hardening fixes found in an adversarial review of the shipped
-`agentloop` code. It changes `toolcall.go`, `options.go`, `wire.go`,
-and `run.go`. It adds no new package.
+Status: shipped. This addendum covers three hardening fixes found in
+an adversarial review of the shipped `agentloop` code. It changes
+`toolcall.go`, `options.go`, `wire.go`, and `run.go`. It adds no new
+package.
 
 ### Addendum goal
 
@@ -878,9 +878,9 @@ total.
 
 ## Addendum: a trustworthy MaxTotalTokens cap
 
-Status: plan, ready for plan review. This addendum fixes a correctness
-bug in `run.go`'s `MaxTotalTokens` enforcement. It changes `run.go`
-only. It adds no new package and no new exported symbol.
+Status: shipped. This addendum fixes a correctness bug in `run.go`'s
+`MaxTotalTokens` enforcement. It changes `run.go` only. It adds no new
+package and no new exported symbol.
 
 ### Addendum goal
 
@@ -1075,10 +1075,10 @@ adds no exported symbol.
 
 ## Addendum: a nil-schema panic on a tool registered after New
 
-Status: plan, ready for plan review. This addendum fixes a
-nil-pointer panic an adversarial logic review found in `toolcall.go`.
-It changes `toolcall.go` and `options.go`. It adds one new sentinel
-error and no new package.
+Status: shipped. This addendum fixes a nil-pointer panic an
+adversarial logic review found in `toolcall.go`. It changes
+`toolcall.go` and `options.go`. It adds one new sentinel error and no
+new package.
 
 ### Addendum bug
 

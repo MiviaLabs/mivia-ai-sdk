@@ -715,7 +715,7 @@ In `contextstate/contextstate_test/store_test.go`:
 
 ## Addendum: carve ref minter into contextref
 
-Status: planned, extends HashPrefix.
+Status: shipped.
 
 ### Addendum goal
 

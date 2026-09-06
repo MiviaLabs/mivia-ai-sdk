@@ -1,7 +1,7 @@
 # Plan: flow
 
-Status: the step graph, the sequential runner, the parallel panel
-waves, chaining, per-step outcomes, the admission rule, branch
+Status: shipped. The step graph, the sequential runner, the parallel
+panel waves, chaining, per-step outcomes, the admission rule, branch
 routing, the failure fallback path, the checkpoint pause/resume pair,
 a bounded retry loop around a step's `Fire` call, and a loop-driving
 repeat of a step's `Sub` all ship. This plan expands the earlier

@@ -390,7 +390,7 @@ document no unexported helper. Leave both unchanged.
 
 ## Addendum: migrate canonical ref delegation to contextref
 
-Status: planned, extends ContextRef.
+Status: shipped.
 
 ### Addendum goal
 

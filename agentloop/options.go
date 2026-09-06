@@ -266,8 +266,6 @@ type Options struct {
 	// deadline once at construction as deadlineAt. A zero StartTime
 	// resolves to time.Now().
 	ConcludeDeadline time.Duration
-	// ConcludeToolCallsLeft is reserved for tool-call conclude thresholds.
-	ConcludeToolCallsLeft int
 	// ConcludeStepsLeft, when > 0, fires the conclude nudge when
 	// MaxIterations-k is below the threshold. A zero value disables
 	// this term. Sits alongside ConcludeMargin; the smaller of the
@@ -401,7 +399,7 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // negative, a non-nil Window passes Window.Validate, requires
 // Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
 // is not negative, ConcludeDeadline is not negative,
-// ConcludeToolCallsLeft is not negative, ConcludeStepsLeft is not
+// ConcludeStepsLeft is not
 // negative, TurnResultBudget is not negative, MaxConcurrentTools is
 // not negative, MaxConsecutiveToolFailures is not negative, and finally
 // a positive HeartbeatInterval requires a non-nil Bus.
@@ -445,9 +443,6 @@ func (o Options) Validate() error {
 	}
 	if o.ConcludeDeadline < 0 {
 		return errors.New("agentloop: ConcludeDeadline must be non-negative")
-	}
-	if o.ConcludeToolCallsLeft < 0 {
-		return errors.New("agentloop: ConcludeToolCallsLeft must be non-negative")
 	}
 	if o.ConcludeStepsLeft < 0 {
 		return errors.New("agentloop: ConcludeStepsLeft must be non-negative")

@@ -146,37 +146,6 @@ func TestRunConcludeDeadlineFutureDoesNotFire(t *testing.T) {
 	}
 }
 
-// TestRunConcludeToolCallsLeftThresholdFires proves that
-// ConcludeToolCallsLeft does not compare iteration index k against
-// MaxCallsPerTurn.
-func TestRunConcludeToolCallsLeftThresholdFires(t *testing.T) {
-	reg := newNoopRegistry(t)
-	completer := newTwoIterCompleter()
-	loop, err := agentloop.New(agentloop.Options{
-		Completer:             completer,
-		Tools:                 reg,
-		MaxIterations:         5,
-		MaxCallsPerTurn:       3,
-		ConcludeToolCallsLeft: 2,
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v, want nil", err)
-	}
-	res, err := loop.Run(context.Background(), []provider.Message{
-		textMessage(provider.RoleUser, "hi"),
-	})
-	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
-	}
-	if res.Stop != agentloop.StopNoToolCalls {
-		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
-	}
-	req2 := completer.requestAt(1)
-	if hasNotice(req2.Messages, agentloop.DefaultConcludeNotice) {
-		t.Fatalf("request 2 has notice, want none")
-	}
-}
-
 // TestRunConcludeStepsLeftThresholdFires proves the iterations-left
 // term: MaxIterations=5, ConcludeStepsLeft=4. k=1: 5-1=4 < 4 is false.
 // k=2: 5-2=3 < 4 is true. So the term fires on iter 2's check, the

@@ -3651,7 +3651,7 @@ Exported symbols added to `api/agentloop.txt`:
 - TestSurfaceConcurrentRunDoesNotRace proves concurrent surface safety.
 - TestRunConcludeDeadlineThresholdFires proves deadline expiration conclude nudge.
 - TestRunConcludeDeadlineFutureDoesNotFire proves future deadline does not nudge.
-- TestRunConcludeToolCallsLeftThresholdFires proves turn cap isolation.
+- The turn-cap test, `TestRunConcludeToolCallsLeftThresholdFires`, was later removed with its dead reserved option; see the closing maintenance addendum.
 - TestRunConcludeStepsLeftThresholdFires proves steps-left conclude nudge.
 - TestRunConcludeTermsOREDTogether proves combination of conclude triggers.
 - TestOptionsValidateCompleterBeforeConclude proves option validation ordering.

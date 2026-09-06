@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""--probe cases for diff-source resolution and override-trailer
-resolution, including the TT11/TT14 hardness cases."""
+"""--probe cases for diff-source resolution, the dirty working tree,
+and override-trailer resolution, including the TT11/TT14 hardness
+cases. The dirty-working-tree cases live in
+test_tampering_probes_worktree.py and the merge cases in
+test_tampering_probes_merge.py; see those files' headers for why this
+is split."""
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +12,8 @@ from pathlib import Path
 from check_test_tampering import resolve_diff_source
 from test_tampering_diff import build_diff, commit_all, diff_after_change, init_probe_repo, repo_root, stage_all
 from test_tampering_override import resolve_overrides
+from test_tampering_probes_merge import run_merge_probes
+from test_tampering_probes_worktree import run_worktree_probes
 from test_tampering_rules import Finding
 
 _CHECKER = Path(__file__).resolve().parent / "check_test_tampering.py"
@@ -23,15 +29,18 @@ def _new_repo(tmp, name):
 # --- diff-source resolution ---------------------------------------------
 
 
-def _probe_staged_picked(tmp):
+def _probe_worktree_picked_over_staged(tmp):
+    """With no --message-file, a staged change is audited through the
+    working tree, not the index. `git diff HEAD` is a superset of the
+    staged diff, so this asserts more than an index comparison."""
     repo = _new_repo(tmp, "diffsrc_staged")
     (repo / "a.txt").write_text("one\n")
     commit_all(repo, "base")
     (repo / "a.txt").write_text("two\n")
     stage_all(repo)
-    diff_args, _message, skip = resolve_diff_source(None, None, repo)
-    if skip or diff_args != ["--cached"]:
-        return [f"diffsrc staged: expected ['--cached'], got {diff_args} skip={skip}"]
+    comparisons, _message, skip = resolve_diff_source(None, None, repo)
+    if skip or comparisons != [["HEAD"]]:
+        return [f"diffsrc staged: expected [['HEAD']], got {comparisons} skip={skip}"]
     return []
 
 
@@ -41,9 +50,9 @@ def _probe_fallback_to_parent(tmp):
     commit_all(repo, "base")
     (repo / "a.txt").write_text("two\n")
     commit_all(repo, "second")
-    diff_args, message, skip = resolve_diff_source(None, None, repo)
-    if skip or diff_args != ["HEAD~1", "HEAD"] or "second" not in message:
-        return [f"diffsrc fallback: expected HEAD~1...HEAD with tip message, got {diff_args} {message!r} skip={skip}"]
+    comparisons, message, skip = resolve_diff_source(None, None, repo)
+    if skip or comparisons != [["HEAD~1", "HEAD"]] or "second" not in message:
+        return [f"diffsrc fallback: expected HEAD~1 HEAD with tip message, got {comparisons} {message!r} skip={skip}"]
     return []
 
 
@@ -59,9 +68,9 @@ def _probe_single_commit_skips(tmp):
     repo = _new_repo(tmp, "diffsrc_single")
     (repo / "a.txt").write_text("one\n")
     commit_all(repo, "only commit")
-    diff_args, message, skip = resolve_diff_source(None, None, repo)
-    if not skip or diff_args is not None or message is not None:
-        return [f"diffsrc single commit: expected a skip signal, got {diff_args} {message!r} skip={skip}"]
+    comparisons, message, skip = resolve_diff_source(None, None, repo)
+    if not skip or comparisons is not None or message is not None:
+        return [f"diffsrc single commit: expected a skip signal, got {comparisons} {message!r} skip={skip}"]
     return []
 
 
@@ -76,8 +85,8 @@ def _probe_staged_reads_message_file(tmp):
     stage_all(repo)
     msg_file = tmp / "diffsrc_staged_message_file_msg.txt"
     msg_file.write_text("subject\n\nAllow-Test-Change: TT02 removed a flaky retry loop after root cause fix\n")
-    diff_args, message, skip = resolve_diff_source(None, str(msg_file), repo)
-    if skip or diff_args != ["--cached"] or message != msg_file.read_text():
+    comparisons, message, skip = resolve_diff_source(None, str(msg_file), repo)
+    if skip or comparisons != [["--cached"]] or message != msg_file.read_text():
         return [f"diffsrc staged message-file: expected the file's text, got {message!r} skip={skip}"]
     return []
 
@@ -91,8 +100,8 @@ def _probe_staged_no_message_file_is_none(tmp):
     commit_all(repo, "base")
     (repo / "a.txt").write_text("two\n")
     stage_all(repo)
-    diff_args, message, skip = resolve_diff_source(None, None, repo)
-    if skip or diff_args != ["--cached"] or message is not None:
+    comparisons, message, skip = resolve_diff_source(None, None, repo)
+    if skip or comparisons != [["HEAD"]] or message is not None:
         return [f"diffsrc staged no message-file: expected message None, got {message!r} skip={skip}"]
     return []
 
@@ -345,10 +354,10 @@ def _probe_range_reads_tip_message(tmp):
     reason = "removed a duplicated assertion the refactor made obsolete"
     commit_all(repo, f"trim duplicate assertion\n\nAllow-Test-Change: TT04 {reason}\n")
 
-    diff_args, message, skip = resolve_diff_source("HEAD~1...HEAD", None, repo)
-    if skip or diff_args != ["HEAD~1...HEAD"]:
-        return [f"range tip message: unexpected diff args {diff_args} skip={skip}"]
-    diffs = build_diff(repo, diff_args)
+    comparisons, message, skip = resolve_diff_source("HEAD~1...HEAD", None, repo)
+    if skip or comparisons != [["HEAD~1...HEAD"]]:
+        return [f"range tip message: unexpected comparisons {comparisons} skip={skip}"]
+    diffs = build_diff(repo, comparisons[0])
     from test_tampering_rules import check_assertion_decrease
 
     findings = check_assertion_decrease(diffs)
@@ -370,10 +379,12 @@ def _probe_range_and_message_file_exit_2(tmp):
 
 def run_diffoverride_probes(tmp) -> list:
     """run_diffoverride_probes runs every diff-resolution and
-    override-resolution case against tmp."""
+    override-resolution case against tmp, plus the working-tree cases
+    from test_tampering_probes_worktree and the merge cases from
+    test_tampering_probes_merge."""
     problems = []
     for fn in (
-        _probe_staged_picked,
+        _probe_worktree_picked_over_staged,
         _probe_fallback_to_parent,
         _probe_no_git_skips,
         _probe_single_commit_skips,
@@ -396,4 +407,6 @@ def run_diffoverride_probes(tmp) -> list:
         _probe_range_and_message_file_exit_2,
     ):
         problems.extend(fn(tmp))
+    problems.extend(run_worktree_probes(tmp))
+    problems.extend(run_merge_probes(tmp))
     return problems

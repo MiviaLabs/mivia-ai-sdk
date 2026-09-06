@@ -59,13 +59,61 @@ def repo_root(start: Path) -> Path:
     return Path(result.stdout.strip())
 
 
-def has_parent_commit(root: Path) -> bool:
-    """has_parent_commit reports whether HEAD~1 resolves: false in the
+def has_head_commit(root: Path) -> bool:
+    """has_head_commit reports whether HEAD resolves: false before the
     repository's first commit."""
     result = subprocess.run(
-        ["git", "rev-parse", "--verify", "-q", "HEAD~1"], cwd=root, capture_output=True, text=True
+        ["git", "rev-parse", "--verify", "-q", "HEAD"], cwd=root, capture_output=True, text=True
     )
     return result.returncode == 0
+
+
+def has_worktree_changes(root: Path) -> bool:
+    """has_worktree_changes reports whether the working tree differs
+    from HEAD. Only exit code 1 means a difference; exit code 128 means
+    HEAD does not resolve, which is not a difference."""
+    result = subprocess.run(["git", "diff", "--quiet", "HEAD"], cwd=root, capture_output=True)
+    return result.returncode == 1
+
+
+def has_unmerged_paths(root: Path) -> bool:
+    """has_unmerged_paths reports whether any path is unmerged: a
+    conflict is in progress."""
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=U"], cwd=root, capture_output=True, text=True
+    )
+    return bool(result.stdout.strip())
+
+
+def merge_head_revs(root: Path) -> list:
+    """merge_head_revs returns MERGE_HEAD's revisions, one per line, or
+    an empty list when no merge is in progress. git rev-parse locates
+    the git directory, because .git is a file in a worktree or a
+    submodule. git merge --squash writes no MERGE_HEAD, so a squash
+    reports no merge."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"], cwd=root, capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return []
+    git_dir = (root / result.stdout.strip()).resolve()
+    merge_head = git_dir / "MERGE_HEAD"
+    if not merge_head.is_file():
+        return []
+    return [line.strip() for line in merge_head.read_text().splitlines() if line.strip()]
+
+
+def head_parents(root: Path) -> list:
+    """head_parents returns HEAD's parent revisions in git's own order.
+    It returns an empty list when HEAD does not resolve and when HEAD
+    is the root commit."""
+    result = subprocess.run(
+        ["git", "rev-list", "--parents", "--max-count=1", "HEAD"], cwd=root, capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return []
+    fields = result.stdout.split()
+    return fields[1:]
 
 
 def has_staged_changes(root: Path) -> bool:
@@ -109,6 +157,20 @@ def _show_blob(root: Path, sha: str) -> str:
     if result.returncode != 0:
         return None
     return result.stdout
+
+
+def _read_worktree(root: Path, path: str) -> str:
+    """_read_worktree reads a file's current text from the working
+    tree. A working-tree comparison has no blob for the new side: git
+    diff --raw prints an all-zero new sha for an unstaged change, so
+    the file itself is the only source of the new text."""
+    target = root / path
+    if not target.is_file():
+        return None
+    try:
+        return target.read_text(errors="replace")
+    except OSError:
+        return None
 
 
 _RAW_LINE = re.compile(r"^:(\d+) (\d+) (\w+) (\w+) (\w)\d*\t(.+)$")
@@ -185,7 +247,9 @@ def build_diff(root: Path, diff_args: list) -> list:
     or two revisions) into the FileDiff model every TT rule reads.
     `--no-renames` forces every rename into a plain delete-plus-add
     pair: a rule that gates on `status == "D"` must see a deletion,
-    not a single `R100` raw line naming two paths on one line."""
+    not a single `R100` raw line naming two paths on one line. A
+    working-tree comparison has no blob for the new side, so the new
+    text comes from the file itself; see _read_worktree."""
     raw = _run_git(["diff", "--no-renames", "--raw", "--full-index", *diff_args, "--"], root).stdout
     entries = _parse_raw(raw)
     patch = _run_git(["diff", "--no-renames", "--unified=3", *diff_args, "--"], root).stdout
@@ -197,6 +261,8 @@ def build_diff(root: Path, diff_args: list) -> list:
         old_path = raw_path if status != "A" else None
         old_text = _show_blob(root, old_sha)
         new_text = _show_blob(root, new_sha)
+        if new_text is None and status != "D":
+            new_text = _read_worktree(root, raw_path)
         hunks = _parse_hunks(block)
         diffs.append(FileDiff(old_path, new_path, status, old_text, new_text, hunks))
     return diffs

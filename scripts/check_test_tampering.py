@@ -11,33 +11,59 @@ test_tampering_diff.py, the rules in test_tampering_rules.py and
 test_tampering_rules_infra.py, overrides in test_tampering_override.py,
 --probe in test_tampering_probes.py."""
 import argparse
+import re
 import sys
 from pathlib import Path
 
-from test_tampering_diff import DiffError, build_diff, commit_message, has_parent_commit, has_staged_changes, \
-    repo_root, tip_commit
+from test_tampering_diff import DiffError, build_diff, commit_message, has_head_commit, has_staged_changes, \
+    has_unmerged_paths, has_worktree_changes, head_parents, merge_head_revs, repo_root, tip_commit
 from test_tampering_override import resolve_overrides
 from test_tampering_rules import ALL_RULES as TEST_FILE_RULES
 from test_tampering_rules_infra import ALL_RULES as INFRA_RULES
 
 RULES = TEST_FILE_RULES + INFRA_RULES
 
+AGGREGATE_IDS = frozenset({"TT04", "TT11"})
+"""AGGREGATE_IDS names the rules that report once per diff, at a path
+that depends on diff order. They key on the ID alone across parents.
+TT13 is not a member; see docs/plans/test-tampering.md, "The
+intersection key"."""
+
+SKIP_NO_PARENT = "no parent commit; skipping"
+SKIP_MERGE_IN_PROGRESS = "merge in progress; skipping"
+
+_DIGIT_RUN = re.compile(r"\d+")
+
 
 def resolve_diff_source(range_arg: str, message_file: str, root: Path):
-    """resolve_diff_source picks the diff args and the message source,
-    following the plan's resolution order: --range, the staged tree,
-    then the HEAD~1...HEAD fallback. Returns (diff_args, message,
-    skip); skip is set when there is no parent commit to fall back to."""
+    """resolve_diff_source picks the comparisons and the message source,
+    following the plan's resolution order: --range, the staged tree, the
+    merge stand-down, the working tree, the first staged commit, a merge
+    commit, then the HEAD~1 HEAD fallback. Returns (comparisons,
+    message, skip); comparisons holds one diff-arg list per parent for
+    a merge and one otherwise, and skip holds the printed note when
+    there is nothing to audit."""
     if range_arg:
-        diff_args = [range_arg]
         message = commit_message(root, tip_commit(range_arg))
-        return diff_args, message, False
-    if has_staged_changes(root):
-        message = Path(message_file).read_text() if message_file else None
-        return ["--cached"], message, False
-    if not has_parent_commit(root):
-        return None, None, True
-    return ["HEAD~1", "HEAD"], commit_message(root, "HEAD"), False
+        return [[range_arg]], message, None
+    if message_file and has_staged_changes(root):
+        comparisons = [["--cached"]] + [["--cached", rev] for rev in merge_head_revs(root)]
+        return comparisons, Path(message_file).read_text(), None
+    if merge_head_revs(root) or has_unmerged_paths(root):
+        return None, None, SKIP_MERGE_IN_PROGRESS
+    if has_head_commit(root) and has_worktree_changes(root):
+        return [["HEAD"]], None, None
+    if not has_head_commit(root):
+        if has_staged_changes(root):
+            return [["--cached"]], None, None
+        return None, None, SKIP_NO_PARENT
+    parents = head_parents(root)
+    if not parents:
+        return None, None, SKIP_NO_PARENT
+    message = commit_message(root, "HEAD")
+    if len(parents) > 1:
+        return [[parent, "HEAD"] for parent in parents], message, None
+    return [["HEAD~1", "HEAD"]], message, None
 
 
 def run_rules(diffs: list) -> list:
@@ -46,6 +72,31 @@ def run_rules(diffs: list) -> list:
     for rule in RULES:
         findings.extend(rule(diffs))
     return findings
+
+
+def finding_key(f):
+    """finding_key returns the identity a finding keeps across parents.
+    An aggregate ID keys on the ID alone. Every other ID keys on the ID,
+    the path, and the message with every digit run replaced by a single
+    `#`. The line is never part of the key."""
+    if f.id in AGGREGATE_IDS:
+        return (f.id,)
+    return (f.id, f.path, _DIGIT_RUN.sub("#", f.message))
+
+
+def introduced_findings(root: Path, comparisons: list) -> list:
+    """introduced_findings runs the rules over each comparison. One
+    comparison returns its findings unchanged. More return the first
+    comparison's findings whose key appears in every other comparison's
+    key set: the content the merge itself introduced."""
+    first = run_rules(build_diff(root, comparisons[0]))
+    if len(comparisons) == 1:
+        return first
+    shared = None
+    for comparison in comparisons[1:]:
+        keys = {finding_key(f) for f in run_rules(build_diff(root, comparison))}
+        shared = keys if shared is None else shared & keys
+    return [f for f in first if finding_key(f) in shared]
 
 
 def format_finding(f) -> str:
@@ -76,16 +127,15 @@ def main() -> int:
         return 0
 
     try:
-        diff_args, message, skip = resolve_diff_source(args.range_arg, args.message_file, root)
+        comparisons, message, skip = resolve_diff_source(args.range_arg, args.message_file, root)
         if skip:
-            print("check_test_tampering: no parent commit; skipping")
+            print(f"check_test_tampering: {skip}")
             return 0
-        diffs = build_diff(root, diff_args)
+        findings = introduced_findings(root, comparisons)
     except DiffError as exc:
         print(str(exc))
         return 2
 
-    findings = run_rules(diffs)
     unresolved, overridden = resolve_overrides(findings, message)
 
     for f, t in overridden:

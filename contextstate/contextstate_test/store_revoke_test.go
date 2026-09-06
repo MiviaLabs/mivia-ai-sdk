@@ -223,6 +223,73 @@ func TestPutAfterRevokeDifferentRefStillWrites(t *testing.T) {
 	}
 }
 
+// TestCheckpointAfterRevokeSameRefIsNoOp kills a mutation that lets a
+// later Checkpoint re-carrying a revoked ref clear Revoked or
+// overwrite the revoked record's fields.
+func TestCheckpointAfterRevokeSameRefIsNoOp(t *testing.T) {
+	store := newStore(t, contextstate.Limits{})
+	data := []byte("committed-then-revoked")
+	record := fixturePayload(t, "session-a", data)
+	first := validRequest(t, "session-a", "op-1", contextstate.Revision{}, 1)
+	first.Payloads = []contextstate.PayloadRecord{record}
+	if err := store.Checkpoint(first); err != nil {
+		t.Fatalf("first Checkpoint: %v", err)
+	}
+	if err := store.Revoke(record.Ref); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	// A later commit under a fresh OperationID that re-carries the
+	// same ref with Revoked: false must not change the stored record.
+	second := validRequest(t, "session-a", "op-2", contextstate.Revision{Session: 1, Durable: 1, Source: 1}, 1)
+	recarry := record
+	recarry.Revoked = false
+	second.Payloads = []contextstate.PayloadRecord{recarry}
+	if err := store.Checkpoint(second); err != nil {
+		t.Fatalf("second Checkpoint: %v, want nil", err)
+	}
+	if _, err := store.Get(record.Ref); !errors.Is(err, contextstate.ErrPayloadRevoked) {
+		t.Fatalf("Get after re-carrying Checkpoint: %v, want ErrPayloadRevoked", err)
+	}
+	status, err := store.Status(record.Ref)
+	if err != nil {
+		t.Fatalf("Status after re-carrying Checkpoint: %v", err)
+	}
+	if !status.Revoked {
+		t.Fatal("re-carrying Checkpoint cleared Revoked")
+	}
+	if status.Retention != record.Retention {
+		t.Fatalf("re-carrying Checkpoint changed Retention: got %q, want the original %q", status.Retention, record.Retention)
+	}
+}
+
+// TestCheckpointAfterRevokeDistinctRefStillWrites kills a mutation
+// that makes Checkpoint's revoked guard key on the wrong field.
+func TestCheckpointAfterRevokeDistinctRefStillWrites(t *testing.T) {
+	store := newStore(t, contextstate.Limits{})
+	revoked := fixturePayload(t, "session-a", []byte("revoked-payload"))
+	first := validRequest(t, "session-a", "op-1", contextstate.Revision{}, 1)
+	first.Payloads = []contextstate.PayloadRecord{revoked}
+	if err := store.Checkpoint(first); err != nil {
+		t.Fatalf("first Checkpoint: %v", err)
+	}
+	if err := store.Revoke(revoked.Ref); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	other := fixturePayload(t, "session-a", []byte("distinct-payload"))
+	second := validRequest(t, "session-a", "op-2", contextstate.Revision{Session: 1, Durable: 1, Source: 1}, 1)
+	second.Payloads = []contextstate.PayloadRecord{other}
+	if err := store.Checkpoint(second); err != nil {
+		t.Fatalf("second Checkpoint: %v, want nil", err)
+	}
+	got, err := store.Get(other.Ref)
+	if err != nil {
+		t.Fatalf("Get of the distinct ref: %v", err)
+	}
+	if !bytes.Equal(got.Data, other.Data) {
+		t.Fatal("Checkpoint of a distinct ref did not write normally")
+	}
+}
+
 // TestStoreRevokeConcurrency runs Revoke, Put, Get, and Status
 // concurrently on a shared ref and on distinct refs, under -race.
 // Kills a lock-scope regression and a mutation that races the guard

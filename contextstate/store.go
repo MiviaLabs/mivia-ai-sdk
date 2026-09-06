@@ -110,7 +110,8 @@ func (m *MemStore) Status(ref ContentRef) (PayloadRecord, error) {
 // with an equal request is a no-op success; a different request
 // wraps ErrCheckpointConflict, before any other check. A new key
 // runs req.Validate, the volume bounds, and the stale guards. An
-// unknown session commits only against a zero Expected.
+// unknown session commits only against a zero Expected. A payload
+// under a ref already revoked is skipped, matching Put.
 func (m *MemStore) Checkpoint(req CommitRequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -131,6 +132,9 @@ func (m *MemStore) Checkpoint(req CommitRequest) error {
 		return err
 	}
 	for _, payload := range req.Payloads {
+		if existing, ok := m.payloads[payload.Ref.Ref]; ok && existing.Revoked {
+			continue
+		}
 		m.payloads[payload.Ref.Ref] = clonePayload(payload)
 	}
 	state.events = append(state.events, req.NewSourceEvents...)

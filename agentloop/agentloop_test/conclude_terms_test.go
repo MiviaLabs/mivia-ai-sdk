@@ -146,19 +146,19 @@ func TestRunConcludeDeadlineFutureDoesNotFire(t *testing.T) {
 	}
 }
 
-// TestRunConcludeStepsLeftThresholdFires proves the iterations-left
-// term: MaxIterations=5, ConcludeStepsLeft=4. k=1: 5-1=4 < 4 is false.
+// TestRunConcludeMarginThresholdFires proves the iterations-left
+// term: MaxIterations=5, ConcludeMargin=4. k=1: 5-1=4 < 4 is false.
 // k=2: 5-2=3 < 4 is true. So the term fires on iter 2's check, the
 // notice appends before iter 2's Chat, and the notice is the LAST
 // message in request 2.
-func TestRunConcludeStepsLeftThresholdFires(t *testing.T) {
+func TestRunConcludeMarginThresholdFires(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:         completer,
-		Tools:             reg,
-		MaxIterations:     5,
-		ConcludeStepsLeft: 4,
+		Completer:      completer,
+		Tools:          reg,
+		MaxIterations:  5,
+		ConcludeMargin: 4,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -181,27 +181,25 @@ func TestRunConcludeStepsLeftThresholdFires(t *testing.T) {
 	}
 }
 
-// TestRunConcludeTermsOREDTogether proves the three OR-ed terms: any
+// TestRunConcludeTermsOREDTogether proves the two OR-ed terms: any
 // one firing triggers the nudge, and noticeSent sticks so only one
 // notice message lands in iteration 2's history.
 func TestRunConcludeTermsOREDTogether(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
-	// ConcludeMargin=1 fires on k=5 only (past iter 2).
-	// ConcludeStepsLeft=4 fires on iter 2 (k=2: 5-2=3<4).
-	// ConcludeDeadline=1h with StartTime=now-2h fires on iter 1
-	// (time.Until <= 0). All three of Margin, StepsLeft,
-	// Deadline are configured to fire at different points; the
-	// test verifies that they all contribute via OR without
-	// double-appending the notice.
+	// ConcludeDeadline=1h with StartTime=now-2h qualifies at k=1
+	// (time.Until <= 0) and drives the only notice append.
+	// ConcludeMargin=4 would qualify at k=2 (5-2=3<4), but noticeSent
+	// latched at k=1, so run.go never consults shouldConclude again.
+	// The assertion this test carries is the dedup: exactly one notice
+	// in request 2. It does not discriminate one live term from two.
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:         completer,
-		Tools:             reg,
-		MaxIterations:     5,
-		ConcludeMargin:    1,
-		ConcludeDeadline:  time.Hour,
-		ConcludeStepsLeft: 4,
-		StartTime:         time.Now().Add(-2 * time.Hour),
+		Completer:        completer,
+		Tools:            reg,
+		MaxIterations:    5,
+		ConcludeMargin:   4,
+		ConcludeDeadline: time.Hour,
+		StartTime:        time.Now().Add(-2 * time.Hour),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -226,18 +224,17 @@ func TestRunConcludeTermsOREDTogether(t *testing.T) {
 	}
 }
 
-// TestRunConcludeZeroTermsDoNotFire proves that zero ConcludeMargin, zero
-// ConcludeDeadline, and zero ConcludeStepsLeft never trigger the conclude nudge.
+// TestRunConcludeZeroTermsDoNotFire proves that zero ConcludeMargin and
+// zero ConcludeDeadline never trigger the conclude nudge.
 func TestRunConcludeZeroTermsDoNotFire(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:         completer,
-		Tools:             reg,
-		MaxIterations:     5,
-		ConcludeMargin:    0,
-		ConcludeDeadline:  0,
-		ConcludeStepsLeft: 0,
+		Completer:        completer,
+		Tools:            reg,
+		MaxIterations:    5,
+		ConcludeMargin:   0,
+		ConcludeDeadline: 0,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -257,17 +254,17 @@ func TestRunConcludeZeroTermsDoNotFire(t *testing.T) {
 	}
 }
 
-// TestRunConcludeStepsLeftBoundary proves that MaxIterations-k < ConcludeStepsLeft
-// is strict: when MaxIterations=5 and ConcludeStepsLeft=3, on k=1 (5-1=4 < 3 is false)
+// TestRunConcludeMarginBoundary proves that MaxIterations-k < ConcludeMargin
+// is strict: when MaxIterations=5 and ConcludeMargin=3, on k=1 (5-1=4 < 3 is false)
 // and on k=2 (5-2=3 < 3 is false), the term does not fire on iteration 2.
-func TestRunConcludeStepsLeftBoundary(t *testing.T) {
+func TestRunConcludeMarginBoundary(t *testing.T) {
 	reg := newNoopRegistry(t)
 	completer := newTwoIterCompleter()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:         completer,
-		Tools:             reg,
-		MaxIterations:     5,
-		ConcludeStepsLeft: 3,
+		Completer:      completer,
+		Tools:          reg,
+		MaxIterations:  5,
+		ConcludeMargin: 3,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -299,12 +296,11 @@ func TestRunConcludeZeroTermsKExceedsMaxIterations(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:         completer,
-		Tools:             reg,
-		MaxIterations:     3,
-		ConcludeMargin:    0,
-		ConcludeDeadline:  0,
-		ConcludeStepsLeft: 0,
+		Completer:        completer,
+		Tools:            reg,
+		MaxIterations:    3,
+		ConcludeMargin:   0,
+		ConcludeDeadline: 0,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

@@ -49,9 +49,6 @@ type StopDecision struct {
 	Stop StopReason
 	// Message is the assistant turn that ended the run.
 	Message provider.Message
-	// ToolCalls is the response's tool-call list, empty at every
-	// call site the loop consults the hook from.
-	ToolCalls []provider.ToolCall
 	// Iterations counts the Completer calls that completed.
 	Iterations int
 	// History carries every message appended so far.
@@ -67,7 +64,6 @@ func (l *Loop) gracefulStop(ctx context.Context, history []provider.Message, res
 		msgs, err := safeContinue(ctx, l.continueOnStop, StopDecision{
 			Stop:       stop,
 			Message:    resp.Message,
-			ToolCalls:  resp.ToolCalls,
 			Iterations: iterations,
 			History:    history,
 		})

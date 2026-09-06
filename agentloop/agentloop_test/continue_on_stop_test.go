@@ -378,9 +378,6 @@ func TestContinueOnStopReceivesStopEvidence(t *testing.T) {
 	if !reflect.DeepEqual(d.Message, final) {
 		t.Fatalf("decision Message = %+v, want %+v", d.Message, final)
 	}
-	if len(d.ToolCalls) != 0 {
-		t.Fatalf("decision ToolCalls = %+v, want empty", d.ToolCalls)
-	}
 	if d.Iterations != 1 {
 		t.Fatalf("decision Iterations = %d, want 1", d.Iterations)
 	}

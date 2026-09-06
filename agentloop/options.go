@@ -115,6 +115,15 @@ var (
 	// nowhere to emit is a caller mistake, not a silent no-op. Test
 	// with errors.Is.
 	ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
+	// ErrSessionIDRequired is Options.Validate's error when Usage is set
+	// and SessionID is blank. Test with errors.Is.
+	ErrSessionIDRequired = errors.New("agentloop: Usage requires a non-blank SessionID")
+	// ErrMaxTotalTokens is Options.Validate's error when MaxTotalTokens
+	// is negative. Test with errors.Is.
+	ErrMaxTotalTokens = errors.New("agentloop: MaxTotalTokens must not be negative")
+	// ErrConcludeDeadline is Options.Validate's error when
+	// ConcludeDeadline is negative. Test with errors.Is.
+	ErrConcludeDeadline = errors.New("agentloop: ConcludeDeadline must be non-negative")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -266,11 +275,6 @@ type Options struct {
 	// deadline once at construction as deadlineAt. A zero StartTime
 	// resolves to time.Now().
 	ConcludeDeadline time.Duration
-	// ConcludeStepsLeft, when > 0, fires the conclude nudge when
-	// MaxIterations-k is below the threshold. A zero value disables
-	// this term. Sits alongside ConcludeMargin; the smaller of the
-	// two decides.
-	ConcludeStepsLeft int
 	// ConcludeNotice is the RoleUser content Run appends once nudging
 	// starts. Empty ConcludeNotice with a positive ConcludeMargin uses
 	// DefaultConcludeNotice.
@@ -398,11 +402,11 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // passes contextbudget.Limits.Validate, MaxTotalTokens is not
 // negative, a non-nil Window passes Window.Validate, requires
 // Summarizer, requires Calibrated, and excludes Trim, ConcludeMargin
-// is not negative, ConcludeDeadline is not negative,
-// ConcludeStepsLeft is not
-// negative, TurnResultBudget is not negative, MaxConcurrentTools is
-// not negative, MaxConsecutiveToolFailures is not negative, and finally
-// a positive HeartbeatInterval requires a non-nil Bus.
+// is not negative, ConcludeDeadline is not negative, TurnResultBudget
+// is not negative, MaxConcurrentTools is not negative,
+// MaxConsecutiveToolFailures is not negative, a positive
+// HeartbeatInterval requires a non-nil Bus, and finally WorkBudget and
+// ToolBudget each pass their own check.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -414,7 +418,7 @@ func (o Options) Validate() error {
 		return ErrMaxIterations
 	}
 	if o.Usage != nil && strings.TrimSpace(o.SessionID) == "" {
-		return errors.New("agentloop: Usage requires a non-blank SessionID")
+		return ErrSessionIDRequired
 	}
 	if o.Budget != nil {
 		if err := o.Budget.Validate(); err != nil {
@@ -422,7 +426,7 @@ func (o Options) Validate() error {
 		}
 	}
 	if o.MaxTotalTokens < 0 {
-		return errors.New("agentloop: MaxTotalTokens must not be negative")
+		return ErrMaxTotalTokens
 	}
 	if o.Window != nil {
 		if err := o.Window.Validate(); err != nil {
@@ -442,10 +446,7 @@ func (o Options) Validate() error {
 		return ErrConcludeMargin
 	}
 	if o.ConcludeDeadline < 0 {
-		return errors.New("agentloop: ConcludeDeadline must be non-negative")
-	}
-	if o.ConcludeStepsLeft < 0 {
-		return errors.New("agentloop: ConcludeStepsLeft must be non-negative")
+		return ErrConcludeDeadline
 	}
 	if o.TurnResultBudget < 0 {
 		return ErrTurnResultBudget

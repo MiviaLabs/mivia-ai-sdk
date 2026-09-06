@@ -43,32 +43,31 @@ type Result struct {
 // Loop is a bound, ready-to-run tool-calling loop. Built only through
 // New.
 type Loop struct {
-	completer         provider.Completer
-	reg               *tools.Registry
-	scope             *tools.Scope
-	model             string
-	maxIterations     int
-	maxCallsPerTurn   int
-	maxTotalTokens    int
-	onToolError       ErrorPolicy
-	onToolCallError   ErrorFunc
-	hooksReg          *hooks.Registry
-	tracer            *trace.Tracer
-	usageAcc          *usage.Accumulator
-	sessionID         string
-	bus               *events.Bus
-	budget            *contextbudget.Limits
-	trim              func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
-	surfaceFn         func() *Surface
-	defs              []provider.ToolDefinition
-	schemas           map[string]*schema.Compiled
-	audit             AuditFunc
-	window            *contextplan.Window
-	summarizer        *contextsummary.Summarizer
-	calibrated        *contextplan.Calibrated
-	concludeMargin    int
-	concludeDeadline  time.Duration
-	concludeStepsLeft int
+	completer        provider.Completer
+	reg              *tools.Registry
+	scope            *tools.Scope
+	model            string
+	maxIterations    int
+	maxCallsPerTurn  int
+	maxTotalTokens   int
+	onToolError      ErrorPolicy
+	onToolCallError  ErrorFunc
+	hooksReg         *hooks.Registry
+	tracer           *trace.Tracer
+	usageAcc         *usage.Accumulator
+	sessionID        string
+	bus              *events.Bus
+	budget           *contextbudget.Limits
+	trim             func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	surfaceFn        func() *Surface
+	defs             []provider.ToolDefinition
+	schemas          map[string]*schema.Compiled
+	audit            AuditFunc
+	window           *contextplan.Window
+	summarizer       *contextsummary.Summarizer
+	calibrated       *contextplan.Calibrated
+	concludeMargin   int
+	concludeDeadline time.Duration
 	// deadlineAt is StartTime.Add(ConcludeDeadline), computed once
 	// in New from opts.StartTime and opts.ConcludeDeadline. Zero
 	// when ConcludeDeadline is zero, which makes the deadline term
@@ -148,7 +147,6 @@ func New(opts Options) (*Loop, error) {
 		calibrated:             opts.Calibrated,
 		concludeMargin:         opts.ConcludeMargin,
 		concludeDeadline:       opts.ConcludeDeadline,
-		concludeStepsLeft:      opts.ConcludeStepsLeft,
 		deadlineAt:             computeDeadlineAt(opts.StartTime, opts.ConcludeDeadline),
 		concludeNotice:         resolveConcludeNotice(opts.ConcludeNotice),
 		dedupWithinTurn:        opts.DedupWithinTurn,

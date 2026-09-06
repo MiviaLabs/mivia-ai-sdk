@@ -95,7 +95,7 @@ func testOptionsValidateBasics(t *testing.T) {
 		{"negative MaxTotalTokens fails", func(o agentloop.Options) agentloop.Options {
 			o.MaxTotalTokens = -1
 			return o
-		}, nil, false},
+		}, agentloop.ErrMaxTotalTokens, false},
 		{"negative Budget field fails", func(o agentloop.Options) agentloop.Options {
 			o.Budget = &contextbudget.Limits{MaxBytes: -1}
 			return o
@@ -107,7 +107,7 @@ func testOptionsValidateBasics(t *testing.T) {
 		{"Usage without SessionID fails", func(o agentloop.Options) agentloop.Options {
 			o.Usage = usage.New()
 			return o
-		}, nil, false},
+		}, agentloop.ErrSessionIDRequired, false},
 		{"Usage with SessionID passes", func(o agentloop.Options) agentloop.Options {
 			o.Usage = usage.New()
 			o.SessionID = "sess-1"
@@ -137,25 +137,13 @@ func testOptionsValidateConclude(t *testing.T) {
 		{"negative ConcludeDeadline fails", func(o agentloop.Options) agentloop.Options {
 			o.ConcludeDeadline = -time.Second
 			return o
-		}, nil, false},
+		}, agentloop.ErrConcludeDeadline, false},
 		{"zero ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
 			o.ConcludeDeadline = 0
 			return o
 		}, nil, true},
 		{"positive ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
 			o.ConcludeDeadline = time.Minute
-			return o
-		}, nil, true},
-		{"negative ConcludeStepsLeft fails", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeStepsLeft = -1
-			return o
-		}, nil, false},
-		{"zero ConcludeStepsLeft passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeStepsLeft = 0
-			return o
-		}, nil, true},
-		{"positive ConcludeStepsLeft passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeStepsLeft = 2
 			return o
 		}, nil, true},
 	}
@@ -245,12 +233,11 @@ func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 }
 
 // TestOptionsValidateCompleterBeforeConclude proves nil Completer wins
-// over negative ConcludeDeadline and StepsLeft.
+// over negative ConcludeDeadline.
 func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
 	o.ConcludeDeadline = -time.Second
-	o.ConcludeStepsLeft = -1
 	err := o.Validate()
 	if !errors.Is(err, agentloop.ErrNoCompleter) {
 		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)

@@ -3593,7 +3593,9 @@ No `make api-update`, no `policy/layers.json` change, no
 ## Addendum: loop extensions and concurrency hardening
 
 Status: shipped. This addendum documents the loop extensions: WorkBudget,
-ToolBudget, Surface rotation, ConcludeDeadline, and ConcludeStepsLeft.
+ToolBudget, Surface rotation, ConcludeDeadline, and ConcludeStepsLeft;
+ConcludeStepsLeft was later removed; see the closing maintenance
+addendum.
 It also documents OnToolCallError, MaxConcurrentTools, and toolcallctx.
 
 ### Addendum goal
@@ -3608,7 +3610,9 @@ Inside:
 - `WorkBudget` token reservation hooks before and after completion calls.
 - `ToolBudget` tool-call reservation hook before tool-call execution.
 - `Surface` rotation hook from iteration two onward.
-- Conclude thresholds: `ConcludeDeadline` and `ConcludeStepsLeft`.
+- Conclude thresholds: `ConcludeDeadline` and `ConcludeStepsLeft`;
+  `ConcludeStepsLeft` was later removed; see the closing maintenance
+  addendum.
 - `OnToolCallError` custom error-response shaping hook.
 - `MaxConcurrentTools` worker pool for parallel tool execution.
 - `StreamingWriter` capture for partial replies on steered stop.
@@ -3629,7 +3633,7 @@ Exported symbols added to `api/agentloop.txt`:
 - `ToolBudget` struct and `ErrIncompleteToolBudget`.
 - `Surface` struct.
 - `ErrorFunc` type.
-- `Options` fields: `WorkBudget`, `ToolBudget`, `Surface`, `ConcludeDeadline`, `ConcludeStepsLeft`, `ConcludeToolCallsLeft`, `StartTime`, `OnToolCallError`, `MaxConcurrentTools`, and `StreamingWriter`.
+- `Options` fields: `WorkBudget`, `ToolBudget`, `Surface`, `ConcludeDeadline`, `ConcludeStepsLeft`, `ConcludeToolCallsLeft`, `StartTime`, `OnToolCallError`, `MaxConcurrentTools`, and `StreamingWriter`. `ConcludeStepsLeft` was later removed; see the closing maintenance addendum.
 - Event constants: `EventAssistant`, `EventThinkingStart`, `EventThinkingDelta`, `EventThinkingEnd`, `EventCacheUsage`, `EventCalibrationDelta`, and `EventToolParallel`.
 
 ### Addendum tests
@@ -3652,7 +3656,7 @@ Exported symbols added to `api/agentloop.txt`:
 - TestRunConcludeDeadlineThresholdFires proves deadline expiration conclude nudge.
 - TestRunConcludeDeadlineFutureDoesNotFire proves future deadline does not nudge.
 - The turn-cap test, `TestRunConcludeToolCallsLeftThresholdFires`, was later removed with its dead reserved option; see the closing maintenance addendum.
-- TestRunConcludeStepsLeftThresholdFires proves steps-left conclude nudge.
+- `TestRunConcludeMarginThresholdFires` proves the margin conclude nudge. It was named `TestRunConcludeStepsLeftThresholdFires` until the steps-left option was later removed; see the closing maintenance addendum.
 - TestRunConcludeTermsOREDTogether proves combination of conclude triggers.
 - TestOptionsValidateCompleterBeforeConclude proves option validation ordering.
 
@@ -3776,7 +3780,8 @@ Exported symbols added to `api/agentloop.txt`:
 
 - `ContinueOnStop` field on `Options`, declared last in the struct.
 - `StopDecision` struct with `Stop`, `Message`, `ToolCalls`,
-  `Iterations`, and `History` fields.
+  `Iterations`, and `History` fields. `ToolCalls` was later removed;
+  see the closing maintenance addendum.
 
 No existing symbol changes. A caller that leaves `ContinueOnStop` nil
 gets the current behavior unchanged. The change is additive and needs no
@@ -3814,7 +3819,7 @@ type StopDecision struct {
 	Message provider.Message
 	// ToolCalls is the response's tool-call list, empty at every
 	// call site the loop consults the hook from.
-	ToolCalls []provider.ToolCall
+	ToolCalls []provider.ToolCall // later removed; see the closing maintenance addendum
 	// Iterations counts the Completer calls that completed.
 	Iterations int
 	// History carries every message appended so far.
@@ -3860,7 +3865,7 @@ func (l *Loop) gracefulStop(ctx context.Context, history []provider.Message, res
 		msgs, err := safeContinue(ctx, l.continueOnStop, StopDecision{
 			Stop:       stop,
 			Message:    resp.Message,
-			ToolCalls:  resp.ToolCalls,
+			ToolCalls:  resp.ToolCalls, // later removed; see the closing maintenance addendum
 			Iterations: iterations,
 			History:    history,
 		})

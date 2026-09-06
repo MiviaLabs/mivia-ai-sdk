@@ -27,15 +27,13 @@ func noticePresent(history []provider.Message, notice string) bool {
 
 // shouldConclude reports whether the upcoming Completer call, the
 // 1-based iteration k = iterations+1, qualifies for the conclude
-// nudge. Three terms are OR-ed: any one firing triggers the nudge.
+// nudge. Two terms are OR-ed: any one firing triggers the nudge.
 //
 //   - ConcludeMargin: maxIterations-k < concludeMargin. The original
 //     step-count term. A zero concludeMargin never fires.
 //   - ConcludeDeadline: time.Until(deadlineAt) <= 0.
 //     A zero concludeDeadline (and so a zero deadlineAt) never
 //     fires.
-//   - ConcludeStepsLeft: maxIterations-k < concludeStepsLeft. A zero
-//     concludeStepsLeft never fires.
 func (l *Loop) shouldConclude(iterations int) bool {
 	k := iterations + 1
 	if l.concludeMargin > 0 && l.maxIterations-k < l.concludeMargin {
@@ -43,9 +41,6 @@ func (l *Loop) shouldConclude(iterations int) bool {
 	}
 	if !l.deadlineAt.IsZero() && l.concludeDeadline > 0 &&
 		time.Until(l.deadlineAt) <= 0 {
-		return true
-	}
-	if l.concludeStepsLeft > 0 && l.maxIterations-k < l.concludeStepsLeft {
 		return true
 	}
 	return false

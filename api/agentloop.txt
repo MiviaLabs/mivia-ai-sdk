@@ -81,7 +81,6 @@ package agentloop
   ConcludeMargin int
   StartTime time.Time
   ConcludeDeadline time.Duration
-  ConcludeStepsLeft int
   ConcludeNotice string
   DedupWithinTurn bool
   MaxConcurrentTools int
@@ -104,7 +103,6 @@ package agentloop
   type StopDecision struct {
   Stop StopReason
   Message provider.Message
-  ToolCalls []provider.ToolCall
   Iterations int
   History []provider.Message
 }
@@ -124,6 +122,7 @@ package agentloop
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
+  var ErrConcludeDeadline
   var ErrConcludeMargin
   var ErrEstimatorRequired
   var ErrHeartbeatRequiresBus
@@ -133,11 +132,13 @@ package agentloop
   var ErrMaxConcurrentTools
   var ErrMaxConsecutiveToolFailures
   var ErrMaxIterations
+  var ErrMaxTotalTokens
   var ErrNoCompleter
   var ErrNoSchemas
   var ErrNoTools
   var ErrOverBudget
   var ErrPlanFailed
+  var ErrSessionIDRequired
   var ErrSummarizerRequired
   var ErrTokenBudgetExceeded
   var ErrToolNotOffered

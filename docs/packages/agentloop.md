@@ -17,7 +17,7 @@ or a bound trips. The exported surface below mirrors
   `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
   `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
   `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
-  `ConcludeStepsLeft`, `ConcludeNotice`,
+  `ConcludeNotice`,
   `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
   `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`,
   `ContinueOnStop`.
@@ -44,7 +44,7 @@ or a bound trips. The exported surface below mirrors
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
 - `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
-  at a graceful stop: `Stop`, `Message`, `ToolCalls`, `Iterations`,
+  at a graceful stop: `Stop`, `Message`, `Iterations`, and
   `History`. See "Stop-decision hook" below.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
   tool-run error: `ErrorPolicyReport` (the zero value; sends the
@@ -90,7 +90,7 @@ or a bound trips. The exported surface below mirrors
   Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
   `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
-  `ConcludeStepsLeft`, `TurnResultBudget`,
+  `TurnResultBudget`,
   `MaxConcurrentTools`, and `MaxConsecutiveToolFailures` are not negative,
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
@@ -318,7 +318,7 @@ never runs at `StopSteered`, `StopHookVeto`, `StopMaxIterations`,
 `StopRepeatedToolFailures`, or on a hard-fail return.
 
 The hook receives one `StopDecision`: the stop reason, the assistant
-turn, the tool-call list, the iteration count, and the history. A nil
+turn, the iteration count, and the history. A nil
 or empty return stops the run unchanged. A non-empty return appends
 the messages verbatim to the history and runs the next iteration. A
 continuation is an ordinary iteration: `MaxIterations`,

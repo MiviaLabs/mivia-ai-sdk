@@ -916,7 +916,15 @@ four consumers read values, not presence, so behavior holds:
 ### Exported surface
 
 No exported symbol of `runconfig` or `agentrun` changes. All wrapper
-types stay unexported. `make api-update` produces no `api/` diff. No
+types stay unexported. The API lock still pins unexported methods:
+`api/runconfig.txt` lists `stepBudgetCap.MaxResultBytes`,
+`stepPrivilegedCap.Privileged`,
+`stepProfiledCap.ExecutionProfile`,
+`stepSchemaCap.DecodeArguments`, `stepSchemaCap.ParameterSchema`, and
+`(*stepTool).Name` and `(*stepTool).Run`. The collapse removes the
+four capability-struct lines and re-homes the five capability methods
+on `(*stepTool)`. Run `make api-update` and commit the
+`api/runconfig.txt` diff in the same change. No
 `policy/layers.json` edge changes.
 
 ### Tests
@@ -928,8 +936,11 @@ Rewrite `runconfig/steptool_internal_test.go`:
 - Delete `TestNewStepToolInterfaceParity`. It pins exact interface
   parity, which this change removes by design.
 - Delete `TestNewStepToolForwardsNoCapabilities`. It pins interface
-  absence, which this change removes by design. Report the deletion
-  like the parity test's.
+  absence, which this change removes by design. Its inversion folds
+  into the schema-less rows of
+  `TestNewStepToolDeclaresAllCapsAlways`: rows whose `inner` lacks a
+  cap assert the wrapper's degraded value, not an absent interface.
+  Report the deletion like the parity test's.
 - Add `TestNewStepToolDeclaresAllCapsAlways`. Table-driven over the
   sixteen capability subsets. Each row builds `inner` with the subset,
   wraps it, and asserts the new shape: the wrapper satisfies all four
@@ -937,6 +948,19 @@ Rewrite `runconfig/steptool_internal_test.go`:
   `tools.*Of` helpers; a schema-less row yields a nil schema and an
   identity decode. This test fails against the sixteen-variant shape,
   so it proves the refactor.
+- The mask-1111 row agrees on the old and new shapes: `stepToolAll`
+  also satisfied all four interfaces and forwarded the same values.
+  The shapes separate on rows where `inner` lacks a cap. The
+  interface-presence assertions carry that separation; mask 0000 fails
+  hardest against the old code. Keep the presence assertions. Helper
+  value equality alone passes on both shapes and proves nothing.
+- Three adversarial rows join the table: one `inner` implementing
+  `tools.SchemaTool` with `ParameterSchema` returning nil. The wrapper
+  forwards the nil schema and decodes through `inner`, not the
+  identity path. One `inner` whose `DecodeArguments` returns an error.
+  The wrapper propagates the error unwrapped. One call passing empty
+  raw bytes into the identity path. The wrapper returns an `InOut`
+  with an empty string value and no error.
 
 `scripts/check_test_tampering.py` will flag both deleted tests.
 The deletions are mandated by this addendum. The builder reports the
@@ -948,14 +972,16 @@ The earlier addendum wires `runconfig` to `subagent` and edits
 `runconfig/runner.go` builders. This addendum edits
 `runconfig/steptool.go` and `runconfig/steptool_internal_test.go`.
 The `newStepTool` call site in `runner.go` keeps its signature. The
-file sets overlap only in `runner.go` context lines. This addendum
-lands first; the internal-tools addendum rebases on it.
+file sets overlap only in `runner.go` context lines. Either order
+compiles. One change keeps one review surface.
 
 ### Verification
 
 - `make verify` passes. Coverage floors for `runconfig`, `agentrun`,
   and `tools` hold at 85 or better.
-- No `api/` diff and no `policy/` diff is expected. Any diff stops the
-  change for review.
+- `make api-update` produces a diff: the deleted capability-struct
+  method rows and the re-homed method rows on `(*stepTool)`. Commit
+  the `api/runconfig.txt` diff in the same change. No
+  `policy/layers.json` edge changes.
 - `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
   `scripts/check_labels.py` pass.

@@ -1,0 +1,34 @@
+package provider/anthropic
+  const DefaultMaxRetries = 2
+  const DefaultMaxTokensNonStreaming = 16000
+  const DefaultMaxTokensStreaming = 64000
+  const DefaultModel = "claude-opus-5"
+  func (c *Client) Chat(ctx context.Context, req provider.Request) (provider.Response, error)
+  func (c *Client) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)
+  func (c *Client) ContextWindow() (int)
+  func (c *Client) Name() (string)
+  func (c *Client) ReasoningEffort() (string)
+  func (o Options) Validate() (error)
+  func New(opts Options) (*Client, error)
+  type Client struct {
+}
+  type Options struct {
+  APIKey string
+  BaseURL string
+  Model string
+  MaxTokensNonStreaming int
+  MaxTokensStreaming int
+  MaxRetries int
+  HTTPClient *http.Client
+  ContextWindow int
+  DefaultEffort provider.ReasoningEffort
+  ExposeReasoning bool
+  OnReasoning func(provider.ReasoningBlock)
+}
+  var ErrAPIKeyRequired
+  var ErrAuth
+  var ErrBadRequest
+  var ErrInvalidOptions
+  var ErrRateLimited
+  var ErrRefused
+  var ErrServer

@@ -151,6 +151,7 @@ flowchart LR
     e2e --> ledger
     e2e --> provider
     e2e --> tools
+    anthropic["provider/anthropic"] --> provider
     contextbudget[contextbudget]
     schema[schema]
     discovery[discovery]
@@ -521,8 +522,8 @@ flowchart LR
   `DisableProviderReplay`, `ReasoningEffort`, and `ReasoningDialect`.
   `Response` and the terminal `Chunk` carry `CacheUsage` and
   `WebSearch` for provider-side cache and search accounting.
-  `Completer` has no
-  implementation in this SDK; a caller supplies its own concrete type.
+  `provider` defines the contract only; `provider/anthropic` provides
+  the concrete adapter.
   `RunTurn` validates `Request` once, then validates every message,
   dispatches on `Request.Stream`, and aggregates a streamed `Chunk`
   sequence into one `Response`. `ReasoningEventKind` is the
@@ -542,6 +543,14 @@ flowchart LR
   mints the `context-compact-v1` idempotency key through
   `contextref.Mint`. `contextplan` imports `contextref` and
   `provider`. See [packages/contextplan.md](packages/contextplan.md).
+- `provider/anthropic/` — the Anthropic Messages API adapter. It provides
+  `Client`, `New`, `Options`, `Options.Validate`, default constants, and
+  the sentinels `ErrAPIKeyRequired`, `ErrInvalidOptions`, `ErrAuth`,
+  `ErrRateLimited`, `ErrBadRequest`, `ErrServer`, and `ErrRefused`.
+  `Client` implements `Completer`, `ContextAccountant`, and
+  `ReasoningPolicy`. It maps streaming events, tool calls, thinking
+  blocks, cache usage, and model refusals. See
+  [packages/provider/anthropic.md](packages/provider/anthropic.md).
 - `contextsession/` — fits one durable session into a bounded provider
   request. It provides `Planner` with `NewPlanner` and `Plan`,
   `PlanResult`, `Elision`, `ElisionReason` and its four constants,

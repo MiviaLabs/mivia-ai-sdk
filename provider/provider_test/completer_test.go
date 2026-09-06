@@ -214,3 +214,17 @@ func TestOptionalCapabilityInterfaces(t *testing.T) {
 		t.Fatal("plain fakeCompleter unexpectedly satisfies ReasoningPolicy")
 	}
 }
+
+func TestAnthropicAdapterCapabilities(t *testing.T) {
+	capable := &capableFake{fakeCompleter: fakeCompleter{name: "anthropic"}, contextWindow: 200000, reasoningEffort: "medium"}
+	var c provider.Completer = capable
+
+	ca, ok := c.(provider.ContextAccountant)
+	if !ok || ca.ContextWindow() != 200000 {
+		t.Fatalf("ContextAccountant check failed: ok=%v", ok)
+	}
+	rp, ok := c.(provider.ReasoningPolicy)
+	if !ok || rp.ReasoningEffort() != "medium" {
+		t.Fatalf("ReasoningPolicy check failed: ok=%v", ok)
+	}
+}

@@ -65,6 +65,11 @@
       "reason": "Durable session planner carved out of contextplan. Intended caller is external application code adapting Plan to agentloop.Options.Trim.",
       "target": "agentloop or an external session-backed runner; see docs/plans/spool.md's read-back section",
       "permanent": false
+    },
+    "provider/anthropic": {
+      "reason": "Anthropic Messages API adapter leaf. Its first in-repo caller is the e2e wire test and the agentloop composition example.",
+      "target": "external application code; the in-repo caller is the e2e wire test and the agentloop composition example from part two",
+      "permanent": true
     }
   }
 }

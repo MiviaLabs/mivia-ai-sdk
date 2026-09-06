@@ -24,13 +24,14 @@ function and the `--probe` flag. No `api/` lock exists for it.
 
 ### Status sections
 
-A plan section whose status line reads `Status: planned, not yet
-built` must name no exported symbol already locked in
-`api/<pkg>.txt`. The section runs from the heading governing the
-status line to the next heading of the same or higher level. The gate
-collects backticked identifiers that look like exported Go symbols,
-strips a leading lowercase dotted package prefix, and reports the
-first symbol present in the lock.
+A plan section whose status line matches `^Status: planned, not yet
+built`, `^Status: planned, not shipped`, or `^Status: planned\.`
+must name no exported symbol already locked in `api/<pkg>.txt`. The
+section runs from the heading governing the status line to the next
+heading of the same or higher level. The gate collects backticked
+identifiers that look like exported Go symbols, strips a leading
+lowercase dotted package prefix, and reports the first symbol present
+in the lock.
 
 Escape hatch: a section that must legitimately stay planned while it
 names an already-locked symbol renames its status to `Status:

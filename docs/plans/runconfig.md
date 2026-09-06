@@ -433,7 +433,7 @@ In `runconfig/runconfig_test/load_test.go`:
 
 ## Addendum: options.trace flag; hooks stays a caller-set field
 
-Status: planned, not shipped.
+Status: planned, extends Load.
 
 ### Addendum goal
 
@@ -591,7 +591,7 @@ alone.
 
 ## Addendum: document-built internal tools
 
-Status: planned, not shipped. This addendum lands the `runconfig` to
+Status: planned, extends Blocks. This addendum lands the `runconfig` to
 `subagent` wiring and closes `subagent`'s `policy/pending_wiring.json`
 entry. It also replaces the caller-builds-`Blocks` step the `Kind` doc
 comment in `runconfig/blocks.go` still describes.

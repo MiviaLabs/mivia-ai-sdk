@@ -174,7 +174,7 @@ def _declared_tests(pkg_dir: Path) -> set[str]:
 # the symbol (method and top-level forms). _SYMBOL matches an exported
 # Go symbol, optionally after a lowercase dotted package prefix; group
 # 1 keeps the exported part (`tools.SchemaTool` -> `SchemaTool`).
-STATUS_PLANNED = re.compile(r"^Status: planned, not yet built")
+STATUS_PLANNED = re.compile(r"^Status: (?:planned, not yet built|planned, not shipped|planned\.)")
 _HEADING = re.compile(r"^(#{1,6})\s")
 _LOCK_LINE = re.compile(r"^(?:func\s+\([^)]*\)\s+|(?:func|const|var|type)\s+)(\w+)")
 _SPAN = re.compile(r"`([^`\n]+)`")
@@ -454,6 +454,8 @@ def _probe_plan_status(root: Path) -> list[str]:
     naming a locked symbol must pass."""
     cases = [
         ("locked", "Status: planned, not yet built.", "`engine.New`", True),
+        ("locked_not_shipped", "Status: planned, not shipped.", "`engine.New`", True),
+        ("locked_dot", "Status: planned.", "`engine.New`", True),
         ("unlocked", "Status: planned, not yet built.", "`engine.Missing`", False),
         ("escape", "Status: planned, extends New.", "`engine.New`", False),
     ]

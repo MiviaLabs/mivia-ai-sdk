@@ -665,7 +665,7 @@ the case set grows:
 
 ### Bounded replay window
 
-Status: planned. This section corrects a confirmed false claim about
+Status: planned, extends Options. This section corrects a confirmed false claim about
 `ReplayCapacity` and records the new replay semantics.
 
 #### The defect this depends on

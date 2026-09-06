@@ -146,18 +146,6 @@ func testOptionsValidateConclude(t *testing.T) {
 			o.ConcludeDeadline = time.Minute
 			return o
 		}, nil, true},
-		{"negative ConcludeToolCallsLeft fails", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeToolCallsLeft = -1
-			return o
-		}, nil, false},
-		{"zero ConcludeToolCallsLeft passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeToolCallsLeft = 0
-			return o
-		}, nil, true},
-		{"positive ConcludeToolCallsLeft passes", func(o agentloop.Options) agentloop.Options {
-			o.ConcludeToolCallsLeft = 2
-			return o
-		}, nil, true},
 		{"negative ConcludeStepsLeft fails", func(o agentloop.Options) agentloop.Options {
 			o.ConcludeStepsLeft = -1
 			return o
@@ -257,13 +245,12 @@ func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 }
 
 // TestOptionsValidateCompleterBeforeConclude proves nil Completer wins
-// over negative ConcludeDeadline/StepsLeft/ToolCallsLeft.
+// over negative ConcludeDeadline and StepsLeft.
 func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
 	o.ConcludeDeadline = -time.Second
 	o.ConcludeStepsLeft = -1
-	o.ConcludeToolCallsLeft = -1
 	err := o.Validate()
 	if !errors.Is(err, agentloop.ErrNoCompleter) {
 		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)

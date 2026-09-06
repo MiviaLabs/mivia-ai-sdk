@@ -81,7 +81,6 @@ package agentloop
   ConcludeMargin int
   StartTime time.Time
   ConcludeDeadline time.Duration
-  ConcludeToolCallsLeft int
   ConcludeStepsLeft int
   ConcludeNotice string
   DedupWithinTurn bool

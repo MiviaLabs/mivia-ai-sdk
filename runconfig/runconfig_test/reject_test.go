@@ -132,6 +132,25 @@ func retryDelayCases(t *testing.T) []rejectCase {
 	}
 }
 
+// budgetCases lists the budget ErrBadDocument cases: a negative
+// max_bytes and a negative max_events, each naming its own field so
+// neither rejection can pass for the other's reason.
+func budgetCases(t *testing.T) []rejectCase {
+	t.Helper()
+	return []rejectCase{
+		{
+			name: "negative budget bytes",
+			doc:  replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_bytes": -5}}, "tools": ["grep"]`),
+			want: "MaxBytes",
+		},
+		{
+			name: "negative budget events",
+			doc:  replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_events": -5}}, "tools": ["grep"]`),
+			want: "MaxEvents",
+		},
+	}
+}
+
 // constructorCases lists the cases a typed constructor rejects and
 // the loader forwards as ErrBadDocument.
 func constructorCases(t *testing.T) []rejectCase {
@@ -174,6 +193,7 @@ func constructorCases(t *testing.T) []rejectCase {
 func rejectCases(t *testing.T) []rejectCase {
 	t.Helper()
 	cases := append(shapeCases(t), retryDelayCases(t)...)
+	cases = append(cases, budgetCases(t)...)
 	return append(cases, constructorCases(t)...)
 }
 
@@ -234,21 +254,6 @@ func TestLoadRejectsWhitespaceOnlyToolNameWithStep(t *testing.T) {
 	}
 	if !errors.Is(err, runconfig.ErrBadDocument) {
 		t.Fatalf("err = %v, want ErrBadDocument", err)
-	}
-}
-
-// TestLoadAcceptsNegativeBudget checks that Load performs no range
-// check on options.budget: a negative field loads without error, and
-// its rejection surfaces later, from Runner (see runner_test.go's
-// "negative budget via json" case).
-func TestLoadAcceptsNegativeBudget(t *testing.T) {
-	doc := replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_bytes": -1}}, "tools": ["grep"]`)
-	d, err := runconfig.Load([]byte(doc))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if d.Options.Budget == nil || d.Options.Budget.MaxBytes != -1 {
-		t.Fatalf("budget = %+v, want MaxBytes -1", d.Options.Budget)
 	}
 }
 

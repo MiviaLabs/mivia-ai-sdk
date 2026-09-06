@@ -95,21 +95,6 @@ func TestRunnerResolves(t *testing.T) {
 			t.Fatalf("err = %v, want a forwarded budget error", err)
 		}
 	})
-	t.Run("negative budget via json", func(t *testing.T) {
-		doc := replace(t, `"tools": ["grep"]`, `"options": {"budget": {"max_events": -1}}, "tools": ["grep"]`)
-		d, err := runconfig.Load([]byte(doc))
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if err := d.External.Add(stubTool{name: "grep"}); err != nil {
-			t.Fatalf("External.Add: %v", err)
-		}
-		d.Options.Agent = agentOver(t, d)
-		_, err = d.Runner()
-		if err == nil || !strings.Contains(err.Error(), "budget") {
-			t.Fatalf("err = %v, want a forwarded budget error", err)
-		}
-	})
 }
 
 // TestRunnerResolvesDuplicateStepID proves Runner forwards

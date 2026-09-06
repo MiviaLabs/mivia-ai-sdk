@@ -17,7 +17,7 @@ or a bound trips. The exported surface below mirrors
   `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
   `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
   `Calibrated`, `ConcludeMargin`, `StartTime`, `ConcludeDeadline`,
-  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `ConcludeNotice`,
+  `ConcludeStepsLeft`, `ConcludeNotice`,
   `DedupWithinTurn`, `MaxConcurrentTools`, `HeartbeatInterval`,
   `TurnResultBudget`, `MaxConsecutiveToolFailures`, `WorkBudget`, `ToolBudget`,
   `ContinueOnStop`.
@@ -90,7 +90,7 @@ or a bound trips. The exported surface below mirrors
   Validate`, `MaxTotalTokens` is not negative, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
   `Calibrated`, and excludes `Trim`, `ConcludeMargin`, `ConcludeDeadline`,
-  `ConcludeToolCallsLeft`, `ConcludeStepsLeft`, `TurnResultBudget`,
+  `ConcludeStepsLeft`, `TurnResultBudget`,
   `MaxConcurrentTools`, and `MaxConsecutiveToolFailures` are not negative,
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own

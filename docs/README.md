@@ -56,7 +56,7 @@ into a `tools.Registry` through `subagent`:
 
 - [packages/envelope.md](packages/envelope.md) — the wire unit: the message, its metadata types, the semantic ack, and signing.
 - [packages/events.md](packages/events.md) — the in-process reaction bus. A caller emits a typed event; a subscriber runs one callback per event.
-- [packages/machine.md](packages/machine.md) — the state-machine building block: the status model, the move dispatch, and the JSON wire form.
+- [packages/machine.md](packages/machine.md) — the state-machine building block: the status model and the move dispatch.
 - [packages/identity.md](packages/identity.md) — one agent key: an ed25519 pair, the key-file load, the invariant check, and the hex signer string.
 - [packages/discovery.md](packages/discovery.md) — the capability card: a name, an optional description, and a capability list.
 - [packages/hooks.md](packages/hooks.md) — the named, multi-handler lifecycle-point registry.

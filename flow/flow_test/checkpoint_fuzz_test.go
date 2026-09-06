@@ -1,7 +1,6 @@
 package flow_test
 
 // Fuzz: flow.Decode takes arbitrary wire bytes, mirroring
-// machine.Decode's FuzzDecode (machine/machine_test/fuzz_test.go) and
 // envelope.Decode's FuzzDecode (envelope/fuzz_test.go).
 
 import (

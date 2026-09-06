@@ -44,7 +44,8 @@ Outside:
 
 ## Correctness fix: normalize Scope before every map key and hash use
 
-Status: planned, not yet built.
+Status: planned, not yet built. Build order and refinements live in
+the normalization addendum below.
 
 ### Fix goal
 
@@ -784,3 +785,110 @@ Positive controls already shipped, unaffected by this fix:
 - No conformance vector: this package carries no wire format.
 - Do not add an `Allow-Test-Change` trailer. No shipped assertion
   changes in this commit.
+
+## Addendum: build order for the scope-normalization fix
+
+Status: planned, not yet built. This addendum refines the
+"Correctness fix" section above. That section stays the source of
+truth for the rule. This addendum adds the missed site, extra test
+rows, and the build order.
+
+### Refinement: one more site
+
+A grep over `s.scopes[` finds one site the fix section omits:
+
+- `longtermmemory/frame.go:36` — `CoreFrame` indexes
+  `s.scopes[scope]` with the raw parameter. A padded save is invisible
+  to `CoreFrame` under the trimmed spelling. `CoreFrame` calls
+  `normalizeScope(scope)` once, before the mutex, and uses the
+  normalized value for the lookup.
+
+Complete site list for `normalizeScope`:
+
+- `longtermmemory/store.go:61` — `Save`, the local `scope` binding.
+  Normalize before `entryID(e)` and every map use, per the fix
+  section.
+- `longtermmemory/store.go:80` — `Count`, the parameter.
+- `longtermmemory/store.go:121` — `CoreEntries`, the parameter,
+  before `scopeIDsLocked`.
+- `longtermmemory/search.go:44` — `Search`, `q.Scope`.
+- `longtermmemory/frame.go:36` — `CoreFrame`, the parameter.
+
+Helpers that receive the scope from these callers need no change:
+`scopeIDsLocked`, `coreCountLocked`, `addToScope`,
+`removeFromScope`, `consolidateLocked`, `evictArchiveLocked`.
+`PromoteToCore` and `Delete` key off `id` and read the stored,
+already normalized `Entry.Scope`.
+
+The merge path needs no extra work. `nearDuplicate` compares title
+and summary, never scope, and both rows of a pair come from one
+normalized bucket. The survivor keeps the survivor's normalized
+scope. A merge can never cross buckets after the fix.
+
+### Refinement: entry id behavior
+
+`Entry.Validate` (longtermmemory/entry.go:72) rejects a blank scope
+via `TrimSpace` and accepts padded ones. The fix changes nothing for
+clean input: a trimmed scope normalizes to itself, so its id, bucket,
+and results stay byte-identical. Only partitioned spellings merge.
+
+### Refinement: test rows beyond the spec's six
+
+The fix section's six cases stand. Add four rows, same table-driven
+file:
+
+- A scope of tabs and newlines (`"\tproj\n"`) normalizes to `proj`:
+  save padded, `Search` and `Count` trimmed.
+- `CoreFrame` round trip: save and promote under `"proj "`, render
+  under `"proj"`; the frame contains the entry.
+- Merge across normalized-equal scopes. Fixture: `New(10)`; save two
+  near-duplicate archive entries under `"proj"` and `"proj "`, plus
+  distinct fillers to cross the 0.8 load factor with one trigger
+  save. Assert a literal final `Count("proj")` of 8: the pair merges
+  into one row, six fillers, one trigger. Pre-fix the pair sits in
+  two buckets, no merge runs, and `Count` reads 9. The delta proves
+  the red state for the right reason. This row lands in
+  `store_test.go` or a sibling, away from `consolidate_test.go`'s
+  fixture idioms.
+- A clean-input control: save under `"proj"`, re-save under `"proj"`.
+  The id matches the shipped dedupe behavior. This blocks a fix that
+  alters ids for already-clean scopes.
+
+No shipped test pins the raw-key behavior. No test rewrite is needed.
+
+### Build order
+
+1. Write all ten cases first, table-driven, in
+   `longtermmemory/longtermmemory_test/store_test.go` or a sibling.
+   The eight normalization cases fail red against current code. The
+   clean-input control passes. The merge-across-scopes case fails red.
+2. Add `normalizeScope` in `longtermmemory/store.go` and apply it at
+   the five sites above.
+3. Run green. No production test hooks, no exported symbol.
+
+### Must not change
+
+- The exported surface. `api/longtermmemory.txt` sees no diff. Run
+  `make api-update` and expect an empty diff.
+- Ids and results for already-normalized scopes.
+- Eviction and consolidation order semantics.
+- `CoreFrame` output for clean input.
+- The mutex discipline. The helper is a pure function; add no
+  concurrency.
+
+### Verification
+
+- `go test -race ./longtermmemory/...` passes.
+- The `longtermmemory` package and all gates pass. `make verify` may
+  fail only in `agentloop` from the parallel change already in flight
+  (`TestSteerAckSparesUnobservedTrigger` and
+  `TestSteerAckWithoutObserveClearsNothing` in
+  `agentloop/steer_ack_test.go`). Those failures block neither this
+  fix nor its review.
+- `longtermmemory` coverage stays at or above its current 97.6. The
+  new tests cover the helper fully.
+- No `policy/layers.json` change; the row stays an empty list. The
+  package stays a declared orphan in `policy/pending_wiring.json`.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`,
+  `scripts/check_labels.py`, and `scripts/check_deps.py` pass.
+- No conformance vector: this package carries no wire format.

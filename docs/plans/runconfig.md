@@ -858,3 +858,104 @@ caller-built path still works when a document declares nothing.
 - `python3 scripts/check_plan.py`, `scripts/check_deps.py`,
   `scripts/check_prose.py`, `scripts/check_labels.py`, and
   `scripts/check_orphan_packages.py` pass.
+
+## Addendum: one step tool wrapper
+
+### Coupling and landing order
+
+`newStepTool` builds sixteen wrapper variants. Each variant exposes
+exactly the optional interfaces `inner` implements. Four direct
+interface assertions consume the wrapper:
+
+- `agentrun/wire.go` asserts `tools.SchemaTool` before decode.
+- `tools/registry_timeout.go` asserts `tools.ProfiledTool` for the
+  timeout backstop.
+- `tools/scope.go` reads privilege through `tools.IsPrivileged`, a
+  helper.
+- `agentloop/wire.go` reads the budget through `tools.ResultBudgetOf`,
+  a helper.
+
+No runconfig-built tool reaches `agentloop`'s own `tools.SchemaTool`
+assertion. No in-tree code routes a runconfig registry into an
+`agentloop.Loop`.
+
+This change and the `agentrun` change of the same name land as one
+change. The wrapper collapse alone stays behavior-identical. The
+`agentrun` probe swap alone stays behavior-identical. One change keeps
+one review surface. Within the change, the `agentrun` edit lands
+first.
+
+### New shape
+
+`steptool.go` keeps one struct, `stepTool`, and deletes the four
+capability structs and the sixteen variants. `newStepTool` returns
+`&stepTool{step, inner}`. The struct gains five forwarding methods:
+
+- `ExecutionProfile` returns `tools.ExecutionProfileOf(inner)`.
+- `MaxResultBytes` returns the count from `tools.ResultBudgetOf(inner)`.
+- `Privileged` returns `tools.IsPrivileged(inner)`.
+- `ParameterSchema` returns the schema from `tools.SchemaOf(inner)`.
+- `DecodeArguments` forwards to `inner` when it implements
+  `tools.SchemaTool`. Otherwise it returns the raw bytes unchanged as
+  an `InOut` string value.
+
+The wrapper now declares all four optional interfaces for every inner
+tool. The methods degrade to inner's published defaults. Three of the
+four consumers read values, not presence, so behavior holds:
+
+- `effectiveRunTimeout` treats a zero declared `Timeout` like an
+  absent profile. The forwarded zero profile matches the old absent
+  interface.
+- The scope and budget paths read helpers that forward the same
+  defaults.
+- The `agentrun` chain now always calls `DecodeArguments`. For a
+  schema-less tool the identity fallback reproduces the old plain
+  payload pass-through byte for byte. A decode failure still fails the
+  step only when `inner` truly decodes.
+
+### Exported surface
+
+No exported symbol of `runconfig` or `agentrun` changes. All wrapper
+types stay unexported. `make api-update` produces no `api/` diff. No
+`policy/layers.json` edge changes.
+
+### Tests
+
+Rewrite `runconfig/steptool_internal_test.go`:
+
+- Keep `TestNewStepToolForwardsAllCapabilities` unchanged.
+- Keep `TestNewStepToolForwardsPerSubset` unchanged.
+- Delete `TestNewStepToolInterfaceParity`. It pins exact interface
+  parity, which this change removes by design.
+- Delete `TestNewStepToolForwardsNoCapabilities`. It pins interface
+  absence, which this change removes by design. Report the deletion
+  like the parity test's.
+- Add `TestNewStepToolDeclaresAllCapsAlways`. Table-driven over the
+  sixteen capability subsets. Each row builds `inner` with the subset,
+  wraps it, and asserts the new shape: the wrapper satisfies all four
+  interfaces; each forwarded value equals `inner`'s through the
+  `tools.*Of` helpers; a schema-less row yields a nil schema and an
+  identity decode. This test fails against the sixteen-variant shape,
+  so it proves the refactor.
+
+`scripts/check_test_tampering.py` will flag both deleted tests.
+The deletions are mandated by this addendum. The builder reports the
+mandate in the change notes and does not weaken the gate.
+
+### Composition with the document-built internal tools addendum
+
+The earlier addendum wires `runconfig` to `subagent` and edits
+`runconfig/runner.go` builders. This addendum edits
+`runconfig/steptool.go` and `runconfig/steptool_internal_test.go`.
+The `newStepTool` call site in `runner.go` keeps its signature. The
+file sets overlap only in `runner.go` context lines. This addendum
+lands first; the internal-tools addendum rebases on it.
+
+### Verification
+
+- `make verify` passes. Coverage floors for `runconfig`, `agentrun`,
+  and `tools` hold at 85 or better.
+- No `api/` diff and no `policy/` diff is expected. Any diff stops the
+  change for review.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass.

@@ -218,8 +218,7 @@ func Decode(data []byte) (Message, error) {
 
 // isHashRef reports whether ref is a canonical "sha256:<64 lowercase hex>".
 func isHashRef(ref string) bool {
-	hexPart, ok := strings.CutPrefix(ref, hashPrefix)
-	return ok && isLowerHex(hexPart, sha256.Size*2)
+	return contextstate.IsRef(ref)
 }
 
 // isLowerHex reports whether s is exactly n lowercase hex chars.

@@ -1,6 +1,6 @@
 package a2aack
   func (o Options) Validate() (error)
-  func Wait(c Remote, opts Options) (agent.AckWait, error)
+  func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (envelope.Ack, error), error)
   type Options struct {
   Poll time.Duration
   Timeout time.Duration

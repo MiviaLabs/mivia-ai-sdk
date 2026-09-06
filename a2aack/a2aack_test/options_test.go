@@ -18,7 +18,7 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		fake := &fakeRemote{}
 		ackFn, err := a2aack.Wait(nil, good)
 		if ackFn != nil {
-			t.Fatalf("Wait(nil) AckWait = %v, want nil", ackFn)
+			t.Fatal("Wait(nil) AckWait must be nil")
 		}
 		if !errors.Is(err, a2aack.ErrNoClient) {
 			t.Fatalf("Wait(nil) error = %v, want ErrNoClient", err)
@@ -32,7 +32,7 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		fake := &fakeRemote{}
 		ackFn, err := a2aack.Wait(fake, a2aack.Options{Poll: 0, Timeout: time.Second})
 		if ackFn != nil {
-			t.Fatalf("Wait(Poll=0) AckWait = %v, want nil", ackFn)
+			t.Fatal("Wait(Poll=0) AckWait must be nil")
 		}
 		if !errors.Is(err, a2aack.ErrNoPoll) {
 			t.Fatalf("Wait(Poll=0) error = %v, want ErrNoPoll", err)
@@ -46,7 +46,7 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		fake := &fakeRemote{}
 		ackFn, err := a2aack.Wait(fake, a2aack.Options{Poll: time.Second, Timeout: time.Millisecond})
 		if ackFn != nil {
-			t.Fatalf("Wait(short timeout) AckWait = %v, want nil", ackFn)
+			t.Fatal("Wait(short timeout) AckWait must be nil")
 		}
 		if !errors.Is(err, a2aack.ErrShortTimeout) {
 			t.Fatalf("Wait(short timeout) error = %v, want ErrShortTimeout", err)

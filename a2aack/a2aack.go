@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -65,7 +64,7 @@ type Remote interface {
 // validates c and opts before it returns the AckWait, never inside a
 // poll tick. It returns (nil, ErrNoClient) for a nil c and (nil,
 // opts.Validate()) for invalid options.
-func Wait(c Remote, opts Options) (agent.AckWait, error) {
+func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (envelope.Ack, error), error) {
 	if c == nil {
 		return nil, ErrNoClient
 	}

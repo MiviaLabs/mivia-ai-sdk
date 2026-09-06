@@ -76,8 +76,6 @@ implementation, two callers, no clock abstraction needed.
 
 ## Cross-references
 
-- [room.md](room.md) — `Room.StaleMembers` takes a caller-supplied
-  `Monitor` and cross-checks its dead ids against the room roster.
 - [agent.md](agent.md) — `Agent.Run` takes an optional `Monitor`
   parameter and beats one id per gated step.
 

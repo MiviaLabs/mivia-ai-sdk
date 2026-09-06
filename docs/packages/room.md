@@ -25,8 +25,6 @@ and message admission. The exported surface below mirrors
 - `Room.Leave(id)` — drops the identity by its own choice.
 - `Room.Promote(id, by)` — raises a member to moderator.
 - `Room.Accepts(m)` — gates a message on signer and recipients.
-- `Room.StaleMembers(hb, now)` — returns the sorted current roster
-  members that `hb.Dead(now)` also reports.
 
 ## Failure modes
 
@@ -50,9 +48,6 @@ Use `errors.Is` to test these.
   verify") — `Accepts`
   wraps it when the signer is empty or signature verification fails.
   Pinned by `room/integration_test.go`.
-- `ErrNoMonitor` ("room: heartbeat monitor is required") —
-  `StaleMembers` returns it when `hb` is nil. Pinned by
-  `room/liveness_test.go`.
 
 ## Invariants
 
@@ -68,11 +63,6 @@ Use `errors.Is` to test these.
 - `Accepts` requires a valid, signed message from a member.
 - `Accepts` requires every recipient to be a member.
 - `Members` returns the sorted roster.
-- `StaleMembers` returns only current roster members that `hb.Dead`
-  also names. The roster, not the `Monitor`, decides who counts as a
-  member. A removed member never appears, even if the `Monitor` still
-  tracks a stale beat for it. A member with no recorded beat never
-  appears; `hb.Dead` only reports an id that has beaten at least once.
 
 ## Wire contract
 

@@ -82,9 +82,8 @@ reads the real result? In this repo the edges are:
 - `mcp` imports `tools`: `ListTools` maps remote tools into
   `tools.Tool` values and `RegisterAll` adds them to a
   `tools.Registry`.
-- `room` imports `envelope` and `heartbeat`: `Accepts` verifies an
-  `envelope.Message` signature; `StaleMembers` reads a
-  `heartbeat.Monitor`.
+- `room` imports `envelope`: `Accepts` verifies an
+  `envelope.Message` signature.
 - `scheduler` imports `events`: `Scheduler.Run` emits `JobFailedEvent`
   on the supplied bus.
 - The remaining packages (`channel`, `contextbudget`, `discovery`,

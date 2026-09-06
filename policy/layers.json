@@ -6,7 +6,6 @@
     ],
     "a2aack": [
       "a2aclient",
-      "agent",
       "envelope"
     ],
     "a2aclient": [
@@ -124,8 +123,7 @@
       "provider"
     ],
     "room": [
-      "envelope",
-      "heartbeat"
+      "envelope"
     ],
     "runconfig": [
       "agentrun",

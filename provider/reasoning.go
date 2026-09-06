@@ -23,18 +23,22 @@ const (
 	ReasoningEffortMax    ReasoningEffort = "max"
 )
 
-// ReasoningBlock is one reasoning segment a model produced. Content is
-// empty whenever Redacted is true. ReasoningBlock never appears on
-// Message or Response; it is a value a caller carries alongside its
-// own session state.
+// ReasoningBlock is one reasoning segment a model produced. Content
+// is empty whenever Redacted is true. On a redacted block, Data holds
+// the opaque encrypted payload the provider issued; Content stays
+// empty. Signature is the opaque replay token the provider issued for
+// a readable block; provider never validates or interprets it.
+// Message.ReasoningBlocks carries these blocks in arrival order.
 type ReasoningBlock struct {
-	Content  string
-	Redacted bool
+	Content   string
+	Signature string
+	Redacted  bool
+	Data      string
 }
 
 // RedactBlock returns b with Content cleared and Redacted set true.
-// Idempotent: a second call on an already-redacted block returns it
-// unchanged.
+// Signature and Data pass through unchanged. Idempotent: a second
+// call on an already-redacted block returns it unchanged.
 func RedactBlock(b ReasoningBlock) ReasoningBlock {
 	b.Content = ""
 	b.Redacted = true

@@ -81,9 +81,14 @@ type Options struct {
 	ContextWindow int
 	// DefaultEffort sets the fallback reasoning effort level.
 	DefaultEffort provider.ReasoningEffort
-	// ExposeReasoning controls whether thinking blocks populate Message.ReasoningContent.
+	// ExposeReasoning controls whether thinking text streams to the
+	// caller as ReasoningDelta chunks. Message.ReasoningBlocks, the
+	// replay carrier, is always populated.
 	ExposeReasoning bool
-	// OnReasoning receives every thinking block emitted by the model.
+	// OnReasoning receives every readable thinking block the model
+	// emits, in redacted form, on both the Chat and ChatStream paths.
+	// It fires whether or not ExposeReasoning is on. A redacted
+	// thinking block fires no call: it carries no readable text.
 	OnReasoning func(provider.ReasoningBlock)
 }
 

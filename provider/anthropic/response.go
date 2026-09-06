@@ -25,6 +25,7 @@ type anthropicRespContent struct {
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
 	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
@@ -51,36 +52,42 @@ type anthropicError struct {
 // order.
 type decodedContent struct {
 	text      string
-	reasoning string
-	signature string
+	blocks    []provider.ReasoningBlock
 	toolCalls []provider.ToolCall
 }
 
-// decodeContent walks one response's content blocks. Text and thinking
-// concatenate. With ExposeReasoning off, thinking text stays out and
-// OnReasoning receives the redacted block. The last non-empty thinking
-// signature wins.
+// decodeContent walks one response's content blocks. Text
+// concatenates. Every thinking block lands in blocks, in arrival
+// order, with its own signature: the slice is the replay carrier, so
+// capture never depends on ExposeReasoning. When OnReasoning is set,
+// it additionally receives every readable block in redacted form,
+// whether or not ExposeReasoning is on. A redacted_thinking block
+// fires no OnReasoning call: it carries no readable text.
 func (c *Client) decodeContent(parts []anthropicRespContent) decodedContent {
 	var out decodedContent
 	var textBuilder strings.Builder
-	var reasoningBuilder strings.Builder
 
 	for i, part := range parts {
 		switch part.Type {
 		case "text":
 			textBuilder.WriteString(part.Text)
 		case "thinking":
-			if c.opts.ExposeReasoning {
-				reasoningBuilder.WriteString(part.Thinking)
-				if part.Signature != "" {
-					out.signature = part.Signature
-				}
-			} else if c.opts.OnReasoning != nil {
+			out.blocks = append(out.blocks, provider.ReasoningBlock{
+				Content:   part.Thinking,
+				Signature: part.Signature,
+			})
+			if c.opts.OnReasoning != nil {
 				c.opts.OnReasoning(provider.RedactBlock(provider.ReasoningBlock{
-					Content:  part.Thinking,
-					Redacted: false,
+					Content: part.Thinking,
 				}))
 			}
+		case "redacted_thinking":
+			// A redacted block carries no readable text, so it fires
+			// no OnReasoning call; it lands in the carrier for replay.
+			out.blocks = append(out.blocks, provider.ReasoningBlock{
+				Redacted: true,
+				Data:     part.Data,
+			})
 		case "tool_use":
 			argBytes := []byte(part.Input)
 			if len(argBytes) == 0 {
@@ -96,7 +103,6 @@ func (c *Client) decodeContent(parts []anthropicRespContent) decodedContent {
 	}
 
 	out.text = textBuilder.String()
-	out.reasoning = reasoningBuilder.String()
 	return out
 }
 
@@ -138,11 +144,10 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 	return provider.Response{
 		Model: resp.Model,
 		Message: provider.Message{
-			Role:               provider.RoleAssistant,
-			Content:            decoded.text,
-			ReasoningContent:   decoded.reasoning,
-			ReasoningSignature: decoded.signature,
-			ToolCalls:          decoded.toolCalls,
+			Role:            provider.RoleAssistant,
+			Content:         decoded.text,
+			ReasoningBlocks: decoded.blocks,
+			ToolCalls:       decoded.toolCalls,
 		},
 		ToolCalls:    decoded.toolCalls,
 		Usage:        usage,

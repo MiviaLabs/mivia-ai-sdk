@@ -41,6 +41,7 @@ type anthropicContentPart struct {
 	Text      string          `json:"text,omitempty"`
 	Thinking  string          `json:"thinking,omitempty"`
 	Signature string          `json:"signature,omitempty"`
+	Data      string          `json:"data,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
@@ -130,15 +131,30 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message, 
 		})
 	case provider.RoleAssistant:
 		var parts []anthropicContentPart
-		// Replay the signed thinking block first: the Messages API
-		// requires an assistant turn to echo its own thinking block
-		// before text and tool_use parts.
-		if reasoningEnabled && msg.ReasoningContent != "" && msg.ReasoningSignature != "" {
-			parts = append(parts, anthropicContentPart{
-				Type:      "thinking",
-				Thinking:  msg.ReasoningContent,
-				Signature: msg.ReasoningSignature,
-			})
+		// Replay every reasoning block first, in arrival order: the
+		// Messages API requires an assistant turn to echo its own
+		// thinking and redacted_thinking blocks, exactly as received,
+		// before text and tool_use parts. A readable block replays
+		// when it carries a signature, even when its text is empty. A
+		// redacted block replays its opaque data payload verbatim.
+		if reasoningEnabled {
+			for _, block := range msg.ReasoningBlocks {
+				if block.Redacted {
+					parts = append(parts, anthropicContentPart{
+						Type: "redacted_thinking",
+						Data: block.Data,
+					})
+					continue
+				}
+				if block.Signature == "" {
+					continue
+				}
+				parts = append(parts, anthropicContentPart{
+					Type:      "thinking",
+					Thinking:  block.Content,
+					Signature: block.Signature,
+				})
+			}
 		}
 		if msg.Content != "" {
 			parts = append(parts, anthropicContentPart{Type: "text", Text: msg.Content})

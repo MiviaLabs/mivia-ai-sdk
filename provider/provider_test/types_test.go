@@ -292,31 +292,31 @@ func TestMessageValidateReasoningContent(t *testing.T) {
 	}{
 		{
 			name: "valid assistant with reasoning content",
-			msg:  provider.Message{Role: provider.RoleAssistant, ReasoningContent: "chain of thought"},
+			msg:  provider.Message{Role: provider.RoleAssistant, ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 		},
 		{
 			name:    "invalid system with reasoning content",
-			msg:     provider.Message{Role: provider.RoleSystem, ReasoningContent: "chain of thought"},
+			msg:     provider.Message{Role: provider.RoleSystem, ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 			wantErr: provider.ErrReasoningContentUnexpected,
 		},
 		{
 			name:    "invalid user with reasoning content",
-			msg:     provider.Message{Role: provider.RoleUser, ReasoningContent: "chain of thought"},
+			msg:     provider.Message{Role: provider.RoleUser, ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 			wantErr: provider.ErrReasoningContentUnexpected,
 		},
 		{
 			name:    "invalid tool with reasoning content",
-			msg:     provider.Message{Role: provider.RoleTool, ToolCallID: "call-1", ReasoningContent: "chain of thought"},
+			msg:     provider.Message{Role: provider.RoleTool, ToolCallID: "call-1", ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 			wantErr: provider.ErrReasoningContentUnexpected,
 		},
 		{
 			name:    "unknown role with reasoning content still fails on role first",
-			msg:     provider.Message{Role: provider.Role("bogus"), ReasoningContent: "chain of thought"},
+			msg:     provider.Message{Role: provider.Role("bogus"), ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 			wantErr: provider.ErrUnknownRole,
 		},
 		{
 			name:    "tool missing tool call id with reasoning content fails on tool call id first",
-			msg:     provider.Message{Role: provider.RoleTool, ReasoningContent: "chain of thought"},
+			msg:     provider.Message{Role: provider.RoleTool, ReasoningBlocks: []provider.ReasoningBlock{{Content: "chain of thought"}}},
 			wantErr: provider.ErrToolCallIDRequired,
 		},
 	}

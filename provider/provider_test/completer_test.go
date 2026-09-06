@@ -143,10 +143,10 @@ func TestRunTurnValidToolChoiceStillValidatesMessages(t *testing.T) {
 	}
 }
 
-func TestRunTurnStreamedReasoningDeltaConcatenates(t *testing.T) {
+func TestRunTurnStreamedReasoningBlocksCollect(t *testing.T) {
 	chunks := []provider.Chunk{
 		{Delta: "hel", ReasoningDelta: "first "},
-		{Delta: "lo", ReasoningDelta: "second"},
+		{Delta: "lo", ReasoningDelta: "second", ReasoningBlock: &provider.ReasoningBlock{Content: "first second", Signature: "sig-1"}},
 		{Done: true, FinishReason: "stop"},
 	}
 	f := &fakeCompleter{name: "fake", streamChunks: chunks}
@@ -159,8 +159,9 @@ func TestRunTurnStreamedReasoningDeltaConcatenates(t *testing.T) {
 	if resp.Message.Content != "hello" {
 		t.Fatalf("resp.Message.Content = %q, want %q", resp.Message.Content, "hello")
 	}
-	if resp.Message.ReasoningContent != "first second" {
-		t.Fatalf("resp.Message.ReasoningContent = %q, want %q", resp.Message.ReasoningContent, "first second")
+	want := []provider.ReasoningBlock{{Content: "first second", Signature: "sig-1"}}
+	if !reflect.DeepEqual(resp.Message.ReasoningBlocks, want) {
+		t.Fatalf("resp.Message.ReasoningBlocks = %+v, want %+v", resp.Message.ReasoningBlocks, want)
 	}
 }
 

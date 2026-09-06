@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"sync/atomic"
 	"testing"
 
@@ -63,7 +64,7 @@ func assertNoThinkingPart(t *testing.T, wireReq map[string]any) {
 }
 
 // exposeClient builds a client on the fixture server with
-// ExposeReasoning on, the decode prerequisite for signature capture.
+// ExposeReasoning on, so tests can also read the thinking text.
 func exposeClient(t *testing.T, fix *testClientFixture) *anthropic.Client {
 	t.Helper()
 	client, err := anthropic.New(anthropic.Options{
@@ -129,11 +130,9 @@ func TestChatReplaysThinkingSignatureBeforeToolUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Chat: %v", err)
 	}
-	if first.Message.ReasoningContent != "Let me think about this." {
-		t.Fatalf("decode ReasoningContent = %q, want the thinking text", first.Message.ReasoningContent)
-	}
-	if first.Message.ReasoningSignature != "sig-abc" {
-		t.Fatalf("decode ReasoningSignature = %q, want exact sig-abc", first.Message.ReasoningSignature)
+	wantBlocks := []provider.ReasoningBlock{{Content: "Let me think about this.", Signature: "sig-abc"}}
+	if !reflect.DeepEqual(first.Message.ReasoningBlocks, wantBlocks) {
+		t.Fatalf("decode ReasoningBlocks = %+v, want the signed thinking block", first.Message.ReasoningBlocks)
 	}
 
 	history := []provider.Message{
@@ -221,8 +220,8 @@ func TestChatReplayKeepsThinkingOnlyAssistantTurn(t *testing.T) {
 			if resp.Message.Content != "" {
 				t.Fatalf("Content = %q, want a thinking-only response", resp.Message.Content)
 			}
-			if resp.Message.ReasoningContent != "Deep thought." {
-				t.Fatalf("ReasoningContent = %q, want the thinking text", resp.Message.ReasoningContent)
+			if len(resp.Message.ReasoningBlocks) != 1 || resp.Message.ReasoningBlocks[0].Content != "Deep thought." {
+				t.Fatalf("ReasoningBlocks = %+v, want the thinking block", resp.Message.ReasoningBlocks)
 			}
 
 			_, err = client.Chat(context.Background(), provider.Request{
@@ -289,9 +288,8 @@ func TestChatReplayPlainHistoryHasNoThinkingPart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Chat: %v", err)
 	}
-	if resp.Message.ReasoningContent != "" || resp.Message.ReasoningSignature != "" {
-		t.Fatalf("decode carriers = (%q, %q), want empty for a plain response",
-			resp.Message.ReasoningContent, resp.Message.ReasoningSignature)
+	if len(resp.Message.ReasoningBlocks) != 0 {
+		t.Fatalf("ReasoningBlocks = %+v, want empty for a plain response", resp.Message.ReasoningBlocks)
 	}
 
 	_, err = fix.client.Chat(context.Background(), provider.Request{
@@ -327,8 +325,7 @@ func TestChatReplaySkippedWhenReasoningDisabled(t *testing.T) {
 		Messages: []provider.Message{
 			{Role: provider.RoleUser, Content: "go"},
 			{Role: provider.RoleAssistant, Content: "answered",
-				ReasoningContent:   "Deep thought.",
-				ReasoningSignature: "sig-abc"},
+				ReasoningBlocks: []provider.ReasoningBlock{{Content: "Deep thought.", Signature: "sig-abc"}}},
 		},
 	})
 	if err != nil {
@@ -338,34 +335,4 @@ func TestChatReplaySkippedWhenReasoningDisabled(t *testing.T) {
 		t.Fatalf("thinking config = %v, want absent when no effort is set", captured["thinking"])
 	}
 	assertNoThinkingPart(t, captured)
-}
-
-// TestChatDecodeLastNonEmptySignatureWins pins the decode rule for a
-// multi-block response: text concatenates and the last non-empty
-// signature lands on Message.ReasoningSignature.
-func TestChatDecodeLastNonEmptySignatureWins(t *testing.T) {
-	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id": "msg_2sig", "type": "message", "role": "assistant",
-			"model": "claude-opus-5", "stop_reason": "end_turn",
-			"content": []map[string]any{
-				{"type": "thinking", "thinking": "First thought.", "signature": "sig-first"},
-				{"type": "thinking", "thinking": "Second thought.", "signature": "sig-second"},
-				{"type": "text", "text": "Answer."},
-			},
-			"usage": map[string]any{"input_tokens": 5, "output_tokens": 5},
-		})
-	})
-
-	client := exposeClient(t, fix)
-	resp, err := client.Chat(context.Background(), provider.Request{})
-	if err != nil {
-		t.Fatalf("Chat: %v", err)
-	}
-	if resp.Message.ReasoningContent != "First thought.Second thought." {
-		t.Fatalf("ReasoningContent = %q, want both thinking texts concatenated", resp.Message.ReasoningContent)
-	}
-	if resp.Message.ReasoningSignature != "sig-second" {
-		t.Fatalf("ReasoningSignature = %q, want the last non-empty sig-second", resp.Message.ReasoningSignature)
-	}
 }

@@ -36,9 +36,9 @@ func TestEventsBridgeThinkingCacheCalibration(t *testing.T) {
 	cal := contextplan.Calibrate(est, 0.5)
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{
-			Role:             provider.RoleAssistant,
-			Content:          "done",
-			ReasoningContent: "thinking about it",
+			Role:            provider.RoleAssistant,
+			Content:         "done",
+			ReasoningBlocks: []provider.ReasoningBlock{{Content: "thinking about it"}},
 		}, Usage: provider.Usage{TotalTokens: 200},
 			CacheUsage: provider.CacheUsage{Reported: true, Style: provider.CacheStyleImplicit,
 				InputTokens: 100, CachedInputTokens: 60, CacheWriteTokens: 10}},
@@ -211,9 +211,9 @@ func TestEventsBridgeAuditCompletionCarriesThinkingAndCache(t *testing.T) {
 	auditor := &recordingAuditor{}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{
-			Role:             provider.RoleAssistant,
-			Content:          "ok",
-			ReasoningContent: "step by step",
+			Role:            provider.RoleAssistant,
+			Content:         "ok",
+			ReasoningBlocks: []provider.ReasoningBlock{{Content: "step by step"}},
 		},
 			CacheUsage: provider.CacheUsage{Reported: true, Style: provider.CacheStyleExplicit,
 				InputTokens: 30, CachedInputTokens: 10, CacheWriteTokens: 5}},

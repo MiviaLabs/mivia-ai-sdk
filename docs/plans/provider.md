@@ -1126,12 +1126,12 @@ carries them as plain-prose commitments:
   effort is unset and `Options.DefaultEffort` is empty, so the
   outgoing request disables thinking. History carries both carrier
   fields; the wire carries no thinking part.
-- `TestChatDecodeLastNonEmptySignatureWins` — the decode-side
-  last-non-empty-signature rule; the `provider/anthropic` addendum
+- `TestChatReplaysBothThinkingBlocksInOrder` — the slice-carrier
+  decode and in-order replay rule; the `provider/anthropic` addendum
   states the fixture.
 
 In `provider/provider_test/`, on the `fakeCompleter` pattern,
-TestMessageReasoningSignatureRoundTrip proves the new field
+TestMessageReasoningBlocksRoundTrip proves the block carrier
 round-trips through `RunTurn` unchanged: the fake records it from
 `Request.Messages` and echoes it back on `Response.Message`. A
 `Message` that never sets the field behaves as before: the zero

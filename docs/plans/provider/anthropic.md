@@ -303,11 +303,11 @@ effort unset and `Options.DefaultEffort` empty, so the outgoing
 request disables thinking. History carries both carrier fields. The
 wire carries no thinking part.
 
-TestChatDecodeLastNonEmptySignatureWins pins the decode rule that
-the last non-empty signature wins. The fixture returns two thinking
-blocks with distinct signatures plus a text block. The test asserts
-the text concatenates and the last non-empty signature lands on
-`Message.ReasoningSignature`.
+TestChatReplaysBothThinkingBlocksInOrder pins the slice-carrier
+decode and replay order. The fixture returns two thinking blocks with
+distinct signatures plus a text block. The test asserts both blocks
+land in `Message.ReasoningBlocks` in arrival order and the next
+request replays both, in order, ahead of the text part.
 
 ### Verification
 

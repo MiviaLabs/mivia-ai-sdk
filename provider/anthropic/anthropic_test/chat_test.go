@@ -119,8 +119,9 @@ func TestChatThinkingBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
 	}
-	if resp.Message.ReasoningContent != "" {
-		t.Errorf("ReasoningContent = %q, want empty when ExposeReasoning is false", resp.Message.ReasoningContent)
+	// The replay carrier is populated regardless of ExposeReasoning.
+	if len(resp.Message.ReasoningBlocks) != 1 || resp.Message.ReasoningBlocks[0].Content != "Let me think about this." {
+		t.Errorf("ReasoningBlocks = %+v, want one readable block", resp.Message.ReasoningBlocks)
 	}
 	if !capturedBlock.Redacted || capturedBlock.Content != "" {
 		t.Errorf("OnReasoning block = %+v, want redacted with empty content", capturedBlock)
@@ -139,8 +140,8 @@ func TestChatThinkingBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
 	}
-	if respExpose.Message.ReasoningContent != "Let me think about this." {
-		t.Errorf("ReasoningContent = %q, want 'Let me think about this.'", respExpose.Message.ReasoningContent)
+	if len(respExpose.Message.ReasoningBlocks) != 1 || respExpose.Message.ReasoningBlocks[0].Content != "Let me think about this." {
+		t.Errorf("ReasoningBlocks = %+v, want one block 'Let me think about this.'", respExpose.Message.ReasoningBlocks)
 	}
 }
 

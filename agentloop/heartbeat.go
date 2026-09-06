@@ -3,6 +3,7 @@ package agentloop
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
@@ -36,13 +37,13 @@ const (
 	// Message role is assistant, with the message content as Data.
 	EventAssistant events.Name = "agentloop.assistant"
 	// EventThinkingStart fires at the start of the thinking bracket
-	// for one assistant turn that produced ReasoningContent.
+	// for one assistant turn that produced readable reasoning.
 	EventThinkingStart events.Name = "agentloop.thinking.start"
-	// EventThinkingDelta carries one assistant turn's ReasoningContent
+	// EventThinkingDelta carries one assistant turn's readable reasoning
 	// as Data, between EventThinkingStart and EventThinkingEnd.
 	EventThinkingDelta events.Name = "agentloop.thinking.delta"
 	// EventThinkingEnd closes the thinking bracket for one assistant
-	// turn that produced ReasoningContent.
+	// turn that produced readable reasoning.
 	EventThinkingEnd events.Name = "agentloop.thinking.end"
 	// EventCacheUsage fires after a Completer turn whose response
 	// reported prompt-cache accounting; Data is the JSON-encoded
@@ -117,9 +118,22 @@ func parallelLabel(n int) string {
 	return fmt.Sprintf("parallel tool calls: %d", n)
 }
 
+// reasoningText concatenates the readable content of one message's
+// ReasoningBlocks, in order. Redacted blocks contribute nothing: they
+// carry no readable text.
+func reasoningText(m provider.Message) string {
+	var b strings.Builder
+	for _, block := range m.ReasoningBlocks {
+		if !block.Redacted {
+			b.WriteString(block.Content)
+		}
+	}
+	return b.String()
+}
+
 // emitThinkingEvents fires the Start/Delta/End bracket for one
-// assistant turn whose ReasoningContent is non-empty. A turn with
-// an empty ReasoningContent fires nothing, so the bracket remains a
+// assistant turn whose readable reasoning text is non-empty. A turn
+// with no readable reasoning fires nothing, so the bracket remains a
 // faithful signal of "this turn produced chain-of-thought" without
 // also tagging turns whose chain-of-thought was off.
 func (l *Loop) emitThinkingEvents(ctx context.Context, reasoning string) {

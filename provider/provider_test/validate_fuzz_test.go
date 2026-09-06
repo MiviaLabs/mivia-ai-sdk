@@ -8,12 +8,12 @@ import (
 )
 
 // FuzzMessageValidate feeds arbitrary Role, ToolCallID,
-// ToolCalls-length, and ReasoningContent-presence values to
+// ToolCalls-length, and ReasoningBlocks-presence values to
 // Message.Validate. It must never panic, and the result must match
 // the documented pairing rule: an unknown Role always wins over any
-// ToolCallID, ToolCalls, or ReasoningContent state; a known Role then
+// ToolCallID, ToolCalls, or ReasoningBlocks state; a known Role then
 // applies the ToolCallID rule, the ToolCalls rule, and, last, the
-// ReasoningContent rule.
+// ReasoningBlocks rule.
 func FuzzMessageValidate(f *testing.F) {
 	roles := []string{"", "user", "system", "assistant", "tool", "bogus", "call-1", "TOOL", " tool"}
 	for _, role := range roles {
@@ -38,15 +38,15 @@ func FuzzMessageValidate(f *testing.F) {
 		if toolCallsLen < 0 {
 			toolCallsLen = 0
 		}
-		var reasoningContent string
+		var blocks []provider.ReasoningBlock
 		if hasReasoningContent {
-			reasoningContent = "chain of thought"
+			blocks = []provider.ReasoningBlock{{Content: "chain of thought"}}
 		}
 		m := provider.Message{
-			Role:             provider.Role(role),
-			ToolCallID:       toolCallID,
-			ToolCalls:        make([]provider.ToolCall, toolCallsLen),
-			ReasoningContent: reasoningContent,
+			Role:            provider.Role(role),
+			ToolCallID:      toolCallID,
+			ToolCalls:       make([]provider.ToolCall, toolCallsLen),
+			ReasoningBlocks: blocks,
 		}
 		err := m.Validate()
 		checkMessageValidateOracle(t, role, toolCallID, toolCallsLen, hasReasoningContent, err)

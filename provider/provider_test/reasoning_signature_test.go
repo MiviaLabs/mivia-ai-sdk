@@ -9,7 +9,7 @@ import (
 )
 
 // signatureEchoFake records the request and echoes the assistant
-// carrier fields back onto its response message.
+// reasoning carrier back onto its response message.
 type signatureEchoFake struct {
 	fakeCompleter
 }
@@ -19,19 +19,18 @@ func (f *signatureEchoFake) Chat(ctx context.Context, req provider.Request) (pro
 	f.lastRequest = req
 	resp := f.chatResp
 	for _, msg := range req.Messages {
-		if msg.Role == provider.RoleAssistant && msg.ReasoningSignature != "" {
-			resp.Message.ReasoningContent = msg.ReasoningContent
-			resp.Message.ReasoningSignature = msg.ReasoningSignature
+		if msg.Role == provider.RoleAssistant && len(msg.ReasoningBlocks) > 0 {
+			resp.Message.ReasoningBlocks = msg.ReasoningBlocks
 			break
 		}
 	}
 	return resp, nil
 }
 
-// TestMessageReasoningSignatureRoundTrip pins that
-// ReasoningSignature round-trips through RunTurn unchanged: provider
-// never validates, strips, or interprets the field.
-func TestMessageReasoningSignatureRoundTrip(t *testing.T) {
+// TestMessageReasoningBlocksRoundTrip pins that ReasoningBlocks
+// round-trips through RunTurn unchanged: provider never validates,
+// strips, or interprets the blocks.
+func TestMessageReasoningBlocksRoundTrip(t *testing.T) {
 	// A completer that never sets the field behaves as before: the
 	// response keeps the zero value and nothing else changes.
 	plain := &fakeCompleter{
@@ -48,8 +47,8 @@ func TestMessageReasoningSignatureRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunTurn() error = %v, want nil", err)
 	}
-	if got.Message.ReasoningSignature != "" {
-		t.Fatalf("ReasoningSignature = %q, want empty when the completer never sets it", got.Message.ReasoningSignature)
+	if len(got.Message.ReasoningBlocks) != 0 {
+		t.Fatalf("ReasoningBlocks = %+v, want empty when the completer never sets it", got.Message.ReasoningBlocks)
 	}
 	if !reflect.DeepEqual(got, plain.chatResp) {
 		t.Fatalf("RunTurn() = %+v, want %+v", got, plain.chatResp)
@@ -63,8 +62,9 @@ func TestMessageReasoningSignatureRoundTrip(t *testing.T) {
 		Messages: []provider.Message{
 			{Role: provider.RoleUser, Content: "go"},
 			{Role: provider.RoleAssistant,
-				ReasoningContent:   "Deep thought.",
-				ReasoningSignature: "sig-123"},
+				ReasoningBlocks: []provider.ReasoningBlock{
+					{Content: "Deep thought.", Signature: "sig-123"},
+				}},
 		},
 	}
 	echo := &signatureEchoFake{
@@ -79,25 +79,23 @@ func TestMessageReasoningSignatureRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunTurn() error = %v, want nil", err)
 	}
-	if got.Message.ReasoningContent != "Deep thought." || got.Message.ReasoningSignature != "sig-123" {
-		t.Fatalf("response carriers = (%q, %q), want the echoed values unchanged",
-			got.Message.ReasoningContent, got.Message.ReasoningSignature)
+	want := []provider.ReasoningBlock{{Content: "Deep thought.", Signature: "sig-123"}}
+	if !reflect.DeepEqual(got.Message.ReasoningBlocks, want) {
+		t.Fatalf("response carrier = %+v, want the echoed blocks unchanged", got.Message.ReasoningBlocks)
 	}
 	forwarded := echo.lastRequest.Messages[1]
-	if forwarded.ReasoningContent != "Deep thought." || forwarded.ReasoningSignature != "sig-123" {
-		t.Fatalf("forwarded carriers = (%q, %q), want the caller's values unchanged",
-			forwarded.ReasoningContent, forwarded.ReasoningSignature)
+	if !reflect.DeepEqual(forwarded.ReasoningBlocks, want) {
+		t.Fatalf("forwarded carrier = %+v, want the caller's blocks unchanged", forwarded.ReasoningBlocks)
 	}
 
 	// Validate never reads the field: it passes set on RoleAssistant
 	// and zero-valued on all four roles.
 	withField := provider.Message{
-		Role:               provider.RoleAssistant,
-		ReasoningContent:   "Deep thought.",
-		ReasoningSignature: "sig-123",
+		Role:            provider.RoleAssistant,
+		ReasoningBlocks: []provider.ReasoningBlock{{Content: "Deep thought.", Signature: "sig-123"}},
 	}
 	if err := withField.Validate(); err != nil {
-		t.Fatalf("Validate() = %v, want nil with ReasoningSignature set on RoleAssistant", err)
+		t.Fatalf("Validate() = %v, want nil with a signed block on RoleAssistant", err)
 	}
 	for _, role := range []provider.Role{provider.RoleSystem, provider.RoleUser, provider.RoleAssistant, provider.RoleTool} {
 		msg := provider.Message{Role: role}
@@ -105,7 +103,7 @@ func TestMessageReasoningSignatureRoundTrip(t *testing.T) {
 			msg.ToolCallID = "call-1"
 		}
 		if err := msg.Validate(); err != nil {
-			t.Fatalf("Validate() on %s = %v, want nil with zero ReasoningSignature", role, err)
+			t.Fatalf("Validate() on %s = %v, want nil with a zero ReasoningBlocks", role, err)
 		}
 	}
 }

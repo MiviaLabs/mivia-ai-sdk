@@ -37,6 +37,7 @@ package provider
   FinishReason string
   Err error
   ReasoningDelta string
+  ReasoningBlock *ReasoningBlock
   CacheUsage CacheUsage
   WebSearch []WebSearchResult
 }
@@ -54,13 +55,14 @@ package provider
   Name string
   ToolCallID string
   ToolCalls []ToolCall
-  ReasoningContent string
-  ReasoningSignature string
+  ReasoningBlocks []ReasoningBlock
   CreatedAt time.Time
 }
   type ReasoningBlock struct {
   Content string
+  Signature string
   Redacted bool
+  Data string
 }
   type ReasoningDialect string
   type ReasoningEffort string

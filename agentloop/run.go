@@ -230,7 +230,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, st *runState, noti
 	if resp.Message.Role == provider.RoleAssistant {
 		l.emitEvent(ctx, EventAssistant, resp.Message.Content)
 	}
-	l.emitThinkingEvents(ctx, resp.Message.ReasoningContent)
+	l.emitThinkingEvents(ctx, reasoningText(resp.Message))
 	if resp.CacheUsage.Reported {
 		if data, ok := encodeEventData(resp.CacheUsage); ok {
 			l.emitEvent(ctx, EventCacheUsage, data)
@@ -242,7 +242,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, st *runState, noti
 			Kind:            AuditKindCompletion,
 			Request:         req,
 			Response:        resp,
-			ThinkingContent: resp.Message.ReasoningContent,
+			ThinkingContent: reasoningText(resp.Message),
 			CacheUsage:      resp.CacheUsage,
 		}); aerr != nil {
 			return l.hardFail(*st.history, *st.iterations, *st.totalUsage),

@@ -25,7 +25,8 @@ import (
 // failure never returns a partial Response. On the streamed path
 // Response.Message.ToolCalls carries the same merged calls as
 // Response.ToolCalls after every call, and Response.Message
-// .ReasoningContent carries the concatenated ReasoningDelta text.
+// .ReasoningBlocks carries, in arrival order, every complete
+// ReasoningBlock a chunk delivered.
 // buildResponse assigns both ToolCalls fields the same slice and
 // copies the terminal Chunk's CacheUsage and WebSearch onto Response.
 func RunTurn(ctx context.Context, c Completer, req Request) (Response, error) {
@@ -48,12 +49,12 @@ func RunTurn(ctx context.Context, c Completer, req Request) (Response, error) {
 }
 
 // drainStream reads ch until a terminal Chunk or ctx cancellation,
-// aggregating Delta and ReasoningDelta text and merged tool-call
-// fragments into one Response. See RunTurn's doc comment for the
-// cancellation and mid-stream failure contract.
+// aggregating Delta text, complete ReasoningBlock values, and merged
+// tool-call fragments into one Response. See RunTurn's doc comment
+// for the cancellation and mid-stream failure contract.
 func drainStream(ctx context.Context, ch <-chan Chunk) (Response, error) {
 	var content strings.Builder
-	var reasoning strings.Builder
+	var blocks []ReasoningBlock
 	calls := make(map[int]*ToolCall)
 	var order []int
 	var usage Usage
@@ -75,7 +76,9 @@ func drainStream(ctx context.Context, ch <-chan Chunk) (Response, error) {
 				return Response{}, chunk.Err
 			}
 			content.WriteString(chunk.Delta)
-			reasoning.WriteString(chunk.ReasoningDelta)
+			if chunk.ReasoningBlock != nil {
+				blocks = append(blocks, *chunk.ReasoningBlock)
+			}
 			if chunk.ToolCallDelta != nil {
 				mergeToolCallDelta(calls, &order, chunk.ToolCallDelta)
 			}
@@ -84,7 +87,7 @@ func drainStream(ctx context.Context, ch <-chan Chunk) (Response, error) {
 				finishReason = chunk.FinishReason
 				cacheUsage = chunk.CacheUsage
 				webSearch = chunk.WebSearch
-				return buildResponse(&content, &reasoning, calls, order, usage, finishReason, cacheUsage, webSearch), nil
+				return buildResponse(&content, blocks, calls, order, usage, finishReason, cacheUsage, webSearch), nil
 			}
 		}
 	}
@@ -112,10 +115,10 @@ func mergeToolCallDelta(calls map[int]*ToolCall, order *[]int, delta *ToolCall) 
 // buildResponse assembles the aggregated Response, ordering ToolCalls
 // by ascending Index. Message.Role is set to RoleAssistant
 // unconditionally, Message.ToolCalls holds the same merged calls as
-// Response.ToolCalls, and Message.ReasoningContent holds the
-// accumulated reasoning text. cacheUsage and webSearch come from the
-// terminal Chunk.
-func buildResponse(content, reasoning *strings.Builder, calls map[int]*ToolCall, order []int, usage Usage, finishReason string, cacheUsage CacheUsage, webSearch []WebSearchResult) Response {
+// Response.ToolCalls, and Message.ReasoningBlocks holds the
+// accumulated reasoning blocks in arrival order. cacheUsage and
+// webSearch come from the terminal Chunk.
+func buildResponse(content *strings.Builder, blocks []ReasoningBlock, calls map[int]*ToolCall, order []int, usage Usage, finishReason string, cacheUsage CacheUsage, webSearch []WebSearchResult) Response {
 	sorted := append([]int(nil), order...)
 	sort.Ints(sorted)
 	toolCalls := make([]ToolCall, 0, len(sorted))
@@ -124,10 +127,10 @@ func buildResponse(content, reasoning *strings.Builder, calls map[int]*ToolCall,
 	}
 	return Response{
 		Message: Message{
-			Role:             RoleAssistant,
-			Content:          content.String(),
-			ToolCalls:        toolCalls,
-			ReasoningContent: reasoning.String(),
+			Role:            RoleAssistant,
+			Content:         content.String(),
+			ToolCalls:       toolCalls,
+			ReasoningBlocks: blocks,
 		},
 		ToolCalls:    toolCalls,
 		Usage:        usage,

@@ -41,8 +41,8 @@ var (
 	// it; provider ships no implementation itself.
 	ErrPromptTooLong = errors.New("provider: prompt exceeds the model context window")
 	// ErrReasoningContentUnexpected is Validate's error when
-	// ReasoningContent is non-empty on a Message whose Role is not
-	// RoleAssistant.
+	// ReasoningBlocks is non-empty, or any block carries a non-empty
+	// Signature, on a Message whose Role is not RoleAssistant.
 	ErrReasoningContentUnexpected = errors.New("provider: reasoning content unexpected outside RoleAssistant")
 )
 
@@ -66,32 +66,32 @@ const (
 // a RoleAssistant message; it holds the calls that assistant turn made.
 // Name is legal only on RoleUser and RoleTool messages; an empty Name
 // is legal on every role. See MaxNameBytes for the bound.
-// ReasoningContent carries a model's chain-of-thought for one
-// assistant turn, verbatim, for a completer whose provider requires
-// the caller to echo it back on a later tool-call turn; it is legal
-// only on RoleAssistant. ReasoningSignature is the opaque replay
-// token an adapter writes beside ReasoningContent and reads back on a
-// later turn. provider never validates or interprets it. It is
-// meaningful only beside ReasoningContent on a RoleAssistant message.
+// ReasoningBlocks carries a model's reasoning segments for one
+// assistant turn, in arrival order, for a completer whose provider
+// requires the caller to echo every thinking and redacted_thinking
+// block back on a later turn; it is legal only on RoleAssistant. See
+// ReasoningBlock for the per-block fields. A caller must not replay a
+// block minted under one model against a Request that names a
+// different Model: the provider may reject the sequence. The adapter
+// does not guard this; the caller owns the model pairing.
 // CreatedAt is wall-clock time for when the message entered the
 // caller's own history; its zero value means unknown, and every role
 // may carry it or omit it.
 type Message struct {
-	Role               Role
-	Content            string
-	Name               string
-	ToolCallID         string
-	ToolCalls          []ToolCall
-	ReasoningContent   string
-	ReasoningSignature string
-	CreatedAt          time.Time
+	Role            Role
+	Content         string
+	Name            string
+	ToolCallID      string
+	ToolCalls       []ToolCall
+	ReasoningBlocks []ReasoningBlock
+	CreatedAt       time.Time
 }
 
 // Validate enforces the ToolCallID/Role pairing rule, the closed set
 // of Role constants, the Name rule, the ToolCalls rule, and the
-// ReasoningContent rule. It checks Role legality first: a Role
+// ReasoningBlocks rule. It checks Role legality first: a Role
 // outside the four constants always returns ErrUnknownRole, regardless
-// of Name, ToolCallID, ToolCalls, or ReasoningContent. For one of the
+// of Name, ToolCallID, ToolCalls, or ReasoningBlocks. For one of the
 // four known roles, Validate next checks the Name rule:
 // ErrNameUnexpected when Name is non-empty on a Role other than
 // RoleUser or RoleTool; ErrNameInvalid when a non-empty Name exceeds
@@ -102,7 +102,8 @@ type Message struct {
 // on a RoleTool message. Next, Validate rejects a non-empty ToolCalls
 // on any known Role other than RoleAssistant with
 // ErrToolCallsUnexpected. Finally, Validate rejects a non-empty
-// ReasoningContent on any known Role other than RoleAssistant with
+// ReasoningBlocks, or any block with a non-empty Signature, on any
+// known Role other than RoleAssistant with
 // ErrReasoningContentUnexpected. RunTurn calls Validate on every entry
 // of Request.Messages before it dispatches.
 func (m Message) Validate() error {
@@ -170,11 +171,12 @@ func (m Message) validateName() error {
 	return nil
 }
 
-// validateReasoningContent applies the ReasoningContent rule for one
-// known role. A non-empty ReasoningContent outside RoleAssistant is
+// validateReasoningContent applies the ReasoningBlocks rule for one
+// known role. A non-empty ReasoningBlocks, or any block with a
+// non-empty Signature, outside RoleAssistant is
 // ErrReasoningContentUnexpected.
 func (m Message) validateReasoningContent() error {
-	if m.ReasoningContent == "" {
+	if len(m.ReasoningBlocks) == 0 {
 		return nil
 	}
 	if m.Role != RoleAssistant {
@@ -252,8 +254,8 @@ type Request struct {
 // model that actually served the request, which may differ from
 // Request.Model on a provider that redirects to a fallback. ToolCalls
 // is empty when the model returned plain text. Response carries no
-// separate reasoning-content field: Message.ReasoningContent already
-// holds it, since Response embeds Message. CacheUsage and WebSearch
+// separate reasoning field: Message.ReasoningBlocks already holds the
+// turn's reasoning blocks. CacheUsage and WebSearch
 // hold the terminal Chunk's values on the streamed path, or the
 // Completer's own values on the non-streamed path.
 type Response struct {
@@ -270,9 +272,13 @@ type Response struct {
 // the final chunk that completes without error; Usage, FinishReason,
 // CacheUsage, and WebSearch are the zero value until then.
 // ToolCallDelta is non-nil only on a chunk that carries a tool-call
-// fragment. ReasoningDelta concatenates, in arrival order, into
-// Response.Message.ReasoningContent, the same way Delta concatenates
-// into Response.Message.Content. Err is nil on every chunk except a
+// fragment. ReasoningDelta is a live-view passthrough of one thinking
+// increment; it is display text, not the replay record.
+// ReasoningBlock is non-nil only on a chunk that carries one complete
+// reasoning block; a Completer emits it at the block's terminal
+// boundary, with Signature or Data set, and drainStream appends the
+// blocks, in arrival order, into Response.Message.ReasoningBlocks.
+// Err is nil on every chunk except a
 // terminal chunk that reports a mid-stream failure; when a chunk
 // carries a non-nil Err, the channel closes after it and no further
 // chunk follows. A chunk never carries both a non-nil Err and
@@ -285,6 +291,7 @@ type Chunk struct {
 	FinishReason   string
 	Err            error
 	ReasoningDelta string
+	ReasoningBlock *ReasoningBlock
 	CacheUsage     CacheUsage
 	WebSearch      []WebSearchResult
 }

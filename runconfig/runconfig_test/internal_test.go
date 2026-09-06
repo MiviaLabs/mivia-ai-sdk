@@ -89,6 +89,26 @@ func TestLoadBuildsInternalTools(t *testing.T) {
 	}
 }
 
+// TestLoadEmptyInternalSection pins the present-but-empty edge: a
+// section with no entries loads and builds like an absent one.
+func TestLoadEmptyInternalSection(t *testing.T) {
+	d := loadDoc(t, `{
+		"machine": {"initial": "queued", "transitions": [
+			{"from": "queued", "to": "done", "trigger": "run"}
+		]},
+		"plan": {"steps": [{"id": "s1", "to": "done", "tool": "grep"}]},
+		"internal": {},
+		"tools": ["grep"]
+	}`)
+	if err := d.External.Add(stubTool{name: "grep"}); err != nil {
+		t.Fatalf("External.Add: %v", err)
+	}
+	d.Options.Agent = agentOver(t, d)
+	if _, err := d.Runner(); err != nil {
+		t.Fatalf("Runner: %v", err)
+	}
+}
+
 // TestPartialInternalResolution proves a partially filled Blocks
 // composes with document-built tools. Row one: a document-built entry
 // never masks an undeclared sibling Kind. Row two: a caller stub over

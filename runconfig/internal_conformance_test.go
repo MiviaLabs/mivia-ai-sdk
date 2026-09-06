@@ -2,6 +2,7 @@ package runconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -97,7 +98,8 @@ func pinPartition(t *testing.T, pins []kindPin) {
 }
 
 // pinBuilderParity pins each wireable Kind to its hand-called
-// constructor. Type parity: fmt.Sprintf("%T") must match. Behavior
+// constructor. Type parity: fmt.Sprintf("%T") must match. Name
+// parity: the tool name is the Kind's own string value. Behavior
 // parity: both tools must answer one command input identically.
 func pinBuilderParity(t *testing.T, pins []kindPin, d *Definition, cfg wireInternal) {
 	t.Helper()
@@ -116,6 +118,9 @@ func pinBuilderParity(t *testing.T, pins []kindPin, d *Definition, cfg wireInter
 		gotT, wantT := fmt.Sprintf("%T", got), fmt.Sprintf("%T", want)
 		if gotT != wantT {
 			t.Fatalf("%s: builder built %s, reference built %s", p.kind, gotT, wantT)
+		}
+		if got.Name() != string(p.kind) {
+			t.Fatalf("%s: builder named the tool %q, want %q", p.kind, got.Name(), string(p.kind))
 		}
 		outGot, errGot := got.Run(context.Background(), tools.InOut{Value: p.cmd})
 		outWant, errWant := want.Run(context.Background(), tools.InOut{Value: p.cmd})
@@ -189,4 +194,75 @@ func TestKindBuildersPinConstructors(t *testing.T) {
 		ID: "room-1", Founder: "f1", Actor: "a1", Lease: "1m",
 	}
 	pinBuilderParity(t, pins, conformanceDefinition(t), cfg)
+}
+
+// TestKindBuildersPropagateConfig proves each config value reaches
+// its leaf constructor. Type and behavior parity cannot see a builder
+// that drops or hardcodes a config field. Ledger's actor and lease
+// stay unpinned: no command reads them in bounded time.
+func TestKindBuildersPropagateConfig(t *testing.T) {
+	d := conformanceDefinition(t)
+	ctx := context.Background()
+
+	t.Run("heartbeat timeout bounds aliveness", func(t *testing.T) {
+		cases := []struct {
+			timeout string
+			want    string
+		}{
+			{"1ns", "false"},
+			{"1h", "true"},
+		}
+		for _, tc := range cases {
+			tool, err := builders[HeartbeatKind](d, wireInternal{Timeout: tc.timeout})
+			if err != nil {
+				t.Fatalf("build: %v", err)
+			}
+			if _, err := tool.Run(ctx, tools.InOut{Value: `{"op":"beat","id":"w"}`}); err != nil {
+				t.Fatalf("%s: beat: %v", tc.timeout, err)
+			}
+			out, err := tool.Run(ctx, tools.InOut{Value: `{"op":"alive","id":"w"}`})
+			if err != nil {
+				t.Fatalf("%s: alive: %v", tc.timeout, err)
+			}
+			if out.Value != tc.want {
+				t.Fatalf("timeout %s: alive = %v, want %s", tc.timeout, out.Value, tc.want)
+			}
+		}
+	})
+
+	t.Run("memory max_bytes bounds the budget", func(t *testing.T) {
+		tool, err := builders[MemoryKind](d, wireInternal{MaxBytes: 4})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		_, err = tool.Run(ctx, tools.InOut{Value: `{"op":"put","data":"12345"}`})
+		if !errors.Is(err, memory.ErrBudgetExceeded) {
+			t.Fatalf("err = %v, want memory.ErrBudgetExceeded", err)
+		}
+		tool, err = builders[MemoryKind](d, wireInternal{MaxBytes: 5})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if _, err := tool.Run(ctx, tools.InOut{Value: `{"op":"put","data":"12345"}`}); err != nil {
+			t.Fatalf("put within budget: %v", err)
+		}
+	})
+
+	t.Run("room actor and founder reach the roster", func(t *testing.T) {
+		tool, err := builders[RoomKind](d, wireInternal{ID: "r", Founder: "boss", Actor: "boss"})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		out, err := tool.Run(ctx, tools.InOut{Value: `{"op":"admit","id":"n1"}`})
+		if err != nil || out.Value != "ok" {
+			t.Fatalf("admit by the bound actor = (%v, %v), want (ok, nil)", out.Value, err)
+		}
+		tool, err = builders[RoomKind](d, wireInternal{ID: "r", Founder: "boss", Actor: "pleb"})
+		if err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		if _, err := tool.Run(ctx, tools.InOut{Value: `{"op":"admit","id":"n2"}`}); err == nil {
+			t.Fatal("admit by a non-moderator actor succeeded, want an error")
+		}
+	})
 }

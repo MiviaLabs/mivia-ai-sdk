@@ -80,9 +80,8 @@ func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (ma
 	return status, rec, err
 }
 
-// Bus returns the resolved event bus New subscribed and wired. Callers
-// add their own handlers through Bus().Subscribe for events the run
-// emits.
+// Bus returns the resolved event bus New built. Callers add handlers
+// through Bus().Subscribe for events the run emits.
 func (r *Runner) Bus() *events.Bus {
 	return r.bus
 }

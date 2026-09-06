@@ -31,7 +31,8 @@ type Options struct {
 	// Resolve looks up the Handler that owns an admitted message.
 	Resolve func(ctx context.Context, m envelope.Message) (Handler, error)
 	// Bus receives MessageDeliveredEvent and MessageAckedEvent. Built
-	// and subscribed when nil.
+	// when nil; no handler is subscribed. Callers add handlers through
+	// Bus().Subscribe.
 	Bus *events.Bus
 	// MaxBodyBytes caps one request body. Zero resolves to
 	// DefaultMaxBodyBytes; a negative value fails Validate. A body

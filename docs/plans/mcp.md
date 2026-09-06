@@ -584,7 +584,7 @@ expected `CallResult`. `valid_tools_call_text_result.json`,
 
 ### Gap fix: export the nil-progress-handler sentinel
 
-Status: planned, not yet built. `CallToolWithProgress` already returns
+Status: shipped. Commit 2b2d40b. `CallToolWithProgress` already returns
 a sentinel, `errNilProgressHandler` (`mcp/client.go`), for a nil
 `onProgress` argument, but it stays unexported. No caller outside this
 package can match it with `errors.Is`.
@@ -603,110 +603,31 @@ currently checks only that the error is non-nil. Strengthen it to
 assert `errors.Is(err, ErrNilProgressHandler)`. No new test file: this
 is a one-line assertion change in an existing, already-red-green case.
 
-### Semgrep: scoped stdlib-only exception
+### Third-party exception: policy/thirdparty.json
 
-Mirrors `docs/plans/a2aclient.md`'s pattern exactly, for the same
-rule, with `mcp` in place of `a2aclient`. The build to implement, by
-the builder, in `semgrep/sdk-standards.yml`:
+The exception is recorded in `policy/thirdparty.json`. The `mcp` row
+grants that package the module
+`github.com/modelcontextprotocol/go-sdk`; no other package may import
+it. `scripts/check_thirdparty.py` enforces the grant: it fails any
+third-party import outside the granted (package, module) pairs, and it
+honors each row's build tag when one is set.
 
-- Add `"/mcp/*.go"` to `sdk.go.stdlib-only-imports`'s `paths.exclude`
-  list, alongside the existing `a2aclient` exclusion.
-- Add a new rule, `sdk.go.mcp-scoped-third-party-import`,
-  `severity: ERROR`, scoped to `paths.include: ["/mcp/*.go"]`. It
-  reuses the same `pattern-regex` that finds a dotted-domain import
-  string, and adds a `pattern-not-regex` permitting only
-  `"github\.com/modelcontextprotocol/go-sdk(/[^"\n]*)?"` in addition
-  to the existing module-path exemption. Any other third-party import
-  inside `mcp/*.go` still fires this rule.
-
-`scripts/check_semgrep_probes.py` gains a new probe case, parallel to
-the existing `a2aclient`-scoped block: an `mcp/` subdirectory under
-the probe's temp root, holding `viol_other_import.go` (importing an
-unrelated third-party path) and `clean_go_sdk_import.go` (importing
-`github.com/modelcontextprotocol/go-sdk/mcp`). Both basenames register
-in `expected` against `sdk.go.mcp-scoped-third-party-import`, and an
-explicit assertion block, parallel to the `a2aclient` one, proves: the
-new rule fires on `viol_other_import.go` and stays silent on
-`clean_go_sdk_import.go`; `sdk.go.stdlib-only-imports` fires on
-neither, proving the scoped exclude took effect; and the existing
-outside-the-directory probe file still proves
-`sdk.go.stdlib-only-imports` fires normally outside both scoped
-directories.
-
-### go.mod and go.sum: the closed dependency allowlist, extended
-
-No Go-version change lands in this phase. `go.mod` already declares
-`go 1.25` from phase 10's bump; the SDK's own `go.mod` declares
-`go 1.25.0`, so this module's floor already meets it.
-
-`go.mod` gains a `require` line for
-`github.com/modelcontextprotocol/go-sdk`, plus the indirect lines
-`go mod tidy` adds beneath it. This plan verified the actual set
-`go mod tidy` produces, against a probe module importing
-`.../go-sdk/mcp`'s `Client`, `CommandTransport`, and
-`StreamableClientTransport`, the same three names this package's own
-code imports:
-
-```text
-require github.com/modelcontextprotocol/go-sdk v1.7.0
-
-require (
-	github.com/google/jsonschema-go v0.4.3 // indirect
-	github.com/segmentio/asm v1.1.3 // indirect
-	github.com/segmentio/encoding v0.5.4 // indirect
-	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/time v0.15.0 // indirect
-)
-```
-
-`go.sum` additionally carries `/go.mod`-only hash lines for two
-modules the resolved build list references but no imported package
-reaches at build time: `github.com/golang-jwt/jwt/v5` and
-`golang.org/x/tools`. `github.com/google/go-cmp` also appears in
-`go.sum`; it is already in `ALLOWED_MODULES` from the `a2aclient`
-exception. `golang.org/x/sync` and `golang.org/x/sys` are likewise
-already allowed.
-
-`scripts/check_gomod.py`'s `ALLOWED_MODULES` set gains the new module
-paths this phase's dependency closure adds, beyond what `a2aclient`
-already permits:
-
-```python
-ALLOWED_MODULES |= {
-    "github.com/modelcontextprotocol/go-sdk",
-    "github.com/golang-jwt/jwt/v5",
-    "github.com/google/jsonschema-go",
-    "github.com/segmentio/asm",
-    "github.com/segmentio/encoding",
-    "github.com/yosida95/uritemplate/v3",
-    "golang.org/x/oauth2",
-    "golang.org/x/time",
-    "golang.org/x/tools",
-}
-```
-
-The builder runs `go mod tidy` once `mcp`'s own `.go` files import
-`.../go-sdk/mcp`, records the resulting `require` and `go.sum` module
-set, and reconciles `ALLOWED_MODULES` against that real output in the
-same change, trimming any entry above `go mod tidy` does not actually
-add, the same reconciliation step `docs/plans/a2aclient.md` records
-for its own allowlist. `check_gomod.py`'s module docstring, which
-today names only the `a2aclient` exception, gains one sentence naming
-the `mcp` exception too, in the same change.
+The full dependency closure is pinned in
+`policy/thirdparty_closure.txt`. That file is generated, never
+hand-edited. Run `make thirdparty-update` after a dependency change,
+and commit the diff in the same change. The closure diff is the review
+surface for a new indirect module.
 
 ### Summary
 
 `make verify` passes only once all of the following land together in
 one change: the `mcp` package and its tests; the `go.mod` and `go.sum`
-additions; the `check_gomod.py` allowlist extension and docstring
-update; the two `semgrep/sdk-standards.yml` rule edits and the new
-`check_semgrep_probes.py` case; the `AGENTS.md` exception-sentence
-edit; and the `docs/architecture.md` and `docs/plans/mcp.md` doc
-updates. The `policy/layers.json` row is already landed with this
-plan. `docs/architecture.md` does not change in this phase: `mcp`
+additions; the `policy/thirdparty.json` row and the
+`policy/thirdparty_closure.txt` diff; the `AGENTS.md`
+exception-sentence edit; and the `docs/architecture.md` and
+`docs/plans/mcp.md` doc updates. The `policy/layers.json` row is
+already landed with this plan. `docs/architecture.md` does not change
+in this phase: `mcp`
 adds no message-semantics rule to this module's own envelope wire
 format; it wraps a separate, already-specified protocol.
 

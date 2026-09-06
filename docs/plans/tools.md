@@ -466,7 +466,7 @@ phase 14 and phase 31 already use.
 
 ### Gap fix: export the invalid-execution-class sentinel
 
-Status: planned, not yet built. `ExecutionClass.Validate` already
+Status: shipped. Commit 2b2d40b. `ExecutionClass.Validate` already
 returns a sentinel, `errInvalidExecutionClass`
 (`tools/execution_profile.go`), but it stays unexported. No caller
 outside this package can match it with `errors.Is`, and the existing
@@ -493,7 +493,7 @@ non-nil check.
 
 ### Addition, planned with `agentloop`: `SchemaTool` and `SchemaOf`
 
-Status: planned, not yet built. See `docs/plans/agentloop.md` for the
+Status: shipped. Commit 16a7478. See `docs/plans/agentloop.md` for the
 full contract; this section is the `tools`-side record of the same
 change, since `agentloop` is the first caller.
 

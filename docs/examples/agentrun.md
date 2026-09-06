@@ -4,13 +4,14 @@ This walkthrough shrinks the composition wiring from
 [agent-composition.md](agent-composition.md) into one
 `agentrun.Options` literal. In that example the caller hand-writes an
 `AckWait` closure that runs a tool, stores its result, and confirms an
-ack, and hand-writes the three no-op bus subscriptions
-`events.Bus.Emit` needs. Both rituals repeat in every caller.
+ack, and hand-writes the bus subscriptions
+`events.Bus.Emit` once needed. Both rituals repeat in every caller.
 
 `agentrun.New` does both for you. It validates the option combinations,
 the budget, the transition matrix, and the tool names before it builds
-anything. It subscribes the no-op handlers the three agent event names
-require on the resolved bus. It builds the ack chain the `Tools` registry
+anything. It builds the resolved bus when nil; it subscribes no
+handlers. Callers add handlers through `Bus().Subscribe`. It builds the
+ack chain the `Tools` registry
 drives, so each gated step runs its tool by step ID, stores the string
 result, and confirms a `NewAck`.
 
@@ -27,8 +28,8 @@ does the same by step ID, without capturing a pointer.
 // composition layer. It builds the same plan, identity, registry, and
 // store the composition example builds by hand, then wires all of them
 // into one agentrun.Options literal. agentrun.New validates the matrix,
-// the tool names, and the option combinations, subscribes the no-op
-// event handlers the bus requires, and builds the ack chain that runs
+// the tool names, and the option combinations, builds the event bus,
+// and builds the ack chain that runs
 // each gated step's tool, stores its result, and confirms its ack.
 // The caller no longer writes an AckWait closure or the subscription
 // ritual see docs/examples/agent-composition.md for that older shape.
@@ -161,6 +162,6 @@ func main() {
 ```
 
 The `agentrun.Options` literal holds everything the run needs. `New`
-returns a `*Runner`, and its `Bus()` method exposes the subscribed bus
-for caller additions. The run flows through both steps without any
-hand-written wait closure or subscription code.
+returns a `*Runner`, and its `Bus()` method exposes the built bus.
+Callers add handlers through `Bus().Subscribe`. The run flows through
+both steps without any hand-written wait closure or subscription code.

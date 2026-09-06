@@ -3,23 +3,23 @@
   "packages": {
     "envfile": {
       "reason": "Dotenv parser leaf. No package reads its output yet.",
-      "target": "not yet planned",
-      "permanent": false
+      "target": "external application code",
+      "permanent": true
     },
     "workspace": {
-      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section. Its own import, secretpath, is reachable only through workspace, so a future consumer must take both.",
-      "target": "not yet planned",
-      "permanent": false
+      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section. No internal caller remains. Its own import, secretpath, is reachable only through workspace, so a future consumer must take both.",
+      "target": "external application code",
+      "permanent": true
     },
     "longtermmemory": {
-      "reason": "Ported from mivia-agent as a leaf package. No package wires it into a running agent yet.",
-      "target": "not yet planned",
-      "permanent": false
+      "reason": "Ported from mivia-agent as a leaf package. The intended SDK hook is an agentloop system-prompt hook rendering CoreFrame plus a subagent save/search tool; until then no package wires it into a running agent.",
+      "target": "external application code",
+      "permanent": true
     },
     "mcp": {
       "reason": "MCP client leaf. Docs/plans/mcp.md ships it ahead of a caller by design, matching the tools and ledger precedent.",
-      "target": "not yet planned",
-      "permanent": false
+      "target": "external application code",
+      "permanent": true
     },
     "skills": {
       "reason": "Skill registry leaf; mivia-agent's B.0.5 internal/sdkadapter/skill.go bridges it as the first consumer, but no SDK-internal package imports it yet.",
@@ -27,7 +27,7 @@
       "permanent": true
     },
     "agentloop": {
-      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found mivia-agent's loop covers steering, per-batch tool-result shaping, dedup, work-limit budgets with graceful conclude, and hook-injection framing that agentloop has no equivalent for; agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller.",
+      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller.",
       "target": "external application code (outside this module), e.g. mivia-agent's internal/agent package once it adapts to agentloop.Options",
       "permanent": true
     },
@@ -52,8 +52,8 @@
       "permanent": true
     },
     "e2e": {
-      "reason": "End-to-end scenario harness. Its own e2e_test subdirectory is the only intended caller, by design.",
-      "target": "e2e/e2e_test scenarios only",
+      "reason": "End-to-end scenario harness. Its intended callers are its own e2e_test subdirectory and subagent/subagent_test/helpers_test.go, both test code, by design.",
+      "target": "e2e/e2e_test scenarios and subagent/subagent_test/helpers_test.go",
       "permanent": true
     },
     "runconfig": {

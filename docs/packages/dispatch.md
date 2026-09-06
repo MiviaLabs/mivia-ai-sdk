@@ -15,7 +15,8 @@ import. The exported surface below mirrors `api/dispatch.txt`.
 - `Options` — configures `New`. `ID` becomes each built ack's `From`.
   `Room` gates admission. `Resolve` looks up the `Handler` that owns
   an admitted message. `Bus` receives `MessageDeliveredEvent` and
-  `MessageAckedEvent`; built and subscribed when nil. `Ledger`,
+  `MessageAckedEvent`; built when nil; no handler is subscribed, and
+  callers add handlers through `Bus().Subscribe`. `Ledger`,
   `ReplayLease`, and `ReplayCapacity` configure replay protection; see
   "Replay protection" below. `MaxBodyBytes` caps one request body,
   enforced through `http.MaxBytesReader`. Zero resolves to
@@ -32,9 +33,8 @@ import. The exported surface below mirrors `api/dispatch.txt`.
   `ReplayLease`, and `ReplayCapacity`, in that order, and returns the
   first sentinel that fails.
 - `New(opts Options)` — validates `opts`, builds a `Bus` when
-  `opts.Bus` is nil, subscribes a no-op handler for
-  `MessageDeliveredEvent` and `MessageAckedEvent` on the resolved bus,
-  and returns the wired `Endpoint`.
+  `opts.Bus` is nil, and returns the wired `Endpoint`. No handler is
+  subscribed; callers add handlers through `Bus().Subscribe`.
 - `(*Endpoint).Handler()` — returns an `http.Handler` that serves POST
   requests with NDJSON bodies.
 - `Send(ctx, url, msgs)` — posts `msgs` as one NDJSON request and
@@ -161,6 +161,12 @@ default during normal operation.
   `taskrun.ErrTaskBlocked`, or `ledger.ErrLeaseActive` for the
   message's replay key. Pinned by
   `dispatch_test/replay_test.go:TestReplayHandlerRunsOnce`.
+- `ledger.ErrNotClaimed` — answered as a `"replay:"` error line like
+  the sentinels above. It covers the race window between
+  `taskrun.Run`'s State check and its Claim call: a concurrent
+  duplicate can pass the State check while the record still reads
+  Pending, then find it already Completed when its own Claim runs,
+  which Claim reports as `ErrNotClaimed`.
 - `ErrBadReplayLease` ("dispatch: replay lease and capacity must not
   be negative") — `Options.Validate`/`New` returns it for a negative
   `ReplayLease`, a `ReplayLease` under one second, or a negative

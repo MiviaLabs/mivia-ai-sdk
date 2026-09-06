@@ -15,9 +15,9 @@ import (
 const concurrentMutatePostTakeoverSamples = 20
 
 // subCheckTimeout is the per-check deadline the contended-takeover
-// check widens a deadline-less parent ctx to. 30s clears the mivia-agent
-// SQLITE_BUSY retry table (internal/storage/sqlite_busy_retry.go:20-27)
-// plus overhead under parallel invariants, while keeping a real bug
+// check widens a deadline-less parent ctx to. 30s clears a slow
+// backend's busy-retry budget (~16s) plus overhead under parallel
+// invariants, while keeping a real bug
 // (non-context timeout) from being silently masked by t.Skip.
 const subCheckTimeout = 30 * time.Second
 
@@ -154,8 +154,7 @@ func CheckTakeoverFencesPreviousOwner(t testing.TB, ctx context.Context, s Scena
 // the hold under the Takeover-returned token before returning.
 //
 // A parent ctx with no deadline is widened to subCheckTimeout (30s)
-// so a slow SQLITE_BUSY retry table (mivia-agent
-// internal/storage/sqlite_busy_retry.go, ~16s of retry budget) does
+// so a slow backend's busy-retry budget (~16s) does
 // not wedge a CI run that interleaves many invariants concurrently.
 // A Takeover that exhausts the sub-deadline and reports a
 // context.DeadlineExceeded is reported via t.Skip rather than

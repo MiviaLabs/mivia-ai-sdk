@@ -44,7 +44,7 @@ Outside:
 
 ## Correctness fix: normalize Scope before every map key and hash use
 
-Status: planned, not yet built. Build order and refinements live in
+Status: shipped. Commit 201cec5. Build order and refinements live in
 the normalization addendum below.
 
 ### Fix goal
@@ -621,9 +621,7 @@ so no behavior changes today.
 
 ## Addendum: a both-core near-duplicate pair must never merge
 
-Status: planned, not yet built.
-
-### Problem
+Status: shipped. Commit 9e02930.
 
 `mergePassLocked` in `longtermmemory/consolidate.go:43` picks the
 merge survivor with one condition:
@@ -788,7 +786,7 @@ Positive controls already shipped, unaffected by this fix:
 
 ## Addendum: build order for the scope-normalization fix
 
-Status: planned, not yet built. This addendum refines the
+Status: shipped. Commit 201cec5. This addendum refines the
 "Correctness fix" section above. That section stays the source of
 truth for the rule. This addendum adds the missed site, extra test
 rows, and the build order.

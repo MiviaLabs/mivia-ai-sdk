@@ -3125,7 +3125,7 @@ helper and adds no import. The coverage floor stays at 85 percent for
 
 ## Addendum: pair Observe's estimate to its own request
 
-Status: planned, not yet built. Companion to
+Status: shipped. Companion to
 `docs/plans/contextplan.md`'s "Correctness fix: Calibrated.Observe
 drops the shared-lastEst pairing". That fix changes
 `contextplan.Calibrated.Observe`'s signature from `Observe(actual

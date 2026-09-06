@@ -2,8 +2,8 @@
 // composition layer. It builds the same plan, identity, registry, and
 // store the composition example builds by hand, then wires all of them
 // into one agentrun.Options literal. agentrun.New validates the matrix,
-// the tool names, and the option combinations, subscribes the no-op
-// event handlers the bus requires, and builds the ack chain that runs
+// the tool names, and the option combinations, builds the event bus,
+// and builds the ack chain that runs
 // each gated step's tool, stores its result, and confirms its ack.
 // The caller no longer writes an AckWait closure or the subscription
 // ritual see docs/examples/agent-composition.md for that older shape.

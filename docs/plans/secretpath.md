@@ -1,5 +1,7 @@
 # secretpath plan
 
+Status: shipped.
+
 ## Goal
 
 `secretpath` matches a filesystem path against a configured list of
@@ -239,17 +241,14 @@ index is out of range.
 
 ## Blast radius
 
-- No production caller of `secretpath` exists in this module. The
-  grep over `*.go` finds the package itself and its test only.
-- `secretpath/secretpath_test/` is the only affected code. Every
+- `workspace` imports `secretpath` (`workspace/workspace.go`) and
+  uses it as the deny policy, through `Options.Deny`. The glob-aware
+  directory match ships (`secretpath/matcher.go`).
+- `secretpath/secretpath_test/` is the only other affected code. Every
   existing case keeps its result, because each directory pattern in
   it has a metacharacter-free body.
 - `docs/packages/secretpath.md` needs no wording change. Its
   Invariants section already states the contract this fix delivers.
-- `docs/plans/workspace.md` change two wires `secretpath` into
-  `Workspace` as a deny policy, through `Options.Deny`. That wiring
-  is not built yet. This fix must land before it, so the fail-open
-  hole does not reach the file tools.
 - The secret-path denial change carries a `secretpath` delta of none.
   That stays true, because the exported surface is unchanged.
 

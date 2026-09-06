@@ -50,7 +50,8 @@ type Options struct {
 	Machine *machine.Definition
 	// Receiver is the ack From identity. It defaults to Agent.Signer().
 	Receiver *identity.Identity
-	// Bus receives the agent's events. Built and subscribed when nil.
+	// Bus receives the agent's events. Built when nil; no handler is
+	// subscribed. Callers add handlers through Bus().Subscribe.
 	Bus *events.Bus
 	// Tools drives the built ack chain, which runs tools by step ID.
 	Tools *tools.Registry

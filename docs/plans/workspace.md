@@ -2,6 +2,10 @@
 
 ## Goal
 
+Status note: the `subagent` file-tool toolbox that wrapped this
+package was removed as product surface. `workspace` currently has no
+internal caller; see `policy/pending_wiring.json`.
+
 `workspace` confines all filesystem access to one root directory, so
 a tool or agent that reads and writes files cannot escape its
 sandbox through traversal or a symlink. The confinement runs at the

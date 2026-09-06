@@ -19,7 +19,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-four packages and the import edges
+The diagram shows the forty-five packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextstate`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,
@@ -76,6 +76,7 @@ flowchart LR
     agentloop --> contextplan
     agentloop --> contextsummary
     agentloop --> toolcallctx
+    contextsummary --> provider
     toolcallctx --> provider
     usage --> provider
     providerregistry --> provider

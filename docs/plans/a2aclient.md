@@ -202,7 +202,7 @@ layer wires in a real transport.
 
 ### Gap fix: exported sentinel errors
 
-Status: planned, not yet built. This package returns every error as
+Status: shipped. Commit 2b2d40b. This package returns every error as
 an inline `errors.New` or `fmt.Errorf` string today. No caller can
 match a failure with `errors.Is`. This addendum adds one exported
 sentinel per distinct failure condition and updates the matching call
@@ -637,7 +637,7 @@ sentinel:
 
 ## Addendum: Loopback extraction to a2aloopback
 
-Status: planned, not yet built.
+Status: shipped.
 
 ### Problem
 

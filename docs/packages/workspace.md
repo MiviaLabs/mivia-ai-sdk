@@ -140,7 +140,9 @@ Four limits apply to `Options.Deny`. Each one lives in the
   compiles the pattern list with `secretpath.NewMatcher` and handles a
   bad pattern where it wrote it.
 
-`subagent` wraps `workspace` as file tools.
+The `subagent` file-tool wrapper around `workspace` was removed as
+product surface. `workspace` currently has no internal caller; see
+`policy/pending_wiring.json`.
 
 ## Wire contract
 

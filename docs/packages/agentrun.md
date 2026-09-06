@@ -39,7 +39,8 @@ mirrors `api/agentrun.txt`.
   It builds a bus when `Options.Bus` is nil.
 - `Runner.Run(ctx, threadID, in)` — drives the wired agent through the
   wired machine. An empty `threadID` fails before any block runs.
-- `Runner.Bus()` — returns the resolved event bus `New` subscribed.
+- `Runner.Bus()` — returns the resolved event bus `New` built. Callers
+  add handlers through `Bus().Subscribe`.
 - `ValidateMatrix(plan, m)` — checks the plan's transition rows exist in
   `m`. Static; it does not prove the walk never aborts.
 - `Artifacts.Set(step, value)` — stores `value` under `step`.

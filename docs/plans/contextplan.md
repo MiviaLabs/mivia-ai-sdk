@@ -869,9 +869,7 @@ In `contextplan/contextplan_test/compact_test.go`:
 
 ## Correctness fix: Calibrated.Observe drops the shared-lastEst pairing
 
-Status: planned, not yet built.
-
-### Fix goal
+Status: shipped.
 
 `Observe` must score the exact estimate its caller is reporting
 actual usage for, never whatever estimate a `Calibrated`'s internal

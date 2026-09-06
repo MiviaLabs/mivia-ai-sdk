@@ -17,11 +17,13 @@ Inside:
   `Decode`, `VerifySignature`, `Room.Accepts`, resolve, handle,
   build the ack (`NewAck`, `Confirm`, `Encode`).
 - `agent.EmitMessageDelivered` after signature verification and
-  `agent.EmitMessageAcked` after a confirmed ack. `New` always
-  subscribes no-op handlers for both event names, so neither call
-  can fail from a missing subscriber. Both calls are best-effort
-  diagnostics, not ladder stages: the endpoint ignores their error
-  return and never fails a line because of them.
+  `agent.EmitMessageAcked` after a confirmed ack. `New` builds the
+  bus when nil; no handler is subscribed. Callers add handlers
+  through `Bus().Subscribe`. Neither `agent.EmitMessageDelivered` nor
+  `agent.EmitMessageAcked` fails on an unobserved name:
+  `events.Bus.Emit` accepts an event with no subscriber. Both calls
+  are best-effort diagnostics, not ladder stages: the endpoint
+  ignores their error return and never fails a line because of them.
 - The error line: one JSON object `{"error":"..."}` for a line that
   fails decode, verify, admission, resolve, or handle (including
   `NewAck` construction). The stream stays open; later lines still
@@ -68,7 +70,7 @@ type Options struct {
 	ID      string // this endpoint's identity; the ack's From
 	Room    *room.Room
 	Resolve func(ctx context.Context, m envelope.Message) (Handler, error)
-	Bus     *events.Bus // built and subscribed when nil
+	Bus     *events.Bus // built when nil; no handler is subscribed
 }
 
 func New(opts Options) (*Endpoint, error)
@@ -110,10 +112,11 @@ const DefaultMaxBodyBytes int64 = 1 << 20
   memory before any line runs the ladder.
 - `New` rejects a blank `ID`, a nil `Room`, and a nil `Resolve`, in
   that order, before any wiring.
-- `New` subscribes no-op handlers to the agent event names on the
-  resolved bus, so `EmitMessageDelivered` and `EmitMessageAcked`
-  never see an unsubscribed-name error. `Send` performs no
-  subscription; it reads replies only.
+- `New` builds the resolved bus when nil; no handler is subscribed.
+  Callers add handlers through `Bus().Subscribe`.
+  `EmitMessageDelivered` and `EmitMessageAcked` never fail on an
+  unobserved name: `events.Bus.Emit` accepts an event with no
+  subscriber. `Send` performs no subscription; it reads replies only.
 - Per line, the reachable ladder runs in a fixed order and fails
   fast: decode, then verify, then admit, then resolve, then handle
   (including `NewAck` construction). Each reachable failure answers
@@ -177,7 +180,7 @@ uses `httptest.NewServer` unless noted otherwise:
 
 ### Gap fix: Send matches ErrBadMethod and ErrBadRequest
 
-Status: planned, not yet built. `ErrBadMethod` and `ErrBadRequest` are
+Status: shipped. Commit 2b2d40b. `ErrBadMethod` and `ErrBadRequest` are
 already exported sentinels, but `Endpoint.Handler`'s `http.Handler`
 only ever writes them through `http.Error(w, ErrX.Error(), code)`. An
 `http.Handler` cannot return a Go `error`, so no Go caller reaches
@@ -271,7 +274,7 @@ Test, in `dispatch/dispatch_test/client_test.go`:
 
 ### Gap fix: replay protection for the receive ladder
 
-Status: planned, not yet built. `Endpoint.processLine`
+Status: shipped. Commit 565fe04. `Endpoint.processLine`
 (`dispatch/ladder.go`) has no idempotency check. A validly signed
 message replayed by the network, a client retry, or a captured
 request runs `resolve` and `Handler.Handle` again on every replay,
@@ -380,8 +383,8 @@ for `agent.EmitMessageDelivered`/`EmitMessageAcked`.
 
 This follows the "nil means build one" pattern for `Options.Ledger`.
 `Options.Bus`'s own default build is behavior-neutral: nothing
-subscribes to a fresh bus except this package's two no-op diagnostic
-handlers, so a caller sees identical behavior whether it supplies
+subscribes to a fresh bus except this package's two placeholder
+diagnostic handlers, so a caller sees identical behavior whether it supplies
 `Bus` or not. `Options.Ledger`'s default build is not neutral in the
 same way: it changes what the endpoint rejects, and it commits real
 memory sized by `ReplayCapacity`. The `Options.Bus` precedent justifies
@@ -795,9 +798,9 @@ Every test above runs under `go test -race ./dispatch/...`.
 - This work lands as its own commit, after the `ledger` commit and the
   `taskrun` doc commit.
 
-## Addendum: drop the no-op subscriptions in New
+## Addendum: drop the placeholder bus handlers in New
 
-`New` no longer subscribes no-op handlers for `MessageDeliveredEvent`
+`New` no longer subscribes placeholder bus handlers for `MessageDeliveredEvent`
 and `MessageAckedEvent`. `events.Bus.Emit` returns nil for a name with
 no subscriber, so the workaround is dead weight. Delete the loop, the
 `noop` closure, and the `New` doc-comment sentence about it at

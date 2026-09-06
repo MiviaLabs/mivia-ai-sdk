@@ -8,8 +8,9 @@ and scripts/check_plan.py require.
 
 Store and fetch context blobs by content address. `Put` computes the
 `sha256:` ref with `envelope.ContextRef` and returns it. `Get` fetches
-a blob by that ref. A size budget bounds the store; a `Put` that would
-exceed the budget fails instead of growing past it.
+a blob by that ref. A size budget bounds the store. A `Put` larger
+than the whole budget fails; a `Put` that fits evicts the oldest blobs
+first.
 
 ## Scope
 

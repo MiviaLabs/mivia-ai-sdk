@@ -7,6 +7,9 @@ Provide context-attached access to the current in-flight `provider.ToolCall` dur
 ## Scope
 
 The package contains context getter and setter helpers for attaching and retrieving `provider.ToolCall` values.
+It also holds `BatchOrder`, the per-turn dispatch ledger, with two contracts.
+A dispatched index settles exactly once, whatever ends the call.
+One settlement wakes every current waiter exactly once, through the swapped `Changed` channel.
 All execution logic and loop orchestration remain outside this package.
 
 ## API

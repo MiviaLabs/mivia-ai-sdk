@@ -80,6 +80,48 @@ func SendTool(name string, box *Mailbox, id *identity.Identity) tools.Tool
 func InboxTool(name string, box *Mailbox) tools.Tool
 ```
 
+### Command vocabulary
+
+The JSON-command tools decode one `*Command` type each and dispatch on
+its `Op` field. The constants and command types below match
+`api/subagent.txt`.
+
+Room commands (`RoomCommand`):
+
+- `OpAdmit` ("admit") — adds a member, as `By` or the bound actor.
+- `OpRemove` ("remove") — removes a member, as `By` or the bound actor.
+- `OpPromote` ("promote") — promotes a member to admin.
+- `OpMembers` ("members") — lists every member id, comma-joined.
+- `OpIsMember` ("ismember") — reports whether `ID` holds membership.
+
+Heartbeat commands (`HeartbeatCommand`):
+
+- `OpBeat` ("beat") — records one beat for `ID` now.
+- `OpAlive` ("alive") — reports whether `ID` is inside the timeout.
+- `OpDead` ("dead") — lists every silent id, comma-joined.
+
+Discovery commands (`DiscoveryCommand`):
+
+- `OpMatch` ("match") — parses `Card` and reports the capability `Need` matches.
+
+Memory commands (`MemoryCommand`):
+
+- `OpPut` ("put") — stores `Data` and returns its content-addressed ref.
+- `OpGet` ("get") — returns the bytes stored under `Ref`.
+
+Scheduler commands (`SchedulerCommand`):
+
+- `OpEvery` ("every") — schedules the bound job on a fixed interval.
+- `OpAt` ("at") — schedules the bound job at fixed times.
+- `OpCancel` ("cancel") — cancels one scheduled job.
+
+Ledger commands (`LedgerCommand`):
+
+- `OpRun` ("run") — records one completed task: admit, claim, complete.
+- `OpState` ("state") — reports a key's current status, or absent.
+
+A command naming an unknown operation fails with `ErrBadCommand`.
+
 `policy/layers.json` grants subagent the
 `["agent", "agentrun", "channel", "discovery", "envelope", "events",
 "flow", "heartbeat", "identity", "ledger", "machine", "memory",

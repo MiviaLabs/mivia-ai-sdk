@@ -1,6 +1,6 @@
 # Plan: a2aloopback
 
-Status: planned, not yet built. Extracts `a2aclient/loopback.go` into
+Status: shipped. Commit cc4d060. Extracts `a2aclient/loopback.go` into
 its own package. See `docs/plans/a2aclient.md`'s "Loopback extraction"
 addendum for the reasoning.
 
@@ -34,10 +34,11 @@ in `a2aloopback/loopback.go` itself.
 No production package may import `a2aloopback`. It exists to run
 inside another package's own test files or nested `_test` directory,
 the same convention `durablefence` already uses in this module (see
-`durablefence/doc.go`). `a2aloopback/doc.go` states this rule; no gate
-enforces it mechanically, the same gap `durablefence` already accepts,
-because `scripts/check_deps.py` exempts every `_test.go` file and
-never scans a nested `_test` directory.
+`durablefence/doc.go`). `a2aloopback/doc.go` states this rule. The
+import policy enforces it: `policy/layers.json` grants no
+`a2aloopback` import edge to any package, so `scripts/check_deps.py`
+rejects any production import. Test files stay exempt from the deps
+gate.
 
 ## API
 

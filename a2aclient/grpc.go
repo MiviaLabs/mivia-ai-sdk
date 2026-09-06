@@ -31,8 +31,8 @@ var ErrNoTask = errors.New("a2aclient: send did not return a task")
 // errors.Is.
 var ErrNoResultMessage = errors.New("a2aclient: task carries no result message")
 
-// ErrNoTextPart reports a Result call whose result message carries no
-// TextPart. Test with errors.Is.
+// ErrNoTextPart reports a Result call whose result message carries
+// no TextPart and no DataPart. Test with errors.Is.
 var ErrNoTextPart = errors.New("a2aclient: result message carries no text part")
 
 // newGRPCTransport dials baseURL with creds and wraps the resulting

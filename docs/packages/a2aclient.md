@@ -132,7 +132,9 @@ caller matches one with `errors.Is`.
   `a2aclient/grpc_internal_test.go`.
 - `ErrNoTextPart` (`"a2aclient: result message carries no text part"`,
   in `a2aclient/grpc.go`): the internal gRPC transport's `Result`
-  returns it when the result message carries no `TextPart`. Pinned by
+  returns it when the result message carries no `TextPart` and no
+  `DataPart`; a `DataPart`-only result takes the one-release fallback
+  until v0.4.0 instead. Pinned by
   `TestGRPCTransportResultRejectsNoTextPart` in
   `a2aclient/grpc_internal_test.go`.
 - `ErrNoTLSConfig` (`"a2aclient: TLS config is required"`): `NewWithTLS`

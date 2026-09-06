@@ -15,11 +15,16 @@ var (
 	ErrUnknownInternal = errors.New("runconfig: unknown internal tool")
 	// ErrBadDocument names any malformed or rejected document shape.
 	ErrBadDocument = errors.New("runconfig: bad document")
+	// ErrCallerBuilt names an internal Kind a document cannot build.
+	// Load wraps it inside ErrBadDocument. Test with errors.Is.
+	ErrCallerBuilt = errors.New("runconfig: internal kind stays caller-built")
 )
 
 // Kind names one subagent internal tool family. A step's internal
-// binding names one Kind; the caller builds the tool through the
-// matching subagent helper and sets it on Blocks.
+// binding names one Kind. The document's internal section builds six
+// wireable Kinds at Load; the caller builds the rest through the
+// matching subagent helper and sets them on Blocks. See
+// runconfig/internal.go for the split.
 type Kind string
 
 // The internal tool kinds a document may name.
@@ -54,9 +59,10 @@ var kinds = map[Kind]bool{
 	AsToolKind:           true,
 }
 
-// Blocks holds one tools.Tool per internal Kind. The caller builds
-// each tool through the matching subagent helper and sets it before
-// Runner. Safe for concurrent use.
+// Blocks holds one tools.Tool per internal Kind. Load fills the six
+// wireable Kinds from the document's internal section; the caller
+// sets the caller-built Kinds, or overrides a wireable one, through
+// Set. Last write wins. Safe for concurrent use.
 type Blocks struct {
 	mu sync.Mutex
 	m  map[Kind]tools.Tool

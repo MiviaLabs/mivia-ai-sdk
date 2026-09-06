@@ -73,18 +73,24 @@ type wireBudget struct {
 	MaxEvents int `json:"max_events"`
 }
 
-// wireDocument is the whole JSON document.
+// wireDocument is the whole JSON document. Internal maps one Kind
+// name to one config entry; a duplicate key follows encoding/json map
+// semantics, so the last value wins.
 type wireDocument struct {
-	Machine *wireMachine `json:"machine"`
-	Plan    *wirePlan    `json:"plan"`
-	Options *wireOptions `json:"options"`
-	Tools   []string     `json:"tools"`
+	Machine  *wireMachine            `json:"machine"`
+	Plan     *wirePlan               `json:"plan"`
+	Options  *wireOptions            `json:"options"`
+	Tools    []string                `json:"tools"`
+	Internal map[string]wireInternal `json:"internal"`
 }
 
 // Definition is the resolved document: the machine, the plan, the
-// options, the tool set, and the step bindings. Load fills every
-// field except Blocks and External, which the caller sets before
-// Runner. Every field is exported for inspection.
+// options, the tool set, the step bindings, and the document-built
+// internal tools. Load fills Plan, Machine, Options, Tools,
+// Bindings, and Blocks' wireable Kinds. Before Runner, the caller
+// sets Options.Agent, registers the external tools on External, and
+// adds the caller-built Kinds on Blocks. Every field is exported for
+// inspection.
 type Definition struct {
 	// Plan is the resolved step graph.
 	Plan *flow.Definition
@@ -96,7 +102,8 @@ type Definition struct {
 	Tools []string
 	// Bindings holds one entry per bound step, in plan order.
 	Bindings []Binding
-	// Blocks holds the caller-set internal tool sources.
+	// Blocks holds the internal tool sources: the document-built
+	// wireable Kinds plus caller-set entries.
 	Blocks *Blocks
 	// External holds the caller-set external tools by name.
 	External *tools.Registry
@@ -106,9 +113,11 @@ type Definition struct {
 // malformed JSON, a non-object root, a step with both bindings, a step
 // that sets sub beside tool or internal, an empty step ID, an
 // undeclared external tool, a blank or duplicate tool name, an unknown
-// internal kind, an unknown when value, and any rejection from
-// machine.New or flow.New. It wraps every failure in ErrBadDocument.
-// A present options.budget maps onto Options.Budget as a
+// internal kind, an unknown when value, an internal section key a Kind
+// constant does not name or a caller-built Kind names, and an invalid
+// internal section config. It also wraps any rejection from machine.New,
+// flow.New, or an internal builder. It wraps every failure in
+// ErrBadDocument. A present options.budget maps onto Options.Budget as a
 // *contextbudget.Limits, with no range check; Runner's call into
 // agentrun.New rejects a negative field. The loader never reads the
 // environment.
@@ -153,6 +162,9 @@ func Load(data []byte) (*Definition, error) {
 	}
 	def.Plan = plan
 	def.Bindings = bindings
+	if err := buildInternal(def, doc.Internal); err != nil {
+		return nil, err
+	}
 	return def, nil
 }
 

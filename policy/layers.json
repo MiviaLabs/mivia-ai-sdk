@@ -131,7 +131,11 @@
       "agentrun",
       "contextbudget",
       "flow",
+      "heartbeat",
+      "ledger",
       "machine",
+      "memory",
+      "room",
       "subagent",
       "tools",
       "trace"

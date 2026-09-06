@@ -26,6 +26,13 @@ func FuzzLoad(f *testing.F) {
 		  "retry": {"max_attempts": 1, "base_delay": "1ms", "max_delay": "1ms"},
 		  "loop": {"max": 2},
 		  "sub": {"steps": [{"id": "inner", "to": "d"}]}}]}}`,
+		`{"machine": {"initial": "queued", "transitions": [
+		  {"from": "queued", "to": "done", "trigger": "run"}]},
+		  "plan": {"steps": [{"id": "beat", "to": "done",
+		  "payload": "{\"op\":\"beat\",\"id\":\"w1\"}",
+		  "internal": "heartbeat"}]},
+		  "internal": {"heartbeat": {"timeout": "30s"}},
+		  "tools": []}`,
 	}
 	for _, s := range seeds {
 		f.Add([]byte(s))

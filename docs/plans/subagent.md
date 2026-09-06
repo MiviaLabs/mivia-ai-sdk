@@ -848,5 +848,32 @@ package. One commit per fix keeps a revert granular.
 Run `make verify`, `go test -race ./subagent/...`, and
 `go test ./e2e/...`. `policy/layers.json` is unchanged: the
 `subagent` row already lists `envelope`. Hold `subagent` coverage at
-or above 85 and the mutation floor at 94. No conformance vector
+85 or above and the mutation floor at 94. No conformance vector
 changes: `envelope` message semantics are untouched.
+
+## Addendum: runconfig wiring
+
+Status: planned, not shipped.
+
+`runconfig` becomes `subagent`'s first internal production caller. Its
+document `internal` section builds six tool families at `Load` time:
+`DiscoveryTool`, `FlowTool`, `HeartbeatTool`, `LedgerTool`,
+`MemoryTool`, and `RoomTool`. The other families keep their
+caller-built shape: their constructors take a Go function value or a
+live object a JSON document cannot encode. The wiring contract, the
+document grammar, and the conformance test live in
+`docs/plans/runconfig.md`'s "Document-built internal tools" addendum.
+
+No `subagent` symbol changes. `make api-update` must produce no
+`api/subagent.txt` diff. No new `subagent` test ships; the existing
+suite covers the constructors, and `runconfig`'s conformance test pins
+each wireable `Kind` to its constructor.
+
+### Addendum verification
+
+- The builder removes `subagent`'s entry from
+  `policy/pending_wiring.json` in the same change as the `runconfig`
+  import. The entry's reason names this wiring as the expected caller.
+- `make verify` passes. `subagent` holds the 85 coverage floor and the
+  94 mutation floor.
+- `go test -race ./subagent/... ./runconfig/...` passes.

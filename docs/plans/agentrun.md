@@ -342,3 +342,21 @@ that file would grow past its current focus.
   floor.
 - `go test -race ./agentrun/...` passes.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
+## Addendum: schema probe in the ack chain
+
+`Runner.chain` resolves the step tool and asserts `tools.SchemaTool`
+directly to gate payload decode. Change the gate to the published
+probe:
+
+- `if _, ok := tools.SchemaOf(t); ok` gates the decode branch.
+- The decode call then reads `t` as `tools.SchemaTool`. The assertion
+  cannot fail after a true probe.
+
+This lands in the same change as the `runconfig` step tool collapse.
+See `docs/plans/runconfig.md`, "Addendum: one step tool wrapper", for
+the coupling analysis and the shared test and verification duties. The
+edit is behavior-preserving: `tools.SchemaOf` returns true exactly
+when the tool implements `tools.SchemaTool`. Existing tests in
+`agentrun/agentrun_test/schema_decode_test.go` pin the decode and
+plain-payload paths; they stay green. No exported surface changes and
+no `api/` diff is expected.

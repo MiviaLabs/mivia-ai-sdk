@@ -31,11 +31,6 @@
       "target": "external application code (outside this module), e.g. mivia-agent's internal/agent package once it adapts to agentloop.Options",
       "permanent": true
     },
-    "subagent": {
-      "reason": "Blocks-as-tools composition package. docs/plans/runconfig.md and policy/layers.json both describe a runconfig import of subagent; runconfig's code does not import it yet.",
-      "target": "runconfig",
-      "permanent": false
-    },
     "a2aack": {
       "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. An external application wires it to a flow.Step, not another SDK package.",
       "target": "external application code (outside this module)",

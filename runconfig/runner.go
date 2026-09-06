@@ -9,8 +9,10 @@ import (
 
 // Runner builds a validated agentrun.Runner from the loaded
 // definition. The caller must first set Options.Agent, register the
-// document's external tools on External, and set every bound internal
-// Kind on Blocks. Runner resolves each binding, builds one
+// document's external tools on External, and ensure every bound
+// internal Kind is on Blocks: Load sets the wireable Kinds the
+// document's internal section declares, and the caller sets the
+// caller-built Kinds. Runner resolves each binding, builds one
 // tools.Registry keyed by step ID, sets Options.Machine and
 // Options.Tools, and passes Options to agentrun.New. A nil Agent
 // yields agentrun.ErrNoAgent; a missing external tool yields

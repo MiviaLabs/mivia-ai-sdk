@@ -588,3 +588,400 @@ production code never imported `subagent`'s file tools directly; only
 `runconfig_test`'s fixtures did, and those fixtures now use a minimal
 fake `tools.Tool` per removed `Kind` to prove `Blocks.Set`/dispatch
 alone.
+
+## Addendum: document-built internal tools
+
+Status: planned, not shipped. This addendum lands the `runconfig` to
+`subagent` wiring and closes `subagent`'s `policy/pending_wiring.json`
+entry. It also replaces the caller-builds-`Blocks` step the `Kind` doc
+comment in `runconfig/blocks.go` still describes.
+
+### Addendum goal
+
+The document's `internal` section builds a wireable `subagent` tool at
+`Load` time. A step's `"internal"` binding then resolves with no
+caller-built block. Each `Kind` resolves to its `subagent` constructor
+through code, and a conformance test pins the link.
+
+### Addendum scope
+
+Inside:
+
+- One new optional top-level document section, `internal`. Each key
+  names one `Kind`. Each value is that `Kind`'s configuration object.
+- One new file `runconfig/internal.go`. It holds the `wireInternal`
+  config struct, the `builders` table, the `callerBuilt` set, and the
+  `buildInternal` step `Load` calls.
+- The `builders` table maps each wireable `Kind` to a builder function.
+  Each builder body is exactly one `subagent` constructor call. This
+  table is the mechanical link the doc comment's prose link replaces.
+- One new sentinel, `ErrCallerBuilt`. `Load` returns it wrapped in
+  `ErrBadDocument` when the document declares a caller-built `Kind`.
+- Six wireable Kinds: `discovery`, `flow`, `heartbeat`, `ledger`,
+  `memory`, `room`. Section "Addendum API" pins each one's config and
+  constructor.
+- Six caller-built Kinds: `astool`, `channel`, `provider`,
+  `providerregistry`, `scheduler`, `trigger`. A document that declares
+  one is rejected. The caller keeps setting these through `Blocks.Set`.
+
+Outside:
+
+- Any dependency-injection grammar beyond the six flat config objects.
+  The config struct holds plain scalars only.
+- Mailbox kinds. No `Kind` constant names `SendTool` or `InboxTool`
+  today. They stay out until a caller names the need.
+- A durable store for `ledger`. A document-built ledger runs over
+  `ledger.NewMemStore`. A deployment needing durability sets its own
+  `LedgerTool` through `Blocks.Set`.
+- Any change to `subagent`. Its constructors keep their signatures.
+  `runconfig` composes them through their public API.
+- Any change to `Runner`, `Binding`, `Blocks`, or the step `"internal"`
+  field. A document without an `internal` section behaves exactly as
+  before.
+
+Design rules:
+
+- A `Kind` is wireable exactly when every constructor argument is a
+  document scalar or a value the loaded `Definition` already holds.
+  A Go function value or a live object makes the `Kind` caller-built.
+- Each caller-built constructor takes one such value:
+  `scheduler.Job`, `trigger.Condition` and `trigger.Action`,
+  `channel.Notifier`, `provider.Completer`,
+  `providerregistry.Registry` with `providerregistry.Retryable`, and
+  `*agentrun.Runner`. A JSON document cannot encode any of them.
+- `flow` binds the document's own `Definition.Plan` and
+  `Definition.Machine`. `flow.Run` walks a plan structurally and never
+  runs step tools, so a flow tool bound inside its own plan cannot
+  recurse.
+- The builder's `name` argument is the `Kind`'s own string value. Tool
+  error messages then name the family, for example
+  `heartbeat: subagent: bad command`.
+- `buildInternal` walks the section keys in sorted order. Rejections
+  stay deterministic when a document declares several bad keys.
+
+Precedence rules:
+
+- `Blocks.Set` after `Load` replaces a document-built tool. Last write
+  wins. Assigning a whole new `Blocks` to `Definition.Blocks` also
+  wins.
+- A declared wireable `Kind` with no bound step is allowed. The built
+  tool stays unused in `Blocks`.
+- A step binding a wireable `Kind` with no declaration still needs
+  `Blocks.Set`. `Runner` fails it with `ErrUnknownInternal`, exactly as
+  today.
+
+### Addendum API
+
+The `internal` section, one heartbeat binding:
+
+```json
+{
+  "machine": {"initial": "queued", "transitions": [
+    {"from": "queued", "to": "done", "trigger": "run"}
+  ]},
+  "plan": {"steps": [
+    {"id": "beat", "to": "done",
+     "payload": "{\"op\":\"beat\",\"id\":\"w1\"}",
+     "internal": "heartbeat"}
+  ]},
+  "internal": {"heartbeat": {"timeout": "30s"}},
+  "tools": []
+}
+```
+
+Per-Kind config and constructor:
+
+- `discovery` — no fields. Calls
+  `subagent.DiscoveryTool(name)`.
+- `flow` — no fields. Calls
+  `subagent.FlowTool(name, d.Plan, d.Machine, nil)`. A bus stays
+  caller-side; a caller wanting bus events uses `Blocks.Set`.
+- `heartbeat` — field `timeout`, a duration string parsed by
+  `time.ParseDuration`. Calls `heartbeat.New(timeout)`, then
+  `subagent.HeartbeatTool(name, monitor)`.
+- `ledger` — fields `actor`, a non-blank string, and `lease`, a
+  positive duration string. Calls
+  `ledger.New(ledger.NewMemStore(), nil)`, then
+  `subagent.LedgerTool(name, l, ledger.Actor(actor), lease)`.
+- `memory` — field `max_bytes`, a positive integer. Calls
+  `memory.New(maxBytes)`, then `subagent.MemoryTool(name, store)`.
+- `room` — fields `id`, `founder`, `actor`, three non-blank strings.
+  Calls `room.New(id, founder)`, then
+  `subagent.RoomTool(name, r, actor)`.
+
+The `wireInternal` struct holds every field above with `json` tags
+`timeout`, `max_bytes`, `id`, `founder`, `actor`, and `lease`. Each
+builder reads only its own fields. Unknown fields are ignored, matching
+the step grammar's rule. A duplicate section key follows
+`encoding/json` map semantics: the last value wins. Rejecting a
+duplicate key stays out of scope: map decoding cannot see the earlier
+key.
+
+Rejections, each wrapped in `ErrBadDocument`:
+
+- A section key no `Kind` constant names. The message says
+  `unknown internal` and names the key.
+- A caller-built key. The error also wraps `ErrCallerBuilt` through
+  `fmt.Errorf` with two `%w` verbs. The message names the key.
+- A duration field that fails `time.ParseDuration`, for `heartbeat` or
+  `ledger`. The message names the kind and the field.
+- A blank `actor`, for `room` or `ledger`, or a `lease` at or below
+  zero. The loader checks these three itself; no typed constructor sees
+  them.
+- Any rejection from `heartbeat.New`, `memory.New`, or `room.New`. The
+  loader forwards the constructor's own sentinel wrapped in
+  `ErrBadDocument`, matching the `machine.New` and `flow.New` rule.
+
+Exported surface delta, exactly one new symbol:
+
+```go
+// ErrCallerBuilt names an internal Kind a document cannot build.
+// Load wraps it inside ErrBadDocument. Test with errors.Is.
+var ErrCallerBuilt = errors.New("runconfig: internal kind stays caller-built")
+```
+
+- `make api-update` adds exactly one row, `var ErrCallerBuilt`, to
+  `api/runconfig.txt`, sorted between `var ErrBadDocument` and
+  `var ErrUnknownInternal`. Commit the lock diff in the same change.
+- `Load`'s doc comment gains the two new rejection cases in its
+  enumerated list.
+- The `Kind` and `Blocks` doc comments in `runconfig/blocks.go` stop
+  describing the caller-builds step for wireable Kinds. They state the
+  split: the document builds six Kinds, the caller sets the rest.
+
+Import policy:
+
+- The `runconfig` row in `policy/layers.json` gains `heartbeat`,
+  `ledger`, `memory`, and `room`. The `subagent` edge already exists.
+  This plan edit landed with the addendum.
+
+### Addendum tests
+
+The tests land first and fail. The implementation follows. New test
+names sit in backticks until they ship.
+
+New file `runconfig/runconfig_test/internal_test.go`, package
+`runconfig_test`:
+
+- `TestLoadBuildsInternalTools` — table-driven over the six wireable
+  Kinds. Each row loads a document with a valid `internal` declaration
+  and one step binding that Kind, sets only `Options.Agent`, and
+  asserts `Runner` builds. No `Blocks.Set` call appears anywhere. One
+  extra row pins the unknown-field rule: a `heartbeat` config carrying
+  a stray `max_bytes` key still loads, and `Runner` still builds.
+- `TestPartialInternalResolution` — two rows against a partially
+  filled `Blocks`. Row one: the document declares `heartbeat`, one
+  step binds `memory`, and no `Blocks.Set` runs. `Runner` returns
+  `ErrUnknownInternal` naming `memory`, proving a document-built entry
+  never masks an undeclared sibling Kind. Row two: the document
+  declares `heartbeat` and `memory`; the caller `Blocks.Set` a failing
+  stub over `memory` only. The machine runs `queued` to `mid` to
+  `done`; step `beat` binds `heartbeat` with `to` `mid`; step `mem`
+  needs `beat`, binds `memory`, with `to` `done`. Assert the run's
+  error carries the stub's sentinel and names step `mem`, and the
+  reached status is `done`. Flow fires the step's transition before
+  the confirm-time tool call, so the failed step's `to` is already
+  reached. The heartbeat step answered from the
+  document-built tool; the memory step ran the caller's stub. Each
+  binding resolves from its own source.
+- `TestLoadRejectsCallerBuiltInternal` — table-driven over the six
+  caller-built Kinds. Each row's document declares the Kind in the
+  `internal` section. Assert the error matches both
+  `errors.Is(err, ErrBadDocument)` and
+  `errors.Is(err, ErrCallerBuilt)`, and names the key.
+- `TestLoadRejectsBadInternalConfig` — table-driven: an unknown key, a
+  bad `heartbeat` duration, a zero `heartbeat` timeout, a zero
+  `memory` `max_bytes`, a blank `room` `id`, a blank `room` `founder`,
+  a blank `room` `actor`, a blank `ledger` `actor`, a bad `ledger`
+  lease string, and a zero `ledger` lease. Each row asserts
+  `ErrBadDocument` and the naming fragment.
+- `TestInternalToolsRunThroughRunner` — table-driven over the five
+  command Kinds (`discovery`, `heartbeat`, `ledger`, `memory`,
+  `room`). Each row's step payload carries one valid JSON command.
+  Each run completes with the final status `done`. This proves the
+  wired tool answers with a string result through a real runner.
+- `TestInternalFlowToolRunsOwnPlan` — one flow row. The document's own
+  machine and plan walk to a final status, and the run completes.
+- `TestCallerSetOverridesDocumentKind` — a document builds `memory`;
+  the caller then sets a failing stub through `Blocks.Set`. The run
+  fails with the stub's error, proving the caller's tool ran.
+
+New file `runconfig/internal_conformance_test.go`, package
+`runconfig`:
+
+- `TestKindBuildersPinConstructors` — the conformance pin. One table
+  with all twelve Kinds, each marked wireable or caller-built, each
+  wireable row carrying a reference builder that calls the `subagent`
+  constructor by hand. Assert four things: the table's kind set equals
+  the `kinds` map's key set; the `builders` table's key set equals the
+  table's wireable set; the `callerBuilt` set equals the table's
+  caller-built set; and for each wireable Kind, `fmt.Sprintf("%T", ...)`
+  of the document-built tool equals that of the reference call. A
+  rewired constructor or an undecided new `Kind` fails this test.
+- Behavior parity rides the same table. For each wireable Kind, run
+  the document-built tool and the reference tool on one valid command
+  input, and assert equal outputs.
+
+Extend `runconfig/runconfig_test/load_fuzz_test.go` seeds with one
+document carrying an `internal` section.
+
+No existing test changes. `TestRunnerResolvesNewKindsStub` and
+`TestGoldenDocumentRuns` keep passing unchanged. They prove the
+caller-built path still works when a document declares nothing.
+
+### Addendum verification
+
+- `make verify` passes. `runconfig` and `subagent` and the module
+  total hold the 85 coverage floor.
+- `go test -race ./runconfig/...` passes.
+- `make api-update` lands the `api/runconfig.txt` diff in the same
+  change as the code.
+- The builder removes `subagent`'s entry from
+  `policy/pending_wiring.json` in the same change. Once `runconfig`
+  imports `subagent`, `check_orphan_packages.py` reads the entry as
+  stale and fails until it is removed.
+- `docs/architecture.md` updates in the same change: the prose import
+  list near line 32 and the mermaid edges both gain `runconfig -->
+  heartbeat`, `runconfig --> ledger`, `runconfig --> memory`, and
+  `runconfig --> room`.
+- `docs/packages/runconfig.md` updates in the same change: the
+  `internal` section, `ErrCallerBuilt`, and the wireable split. The
+  Usage snippet near lines 160 to 172 builds a fresh `NewBlocks()` and
+  assigns it over `def.Blocks`; that pattern silently discards every
+  document-built tool once this change lands. Rewrite the snippet to
+  call `def.Blocks.Set(...)` after `Load` instead of replacing
+  `def.Blocks`.
+- `runconfig/doc.go` updates in the same change: the package doc's
+  enumeration of what the document names gains the `internal` section,
+  beside the machine rows, the plan steps, the options, and the
+  external tool set.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`,
+  `scripts/check_prose.py`, `scripts/check_labels.py`, and
+  `scripts/check_orphan_packages.py` pass.
+
+## Addendum: one step tool wrapper
+
+### Coupling and landing order
+
+`newStepTool` builds sixteen wrapper variants. Each variant exposes
+exactly the optional interfaces `inner` implements. Four direct
+interface assertions consume the wrapper:
+
+- `agentrun/wire.go` asserts `tools.SchemaTool` before decode.
+- `tools/registry_timeout.go` asserts `tools.ProfiledTool` for the
+  timeout backstop.
+- `tools/scope.go` reads privilege through `tools.IsPrivileged`, a
+  helper.
+- `agentloop/wire.go` reads the budget through `tools.ResultBudgetOf`,
+  a helper.
+
+No runconfig-built tool reaches `agentloop`'s own `tools.SchemaTool`
+assertion. No in-tree code routes a runconfig registry into an
+`agentloop.Loop`.
+
+This change and the `agentrun` change of the same name land as one
+change. The wrapper collapse alone stays behavior-identical. The
+`agentrun` probe swap alone stays behavior-identical. One change keeps
+one review surface. Within the change, the `agentrun` edit lands
+first.
+
+### New shape
+
+`steptool.go` keeps one struct, `stepTool`, and deletes the four
+capability structs and the sixteen variants. `newStepTool` returns
+`&stepTool{step, inner}`. The struct gains five forwarding methods:
+
+- `ExecutionProfile` returns `tools.ExecutionProfileOf(inner)`.
+- `MaxResultBytes` returns the count from `tools.ResultBudgetOf(inner)`.
+- `Privileged` returns `tools.IsPrivileged(inner)`.
+- `ParameterSchema` returns the schema from `tools.SchemaOf(inner)`.
+- `DecodeArguments` forwards to `inner` when it implements
+  `tools.SchemaTool`. Otherwise it returns the raw bytes unchanged as
+  an `InOut` string value.
+
+The wrapper now declares all four optional interfaces for every inner
+tool. The methods degrade to inner's published defaults. Three of the
+four consumers read values, not presence, so behavior holds:
+
+- `effectiveRunTimeout` treats a zero declared `Timeout` like an
+  absent profile. The forwarded zero profile matches the old absent
+  interface.
+- The scope and budget paths read helpers that forward the same
+  defaults.
+- The `agentrun` chain now always calls `DecodeArguments`. For a
+  schema-less tool the identity fallback reproduces the old plain
+  payload pass-through byte for byte. A decode failure still fails the
+  step only when `inner` truly decodes.
+
+### Exported surface
+
+No exported symbol of `runconfig` or `agentrun` changes. All wrapper
+types stay unexported. The API lock still pins unexported methods:
+`api/runconfig.txt` lists `stepBudgetCap.MaxResultBytes`,
+`stepPrivilegedCap.Privileged`,
+`stepProfiledCap.ExecutionProfile`,
+`stepSchemaCap.DecodeArguments`, `stepSchemaCap.ParameterSchema`, and
+`(*stepTool).Name` and `(*stepTool).Run`. The collapse removes the
+four capability-struct lines and re-homes the five capability methods
+on `(*stepTool)`. Run `make api-update` and commit the
+`api/runconfig.txt` diff in the same change. No
+`policy/layers.json` edge changes.
+
+### Tests
+
+Rewrite `runconfig/steptool_internal_test.go`:
+
+- Keep `TestNewStepToolForwardsAllCapabilities` unchanged.
+- Keep `TestNewStepToolForwardsPerSubset` unchanged.
+- Delete `TestNewStepToolInterfaceParity`. It pins exact interface
+  parity, which this change removes by design.
+- Delete `TestNewStepToolForwardsNoCapabilities`. It pins interface
+  absence, which this change removes by design. Its inversion folds
+  into the schema-less rows of
+  `TestNewStepToolDeclaresAllCapsAlways`: rows whose `inner` lacks a
+  cap assert the wrapper's degraded value, not an absent interface.
+  Report the deletion like the parity test's.
+- Add `TestNewStepToolDeclaresAllCapsAlways`. Table-driven over the
+  sixteen capability subsets. Each row builds `inner` with the subset,
+  wraps it, and asserts the new shape: the wrapper satisfies all four
+  interfaces; each forwarded value equals `inner`'s through the
+  `tools.*Of` helpers; a schema-less row yields a nil schema and an
+  identity decode. This test fails against the sixteen-variant shape,
+  so it proves the refactor.
+- The mask-1111 row agrees on the old and new shapes: `stepToolAll`
+  also satisfied all four interfaces and forwarded the same values.
+  The shapes separate on rows where `inner` lacks a cap. The
+  interface-presence assertions carry that separation; mask 0000 fails
+  hardest against the old code. Keep the presence assertions. Helper
+  value equality alone passes on both shapes and proves nothing.
+- Three adversarial rows join the table: one `inner` implementing
+  `tools.SchemaTool` with `ParameterSchema` returning nil. The wrapper
+  forwards the nil schema and decodes through `inner`, not the
+  identity path. One `inner` whose `DecodeArguments` returns an error.
+  The wrapper propagates the error unwrapped. One call passing empty
+  raw bytes into the identity path. The wrapper returns an `InOut`
+  with an empty string value and no error.
+
+`scripts/check_test_tampering.py` will flag both deleted tests.
+The deletions are mandated by this addendum. The builder reports the
+mandate in the change notes and does not weaken the gate.
+
+### Composition with the document-built internal tools addendum
+
+The earlier addendum wires `runconfig` to `subagent` and edits
+`runconfig/runner.go` builders. This addendum edits
+`runconfig/steptool.go` and `runconfig/steptool_internal_test.go`.
+The `newStepTool` call site in `runner.go` keeps its signature. The
+file sets overlap only in `runner.go` context lines. Either order
+compiles. One change keeps one review surface.
+
+### Verification
+
+- `make verify` passes. Coverage floors for `runconfig`, `agentrun`,
+  and `tools` hold at 85 or better.
+- `make api-update` produces a diff: the deleted capability-struct
+  method rows and the re-homed method rows on `(*stepTool)`. Commit
+  the `api/runconfig.txt` diff in the same change. No
+  `policy/layers.json` edge changes.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
+  `scripts/check_labels.py` pass.

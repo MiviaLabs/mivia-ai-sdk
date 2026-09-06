@@ -41,5 +41,6 @@ package runconfig
 }
   type Kind string
   var ErrBadDocument
+  var ErrCallerBuilt
   var ErrUnknownInternal
   var ErrUnknownTool

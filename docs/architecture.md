@@ -19,7 +19,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-six packages and the import edges
+The diagram shows the forty-nine packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,

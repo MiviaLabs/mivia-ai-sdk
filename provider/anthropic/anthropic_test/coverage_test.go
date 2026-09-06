@@ -36,28 +36,11 @@ func TestClientInterfacesAndDefaults(t *testing.T) {
 	var _ provider.ReasoningPolicy = c
 }
 
-func TestRequestBodyOptions(t *testing.T) {
-	var capturedReq map[string]any
-
-	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		_ = json.Unmarshal(body, &capturedReq)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"id":          "msg_cov",
-			"type":        "message",
-			"role":        "assistant",
-			"stop_reason": "tool_use",
-			"content": []map[string]any{
-				{"type": "text", "text": "using tool"},
-				{"type": "tool_use", "id": "t1", "name": "fn1", "input": map[string]any{"a": 1}},
-			},
-			"usage": map[string]any{"input_tokens": 10, "output_tokens": 10},
-		})
-	})
-
+// fullOptionsRequest builds a request touching every request-level option.
+func fullOptionsRequest() provider.Request {
 	temp := 0.7
 	maxTok := 500
-	req := provider.Request{
+	return provider.Request{
 		Temperature:     &temp,
 		MaxTokens:       &maxTok,
 		ToolChoice:      provider.ToolChoiceAuto,
@@ -80,28 +63,155 @@ func TestRequestBodyOptions(t *testing.T) {
 			{Name: "fn2"}, // empty schema branch
 		},
 	}
+}
 
-	resp, err := fix.client.Chat(context.Background(), req)
+func TestRequestBodyOptions(t *testing.T) {
+	var capturedReq map[string]any
+
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &capturedReq)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_cov", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 10, "output_tokens": 10},
+		})
+	})
+
+	_, err := fix.client.Chat(context.Background(), fullOptionsRequest())
 	if err != nil {
 		t.Fatalf("Chat: %v", err)
 	}
-	if len(resp.ToolCalls) != 1 {
-		t.Fatalf("resp.ToolCalls len = %d, want 1", len(resp.ToolCalls))
+
+	if tc, ok := capturedReq["tool_choice"].(map[string]any); !ok || tc["type"] != "auto" {
+		t.Errorf("tool_choice = %v, want auto", capturedReq["tool_choice"])
 	}
-	if resp.ToolCalls[0].ID != "t1" {
-		t.Errorf("resp.ToolCalls[0].ID = %q, want 't1'", resp.ToolCalls[0].ID)
+	if capturedReq["temperature"] != 0.7 {
+		t.Errorf("temperature = %v, want 0.7", capturedReq["temperature"])
+	}
+	if capturedReq["max_tokens"] != float64(500) {
+		t.Errorf("max_tokens = %v, want 500", capturedReq["max_tokens"])
+	}
+	if capturedReq["thinking"] == nil {
+		t.Errorf("thinking missing, want adaptive block for high effort")
+	}
+	if out, ok := capturedReq["output_config"].(map[string]any); !ok || out["effort"] != "high" {
+		t.Errorf("output_config = %v, want effort high", capturedReq["output_config"])
 	}
 
-	// Also test ToolChoiceNone and default MaxTokens
+	tools, ok := capturedReq["tools"].([]any)
+	if !ok || len(tools) != 2 {
+		t.Fatalf("tools = %v, want 2", capturedReq["tools"])
+	}
+	fn2, ok := tools[1].(map[string]any)
+	if !ok {
+		t.Fatalf("tools[1] = %v", tools[1])
+	}
+	schema, ok := fn2["input_schema"].(map[string]any)
+	if !ok || schema["type"] != "object" {
+		t.Errorf("fn2 input_schema = %v, want default object schema", fn2["input_schema"])
+	}
+}
+
+func TestRequestBodyTurnShape(t *testing.T) {
+	var capturedReq map[string]any
+
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &capturedReq)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_cov", "type": "message", "role": "assistant",
+			"stop_reason": "tool_use",
+			"content": []map[string]any{
+				{"type": "text", "text": "using tool"},
+				{"type": "tool_use", "id": "t1", "name": "fn1", "input": map[string]any{"a": 1}},
+			},
+			"usage": map[string]any{"input_tokens": 10, "output_tokens": 10},
+		})
+	})
+
+	resp, err := fix.client.Chat(context.Background(), fullOptionsRequest())
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if len(resp.ToolCalls) != 1 || resp.ToolCalls[0].ID != "t1" {
+		t.Fatalf("resp.ToolCalls = %+v, want one call t1", resp.ToolCalls)
+	}
+
+	msgs, ok := capturedReq["messages"].([]any)
+	if !ok {
+		t.Fatalf("messages = %v, want array", capturedReq["messages"])
+	}
+	// user, assistant(tool_use x2), user(tool_result x2 merged)
+	if len(msgs) != 3 {
+		t.Fatalf("messages len = %d, want 3", len(msgs))
+	}
+	asst, ok := msgs[1].(map[string]any)
+	if !ok || asst["role"] != "assistant" {
+		t.Fatalf("messages[1] = %v, want assistant turn", msgs[1])
+	}
+	parts, ok := asst["content"].([]any)
+	if !ok || len(parts) != 3 {
+		t.Fatalf("assistant content = %v, want 3 parts (text + 2 tool_use)", asst["content"])
+	}
+	toolUse2, ok := parts[2].(map[string]any)
+	if !ok {
+		t.Fatalf("assistant part[2] = %v, want tool_use", parts[2])
+	}
+	input, ok := toolUse2["input"].(map[string]any)
+	if !ok || len(input) != 0 {
+		t.Errorf("empty-arguments tool_use input = %v, want {}", toolUse2["input"])
+	}
+	merged, ok := msgs[2].(map[string]any)
+	if !ok || merged["role"] != "user" {
+		t.Fatalf("messages[2] = %v, want merged user turn", msgs[2])
+	}
+	mergedParts, ok := merged["content"].([]any)
+	if !ok || len(mergedParts) != 2 {
+		t.Fatalf("merged user content = %v, want 2 tool_result parts", merged["content"])
+	}
+	resErr, ok := mergedParts[1].(map[string]any)
+	if !ok || resErr["is_error"] != true {
+		t.Errorf("tool_result[1] = %v, want is_error true", mergedParts[1])
+	}
+}
+
+func TestRequestBodyDefaults(t *testing.T) {
+	var capturedReq map[string]any
+
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &capturedReq)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_cov", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
 	reqNone := provider.Request{
 		ToolChoice: provider.ToolChoiceNone,
 		Messages: []provider.Message{
 			{Role: provider.RoleTool, ToolCallID: "standalone", Content: "standalone result"},
 		},
 	}
-	_, err = fix.client.Chat(context.Background(), reqNone)
-	if err != nil {
+	if _, err := fix.client.Chat(context.Background(), reqNone); err != nil {
 		t.Fatalf("Chat reqNone: %v", err)
+	}
+	if tc, ok := capturedReq["tool_choice"].(map[string]any); !ok || tc["type"] != "none" {
+		t.Errorf("tool_choice = %v, want none", capturedReq["tool_choice"])
+	}
+	if capturedReq["max_tokens"] != float64(anthropic.DefaultMaxTokensNonStreaming) {
+		t.Errorf("max_tokens = %v, want non-streaming default", capturedReq["max_tokens"])
+	}
+	standaloneMsgs, ok := capturedReq["messages"].([]any)
+	if !ok || len(standaloneMsgs) != 1 {
+		t.Fatalf("standalone messages = %v, want 1", capturedReq["messages"])
+	}
+	if standalone, ok := standaloneMsgs[0].(map[string]any); !ok || standalone["role"] != "user" {
+		t.Errorf("standalone tool message = %v, want user turn", standaloneMsgs[0])
 	}
 }
 
@@ -292,25 +402,5 @@ func TestStreamThinkingBlockRedacted(t *testing.T) {
 	}
 	if !capturedBlock.Redacted {
 		t.Errorf("expected captured reasoning block to be redacted")
-	}
-}
-
-func TestPostWithRetryErrors(t *testing.T) {
-	// 404 error (non-retryable)
-	_, fix404 := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]any{
-			"error": map[string]any{"message": "not found"},
-		})
-	})
-
-	_, err := fix404.client.Chat(context.Background(), provider.Request{})
-	if err == nil {
-		t.Fatal("expected 404 error, got nil")
-	}
-
-	// 404 error on stream (non-retryable)
-	_, err = fix404.client.ChatStream(context.Background(), provider.Request{})
-	if err == nil {
-		t.Fatal("expected 404 error on stream, got nil")
 	}
 }

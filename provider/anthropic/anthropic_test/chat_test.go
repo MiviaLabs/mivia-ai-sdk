@@ -57,6 +57,19 @@ func TestChatNonStreaming(t *testing.T) {
 	if capturedHeaders.Get("anthropic-version") != "2023-06-01" {
 		t.Errorf("anthropic-version header = %q, want '2023-06-01'", capturedHeaders.Get("anthropic-version"))
 	}
+	if capturedReq["model"] != "claude-opus-5" {
+		t.Errorf("request model = %v, want 'claude-opus-5'", capturedReq["model"])
+	}
+	if capturedReq["max_tokens"] != float64(anthropic.DefaultMaxTokensNonStreaming) {
+		t.Errorf("request max_tokens = %v, want non-streaming default", capturedReq["max_tokens"])
+	}
+	reqMsgs, ok := capturedReq["messages"].([]any)
+	if !ok || len(reqMsgs) != 1 {
+		t.Fatalf("request messages = %v, want 1", capturedReq["messages"])
+	}
+	if m, ok := reqMsgs[0].(map[string]any); !ok || m["role"] != "user" {
+		t.Errorf("request messages[0] = %v, want user turn", reqMsgs[0])
+	}
 	if resp.Message.Content != "Hello, how can I assist you today?" {
 		t.Errorf("resp.Message.Content = %q", resp.Message.Content)
 	}

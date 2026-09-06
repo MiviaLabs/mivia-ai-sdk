@@ -65,8 +65,8 @@ Outside:
   `Fire` short-circuits on the first veto or handler error and
   reports it through `ErrVetoed` or the wrapped error. `Emit` runs
   every handler regardless and discards every handler error. `Fire`
-  treats a point with no handler as a no-op nil; `Emit` rejects a
-  name with no subscriber.
+  treats a point with no handler as a no-op nil; `Emit` treats a name
+  with no subscriber as a no-op nil.
 - In-place payload modification. See the API section for the
   reasoning.
 - Persistence of a registered handler across a process restart. A

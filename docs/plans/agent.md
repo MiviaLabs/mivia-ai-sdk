@@ -596,8 +596,8 @@ Test files land in `agent/agent_test/`, alongside the definition files:
     and brokenThread() for EmitThreadVerified. These three fixtures
     already exist in translator_test.go. This proves the nil-bus
     check runs before the verify call, for each function on its own.
-  - No subscriber registered for the event name: expect the
-    events.Bus.Emit "no subscriber" error, unwrapped.
+  - No subscriber registered for the event name: expect a nil error;
+    Emit treats an unobserved name as a no-op.
 - `translator_integration_test.go` — build a real events.Bus with
   events.New. Sign a real Message with a real identity.Identity. Call
   EmitMessageDelivered; prove the event arrives exactly once. Build a

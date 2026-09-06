@@ -66,11 +66,13 @@ func (b *Bus) Subscribe(name Name, h Handler) error {
 }
 
 // Emit validates an event, then runs each handler for its name.
-// It rejects an unknown name and an invalid event with an error.
-// Emit copies the handler slice under the mutex, then runs each
-// handler unlocked. Handlers for one event run in order. A handler
-// never stops Emit; all handlers still run after one fails. Emit
-// does not propagate a handler error. Emit never starts a goroutine.
+// A name with no subscriber emits nothing and returns nil; an
+// unobserved event never fails the emitter. Emit rejects an invalid
+// event with the Validate error. Emit copies the handler slice under
+// the mutex, then runs each handler unlocked. Handlers for one event
+// run in order. A handler never stops Emit; all handlers still run
+// after one fails. Emit does not propagate a handler error. Emit
+// never starts a goroutine.
 func (b *Bus) Emit(ctx context.Context, e Event) error {
 	if err := e.Validate(); err != nil {
 		return err
@@ -78,9 +80,6 @@ func (b *Bus) Emit(ctx context.Context, e Event) error {
 	b.mu.Lock()
 	handlers := append([]Handler(nil), b.subs[e.Name]...)
 	b.mu.Unlock()
-	if len(handlers) == 0 {
-		return fmt.Errorf("events: no subscriber for name %q", e.Name)
-	}
 	for _, h := range handlers {
 		_ = h(ctx, e)
 	}

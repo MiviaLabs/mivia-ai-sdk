@@ -60,9 +60,8 @@ const (
 // l.bus is non-nil. Lifecycle events therefore fire for any caller
 // that wires a Bus, without also arming a heartbeat cadence;
 // HeartbeatInterval gates only the ticking names, through
-// startHeartbeat. Bus.Emit errors, including "no subscriber for
-// name", are swallowed, matching the fireStop/hooks.Registry.
-// Fire-swallow precedent in run.go.
+// startHeartbeat. Bus.Emit errors are swallowed, matching the
+// fireStop/hooks.Registry.Fire-swallow precedent in run.go.
 func (l *Loop) emitEvent(ctx context.Context, name events.Name, data string) {
 	if l.bus == nil {
 		return

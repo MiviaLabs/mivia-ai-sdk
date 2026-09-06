@@ -157,18 +157,6 @@ func admitAndClaim(led *ledger.Ledger, key ledger.IdempotencyKey, now time.Time)
 	return led.Claim(context.Background(), ledgerActor, key, ledgerOwner, ledgerLease, now)
 }
 
-// subscribeAll subscribes a no-op handler to every event Run emits;
-// events.Bus.Emit fails a name with no subscriber.
-func subscribeAll(bus *events.Bus) error {
-	noop := func(context.Context, events.Event) error { return nil }
-	for _, name := range []events.Name{agent.MessageDeliveredEvent, agent.MessageAckedEvent, agent.ThreadVerifiedEvent} {
-		if err := bus.Subscribe(name, noop); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // buildWait returns the agent.AckWait closure that runs the review
 // tool against the signed step's payload, stores the tool's result in
 // store under a second Put, records that ref into resultRef, and
@@ -233,11 +221,6 @@ func main() {
 	reg := buildRegistry()
 
 	bus := events.New()
-	if err := subscribeAll(bus); err != nil {
-		fmt.Println("subscribeAll:", err)
-		return
-	}
-
 	led, err := ledger.New(ledger.NewMemStore(), bus)
 	if err != nil {
 		fmt.Println("ledger.New:", err)
@@ -336,11 +319,6 @@ it.
 This matches `ledger.md`'s own framing: a `flow.Run` invocation, or an
 `agent.Run` invocation one level up, is the task body a `ledger` owner
 claims and executes.
-
-`subscribeAll` subscribes a no-op handler to `agent.MessageDeliveredEvent`,
-`agent.MessageAckedEvent`, and `agent.ThreadVerifiedEvent` before `Run`
-starts; `events.Bus.Emit` fails a name with no subscriber, so `Run`
-would fail without this step.
 
 `buildWait` returns the `AckWait` closure. It reads the signed step
 message's `Payload`, calls `reg.RunScoped(ctx, "review",

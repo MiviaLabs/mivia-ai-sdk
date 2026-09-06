@@ -28,7 +28,8 @@ surface below mirrors `api/events.txt`.
 - `Bus.Subscribe(name, handler)` — adds a handler for one event name,
   of type `Name`. It rejects an empty name and a nil handler.
 - `Bus.Emit(ctx, event)` — validates the event, then runs each handler
-  for its name. It rejects an unknown name with an error.
+  for its name. A name with no subscriber emits nothing and returns
+  nil.
 - `Event.Validate()` — the field rules on one event. It rejects an
   empty `Name` and an empty `Data`.
 
@@ -45,14 +46,15 @@ compile error, not a silent miss.
 
 - `Event.Validate` rejects an empty `Name` and an empty `Data`.
 - `Subscribe` rejects an empty name and a nil handler.
-- `Emit` rejects an invalid event and an unknown name.
+- `Emit` rejects an invalid event. A name with no subscriber emits
+  nothing and returns nil.
 - `Emit` copies the handler slice under the mutex, then runs each
   handler unlocked. A handler may call `Subscribe` or `Emit`; such a
   call dispatches on the inner bus state.
 - Handlers for one event run in order.
 - A handler error does not stop `Emit`. All handlers still run when one
   fails. `Emit` does not propagate a handler error; its error covers
-  only unknown-name and `Event` validation.
+  only `Event` validation.
 - `Emit` never starts a goroutine.
 - The zero value of `Bus` is not usable. `New` is the only sanctioned
   construction.
@@ -66,8 +68,8 @@ match them with `errors.Is`.
   Pinned by `events_test/events_test.go`.
 - `Bus.Subscribe` fails when `name` is empty or `handler` is nil.
   Pinned by `events_test/events_test.go`.
-- `Bus.Emit` fails when the event fails `Validate`, or when no
-  handler is subscribed for the event's name. Pinned by
+- `Bus.Emit` fails when the event fails `Validate`. An event name with
+  no subscriber emits nothing and returns nil. Pinned by
   `events_test/events_test.go`.
 
 ## Usage
@@ -81,6 +83,6 @@ if err := b.Subscribe(machine.MoveEvent, func(ctx context.Context, e events.Even
     // the name or handler was invalid
 }
 if err := b.Emit(context.Background(), events.Event{Name: machine.MoveEvent, Data: "idle->running"}); err != nil {
-    // the event was invalid or had no subscriber
+    // the event was invalid
 }
 ```

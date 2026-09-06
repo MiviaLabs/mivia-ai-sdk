@@ -2160,9 +2160,9 @@ for the full field list, the failure mode, and the gating rule.
 - Tool-call heartbeat, positive path: `EventToolCallStart`, at least
   two `EventToolCallHeartbeat` events, then `EventToolCallEnd`, in
   order.
-- `Bus.Emit`'s "no subscriber for name" error is swallowed, matching
-  the `PointStop`/`hooks.Registry.Fire` swallow precedent; `Run`
-  completes normally.
+- `Bus.Emit` errors are swallowed, matching
+  the `PointStop`/`hooks.Registry.Fire` swallow precedent; a name
+  with no subscriber emits nothing; `Run` completes normally.
 - A race sub-case: heartbeat emission from the ticking goroutine and
   the main loop's own state changes run concurrently, under
   `go test -race`, with no data race.

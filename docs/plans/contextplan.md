@@ -1341,3 +1341,72 @@ No other exported symbol changes.
   that `contextplan` now consumes it.
 - `docs/packages/contextplan.md` reflects `NewPlanner`'s new
   signature and `Elision.SpoolRef`, in the same commit as the code.
+
+## Addendum: caller inventory for the two halves
+
+The package serves two independent concerns. This addendum records
+which half has a caller and which half still awaits one. The orphan
+gate counts whole packages, so it credits `contextplan` through the
+compaction half and cannot see the Planner half's caller-less state.
+No gate change belongs here; the gate's blindness is future work.
+
+The Planner half is `NewPlanner`, `Planner`, `Plan`, `PlanResult`,
+`Elision`, `ElisionReason`, `StubContent`, and `IsReasoningEvent`.
+Its backing machinery serves no other caller: the `contextstate`
+`MemStore`, `CommitRequest`, `Session`, checkpoint, and revoke
+surface, and the `spool.Spool` write path. Of `contextstate`'s 36
+locked symbols, 34 serve only this half; `Mint` and `HashPrefix` are
+the two exceptions, and `envelope` uses them. `memory.Store` appears
+here only in its role as the Planner's decode cache; the type itself
+is independently wired in `agentrun`, `runconfig`, and `subagent`.
+No production package outside `contextplan` calls `NewPlanner` or
+`Planner.Plan` today. The intended caller is external application
+code that builds a `Planner` and sets an adapter over `Planner.Plan`
+as `agentloop.Options.Trim`; the two signatures differ, so the
+adapter wraps one in the other.
+
+The compaction half is `Compact`, `CompactResult`, `Compaction`,
+`Window`, `Calibrated`, and `Calibrate`. `agentloop` consumes it:
+`agentloop/compaction.go` calls `contextplan.Compact`, and
+`agentloop.Options` carries `*contextplan.Window` and
+`*contextplan.Calibrated`.
+
+`policy/pending_wiring.json` stays unchanged for `contextplan`. The
+gate rejects an entry whose package has a real internal caller, and
+`agentloop` imports this package, so an entry would fail as stale.
+This addendum is the declared inventory for the Planner half.
+
+### Builder edits
+
+This addendum ships with a documentation-only change. The builder
+makes three edits and no others.
+
+1. `contextplan/doc.go`: extend the package comment to name both
+   concerns. Two sentences state the Planner half and the compaction
+   half. The comment keeps its `Package contextplan` opening per Go
+   convention. The change is a comment, so `api/contextplan.txt` and
+   `api/contextstate.txt` show no diff.
+
+2. `policy/pending_wiring.json`, `workspace` entry: append one
+   sentence to `reason`: its own import, `secretpath`, is reachable
+   only through `workspace`, so a future consumer must take both.
+   No new entry appears; `contextplan` gets none, per the section
+   above.
+
+3. No Go code changes beyond `doc.go`. No test is added: the change
+   is a comment and a policy reason string, and no test asserts a
+   comment's content.
+
+### Verification
+
+- `python3 scripts/check_orphan_packages.py` passes: `contextplan`
+  has no entry, the edited `workspace` reason is free prose, and
+  `workspace` still has zero internal callers.
+- `python3 scripts/check_prose.py` passes on this plan.
+- `python3 scripts/check_docs.py` passes on the edited `doc.go`.
+- `make verify` passes; coverage and API locks show no diff.
+
+### Future work
+
+Teach `check_orphan_packages.py` to count callers reachable from
+non-orphan roots, so half-wired packages become visible to the gate.

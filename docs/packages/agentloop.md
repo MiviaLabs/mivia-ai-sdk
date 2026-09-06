@@ -443,9 +443,9 @@ A non-nil `Options.Bus` receives lifecycle and progress events emitted by
 - `EventCalibrationDelta` — fires with token calibration JSON payload.
 - `EventToolParallel` — fires when multiple tools dispatch in parallel.
 
-`Run` swallows every `Bus.Emit` error, including "no subscriber for
-name", matching the `PointStop`-fire swallow precedent elsewhere in
-`Run`.
+`Run` swallows every `Bus.Emit` error, matching the `PointStop`-fire
+swallow precedent elsewhere in `Run`. A name with no subscriber emits
+nothing and returns nil.
 
 ## Error marker
 

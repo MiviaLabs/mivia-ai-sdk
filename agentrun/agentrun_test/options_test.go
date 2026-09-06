@@ -195,8 +195,7 @@ func TestNewAccept(t *testing.T) {
 	if runner.Bus() == nil {
 		t.Fatal("New returned a Runner with a nil bus")
 	}
-	// The no-op handlers make every agent event name emit without the
-	// "no subscriber" fault events.Bus raises.
+	// Emit accepts any valid event, subscribed or not.
 	for _, name := range []events.Name{
 		agent.MessageDeliveredEvent,
 		agent.MessageAckedEvent,
@@ -208,10 +207,18 @@ func TestNewAccept(t *testing.T) {
 	}
 }
 
-// TestNewUsesCallerBus proves an Options.Bus the caller provides is the
-// bus Runner.Bus returns, subscribed in place.
+// TestNewUsesCallerBus proves an Options.Bus the caller provides is
+// the bus Runner.Bus returns, wired in place: a probe handler the
+// caller subscribed before New still fires on Runner.Bus after New.
 func TestNewUsesCallerBus(t *testing.T) {
 	bus := events.New()
+	calls := 0
+	if err := bus.Subscribe(agent.MessageDeliveredEvent, func(context.Context, events.Event) error {
+		calls++
+		return nil
+	}); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
 	runner, err := agentrun.New(agentrun.Options{
 		Agent:   mustAgent(t, oneStepPlan(t)),
 		Machine: oneStepMachine(t),
@@ -224,17 +231,11 @@ func TestNewUsesCallerBus(t *testing.T) {
 	if runner.Bus() != bus {
 		t.Fatal("Runner.Bus is not the caller-provided bus")
 	}
-	// The caller bus must carry the no-op subscriptions New adds. An
-	// unsubscribed bus fails Emit, so this catches a New that returns
-	// the caller bus without wiring it.
-	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent,
-		agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
-	} {
-		if err := runner.Bus().Emit(context.Background(), events.Event{Name: name, Data: "x"}); err != nil {
-			t.Fatalf("caller bus.Emit(%s): %v", name, err)
-		}
+	if err := runner.Bus().Emit(context.Background(), events.Event{Name: agent.MessageDeliveredEvent, Data: "x"}); err != nil {
+		t.Fatalf("caller bus.Emit: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("probe handler fired %d times, want 1 on the caller bus", calls)
 	}
 }
 

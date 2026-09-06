@@ -21,10 +21,10 @@ func (echoHandler) Handle(_ context.Context, m envelope.Message) (string, error)
 }
 
 // TestProcessLine_EmitIsBestEffort proves EmitMessageDelivered and
-// EmitMessageAcked never fail-fast the ladder. It builds an Endpoint
+// EmitMessageAcked never block the ladder. It builds an Endpoint
 // around a bus with no subscribers for either event name, bypassing
-// New so bus.Emit returns an unsubscribed-name error at both emit
-// points, then asserts processLine still answers a confirmed ack.
+// New, then asserts processLine still answers a confirmed ack on the
+// unsubscribed bus.
 func TestProcessLine_EmitIsBestEffort(t *testing.T) {
 	pub, priv, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -90,7 +90,7 @@ func TestProcessLine_EmitIsBestEffort(t *testing.T) {
 
 	ack, err := envelope.DecodeAck(out)
 	if err != nil {
-		t.Fatalf("processLine did not answer a confirmed ack despite the bus having no emit subscribers: decode error %v, line %q", err, out)
+		t.Fatalf("processLine did not answer a confirmed ack on the unsubscribed bus: decode error %v, line %q", err, out)
 	}
 	if ack.From != e.id {
 		t.Errorf("ack.From = %q, want %q", ack.From, e.id)

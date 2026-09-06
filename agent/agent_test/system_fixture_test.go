@@ -34,8 +34,10 @@ const reviewToolName = "review"
 const declineMarker = "recover"
 
 // systemEventNames lists every events.Name the system suite emits.
-// events.Bus.Emit fails on a name with no subscriber, and agent.Run
-// propagates that failure, so a fixture bus must cover all of them.
+// The fixture bus subscribes all of them so the suite's recorders
+// observe every event a composed run produces. Emit tolerates a name
+// with no subscriber; the coverage is for observation, not for
+// keeping Run alive.
 func systemEventNames() []events.Name {
 	return []events.Name{
 		agent.MessageDeliveredEvent,

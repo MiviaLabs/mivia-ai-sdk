@@ -1,7 +1,6 @@
 package agentrun
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -93,9 +92,8 @@ type Options struct {
 // of them set; Scope, Store, Ask, and Artifacts each need Tools; Ask
 // needs a non-empty AskTo; a set Budget passes its own Validate; the
 // transition matrix passes ValidateMatrix; and, with Tools set, every
-// Confirm-gated step ID resolves in the registry. New subscribes one
-// no-op handler to the three agent event names on the resolved bus,
-// then returns it through Runner.Bus.
+// Confirm-gated step ID resolves in the registry. New builds a bus
+// when Options.Bus is nil, then returns it through Runner.Bus.
 func New(opts Options) (*Runner, error) {
 	if opts.Agent == nil {
 		return nil, ErrNoAgent
@@ -143,12 +141,6 @@ func New(opts Options) (*Runner, error) {
 	bus := opts.Bus
 	if bus == nil {
 		bus = events.New()
-	}
-	noop := func(context.Context, events.Event) error { return nil }
-	for _, name := range []events.Name{agent.MessageDeliveredEvent, agent.MessageAckedEvent, agent.ThreadVerifiedEvent} {
-		if err := bus.Subscribe(name, noop); err != nil {
-			return nil, err
-		}
 	}
 
 	return &Runner{

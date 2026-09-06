@@ -933,3 +933,435 @@ the same registry a live `agentrun` composition wires.
   existing one.
 - `api/spool.txt`: no diff. `policy/layers.json`: no diff. This change
   adds no exported symbol and no import edge.
+
+## Change: collapse the wrapper variants to two
+
+Status: planned. One commit. No exported symbol changes.
+
+### Change goal
+
+`spool/tool.go` declares sixteen wrapper variants, four capability
+structs, and a sixteen-case switch in `buildSpoolTool`. Collapse that
+to two variants and one branch. Every caller must observe the same
+behavior after the change.
+
+### Change scope
+
+Inside:
+
+- One base struct that embeds `*spoolTool` and declares
+  `tools.ProfiledTool`, `tools.ResultBudgetTool`, and
+  `tools.PrivilegedTool` unconditionally.
+- One schema struct that embeds the base struct and adds
+  `tools.SchemaTool`.
+- `SpoolTool` picks between the two with one type assertion on
+  `inner`.
+- Deletion of the other fourteen variants and of `buildSpoolTool`.
+- Deletion of `profiledCap`, `budgetCap`, and `privilegedCap`.
+
+Outside:
+
+- `SpoolTool`'s signature and every other exported symbol in `spool`.
+- `Run`'s result handling. This change touches capability forwarding
+  only.
+- `tools`, `agentloop`, `agentrun`, and `runconfig`. No file outside
+  `spool` and `docs` changes.
+- The `tools.SchemaTool` bit. It stays conditional.
+
+### Change scope: why three interfaces may go unconditional
+
+The three unconditional interfaces are safe. Each helper's
+not-implemented default is observationally identical to a failed type
+assertion, at every caller in this tree. The evidence, per caller:
+
+- `tools.ExecutionProfileOf` (`tools/execution_profile.go:70`) returns
+  the zero `ExecutionProfile` when the assertion fails. Its `Class` is
+  `ExecutionClassUnclassified`.
+- Caller `tools/registry.go:165` ranks `ExecutionClassUnclassified` at
+  zero through `executionClassRank`. That is the same rank a wrapper
+  declaring nothing produced. Identical.
+- Caller `tools/registry_timeout.go:43` asserts `ProfiledTool`
+  directly. Its inner guard is `if declared :=
+  pt.ExecutionProfile().Timeout; declared != 0`. A zero `Timeout`
+  falls through to the same switch the failed assertion reached.
+  Identical.
+- `tools.ResultBudgetOf` (`tools/execution_profile.go:79`) returns
+  `0, false` when the assertion fails. The wrapper now returns
+  `0, true` for a budget-less inner.
+- Caller `agentloop/wire.go:51` is the only production reader of that
+  bool. It guards with `ok && budget > 0 && ...`. The guard is false
+  at a budget of zero, either way. Identical.
+- `tools.IsPrivileged` (`tools/execution_profile.go:88`) returns
+  `false` when the assertion fails. The wrapper forwards `false` for a
+  non-privileged inner. Caller `tools/scope.go:61` reads the same
+  value. Identical.
+
+No other production caller asserts these three interfaces. Command
+run: `command grep -rn 'ExecutionProfileOf|ResultBudgetOf|IsPrivileged'`
+across `*.go`, minus test files.
+
+### Change scope: why the schema bit stays conditional
+
+`tools.SchemaOf` (`tools/schema.go:18`) returns `nil, false` when the
+assertion fails. A wrapper declaring `tools.SchemaTool` over a
+schema-less inner returns `nil, true` instead. Three production
+readers depend on that bool or on the assertion behind it.
+
+- `agentloop/definitions.go:22` skips a tool whose `SchemaOf` reports
+  false, records the name in `skipped`, and fails closed with
+  `ErrNoSchemas` when the offered set empties. `agentloop.New` calls
+  it at `agentloop/loop.go:117`.
+- `agentloop/toolcall.go:476` asserts `tools.SchemaTool` directly. On
+  a failed assertion it returns an error naming the tool as publishing
+  no schema. This reader is not the hazard under the rejected design.
+  A nil schema never reaches it, because `compileSchemas` rejects the
+  definition first.
+- `agentrun/wire.go:119-121` reads the bool, then asserts
+  `tools.SchemaTool` on the same tool with no comma-ok form. No schema
+  compile gates that branch. It is the one reachable panic under the
+  rejected design.
+
+An unconditional schema bit changes the first caller's observable
+result. A probe module confirmed it against the real tree. Today the
+registry yields no definitions, one skipped name, and `ErrNoSchemas`.
+An unconditional wrapper yields one definition with a nil `Schema`,
+no skipped name, and no error. That regression is the reason this plan
+keeps two variants instead of one.
+
+The rejected one-struct design fails in two different places. The two
+failures are not the same, and only one of them panics.
+
+The `agentloop` path fails closed. `Definitions` returns one
+definition whose `Schema` is nil. `agentloop.New` then calls
+`compileSchemas` at `agentloop/loop.go:121`. `schema.Compile` rejects
+an empty document at `schema/schema.go:87-90`. `New` returns
+`ErrInvalidSchema` and the loop never constructs. A probe against the
+real tree produced that error, wrapping the reason "schema document is
+not valid JSON". No panic occurs there.
+
+The `agentrun` path panics. `agentrun/wire.go:119` tests the bool and
+`agentrun/wire.go:121` asserts `t.(tools.SchemaTool)` with no
+comma-ok. Under one struct the bool is true, so the branch runs. It
+reaches `schemaCap.DecodeArguments` at `spool/tool.go:97-99`. That
+method asserts `c.inner.(tools.SchemaTool)` with no comma-ok either,
+and `inner` does not implement it. The same probe reproduced the
+panic, reporting a missing `DecodeArguments` method. Nothing compiles
+a schema on that path, so nothing fails closed first.
+
+`spool` therefore deviates from `runconfig/steptool.go` on this one
+bit. `runconfig` declares `tools.SchemaTool` unconditionally.
+
+### Change API
+
+No exported symbol changes. `SpoolTool`'s signature is unchanged, and
+every affected type stays unexported.
+
+`api/spool.txt` still changes. The lock records an exported method
+whatever its receiver's case. See `scripts/api_surface.go:289`.
+`api/runconfig.txt:16-22` shows the same for `*stepTool`. Run `make
+api-update` and commit `api/spool.txt` in this change.
+
+The expected diff is exactly six lines. Three lines are removed:
+
+- `func (c budgetCap) MaxResultBytes() (int)`
+- `func (c privilegedCap) Privileged() (bool)`
+- `func (c profiledCap) ExecutionProfile() (tools.ExecutionProfile)`
+
+Three lines are added:
+
+- `func (t spoolToolCaps) ExecutionProfile() (tools.ExecutionProfile)`
+- `func (t spoolToolCaps) MaxResultBytes() (int)`
+- `func (t spoolToolCaps) Privileged() (bool)`
+
+The two `schemaCap` lines and the two `*spoolTool` lines stay
+unchanged. Any line outside that set is the failure signal. The
+builder must stop and report it.
+
+### Change import policy
+
+`policy/layers.json` needs no edit. `spool` already imports `tools`.
+
+The new test in `spool/spool_test` imports `agentloop`. That edge is
+legal and needs no policy row. Two mechanical reasons:
+
+- `scripts/go_packages.py` does not enumerate `spool/spool_test`. The
+  directory holds only test files.
+- `check_deps.py` reads the `Imports` key alone. `TestImports` and
+  `XTestImports` stay out, per `scripts/go_packages.py:102`.
+
+No import cycle results. `spool/spool_test` is a separate directory
+that nothing imports.
+
+### Change code
+
+In `spool/tool.go`:
+
+- Keep `spoolTool` and its `Name` and `Run` methods unchanged.
+- Keep `schemaCap` and both its methods. Keep its doc comments, with
+  one phrase changed. `spool/tool.go:95` reads "composed onto a
+  wrapper variant". Replace that phrase with "composed onto the schema
+  struct", so no variant vocabulary survives anywhere. The
+  `DecodeArguments` assertion on `c.inner` stays safe, because the
+  schema struct is built only when `inner` implements
+  `tools.SchemaTool`.
+- Do not add `runconfig`'s identity-decode fallback. That branch is
+  unreachable in the two-variant shape, so it would be dead code.
+- Delete `profiledCap`, `budgetCap`, and `privilegedCap`.
+- Add `spoolToolCaps`, embedding `*spoolTool`. Give it three value
+  receiver methods. `ExecutionProfile` returns
+  `tools.ExecutionProfileOf(t.inner)`. `MaxResultBytes` returns the
+  first result of `tools.ResultBudgetOf(t.inner)`. `Privileged`
+  returns `tools.IsPrivileged(t.inner)`.
+- Give each of those three methods a doc comment starting with the
+  method name. `scripts/check_docs.py:9` consumes the receiver group
+  before it captures the name, so it demands one. Carry the wording
+  from the deleted caps, one line each:
+  `// ExecutionProfile forwards inner's ExecutionProfile through tools.ExecutionProfileOf.`
+  `// MaxResultBytes forwards inner's MaxResultBytes through tools.ResultBudgetOf.`
+  `// Privileged forwards inner's Privileged through tools.IsPrivileged.`
+- Put exactly this one-line comment on `spoolToolCaps`:
+  `// Same shape as runconfig/steptool.go, minus the schema bit.`
+- Keep the name `spoolToolSchema`. Change it to embed `spoolToolCaps`
+  and `schemaCap`.
+- Delete the other fourteen variants and `buildSpoolTool`.
+- Replace the variant-block comment at `spool/tool.go:100-105`. State
+  that two variants exist and why the schema bit alone is conditional.
+- Rewrite `spoolTool`'s own doc comment at `spool/tool.go:10-15`. It
+  claims the struct never declares the four interfaces itself. That
+  claim stays true, but the sentence about composing one of sixteen
+  variants does not.
+- Replace `SpoolTool`'s body after the `maxBytes` clamp with one
+  branch: `if _, ok := inner.(tools.SchemaTool); ok`, returning the
+  schema variant, else the base variant.
+
+`spool/tool.go` drops to roughly one hundred and thirty lines. It
+stays under the five hundred line limit.
+
+### Change comment: SpoolTool's doc comment
+
+The current doc comment at `spool/tool.go:209-215` says the returned
+tool implements the four interfaces only when `inner` does. That
+becomes false for three of the four. Replace those lines with this
+wording:
+
+```go
+// The returned tools.Tool always implements tools.ProfiledTool,
+// tools.ResultBudgetTool, and tools.PrivilegedTool. Each forwards
+// through tools.ExecutionProfileOf, tools.ResultBudgetOf, and
+// tools.IsPrivileged, so a caller reading inner's published values
+// through those helpers sees no difference. It implements
+// tools.SchemaTool only when inner does. That one bit stays
+// conditional because agentloop.Definitions skips a tool whose
+// tools.SchemaOf reports false; an unconditional declaration would
+// offer the model a nil schema instead of failing closed.
+// SpoolTool changes only Run's result handling, not inner's declared
+// execution class, result budget, privilege, or schema.
+```
+
+Keep every other sentence of the existing doc comment. The nil `sp`,
+negative `maxBytes`, shared `sp`, and pairing sentences stay as they
+are.
+
+### Change tests
+
+Delete no test. Weaken no test. Every changed assertion below gains a
+value-level check.
+
+In `spool/spool_test/tool_parity_test.go`:
+
+- Lines 1-6, the header comment. Old claim: the wrapper implements
+  exactly inner's set, and a variant missed by the combinatorial
+  switch fails here. New claim: the wrapper always implements the
+  first three optional interfaces, and mirrors inner only for
+  `tools.SchemaTool`.
+- Lines 17-21, the cap-marker comment. Drop the phrase mirroring the
+  wrapper variants. Keep the bit numbering.
+- Lines 24-26, `profCapT.ExecutionProfile`. It returns the zero
+  `ExecutionProfile` today. A value assertion against it cannot
+  distinguish a forwarded profile from the not-implemented default.
+  Change the return to a distinctive value, for example `Class`
+  `tools.ExecutionClassExternal`, `ResourceKey` `"parity-key"`, and
+  `Timeout` seven milliseconds. This strengthens the fixture; it does
+  not weaken it. No other test reaches this fixture through a
+  `tools.Registry`, so no run-timeout behavior changes.
+- Line 230, `want := p.satisfy(inner)`. Old expectation: the wrapper
+  mirrors inner for all four probes. New expectation: probes zero, one
+  and two want true for every mask; probe three wants
+  `p.satisfy(inner)`.
+- Lines 229-234, the probe loop. Add value assertions in the same
+  loop, per mask. With the profiled bit set, assert
+  `tools.ExecutionProfileOf(wrapped)` equals
+  `tools.ExecutionProfileOf(inner)` and is the distinctive value. With
+  it clear, assert the result is the zero `ExecutionProfile`. With the
+  budget bit set, assert `tools.ResultBudgetOf(wrapped)` returns one
+  and true. With it clear, assert it returns zero and true. With the
+  privileged bit set, assert `tools.IsPrivileged(wrapped)` is true.
+  With it clear, assert it is false. With the schema bit set, assert
+  `tools.SchemaOf(wrapped)` returns the bytes `{}` and true. With it
+  clear, assert it returns nil and false.
+- `TestSpoolToolSchemaForwardsToInner` at line 180 keeps its masks
+  eight through fifteen and its assertions. No change.
+- `TestSpoolToolParityRunThroughCaps` at line 240 keeps its
+  assertions. No change.
+
+In `spool/spool_test/spool_tool_test.go`:
+
+- Lines 265-271, the comment on
+  `TestSpoolToolPartialInterfaceCombinations`. It names six of eight
+  switch branches and a swapped capability struct in the switch. No
+  switch survives. Rewrite it to say the cases prove the three
+  unconditional capabilities forward inner's own values.
+- Lines 301-304, the budget assertion. Old expectation: `gotOK` equals
+  `wantOK`, which is false for the `profiledOnly`, `privilegedOnly`
+  and `profiledPrivileged` rows. New expectation: `gotBudget` equals
+  the first result of `tools.ResultBudgetOf(tt.inner)`, and `gotOK` is
+  true for every row. Keep the value comparison; only the bool
+  expectation changes.
+- Lines 296-299 and 307-309 keep their assertions. The profile and
+  privilege values are unchanged by this collapse.
+- Line 420, `TestSpoolToolNoOptionalInterfacesReportsUnimplemented`.
+  Rename it to `TestSpoolToolOverPlainInnerForwardsDefaults`. The old
+  name claims the wrapper reports the interfaces as unimplemented.
+  That claim becomes false.
+- Lines 432-435, inside that test. Old expectation: `gotOK` is false.
+  New expectation: `gotOK` is true and `gotBudget` is zero, the
+  documented `tools.ResultBudgetOf` default for a budget-less inner.
+- Lines 436-438, 440-443 and 445-447 keep their assertions. A zero
+  budget value, a zero profile, and a false privilege stay correct.
+- Add one assertion to the same test: `tools.SchemaOf(wrapped)`
+  returns nil and false. This pins the conditional schema bit at the
+  point a reader is most likely to widen it.
+
+Watch the file length. `spool/spool_test/spool_tool_test.go` is at
+448 lines against the 500 line limit. The edits above add about five
+lines. The builder must not grow that file further. Put any new case
+in a new file.
+
+New file `spool/spool_test/definitions_guard_test.go`:
+
+- `TestSpoolToolOverSchemalessInnerStaysUnoffered` is the regression
+  guard for the defect this plan avoids. Build a `*spool.Spool` over
+  the package's fake store. Wrap a `stringTool` that implements no
+  optional interface. Add the wrapper to a `tools.New()` registry
+  with `tools.Registry.Add`; see `tools/registry.go:74`. Call `agentloop.Definitions(reg, nil)`.
+- Assert three values. The definitions slice is empty. The skipped
+  slice holds the wrapper's one name. The error satisfies
+  `errors.Is(err, agentloop.ErrNoSchemas)`.
+- Add a second case in the same file. Wrap an inner that does
+  implement `tools.SchemaTool`. Assert `Definitions` returns one
+  definition whose `Schema` equals inner's own `ParameterSchema`
+  result, an empty skipped slice, and a nil error. This is the
+  positive control: the guard must fail for the right reason, not
+  because `Definitions` rejects everything.
+- The file header comment names the reason precisely. An
+  unconditional `tools.SchemaTool` would make `Definitions` return a
+  definition whose `Schema` is nil. `agentloop.New` would then fail
+  with `ErrInvalidSchema`, not `ErrNoSchemas`. Do not write that it
+  offers the model a nil schema; the compile step stops that. The
+  three asserted values above do not change.
+
+### Change docs
+
+Five documentation sites carry a claim this change makes false. The
+first grep pass found four and missed `docs/architecture.md`, the
+module map `AGENTS.md` treats as architecture truth. See
+`.agents/memories/grep_beats_reasoning_for_completeness.md`.
+
+- `docs/plans/spool.md:170-178`. It says `SpoolTool` builds one of
+  several concrete wrapper types chosen by which optional interfaces
+  `inner` implements. Rewrite to name two variants and the one
+  conditional bit.
+- `docs/plans/spool.md:262-266` and `268-275`, in the schema
+  forwarding section. They say the switch covers sixteen cases, and
+  that a capability strips silently when the switch misses an
+  interface. Rewrite both to the two-variant shape. Keep the sentence
+  about `agentloop.Definitions` skipping a schema-less tool. It is now
+  the load-bearing rationale.
+- `docs/packages/spool.md:112-117`. It says the returned tool
+  implements the four interfaces only when `inner` does. Rewrite it to
+  match `SpoolTool`'s new doc comment: three unconditional, one
+  conditional, and the reason.
+- `docs/architecture.md:417-420`, the `spool/` module-map entry.
+  Sibling work edits that file, so locate the clause by grep, not by
+  line number. Search for the phrase "from the wrapped tool whenever
+  it implements them". The entry says the wrapper forwards
+  `ExecutionProfile`, `MaxResultBytes`, `Privileged`, and
+  `SchemaTool` from the wrapped tool whenever it implements them. That becomes false for three of the four. Rewrite
+  the clause to say the wrapper always forwards the first three
+  through the `tools` helpers. Say it forwards `SchemaTool` only when
+  the wrapped tool implements it. Change no other sentence in that
+  entry.
+
+Three further sites need no edit. Each is listed so a later reader
+does not treat the omission as an oversight.
+
+- `docs/packages/tools.md:279-281`. It says `SpoolTool` forwards
+  `SchemaTool` only when the wrapped tool implements it. That sentence
+  stays true.
+- `docs/packages/spool.md:134-138`. Its cross-reference warning about
+  stripping `SchemaTool` stays true.
+- `docs/plans/spool.md:643-658`. That fenced block reproduces
+  `SpoolTool`'s old doc comment verbatim, including the phrase "only
+  when inner itself does". It sits inside a section marked `Status:
+  shipped`. Leave it as a historical record of what that change
+  shipped. The new wording lives in this section instead.
+
+### Change verification
+
+- `make verify` passes. `spool` holds the eighty-five coverage floor.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_deps.py` passes with no `policy/layers.json`
+  edit.
+- `python3 scripts/check_docs.py` passes. The gate sees three doc
+  comments removed with the deleted caps and three added on
+  `spoolToolCaps`. Each new comment must start with its method name,
+  or the gate fails.
+- `python3 scripts/check_structure.py` passes. `spool/tool.go` stays
+  under five hundred lines.
+- `python3 scripts/check_api.py` passes. `make api-update` produces no
+  diff.
+- `python3 scripts/check_prose.py` passes on this file.
+- `go test ./spool/... ./agentloop/... ./runconfig/... ./agentrun/...`
+  passes.
+
+### Change gate prediction: test tampering
+
+`scripts/check_test_tampering.py` will fire. The findings below are
+expected, and each has a real justification. This plan does not
+authorize a trailer. The orchestrator decides that.
+
+- `TT01`, once per rewritten test function body. The rule hashes a
+  normalized body and reports a hash that disappears.
+  `TestSpoolToolInterfaceParity`,
+  `TestSpoolToolPartialInterfaceCombinations`, and the renamed
+  `TestSpoolToolNoOptionalInterfacesReportsUnimplemented` all qualify.
+- `TT05`, a removed comparison against a non-error operand. The
+  `got != want` line at `tool_parity_test.go:231` and the `gotOK !=
+  wantOK` clause at `spool_tool_test.go:303` both change.
+- `TT04` should not fire. The rewrite adds assertion sites and removes
+  none. If it fires, the builder removed an assertion and must restore
+  it.
+- `TT11` and `TT14` must not fire. This change touches no file under
+  `scripts/`.
+
+Justification text for the expected findings: the wrapper shape
+changed from sixteen conditional variants to two, so the parity tests
+assert the new contract instead of the old one; three capability
+interfaces are now unconditional, one stays conditional, every
+assertion gained a value-level check, and a new test guards the
+conditional bit.
+
+### Note: runconfig carries the same latent hazard
+
+Out of scope for this commit. Do not fix it here. Recorded so it is
+not lost.
+
+`runconfig/steptool.go:47` declares `tools.SchemaTool`
+unconditionally. A `stepTool` over a schema-less inner reports
+`tools.SchemaOf` as true with a nil schema. That is the same defect
+this plan avoids in `spool`.
+
+It is unreachable inside this tree today. `agentrun` does not import
+`agentloop`, and `policy/layers.json` grants `agentrun` no `agentloop`
+edge. A caller who registers a `runconfig`-built tool into an
+`agentloop` registry does reach it. That case needs its own plan.

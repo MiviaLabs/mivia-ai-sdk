@@ -193,8 +193,9 @@ mandated rewrites. See Verification.
 - `events/events_test/events_test.go:73` —
   `TestZeroValueBusPinsConstructorOnly` asserts zero-value `Emit`
   errors. A zero-value bus has no subscribers, so it now returns nil.
-  Rewrite the second half to assert nil. Keep the `Subscribe` panic
-  half unchanged.
+  Rewrite the second half to assert nil. The `Subscribe` panic half
+  stayed until the maintenance addendum at the end of this file
+  removed it.
 - `agent/agent_test/run_test.go:358` —
   `TestRunConfirmStepMessageDeliveredNoSubscriber` pins the propagated
   error. Rewrite to assert `Run` succeeds on a bare `events.New()`
@@ -297,3 +298,38 @@ record the deleted loops in those packages' plans.
 Each rewriting commit in `docs/plans/agentrun.md` and
 `docs/plans/dispatch.md` scope carries the same `Allow-Test-Change`
 trailer. It names the rewrites those addenda mandate.
+
+## Addendum: maintenance batch — the zero Bus is usable
+
+### Goal
+
+- Stop the zero `Bus` from panicking on `Subscribe`.
+
+### Scope
+
+- Verified: `events/bus.go:64` assigns into `b.subs`, which is nil on
+  a zero `Bus`. `Subscribe` panics there.
+- Verified: `Emit` at `events/bus.go:81` only reads the map, which is
+  safe on nil. `bus.go` declares no other method that touches
+  `b.subs`.
+- Exact change: add the nil-map guard `trigger/registry.go:77` uses,
+  inside the lock and before the append. Update the `Bus` doc comment
+  at `events/bus.go:41`, which says the zero value is not usable.
+- Out of scope: every other package whose doc says its zero value is
+  not usable.
+
+### Addendum tests
+
+- Replace `TestZeroValueBusPinsConstructorOnly` with a test that
+  subscribes on a zero `Bus`, emits, and asserts the handler ran once.
+  Keep the old test's second half, which asserts `Emit` on an
+  untouched zero `Bus` returns nil.
+- The old test pinned the panic this change removes. The rename
+  removes a test function name, so the tampering gate fires `TT01`.
+  Re-verify the diff, then carry an `Allow-Test-Change` trailer.
+
+### Addendum verification
+
+- `go test ./events/...` passes.
+- `make verify` passes; `events` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

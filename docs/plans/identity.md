@@ -202,3 +202,35 @@ Every rejection asserts errors.Is against ErrKeyFormat.
 - For the Validate hardening: `python3 scripts/check_plan.py` must
   pass. `go test -race ./identity/...` must pass. `make verify-fast`
   must pass.
+
+## Addendum: maintenance batch — the Load comment states a live check
+
+### Goal
+
+- Stop a comment from inviting deletion of a live security check.
+
+### Scope
+
+- Verified: `identity/identity.go:61` derives `pub` from
+  `priv.Public()`, which returns a copy of the key file's second half,
+  not the seed-derived key. `Validate` compares the seed-derived key
+  against both `PublicKey` and `PrivateKey[32:]`. A split-brain file
+  fails both comparisons.
+- Verified: `identity/identity_test/validate_split_brain_test.go:64`
+  drives `Load` over three split-brain files and expects
+  `ErrKeyInvalid`. The `Validate` call at `identity.go:66` is
+  reachable and load-bearing.
+- Exact change: replace the three comment lines at `identity.go:63`
+  with one line naming the split-brain rule and the test. No code
+  change. Wrapping across two lines for column width is acceptable.
+
+### Addendum tests
+
+- No new test. `TestValidateSplitBrainLoad` already covers the branch
+  the comment describes.
+
+### Addendum verification
+
+- `go test ./identity/...` passes.
+- `make verify` passes.
+- No `api/` diff; no `policy/layers.json` change.

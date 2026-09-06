@@ -372,3 +372,57 @@ for the contract, the test rewrites, and the verification set.
 Every commit in this change that rewrites a mandated test carries an
 `Allow-Test-Change` commit-message trailer. The trailer names the
 rewrites. See docs/plans/events.md, Verification.
+
+## Addendum: maintenance batch — ValidateMatrix equivalence test
+
+### Goal
+
+- Prove the `ValidateMatrix` simulator demands exactly the transition
+  rows `flow.Run` consumes on the same definition.
+
+### Scope
+
+- Verified: `agentrun/matrix.go:99` and `agentrun/matrix.go:199`
+  re-implement the declaration-order scan `flow/runner.go:93` owns.
+  Nothing compares the two. `grep -rl "flow.Run(" agentrun/` returns
+  nothing.
+- `ValidateMatrix` returns only an error, so it exposes no order
+  value. The test compares the two scans through what is observable:
+  the set of rows each demands, attributed to the same unit.
+- `flow.Run` skips `Confirm` for a panel of two or more members; see
+  `flow/runner.go:14`. The test records the walk with `onCheckpoint`,
+  whose `Checkpoint.Status` gives the status after each resolved unit.
+  It also records `Confirm` and asserts the documented gap.
+- No production change. The two scans agree.
+
+### Addendum tests
+
+- Add `agentrun/agentrun_test/matrix_equivalence_test.go`, external
+  package `agentrun_test`. It reuses `mustFlow`, `mustMachine`, and
+  `assertMatrixFails`.
+- Fixture: statuses `queued`, `sx`, `gathered`, `routed`, `done`. A
+  root singleton to `sx`; a two-member panel to `gathered`; a routing
+  singleton to `routed` whose `Route` returns its only dependent; a
+  joining singleton to `done`.
+- `flow.New` rejects a panel member that is a direct dependent of a
+  routed step, so the route sits below the panel. The route must
+  exclude nothing, because the simulator walks the all-run path.
+- The run uses a machine holding every ordered pair of distinct
+  statuses, so `flow.Run` picks its own path.
+- Assertion one: the `Confirm` order equals the three singletons.
+- Assertion two: a machine holding only the recorded status chain
+  passes `ValidateMatrix`. The simulator demands no extra row.
+- Assertion three: for each recorded link, the complete machine minus
+  that one row fails `ValidateMatrix`, naming both statuses. The
+  simulator demands every recorded row.
+- The recorded chain is `sx`, `gathered`, `routed`, `done`. Each
+  drop-one case names the expected unit: `root`, then
+  `"panelA panelB"`, then `router`, then `finish`. Every one is a live
+  positive control.
+
+### Addendum verification
+
+- `go test -race ./agentrun/...` passes.
+- `make verify` passes; `agentrun` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change. The deps gate
+  exempts an external test package.

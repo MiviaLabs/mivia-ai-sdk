@@ -17,7 +17,7 @@ Message, Ack, Intent, Epistemic, Provenance, AckStatus types; ContextRef,
 Sign, VerifyThread, Decode, DecodeAck functions; Validate/Encode/Hash/
 RequiresAck/VerifySignature methods. Locked in `api/envelope.txt`.
 Value semantics throughout; errors over panics; validation centralized
-in Validate and called by Encode/Decode.
+in Validate and called by Sign, Encode, and Decode.
 
 VerifyThread rejects duplicate message IDs inside one thread; the
 `id` uniqueness invariant from message.go gains enforcement. No
@@ -197,3 +197,174 @@ the additions, and `Hash` stays at or below the 80-line function
 limit. Coverage must stay at or above 85% total and per package; this
 round only adds tests and a small internal fallback, so it must not
 lower the floor.
+
+## Addendum: maintenance batch — Sign validates first
+
+### Goal
+
+- Stop `Sign` from producing a signed message `Validate` rejects.
+
+### Scope
+
+- Verified: `envelope/sign.go:14` never calls `Validate`. A caller can
+  sign a message with a blank payload or an unknown intent.
+- Exact change: call `m.Validate()` after the key-length check and
+  before the `Signer` assignment. Return the error.
+- Ordering is safe. `Message.Validate` never requires `Signer` or
+  `Signature`. `validateSignature` at `envelope/message.go:185`
+  returns nil when both fields are empty.
+- Consequence: the `marshal for signing` branch becomes unreachable. A
+  NaN or infinite `Confidence` is the only input that fails
+  `json.Marshal`, and `Validate` rejects it first. Keep the branch as
+  a defensive one.
+- No new conformance vector. The vectors pin `Encode` and `Decode`.
+  This change adds no schema rule and no new `Validate` rule.
+
+### Addendum tests
+
+- Replace `TestSignRejectsUnserializableMessage` in
+  `envelope/sign_test.go` with `TestSignRejectsInvalidMessage`. The
+  old test pinned the marshal branch this change makes unreachable.
+  The replacement asserts the intent error for `Intent: "bogus"` and
+  the confidence error for a NaN `Confidence`, so it keeps two
+  assertions where the old had one.
+- Two call sites outside `envelope` sign a message `Validate` rejects
+  on purpose. `a2aack/a2aack_test/transport_error_test.go:148` needs a
+  validly signed empty payload to reach the restatement branch at
+  `a2aack/a2aack.go:136`. `room/integration_test.go:203` proves a
+  correct signature does not rescue invalid content at
+  `room/room.go:152`. Both build the message with a local
+  `signBypassingValidate` helper instead. A test-only signing helper
+  does not belong on the public surface.
+- A grep of every `.Sign(` site in the tree, followed by a full suite
+  run with the change applied, found exactly these three sites.
+
+### Addendum verification
+
+- `go test ./...` passes.
+- `make verify` passes; `envelope` measured 99.4 percent coverage
+  with the change applied.
+- No `api/` diff; no `policy/layers.json` change.
+
+## Addendum: maintenance batch — delegate the ref-form check to contextstate
+
+This addendum is one of three that ship in one commit. See "Addendum:
+maintenance batch — drop StaleMembers and the heartbeat edge" in
+`docs/plans/room.md` for the batch.
+
+### Addendum goal
+
+Make `contextstate` the single source of truth for the canonical ref
+form. `envelope.isHashRef` delegates to `contextstate.IsRef` instead
+of reimplementing it.
+
+### Addendum scope
+
+`envelope/message.go:219-221` declares `isHashRef`. Its body strips
+`hashPrefix` and checks the remainder. `contextstate/ref.go:38-41`
+declares `IsRef` with the same two steps.
+
+This edge is not new. `envelope/message.go:12` already imports
+`contextstate`, for `contextstate.HashPrefix` at line 22 and
+`contextstate.Mint` at line 84. `policy/layers.json` already grants
+`"envelope": ["contextstate"]`. This addendum changes no policy row
+and no lock file.
+
+Change one function body:
+
+```go
+func isHashRef(ref string) bool {
+	return contextstate.IsRef(ref)
+}
+```
+
+Length check, confirmed by reading both constants. `envelope` passes
+`sha256.Size*2`, which is 64. `contextstate/ref.go:14` sets
+`digestHexLen = 64`. The two checks accept the same set of strings,
+so the delegation preserves behavior exactly.
+
+Finding, reported instead of assumed. Do not delete `envelope`'s own
+`isLowerHex`. `command grep -rn "isLowerHex" envelope/` shows two
+callers besides `isHashRef`: `message.go:189` checks `m.Signer` at 64
+characters, and `message.go:192` checks `m.Signature` at 128
+characters. `contextstate.IsRef` cannot serve either, because both
+take a bare hex string with no prefix and one of them takes a
+different length. `isLowerHex` stays, with both remaining callers.
+
+The gain is smaller than a whole-function deletion. It is still real:
+the prefix-strip and length rule for a canonical ref now lives in one
+package, and a future change to that form cannot leave `envelope`
+behind.
+
+Import check after the change, confirmed by grep on
+`envelope/message.go`:
+
+- `crypto/sha256` stays. Line 97 calls `sha256.Sum256`.
+- `strings` stays. Lines 120 and 177 call `strings.TrimSpace`.
+- `encoding/hex` stays. Line 98 calls `hex.EncodeToString`.
+- The `hashPrefix` constant stays. Line 98 uses it.
+
+No import line changes.
+
+Out of scope: moving `contextstate/ref.go` into its own leaf package.
+That is a separate plan. Do not start it here.
+
+### Addendum API
+
+No exported symbol changes. `isHashRef` and `isLowerHex` are both
+unexported. `make api-update` must produce no diff for
+`api/envelope.txt`. A diff means the change went out of scope.
+
+`policy/layers.json` does not change.
+
+### Addendum tests
+
+Every existing `envelope` test stays. No test targets `isHashRef` or
+`isLowerHex` by name; `command grep -rn "isHashRef\|isLowerHex"
+envelope/ --include='*_test.go'` returns nothing. Both functions are
+covered through `Validate`, `Decode`, the conformance vectors, and
+`FuzzDecode`.
+
+Add no test and no conformance vector. The wire contract does not
+move, and the vectors under `envelope/testdata/vectors/` already pin
+the accepted and rejected ref forms.
+
+`contextstate`'s own `FuzzIsRef` in
+`contextstate/contextstate_test/ref_fuzz_test.go` already proves
+`IsRef` accepts exactly the canonical form. That is now the proof for
+`envelope` as well.
+
+### Addendum verification
+
+Commands:
+
+- `make verify`.
+- `python3 scripts/check_plan.py`.
+- `python3 scripts/check_deps.py`. The `envelope` row is unchanged and
+  must still pass.
+- `python3 scripts/check_api.py` after `make api-update`, which must
+  produce no diff.
+- `python3 scripts/check_docs.py`.
+- `python3 scripts/check_orphan_packages.py`.
+- `python3 scripts/check_prose.py`.
+- `python3 scripts/check_test_tampering.py`. It must report nothing
+  for `envelope`.
+
+Coverage: `envelope`, `contextstate`, and the total must stay at or
+above 85. The change removes two lines of covered logic and adds one.
+
+Caution for the next `make mutation-gate` run: `envelope`'s stored
+floor is 92, in `scripts/mutation_denylist/envelope.json`, and this
+change removes two well-killed lines. The mutation gate is not part of
+`make verify`, so it does not block this commit. Check the floor on
+the next mutation run and do not lower it.
+
+Doc site, found by grep, landing in the same commit:
+
+- `docs/architecture.md`, the `envelope/` bullet: it says `ContextRef`
+  delegates to `contextstate.Mint`, so every ref has one form. Add
+  that the ref-form check delegates to `contextstate.IsRef` for the
+  same reason.
+
+`docs/packages/envelope.md` and `docs/packages/contextstate.md`
+document no unexported helper. Leave both unchanged.

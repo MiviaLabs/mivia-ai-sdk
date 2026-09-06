@@ -1114,3 +1114,171 @@ project 85 to 100 lines, plus a package declaration and imports.
 
 - `python3 scripts/check_plan.py`, `scripts/check_prose.py`, and
   `scripts/check_labels.py` pass. No code, API, or policy diff.
+
+## Addendum: runLoop drops its zero-step and one-step branches
+
+### Addendum goal
+
+Delete two branches in `runLoop` that repeat the general graph walk.
+The change is a deletion. No behavior, API, or policy changes.
+
+### Addendum scope
+
+Delete `flow/resume.go` lines 108-126: the whole
+`if len(d.steps) == 0` block, the whole `if len(d.steps) == 1` block,
+and the blank line after them. `pending` and the `for` loop stay.
+
+Replace the second sentence of `runLoop`'s doc comment. The current
+text justifies the deleted one-step branch. The new text is:
+
+```go
+// runLoop is the shared graph walk Run and Resume both drive. It
+// takes the seed cur, rec, and outcomes: Run seeds outcomes empty and
+// cur at m.Initial(); Resume seeds outcomes from a checkpoint's Done
+// and cur/rec from the checkpoint's Status/Record. runLoop always
+// starts pending empty: a resume re-derives every still-pending
+// handler set the same way a fresh Run does, from the steps whose
+// outcome the seed leaves unresolved. A zero-step Definition never
+// enters the loop; a one-step Definition runs one iteration, through
+// nextReadyGroup and advanceGroup like any larger graph.
+```
+
+Keep `runSingletonAndMark`. It keeps two callers after the deletion:
+`flow/runner.go:114` and `flow/runner.go:136`.
+
+Outside the addendum: any other `flow` file, the panel walk, and the
+failure walk.
+
+### Addendum proof
+
+The general loop produces the same Report for every input class the
+deleted branches served.
+
+- Zero steps. The guard reads `len(outcomes) < 0` as `0 < 0` and
+  fails. `Resume` rejects a checkpoint ID absent from `d`, so a
+  zero-step `Definition` always reaches `runLoop` with an empty
+  `outcomes`. The function returns the same `Report` literal.
+- One step, already resolved. The deleted branch guarded on
+  membership; the loop guards on count. `len(outcomes)` is 1 only
+  because `hasStep` rejects any checkpoint ID absent from `d`
+  (`flow/resume.go:59`, `:66`, `:73`), so for a one-step `d` the sole
+  admissible key is `d.steps[0].ID`. The count guard and the
+  membership guard therefore coincide, and the function returns the
+  same `Report` literal.
+- One step, canceled ctx. The loop's first statement is the same
+  `ctx.Err()` check, with the same `run paused: %w` wrapper.
+- One step, unresolved, in no panel. `nextReadyGroup` returns
+  `scanSingleton`: a lone step has no `Needs`, so `admissionVerdict`
+  admits it. `advanceGroup` calls the same `runSingletonAndMark`, then
+  `fireCheckpoint`. `next.Route` is always nil here.
+  `validateRouting` at `flow/routing.go:164` rejects a branch step
+  with no dependent, and a lone step has no dependent.
+- One step, unresolved, in a one-member panel. `panelVerdict` admits,
+  and `advanceGroup`'s `scanPanel` arm calls the same
+  `runSingletonAndMark` for `group[0]`, then `fireCheckpoint`.
+- One step, failing. `resolveCatchable` finds no handler and returns
+  the error unchanged, and `continueOrAbort` returns it. A one-step
+  graph cannot declare a handler: `validateFailureAdmission` rejects
+  an `AdmissionOnFailed` step with no needs, and a self-need fails the
+  cycle check in `findRoots`.
+
+### Addendum tests
+
+Add two cases to `flow/flow_test/checkpoint_resume_test.go`. Write and
+run both before the deletion. Each must pass on both trees; that is
+the equivalence pin.
+
+- `TestResumeOneStepPendingRunsStep` — `Resume` a one-step
+  `Definition` whose checkpoint resolves nothing. Assert one `confirm`
+  call for step `a`, one `onCheckpoint` call whose `Done` is `[a]`,
+  the fired status, `OutcomeSucceeded` for `a`, and the seeded record.
+- `TestResumeEmptyGraphReturnsCheckpointState` — `Resume` a zero-step
+  `Definition`. Assert no `confirm` call, no `onCheckpoint` call, the
+  checkpoint's status and record, and an empty outcome map.
+
+Three existing tests already pin two input classes:
+`TestRunEmptyGraph`, `TestRunEmptyGraphNeverCheckpoints`, and
+`TestResumeAllDoneOneStepCheckpointCallsNothing`. Every `Run` case
+built on `singleStepGraph` already drives a one-step graph through
+`runLoop`.
+
+### Addendum docs
+
+Six comments call the one-step path distinct, and one names the
+deleted code. Each becomes false. Rewrite all six. Two of them wrap
+the phrase across a line break, so grep each half.
+
+- `flow/resume.go`, `runLoop`'s doc comment. New text above, in
+  "Addendum scope".
+- `flow/flow_test/chain_test.go:417`, on
+  `TestRunOneMemberPanelAmongOtherStepsCallsConfirm`. Drop the clause
+  "not just the `len(d.steps)==1` shortcut". The sentence ends at
+  "runs through the group-based singleton branch in Run's multi-step
+  loop".
+- `flow/flow_test/checkpoint_test.go:299-301`, on
+  `TestRunSingleStepChecksCanceledCtx`. Replace "The one-step branch
+  is a separate code path from the loop the multi-step case
+  exercises, so a multi-step-only pause test cannot catch a missing
+  check here." with "This guards the one-step input class, which now
+  runs through the same loop; a multi-step-only pause test never
+  drives a graph of one step."
+- `flow/flow_test/checkpoint_test.go:330-332`, on
+  `TestRunSingleStepFiresCheckpointOnce`. Replace "The one-step branch
+  builds its Checkpoint on a different return path than the
+  multi-step loop; a multi-step-only checkpoint test cannot catch a
+  missing call here." with "This guards the one-step input class,
+  which now fires its checkpoint from the same loop; a
+  multi-step-only checkpoint test never drives a graph of one step."
+- `flow/flow_test/checkpoint_resume_test.go:126-127`, on
+  `TestResumeAllDoneOneStepCheckpointCallsNothing`. Replace "This
+  pins the one-step short-circuit's guard, separate from the
+  multi-step case above." with "This pins the one-step input class
+  against the loop's count guard, separate from the multi-step case
+  above."
+- `flow/flow_test/checkpoint_sort_test.go:61-62`, on
+  `TestCheckpointValidateAcceptsEmptyLists`. Replace "the zero-list
+  case Run's single-step short-circuit produces" with "the zero-list
+  case a Run that resolves no step produces".
+
+Two plan sites cite the removed short-circuit. Annotate both; never
+delete historical plan text. Match the convention at
+`docs/plans/subagent.md:204`.
+
+- `docs/plans/flow.md:607`, in the `checkpoint_test.go` bullet of the
+  Tests section. The bullet ends with "not a dedicated `Resume`
+  check." Add a nested annotation under it: the one-step
+  short-circuit named above no longer exists; see the addendum
+  "runLoop drops its zero-step and one-step branches"; the case now
+  runs through the general loop, and the test keeps every assertion.
+- `docs/plans/flow.md:1064-1065`, in the
+  `TestCheckpointValidateAcceptsEmptyLists` bullet. Add a nested
+  annotation under it: `Run` has no single-step short-circuit after
+  that addendum, so the zero-list case now comes from the general
+  loop.
+
+Leave `docs/packages/flow.md:264` unchanged. It says the behavior
+holds for a one-step `Definition` too, which stays true.
+
+### Addendum coverage
+
+Measured on a scratch copy with the deletion and the two new tests.
+`flow` moves from 99.429% to 99.418%. The 85% floor holds. The two
+deleted branches were covered, so the ratio moves down by a rounding
+margin, not by a gap.
+
+### Addendum verification
+
+`make verify` passes. `go test ./flow/...` passes with the deletion.
+`scripts/mutation_denylist/` holds no `flow.json`, so `flow` carries
+no stored mutation floor. `make verify` runs `check_mutation.py
+--probe` only (`Makefile:59`), so no stored floor is re-checked there.
+Run `make mutation PKG=flow` as a follow-up if a score check is
+wanted.
+`make api-update` produces no diff: `runLoop`, `runSingletonAndMark`,
+and `fireCheckpoint` are unexported. A non-empty `api/` diff is a
+failure, not a lock refresh. `policy/layers.json` needs no row.
+
+Predicted `scripts/check_test_tampering.py` findings: none. The change
+deletes no test, adds two, and edits no conformance vector. TT04
+counts assertion sites across the whole diff, and the diff adds
+assertions. The builder does not add a trailer.

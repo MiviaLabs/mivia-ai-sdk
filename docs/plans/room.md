@@ -164,3 +164,215 @@ already-benchmarked lock, with no allocation-sensitive hot path.
 
 - No code, API, or policy diff. `python3 scripts/check_plan.py`,
   `scripts/check_prose.py`, and `scripts/check_labels.py` pass.
+
+## Addendum: maintenance batch — ErrUnsigned names both refusals
+
+### Goal
+
+- Make the sentinel text cover both refusals it already carries.
+
+### Scope
+
+- Verified: `room/room.go:33` declares `ErrUnsigned` as "unsigned
+  message cannot be admitted". `room/room.go:156` returns it for an
+  empty signer, and `room/room.go:159` wraps it for a signature that
+  does not verify. A forged signature is not an unsigned message.
+- Exact change: reword the sentinel to "message is unsigned or its
+  signature does not verify". No new sentinel and no `api/` diff.
+- A grep of the tree found the old text at `room/room.go:33` and
+  `docs/packages/room.md:49` only. Three other sites reference the
+  symbol, not the text.
+
+### Addendum tests
+
+- No new test. `room/integration_test.go` already pins both the
+  unsigned row and the forged-signature row against the symbol.
+
+### Addendum verification
+
+- `go test ./room/...` passes.
+- `make verify` passes; `room` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.
+
+## Addendum: maintenance batch — drop StaleMembers and the heartbeat edge
+
+This addendum is one of three that ship in one commit. The other two
+are "Addendum: maintenance batch — return an unnamed ack resolver" in
+`docs/plans/a2aack.md` and "Addendum: maintenance batch — delegate the
+ref-form check to contextstate" in `docs/plans/envelope.md`. Each one
+removes a dependency edge that exists for one symbol.
+
+### Addendum goal
+
+Remove `room`'s only reason to import `heartbeat`. The `room` row in
+`policy/layers.json` becomes `["envelope"]`.
+
+### Addendum scope
+
+This addendum reverses the decision recorded above in "Addendum:
+maintenance batch — liveness surfaces stay as documented public API".
+That addendum kept `StaleMembers` and `ErrNoMonitor` and priced the
+alternative as wiring effort alone. It never priced the import edge.
+
+The import edge is the cost that decides it. `room` imports
+`heartbeat`, and `heartbeat` imports `events`. One function with no
+caller therefore pulls two packages into the build of every consumer
+of `room`. Without it `room` is a leaf over `envelope` alone.
+
+The earlier addendum's second argument still holds and now cuts the
+other way. `subagent.HeartbeatTool` binds one monitor on purpose, so
+passing it a `*room.Room` would couple two concerns. That reasoning
+shows the function has no internal caller today and none later.
+
+The lost capability is small. Application code that wants the
+intersection writes it over `Room.Members` and `Monitor.Dead`, both
+exported, in three lines. `room` keeps every roster and admission
+method.
+
+Verified by grep before this addendum:
+
+- `command grep -rl StaleMembers --include='*.go' .` lists four files,
+  all under `room/`.
+- `command grep -rln "mivia-ai-sdk/heartbeat" room/` lists the same
+  four files, so `liveness.go` is the only production import site.
+- The real liveness consumer is `subagent/heartbeattool.go:63`. It
+  calls `monitor.Dead` and never touches `room`.
+
+Code changes:
+
+- Delete `room/liveness.go`. `StaleMembers` and `ErrNoMonitor` go with
+  it.
+- Delete `room/liveness_test.go`.
+- Delete `room/liveness_integration_test.go`.
+- Edit `room/bench_test.go`. Delete `buildThousandMemberRoom`,
+  `BenchmarkStaleMembersThousandMembers`, and
+  `TestStaleMembersAllocBudget`, at current lines 15 through 77. Drop
+  the `heartbeat` and `time` imports; nothing else in the file uses
+  them.
+- Keep `room/bench_test.go`. `buildThousandMemberRoomWithPoster` and
+  `BenchmarkAcceptsThousandMembers`, at current lines 79 through 124,
+  survive unchanged. Its remaining imports are `crypto/ed25519`,
+  `encoding/hex`, `fmt`, `testing`, `envelope`, and `room`.
+- `baseMessage` stays in `room/integration_test.go`. The surviving
+  benchmark still calls it.
+
+Out of scope: `heartbeat` itself. It keeps every method and every
+other importer.
+
+### Addendum API
+
+`api/room.txt` loses two lines and gains none:
+
+```text
+- func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)
+- var ErrNoMonitor
+```
+
+`api/heartbeat.txt` does not change.
+
+The `policy/layers.json` row change:
+
+```text
+- "room": ["envelope", "heartbeat"]
++ "room": ["envelope"]
+```
+
+No other row changes for this edge. The row narrows in the builder's
+commit, not in this plan update. Narrowing it before the import is
+gone fails `scripts/check_deps.py`.
+
+### Addendum tests
+
+No new test. The deleted tests cover only the deleted function.
+
+`scripts/check_test_tampering.py` fires on this commit. Expected
+findings:
+
+- `TT01` for each dropped test or benchmark function:
+  `TestStaleMembersNilMonitor`, `TestStaleMembersNoBeatsRecorded`,
+  `TestStaleMembersMixedAliveAndStale`,
+  `TestStaleMembersRosterIsSourceOfTruthForRemoval`,
+  `TestStaleMembersNeverBeatIsNotStale`,
+  `TestStaleMembersSortedAcrossRoles`,
+  `TestStaleMembersAcceptsThenBeatPattern`,
+  `TestStaleMembersDropsRemovedMemberOnNextCall`,
+  `TestStaleMembersConcurrentAccess`,
+  `TestStaleMembersAllocBudget`, and
+  `BenchmarkStaleMembersThousandMembers`.
+- `TT04` for the net decrease in assertion sites.
+- `TT05` and `TT06` may also fire on the removed comparisons.
+- `TT11`, the gate-infrastructure guard, fires on the whole commit.
+  `_GATE_INFRA_PREFIXES` at
+  `scripts/test_tampering_rules_infra.py:10` lists `policy/`, and this
+  commit edits `policy/layers.json` beside real code files. The
+  doc-companion exception covers only `docs/plans/` and
+  `docs/packages/` markdown, so it does not apply.
+
+The justification for every test-class finding above, `TT01` through
+`TT06`, is one fact: each deleted test
+asserts on `StaleMembers`, and `StaleMembers` is deleted in the same
+commit. No surviving behavior loses coverage. The proposed reason text
+is "removes tests for StaleMembers because the function itself is
+deleted in this commit".
+
+`TT11` takes a different trailer from the rest. It needs
+`Allow-Gate-Change`, not `Allow-Test-Change`, and fifteen significant
+words, not six. See `_GATE_CHANGE_MIN_WORDS` at
+`scripts/test_tampering_override.py:21`. Its justification is its own:
+the two narrowed `policy/layers.json` rows must ride in the same
+commit as the deleted imports they described. Splitting them fails
+`scripts/check_deps.py` on one side or the other. Ten of the last
+three hundred commits carry `Allow-Gate-Change: TT11` for this shape.
+
+The builder must not add an override trailer of either kind. The
+builder reports the findings and stops. The orchestrator verifies the
+diff and issues the trailers.
+
+### Addendum verification
+
+Commands:
+
+- `make verify`.
+- `python3 scripts/check_plan.py`.
+- `python3 scripts/check_deps.py` passes with the narrowed `room` row.
+- `python3 scripts/check_api.py` after `make api-update`.
+- `python3 scripts/check_docs.py`.
+- `python3 scripts/check_orphan_packages.py`.
+- `python3 scripts/check_prose.py`.
+- `python3 scripts/check_test_tampering.py`.
+
+Orphan result, checked against `policy/layers.json` before this
+addendum: `heartbeat` keeps `agent`, `agentrun`, `runconfig`, and
+`subagent` as importers. `events` keeps all eleven of its
+importers, and `room` was never one of them. Neither package becomes
+an orphan. `policy/pending_wiring.json` does
+not change.
+
+Coverage: `room` and the total must stay at or above 85. The commit
+deletes the covered lines and their tests together, so the ratio moves
+little. Confirm the number; do not assume it.
+
+Doc sites, all found by grep and all landing in the same commit:
+
+- `docs/architecture.md`, mermaid map: delete the `room --> heartbeat`
+  edge line.
+- `docs/architecture.md`, the `room/` bullet: delete the
+  `StaleMembers`, `ErrNoMonitor`, and `room` imports `heartbeat`
+  sentences.
+- `docs/architecture.md`, the `heartbeat/` bullet: delete the
+  `room.Room.StaleMembers` clause and name the real importer set,
+  `agent`, `agentrun`, `runconfig`, and `subagent`. The present text
+  says `agent` and `room` both import it, which is already stale.
+  Naming `agent` alone would be fresh drift, because the same file
+  draws four `--> heartbeat` edges after the `room` one goes.
+- `docs/packages/room.md`: delete the `Room.StaleMembers` method
+  bullet, the `ErrNoMonitor` failure-mode bullet, and the
+  `StaleMembers` invariant bullet.
+- `docs/packages/heartbeat.md`: delete the `room.md` cross-reference
+  bullet.
+- `.agents/skills/test-review/SKILL.md`: the allowed-edge list says
+  `room` imports `envelope` and `heartbeat`. Change it to `envelope`
+  only and delete the `StaleMembers` clause.
+
+`docs/README.md` and `AGENTS.md` name no `room` to `heartbeat` edge;
+grep confirms this. Leave both unchanged.

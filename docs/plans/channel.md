@@ -346,3 +346,58 @@ channel-ndjson-stdio.md` is added, compiled and run against the real
 module, with a matching one-line entry in `docs/README.md`'s Examples
 list. No conformance vector change: `channel` still carries no signed
 or hash-chained wire form.
+
+## Addendum: inlining wire.go's wrappers is rejected
+
+### Addendum goal
+
+Record why `channel/wire.go` stays. A maintenance batch proposed
+inlining `jsonEncode` and `jsonDecode` into `ndjson_notifier.go` and
+deleting the file. A gate blocks that change.
+
+### Addendum scope
+
+No code change. `channel/wire.go`, `jsonEncode`, and `jsonDecode` stay
+as they are. This section is the record.
+
+### Addendum finding
+
+The Semgrep rule `sdk.go.marshal-via-encode` in
+`semgrep/sdk-standards.yml` matches `json.NewEncoder(...).Encode(...)`
+in any Go file outside its path exclusion list. That list holds
+`/**/message.go`, `/**/sign.go`, `/**/ack.go`, `/**/wire.go`, and two
+named files. `channel/wire.go` is allowed only by the `wire.go` entry.
+
+Moving `jsonEncode`'s body into `ndjson_notifier.go` was tried on a
+scratch copy. The scan fails:
+
+```
+channel/ndjson_notifier.go
+   semgrep.sdk.go.marshal-via-encode
+   176: if err := json.NewEncoder(w).Encode(line); err != nil {
+```
+
+The file-name convention `wire.go`'s comment states is therefore a
+gate, not a preference. Passing the change would need a wider
+exclusion, which `AGENTS.md` forbids.
+
+`jsonDecode`'s body is `json.Unmarshal`, which the rule does not
+match. Moving that half alone still leaves `wire.go` in place for
+`jsonEncode`, and splits a documented pair across two files. It buys
+nothing, so it is rejected too.
+
+### Addendum facts
+
+- `channel/wire.go` holds the package clause, two imports, and the two
+  functions. It holds nothing else.
+- `jsonEncode` has one caller, `channel/ndjson_notifier.go:175`.
+- `jsonDecode` has one caller, `channel/ndjson_notifier.go:231`.
+- No test calls either function directly.
+
+### Addendum tests
+
+None. No code changes.
+
+### Addendum verification
+
+None. No code, API, docs, or policy diff.

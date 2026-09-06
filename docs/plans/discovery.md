@@ -46,7 +46,9 @@ via make api-update.
   Capabilities list. It applies TrimSpace to each capability entry
   before the next two checks. It rejects a capability entry that is
   blank after trim, including a whitespace-only entry. It rejects a
-  duplicate entry, compared case-insensitive after trim.
+  duplicate entry, compared case-insensitive after trim. It rejects an
+  entry that carries padding, checked after the duplicate check, so a
+  validated entry is always one Match can hit.
 - `func (c Card) Match(need string) (string, bool)` compares need
   against each capability with strings.EqualFold. It returns the
   matched capability and true on a hit. It returns an empty string and
@@ -163,3 +165,43 @@ Card fixtures live in `discovery/discovery_test/testdata/`:
   add vectors for an AgentCard mapping.
 - docs/architecture.md and docs/README.md gain the discovery plan
   reference in this change.
+
+## Addendum: maintenance batch — Validate rejects a padded capability
+
+### Goal
+
+- Make `Validate` own the rule `Match` relies on, so a validated card
+  never holds an entry `Match` cannot hit.
+
+### Scope
+
+- Verified: `discovery/card.go:53` trims each entry for its blank and
+  duplicate checks, then keeps the padded original. `Match` at
+  `card.go:79` compares the stored string. A card holding
+  `" deploy"` passes `Validate` and misses `Match("deploy")`.
+- Exact change: inside the `Validate` loop, reject
+  `trimmed != capability` with
+  `"discovery: capability entry must not carry padding"`.
+- Placement is load-bearing. The check goes after the duplicate loop
+  and before `seen = append(...)`. An existing row uses
+  `{"read", " read "}` and expects the duplicate error. A padding
+  check placed earlier would break that row.
+- `Match`'s doc comment describes a padded `need`, not a padded entry.
+  It stays correct and unchanged.
+
+### Addendum tests
+
+- Add `discovery/discovery_test/testdata/padded_capability.json`
+  holding `["read", " deploy"]`. Add one `TestParse` row over it,
+  expecting `must not carry padding`.
+- Add one `TestCardValidate` row over the struct-literal card
+  `{" deploy"}`, expecting the same substring. The first iteration
+  reaches the new branch with an empty `seen`.
+- Keep `card_test.go`'s padded-need `Match` row unchanged. It covers a
+  padded `need`, which the new rule does not touch.
+
+### Addendum verification
+
+- `go test ./discovery/...` passes.
+- `make verify` passes; `discovery` holds the 85 coverage floor.
+- No `api/` diff; no `policy/layers.json` change.

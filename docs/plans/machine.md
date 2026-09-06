@@ -118,7 +118,9 @@ doc comment states the enforced invariant.
   build a definition and reject a bad shape.
 - `(*Definition).Fire(ctx, from Status, trig Trigger, in InOut) (Status, InOut, error)`
   to move a record when the guard passes. The output record fills the
-  returned InOut.
+  returned InOut. Fire wraps `ErrNoTransition` when no row matches and
+  `ErrGuardRejected` when the row's guard returns false. Test both
+  with `errors.Is`.
 - `(*Definition).Validate() error` on the transitions. It stays
   exported. Phase 3 wire decode calls it. It still rejects an empty
   zero-value `Definition`.
@@ -294,3 +296,37 @@ status tests. The builder must confirm the per-package floor holds:
 run `go test -coverpkg=./machine ./machine/machine_test/` and read
 the number before reporting. If it lands below 85, stop and
 escalate; do not weaken the gate.
+
+## Addendum: maintenance batch — Fire gains two sentinels
+
+### Goal
+
+- Let a caller match `Fire`'s two refusals with `errors.Is` instead of
+  a substring.
+
+### Scope
+
+- Verified: `machine/definition.go:150` returns bare `fmt.Errorf`
+  strings for a missing row and a rejected guard.
+- Exact change: add `machine/errors.go` declaring `ErrNoTransition`
+  ("machine: no transition") and `ErrGuardRejected` ("machine: guard
+  rejected move"). Wrap both sites with `%w`. The rendered text stays
+  byte-identical, so no other test changes.
+- Flow builds its own "no transition to status" text at
+  `flow/wave.go:104`, and agentrun builds its own at
+  `agentrun/matrix.go:332`. Neither belongs to machine and neither
+  changes.
+- Run `make api-update`. `api/machine.txt` gains both names.
+
+### Addendum tests
+
+- `machine/machine_test/fire_test.go` moves its three
+  `strings.Contains` assertions to `errors.Is` against the matching
+  sentinel. The test names do not change.
+
+### Addendum verification
+
+- `go test ./machine/... ./flow/... ./agentrun/...` passes.
+- `make verify` passes; `machine` holds the 85 coverage floor.
+- `api/machine.txt` gains `var ErrGuardRejected` and
+  `var ErrNoTransition`.

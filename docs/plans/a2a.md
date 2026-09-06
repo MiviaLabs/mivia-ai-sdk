@@ -197,3 +197,105 @@ capability discovery uses the `discovery` package instead of the A2A
 Agent Card; phase 9 adds one sentence recording that the envelope now
 maps onto an A2A v1.0 part through the `a2a` package, still with no
 task-lifecycle or transport claim.
+
+## Addendum: ToPart drops its duplicate Validate call
+
+### Addendum goal
+
+Delete the `m.Validate()` call in `ToPart`. `m.Encode()` on the next
+line already validates. No behavior, API, or policy changes.
+
+### Addendum scope
+
+Delete `a2a/mapping.go` lines 42-44:
+
+```go
+	if err := m.Validate(); err != nil {
+		return Mapped{}, err
+	}
+```
+
+`ToPart`'s body then starts at `data, err := m.Encode()`.
+
+Rewrite the second sentence of `ToPart`'s doc comment. The current
+text claims a call the body no longer holds. The new comment is:
+
+```go
+// ToPart maps a signed or unsigned envelope.Message onto a Mapped
+// value. It returns an error, not a zero Mapped, on failure: m.Encode
+// validates m before it marshals, so an invalid message never reaches
+// Part.Data. It signs nothing and does not modify m. ToPart
+// builds Part.Data by calling m.Encode and wrapping the result in
+// json.RawMessage, reusing envelope's wire encoder instead of a
+// second marshal call; Text, Raw, and URL stay empty. Mapped.ContextID
+// carries m.ThreadID and Mapped.MessageID carries m.ID.
+```
+
+Update the same comment where this plan quotes it, in the API section
+above. Update three more prose sites that name the deleted call:
+
+- `docs/packages/a2a.md`, the `ToPart(m)` bullet. New text: `ToPart(m)`
+  builds `Part.Data` by calling `m.Encode` and wrapping the result in
+  `json.RawMessage`. `m.Encode` validates `m` before it marshals, so
+  `ToPart` returns an error, not a zero `Mapped`, on a `Validate`
+  failure. Signs nothing and does not modify `m`.
+- `a2a/a2a_test/mapping_test.go:63`, the comment on
+  `TestToPartRejectsInvalidMessage`. Replace "proves ToPart calls
+  Validate first" with "proves ToPart rejects an invalid message".
+- `a2aclient/client_test.go:119`. Replace "which a2a.ToPart calls"
+  with "which a2a.ToPart reaches through m.Encode".
+
+Leave `docs/architecture.md` and
+`docs/examples/a2a-mapping-roundtrip.md` unchanged. Both say `ToPart`
+validates, which stays true.
+
+Outside the addendum: `FromPart`, `Part`, `Mapped`, and every
+`envelope` function.
+
+### Addendum proof
+
+`envelope.Message.Encode` at `envelope/message.go:199` calls
+`m.Validate()` as its first statement and returns the error
+unwrapped. No output and no other failure precedes it. `ToPart`'s
+error value for an invalid message is therefore unchanged.
+
+No test asserts a `ToPart` error string or error identity. The five
+call sites that exercise the failure assert only `err != nil`:
+`a2a/a2a_test/mapping_test.go:69`, `a2aclient/client_test.go:121`,
+`a2aloopback/loopback_test.go:166`, and the two `agent` integration
+mappers.
+
+### Addendum tests
+
+Add `TestToPartInvalidMessageErrorMatchesValidate` to
+`a2a/a2a_test/mapping_test.go`. It builds a message with an empty
+`Payload`, keeps `m.Validate()`'s error, calls `ToPart`, and asserts
+the two error strings are equal. The test fails if a future `Encode`
+wraps the validation error.
+
+`TestToPartRejectsInvalidMessage` stays. It now reaches `ToPart`
+through `Encode` and catches the mistake of dropping validation
+altogether.
+
+### Addendum coverage
+
+`scripts/mutation_denylist/` holds no `a2a.json`, so `a2a` carries no
+stored mutation floor. The neighboring `a2aclient.json` names a
+different package, at floor 95.
+
+Measured on a scratch copy: `a2a` moves from 92.9% to 100.0%. The
+duplicate call made `ToPart`'s `Encode` error branch at
+`a2a/mapping.go:46` unreachable, and that branch was the package's
+only uncovered statement. The deletion makes it reachable, and
+`TestToPartRejectsInvalidMessage` covers it.
+
+### Addendum verification
+
+`make verify` passes. `go test ./a2a/... ./a2aclient/...
+./a2aloopback/... ./agent/...` passes. `make api-update` produces no
+diff: the change edits one function body and one comment, and adds no
+exported symbol. A non-empty `api/` diff is a failure.
+`policy/layers.json` needs no row.
+
+Predicted `scripts/check_test_tampering.py` findings: none. The change
+deletes no test and adds one. The builder does not add a trailer.

@@ -64,7 +64,8 @@ security fix.
   (commit B)
 - `Options`: `Root string`, `MaxReadBytes int64`, and (change two)
   `Deny *secretpath.Matcher`. (commit B)
-- `(Options) Validate() error`: `Root` must not be blank.
+- `(Options) Validate() error`: `Root` must not be blank; a blank
+  `Root` returns `ErrBlankRoot`.
   `MaxReadBytes` must be `Unbounded`, zero, or a positive value at or
   under `maxReadLimit`; any other value returns `ErrInvalidLimit`.
   Zero selects `DefaultMaxReadBytes`. (change two) `Deny` may be nil,
@@ -1085,3 +1086,36 @@ In `workspace/workspace_test/workspace_test.go`:
 - `docs/packages/workspace.md` line 35's `Options.Validate()` entry
   needs no wording change: "Root must not be blank" already matches
   the corrected code.
+
+## Addendum: maintenance batch — ErrBlankRoot
+
+### Goal
+
+- Give the blank-root refusal a sentinel, like the other refusals in
+  this package.
+
+### Scope
+
+- Verified: `workspace/workspace.go:83` returns an inline
+  `errors.New` beside the `ErrInvalidLimit` sentinel.
+- Exact change: declare
+  `ErrBlankRoot = errors.New("workspace: Root is blank")` beside the
+  other sentinels, and return it from `Options.Validate`. The text
+  does not change.
+- Run `make api-update`. `api/workspace.txt` gains `var ErrBlankRoot`.
+
+### Addendum tests
+
+- `workspace/workspace_test/read_limit_test.go` already carries a
+  `wantErr error` field checked with `errors.Is`. Add
+  `wantErr: workspace.ErrBlankRoot` to both blank-root rows. No new
+  test function.
+- `workspace/workspace_test/secret_test.go:249` asserts only a
+  boolean, and its comment defers the blank-root rows to
+  `read_limit_test.go`. It stays unchanged.
+
+### Addendum verification
+
+- `go test ./workspace/...` passes.
+- `make verify` passes; `workspace` holds the 85 coverage floor.
+- `api/workspace.txt` gains `var ErrBlankRoot`.

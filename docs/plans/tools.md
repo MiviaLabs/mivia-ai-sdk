@@ -130,8 +130,8 @@ with no caller yet" section, the same caller that will wire a
 
 `ExecutionProfile.Timeout` left this trio. The registry now enforces
 it: every `Run` and `RunScoped` dispatch carries a per-call deadline.
-See docs/packages/tools.md's "Run timeout backstop" section for the
-run-timeout backstop this package enforces.
+See this plan's "Run timeout backstop" section, and the section of
+the same name in docs/packages/tools.md, for the rules.
 
 ## API
 
@@ -146,7 +146,9 @@ run-timeout backstop this package enforces.
 - `type Registry struct` — holds tools by name. Unexported fields.
   Built only through `New`. Registry is safe for concurrent Add, Get,
   Remove, and Run; a sync.RWMutex guards the map.
-- `New() *Registry` — builds an empty registry.
+- `New() *Registry` — builds an empty registry. Takes no argument.
+  Every run is bounded by `DefaultRunTimeout` unless the tool's
+  profile declares its own `Timeout`.
 - `(*Registry).Add(t Tool) error` — registers `t` under `t.Name()`.
   Rejects a nil `t` with a sentinel error, before it calls `t.Name()`.
   Rejects a blank name (empty after `strings.TrimSpace`) with a
@@ -544,3 +546,376 @@ consistent, non-corrupt snapshot and no call panics.
 `Registry.Tools()` into `api/tools.txt` in the same change as
 `agentloop`'s own code. No
 `policy/layers.json` edit; `tools`'s row stays `[]`.
+
+### Run timeout backstop
+
+Status: shipped, with the removal below pending. Every `Run` and
+`RunScoped` dispatch runs the tool under a deadline. This section
+describes the surviving behavior after that removal.
+
+`DefaultRunTimeout` is ten minutes. It is the built-in bound. No
+caller opts in. It applies to every tool that declares no profile
+`Timeout`.
+
+`TimeoutNone` is minus one. It is the canonical "never cap" value.
+The resolver treats any negative duration the same way.
+
+`ErrRunTimeout` is the expiry sentinel. An expiry returns an error
+wrapping it. The message carries the tool name and the effective
+bound. Callers match with `errors.Is`, never against the naked
+sentinel.
+
+The bound resolves in one pass over the tool alone:
+
+1. A positive `ExecutionProfile.Timeout` binds verbatim.
+2. A negative `ExecutionProfile.Timeout` never caps that tool.
+3. A zero or absent `ExecutionProfile.Timeout` resolves to
+   `DefaultRunTimeout`.
+
+One escape hatch survives. A tool exempts itself with a negative
+profile `Timeout`. No registry-wide exemption exists. A tool that
+declares no profile always runs under a deadline.
+
+The budget starts when the tool's `Run` starts. It never covers
+`Scope.Allowed` or `Approve`. A tool that finishes first keeps its
+exact result, including a cancellation-shaped error it produced on
+its own. A parent context already done yields the parent cause
+instead of `ErrRunTimeout`. A panicking tool yields an error carrying
+its name and panic value.
+
+### Removal: the functional-option constructor
+
+Status: planned, extends New. `tools` is the one package in this
+module that uses the functional-option pattern.
+`docs/plans/workspace.md` records the rule, in the bullet on the
+per-call read override: this module uses no functional-option
+pattern. Grep that file for `functional-option` to find it; a sibling
+change in this batch moves its line number. This change restores the
+rule. It deletes the registry-wide run-timeout knob with it. This
+plan's API section already declares `New() *Registry`; the code
+drifted from it.
+
+The build is four edits.
+
+1. `tools/registry.go` line 61. `func New(opts ...Option) *Registry`
+   becomes `func New() *Registry`. Delete the option loop. Rewrite the
+   doc comment. `New` creates an empty `Registry`. Every run is
+   bounded by `DefaultRunTimeout` unless the tool's profile declares
+   its own `Timeout`.
+2. `tools/registry.go` lines 52 to 55. Delete the `defaultRunTimeout`
+   field, its doc comment, and the sentence "Immutable after New
+   applies its options left to right". The struct keeps `mu` and
+   `tools`. Drop the then-unused `time` import from `registry.go`.
+3. `tools/registry_timeout.go` lines 24 to 35. Delete `type Option
+   func(*Registry)` and `func WithDefaultRunTimeout(d time.Duration)
+   Option` with their doc comments. Amend
+   `DefaultRunTimeout`'s doc comment at line 11 to drop the
+   "no WithDefaultRunTimeout option applies" clause.
+4. `tools/registry_timeout.go` lines 37 to 59 and line 82.
+   `effectiveRunTimeout(t Tool, configured time.Duration)` becomes
+   `effectiveRunTimeout(t Tool)`. Delete the `switch` over
+   `configured` and return `DefaultRunTimeout` after the profile
+   check. Amend its doc comment to drop the configured default.
+   `runBounded` calls `effectiveRunTimeout(t)`.
+
+The field goes, and `effectiveRunTimeout` loses its parameter. A
+field that no code writes is dead state, and keeping it would leave
+two branches inside `effectiveRunTimeout` that no caller can reach.
+
+Observable behavior does not change. `configured` was already zero at
+every reachable call site, because no caller outside `tools` ever
+passed an option. A tool declaring a positive profile `Timeout` still
+binds verbatim. A tool declaring a negative one still never caps. An
+undeclared tool still resolves to `DefaultRunTimeout`.
+
+`DefaultRunTimeout`, `TimeoutNone`, `ErrRunTimeout`, and
+`ExecutionProfile.Timeout` all stay. The backstop stays. Only the
+registry-wide knob goes.
+
+`New` stays source-compatible. Every call site in the module already
+calls `tools.New()` with no argument.
+
+#### Invariant 4 is removed, not changed
+
+Invariant 4 said `WithDefaultRunTimeout(TimeoutNone)` restores
+unbounded runs for undeclared tools. That capability is deleted. A
+tool that declares no profile `Timeout` can no longer be exempted at
+all. Only a tool that declares a negative profile `Timeout` runs
+unbounded. The plan states this, and
+`docs/packages/tools.md` states it too. No test may claim invariant 4
+survives.
+
+#### Test moves
+
+Ten call sites build a registry through the deleted option. Nine live
+in `tools/tools_test/registry_run_timeout_test.go`. One lives in
+`tools/run_timeout_internal_test.go` at line 103. Every surviving test
+moves its bound onto the tool's `ExecutionProfile.Timeout`.
+
+Two probe tool types are new in
+`tools/tools_test/registry_run_timeout_test.go`. Both report their
+context deadline through `Out.Value`, using one report struct:
+
+```go
+// deadlineReport is a probe tool's Out.Value. bounded records whether
+// the context carried a deadline. remaining records
+// time.Until(deadline); it is zero when bounded is false.
+type deadlineReport struct {
+	bounded   bool
+	remaining time.Duration
+}
+```
+
+One probe publishes a `ProfiledTool` timeout. The other implements
+`Tool` only, so it can never declare a bound:
+
+```go
+// deadlineProbe reports its context deadline and publishes one
+// declared Timeout.
+type deadlineProbe struct {
+	name    string
+	timeout time.Duration
+}
+
+// bareDeadlineProbe reports its context deadline and declares
+// nothing. It implements Tool only.
+type bareDeadlineProbe struct {
+	name string
+}
+```
+
+Both probes carry a per-instance `name` field, the way `gateTool` and
+`napTool` already do. `Registry.Add` returns `ErrDuplicateName` on a
+name collision, and one test registers two profiled probes in one
+registry. Each `Run` returns `Out{Value: deadlineReport{...}}` built
+from `ctx.Deadline()`. `deadlineProbe.ExecutionProfile` returns
+`ExecutionProfile{Timeout: p.timeout}`. `bareDeadlineProbe` must not
+gain an `ExecutionProfile` method, or it stops testing the undeclared
+path.
+
+A context deadline is observable through the `Tool` contract. A bound
+is therefore provable with no wall-clock wait.
+
+`tools/tools_test/registry_run_timeout_test.go`:
+
+- Line 181, `TestRunConfiguredDefaultExpires`. It proves that a run
+  with no profile declaration is still bounded. It also proves the
+  expiry carries the tool name and the bound. The first half dies with
+  the knob. Rename to `TestRunScopedDeclaredTimeoutExpires`. Wrap the
+  gate tool in `profiledGateTool` with
+  `timeout: 20 * time.Millisecond`. Nothing is configured any more, so
+  rename the tool-name literal from `configured-slow` to `scoped-slow`
+  at all three sites: the `gateTool` literal at line 183, the run
+  argument at line 189, and the message assertion at line 194. Call
+  `RunScoped` under an allowing scope from
+  `tools.NewScope(tools.ScopeOptions{})`. Keep both assertions
+  otherwise unchanged. The renamed test pins expiry through
+  `RunScoped`, which no test covers today.
+- Line 222, `TestProfileLongerThanConfiguredFiresLonger`. Delete it.
+  It proves a declared 120 ms bound governs a 30 ms configured
+  registry, so a silent minimum is ruled out. The configured half of
+  that pair dies with the knob. The built-in ten-minute fallback is
+  larger than any bound a unit test can wait out. The invariant
+  therefore cannot survive at this level. The new
+  `declared-longer-than-default` row in `TestEffectiveRunTimeout`
+  carries it instead, at zero wall-clock cost. Renaming this test
+  would only duplicate `TestRunDeclaredTimeoutExpires` at line 157,
+  which already kills the mutation that ignores the declared value.
+- Line 243, `TestNegativeProfileExemptsUnderAggressiveConfigured`. It
+  proves a negative profile `Timeout` exempts a tool under a tight
+  registry default. The exemption survives; the tight default does
+  not. A 100 ms nap under the ten-minute fallback would pass either
+  way. Rename to `TestNegativeProfileExemptsFromBackstop`. Register
+  the profiled probe with `timeout: tools.TimeoutNone` and assert
+  `bounded` is false. Register a second profiled probe with
+  `timeout: 50 * time.Millisecond` and assert `bounded` is true. The
+  second case is the positive control. The renamed test pins the
+  surviving per-tool exemption.
+- Line 264, `TestWithDefaultRunTimeoutNoneExemptsUndeclared`. Its
+  whole subject is the deleted symbol and the deleted invariant 4.
+  Delete it. Add `TestUndeclaredToolAlwaysBounded` in its place. That
+  test registers the no-profile probe. It asserts `bounded` is true
+  and the run returns no error. It also asserts `remaining` is greater
+  than `tools.DefaultRunTimeout - time.Minute` and at most
+  `tools.DefaultRunTimeout`. The range pins the resolved bound to
+  `DefaultRunTimeout` itself, so any other fallback value fails the
+  test. Both sides of the range are symbolic, so raising the constant
+  moves both and the test still passes; the test pins the resolver
+  against the constant, never the constant's value. Removing the bound
+  fails the test, and so does a resolver returning a hard-coded
+  minute or `DefaultRunTimeout * 2`. A bare "a deadline exists"
+  assertion would pass under any bound and pin nothing.
+- Line 281, `TestParentCancelMidRunBeatsDeadline`. Keep the name and
+  every assertion. Wrap the gate tool in `profiledGateTool` with
+  `timeout: 1 * time.Hour`.
+- Line 316, `TestToolOwnDeadlineErrorStaysUntouched`. Keep the name
+  and every assertion. Give `selfDeadlineTool` an `ExecutionProfile`
+  method returning `Timeout: 200 * time.Millisecond`.
+- Line 333, `TestSlowApproveDoesNotConsumeBudget`. Keep the name and
+  every assertion. Set `timeout: 20 * time.Millisecond` on the
+  existing `profiledNapTool` literal, which declares no timeout
+  today.
+- Line 371, `TestUnknownNameUnchangedUnderBackstop`. Keep the name and
+  every assertion. Build the registry with `tools.New()`. The test
+  never runs a tool, so no bound is needed.
+- Line 387, `TestConcurrentBlockingCallsEachExpire`. Keep the name and
+  every assertion. Register each blocker as a `profiledGateTool` with
+  `timeout: 25 * time.Millisecond`.
+
+`tools/run_timeout_internal_test.go`:
+
+- Line 103, `TestRunBoundedLateProducerBufferedSend`. Keep the name
+  and every assertion. Build the registry with `New()`. Give
+  `lateProducerTool` an `ExecutionProfile` method returning
+  `Timeout: 15 * time.Millisecond`.
+- Line 32, `TestEffectiveRunTimeout`. Keep the name. Drop the
+  `configured` column from the table and from the call. Two rows name
+  the deleted parameter and go with it. Two more rows differ only in
+  `configured` and collapse into one. Five rows remain, in the field
+  order name, declared, hasProfile, want:
+  - `{"undeclared-defaults", 0, false, DefaultRunTimeout}`
+  - `{"declared-zero-falls-through", 0, true, DefaultRunTimeout}`
+  - `{"declared-positive-verbatim", 80 * time.Millisecond, true, 80 * time.Millisecond}`
+  - `{"declared-longer-than-default", 20 * time.Minute, true, 20 * time.Minute}`
+  - `{"declared-negative-none", TimeoutNone, true, 0}`
+
+  The `declared-zero-falls-through` row is new. It exercises the
+  `declared != 0` guard through a `ProfiledTool`, which today's table
+  never reaches. The `declared-longer-than-default` row is new and
+  load-bearing. It is the only surviving proof that a declared bound
+  binds verbatim with no silent clamp. Without it a
+  `min(declared, DefaultRunTimeout)` mutation survives the whole
+  suite.
+
+#### Test doc comment rewrites
+
+Five test doc comments describe the deleted knob. Each is a
+behavioral claim, so each must be rewritten in the same change.
+
+- `tools/run_timeout_internal_test.go` lines 27 to 31,
+  `TestEffectiveRunTimeout`. Three clauses name the configured value.
+  Replace the whole comment. The table drives the resolution
+  precedence from the tool alone. A positive declared `Timeout` binds
+  verbatim, longer or shorter than `DefaultRunTimeout`. A negative one
+  never caps. An undeclared or zero `Timeout` falls through to
+  `DefaultRunTimeout`.
+- `tools/tools_test/registry_run_timeout_test.go` lines 178 to 180.
+  The comment names `WithDefaultRunTimeout` and the configured-default
+  path. Replace it. The renamed test pins the expiry identity through
+  `RunScoped`: a declared bound expires as `ErrRunTimeout` wrapped
+  with the tool name and the bound.
+- `tools/tools_test/registry_run_timeout_test.go` lines 219 to 221.
+  The comment describes a 30 ms configured registry. It goes with the
+  deleted test.
+- `tools/tools_test/registry_run_timeout_test.go` lines 240 to 242.
+  The comment says "under a tight registry default". Replace it. The
+  renamed test pins the surviving exemption: a negative profile
+  `Timeout` leaves the tool's context with no deadline, while a
+  positive one sets one.
+- `tools/tools_test/registry_run_timeout_test.go` lines 312 to 315.
+  The comment says "under a much longer bound". The bound is now
+  declared on the tool, so change that phrase to "under a much longer
+  declared bound". The rest of the comment stays true.
+
+#### Gate expectations for the test moves
+
+`scripts/check_test_tampering.py` fires TT01 four times.
+The change makes two renames and two deletions.
+`check_moved_or_dropped` matches a removed test to an added one by
+normalized body hash. Both renames change their bodies, so neither
+finds a match. Neither deletion has a body-identical addition. The
+four findings name
+`TestRunConfiguredDefaultExpires`,
+`TestProfileLongerThanConfiguredFiresLonger`,
+`TestNegativeProfileExemptsUnderAggressiveConfigured`, and
+`TestWithDefaultRunTimeoutNoneExemptsUndeclared`.
+
+TT04 may flag the assertion count. The change adds
+`TestUndeclaredToolAlwaysBounded`, a positive control, and two table
+rows, so a net increase is expected. TT07 should stay silent, because
+no numeric bound increases.
+
+The justification the builder must present:
+
+`TestWithDefaultRunTimeoutNoneExemptsUndeclared` tests
+`WithDefaultRunTimeout`, the symbol this change deletes. The
+registry-wide exemption it pins no longer exists.
+`TestUndeclaredToolAlwaysBounded` replaces it and pins the opposite
+rule: the resolved fallback bound is `DefaultRunTimeout`.
+`TestProfileLongerThanConfiguredFiresLonger` pins a comparison against
+the configured default, which is deleted; the new
+`declared-longer-than-default` table row carries that invariant
+instead. This change makes two renames and two deletions. Both
+renames change their bodies and their assertions, because the bound
+moves from the registry to the tool's profile.
+`TestRunScopedDeclaredTimeoutExpires` now pins expiry identity through
+`RunScoped`. `TestNegativeProfileExemptsFromBackstop` now pins the
+per-tool exemption through the context deadline. No invariant is
+dropped without a named replacement.
+
+This plan does not authorize an override trailer. The builder stops,
+presents the four TT01 findings and this justification, and waits. The
+orchestrator decides. One `Allow-Test-Change: TT01 <reason>` trailer
+waives all four, because `resolve_overrides` keys by finding ID. The
+reason needs at least six significant words.
+
+#### Documentation edits
+
+`docs/packages/tools.md` changes at six sites. Grep with
+`WithDefaultRunTimeout` and with `Option` to confirm the set.
+
+- Lines 28 to 30. Delete the `Option` bullet.
+- Lines 58 to 61. `New(opts ...Option)` becomes `New()`. It creates an
+  empty `Registry`. Every run is bounded by `DefaultRunTimeout` unless
+  the tool declares its own profile `Timeout`.
+- Lines 62 to 64. Delete the `WithDefaultRunTimeout(d)` bullet. Line
+  65 starts the unrelated `Registry.Add(t)` bullet and stays.
+- Lines 203 to 207. The bound resolves from the tool alone. A
+  positive profile `Timeout` binds verbatim. A negative one never
+  caps. Otherwise `DefaultRunTimeout` applies.
+- Line 212. Delete the `WithDefaultRunTimeout(d)` table row. The table
+  keeps its header and the `ExecutionProfile.Timeout` row.
+- Lines 214 to 218. Replace the whole paragraph. Line 215 says the
+  escape hatches point both ways, and lines 217 to 218 claim
+  `WithDefaultRunTimeout(tools.TimeoutNone)` restores unbounded runs
+  for one registry. Both claims become false. The replacement says
+  this. Any negative means never cap, and `TimeoutNone` names the
+  canonical constant. One escape hatch exists: a negative profile
+  `Timeout` exempts one tool. No registry-wide exemption exists. An
+  undeclared tool always runs under `DefaultRunTimeout`. Line 219 is
+  blank and stays.
+
+#### Verification for the removal
+
+`make api-update` rewrites `api/tools.txt` with three line changes.
+Line 18 becomes `func New() (*Registry)`. Line 22,
+`func WithDefaultRunTimeout(d time.Duration) (Option)`, is deleted.
+Line 32, `type Option func(*Registry)`, is deleted. Lines 2, 7, and
+73 are untouched: `DefaultRunTimeout`, `TimeoutNone`, and
+`ErrRunTimeout` all stay locked.
+
+`policy/layers.json` does not change. The `tools` row stays `[]`.
+
+`make verify` does not pass on the working tree. `Makefile` line 24
+runs `scripts/check_test_tampering.py` with no `--message-file`, so no
+trailer resolves and the four TT01 findings exit non-zero. Only
+`.githooks/commit-msg` passes the message. The real sequence is:
+
+1. The builder makes the change and runs `make verify`.
+2. TT01 fires four times. The builder stops.
+3. The builder presents the four findings and the justification above.
+4. The orchestrator decides, and authorizes one trailer or rejects it.
+5. `make verify` is green only once the commit carries that trailer.
+
+`python3 scripts/check_plan.py`, `python3 scripts/check_api.py`,
+`python3 scripts/check_docs.py`, and `python3 scripts/check_prose.py`
+each pass on their own, with no trailer.
+`go test -race ./tools/...` passes.
+
+The `tools` package sits at 100 percent coverage today. The change
+deletes covered production code and two tests, and adds one test, one
+positive control, and two table rows. The 85 percent floor is not at
+risk. The builder confirms the number in the `make verify` coverage
+block.
+
+No conformance vector changes. The `tools` package owns none.

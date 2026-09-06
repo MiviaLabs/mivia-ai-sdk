@@ -4324,3 +4324,523 @@ package `agentloop_test`.
 - For `runIteration`: at the next feature that touches it, introduce
   an unexported `runState` struct that carries the six pointer
   parameters. Record this as a caller gate, not a scheduled change.
+
+## Addendum: maintenance batch — duplicate conclude term, dead stop field, sentinel promotion
+
+### Prior item closed
+
+- The previous addendum ordered the `Options.ConcludeToolCallsLeft`
+  removal. Commits `fafd815` and `c3e6d98` completed it.
+- `command grep -rn ConcludeToolCallsLeft --include='*.go'
+  --include='*.md' . | command grep -v '^\./\.claude/'` returns eleven
+  hits. Every hit sits in this plan file. Each one is historical plan
+  text, the prior addendum, or this addendum's own back-references.
+- No live code site remains. The item is closed. The builder does
+  nothing more about it.
+
+### Addendum goal
+
+Three maintenance items ship as one commit. Item A removes the
+duplicate `Options.ConcludeStepsLeft` term. Item B removes the dead
+`StopDecision.ToolCalls` field. Item C promotes the last three inline
+`errors.New` rules in `Options.Validate` to package sentinels.
+
+### Addendum scope
+
+Inside:
+
+- Item A: `Options.ConcludeStepsLeft`, its `Loop` field, its
+  `Validate` row, its `shouldConclude` branch, its tests, its docs.
+- Item B: `StopDecision.ToolCalls`, its one assertion, its docs.
+- Item C: three new sentinel errors and the three tests that assert
+  them with `errors.Is`.
+- The stale `Options.Validate` doc comment at
+  `agentloop/options.go:395-405`.
+
+Outside:
+
+- `ConcludeMargin`, `ConcludeDeadline`, and `ConcludeNotice`. All
+  three keep today's behavior.
+- Any other package. `policy/layers.json` gets no change, because no
+  import edge moves.
+
+### Doc-edit convention
+
+Two document classes take two different edits. This rule covers every
+doc site in items A and B.
+
+- A historical addendum in `docs/plans/agentloop.md` records a past
+  decision. Never delete its text. Annotate it. A prose line gets the
+  appended clause "later removed; see the closing maintenance
+  addendum". A line inside a Go code fence gets the same clause as a
+  trailing `//` comment on the declaring line.
+- `docs/packages/agentloop.md` is the live reference. It must state
+  today's truth. Drop the removed name outright.
+- The precedent for the annotate rule is
+  `docs/plans/agentloop.md:3654`, written when
+  `ConcludeToolCallsLeft` went away.
+
+### Item A: remove Options.ConcludeStepsLeft
+
+- Verified duplication: `agentloop/conclude.go:39-50` OR-s
+  `maxIterations-k < concludeMargin` and
+  `maxIterations-k < concludeStepsLeft`. The two predicates are
+  identical in form.
+- Verified wrong comment: `agentloop/options.go:269-273` claims "the
+  smaller of the two decides". An OR of two `<` predicates fires at
+  the larger threshold, not the smaller.
+- `agentloop/agentloop_test/conclude_terms_test.go:221-222` already
+  shows the larger threshold winning.
+- Direction: delete `ConcludeStepsLeft` and keep `ConcludeMargin`.
+  One field with a correct comment beats two fields with a wrong one.
+
+Code sites to delete, each confirmed by grep:
+
+- `agentloop/options.go:269-273`: the field and its comment.
+- `agentloop/options.go:402`: the `ConcludeStepsLeft is not` clause
+  and the following `negative,` word inside the `Validate` doc
+  comment. See "Doc comment repair" below.
+- `agentloop/options.go:447-449`: the `Validate` row and its inline
+  `errors.New`.
+- `agentloop/conclude.go:30`: change "Three terms are OR-ed" to "Two
+  terms are OR-ed".
+- `agentloop/conclude.go:37-38`: the doc-comment bullet.
+- `agentloop/conclude.go:48-50`: the predicate branch.
+- `agentloop/loop.go:71`: the `concludeStepsLeft int` struct field.
+- `agentloop/loop.go:151`: the `concludeStepsLeft: opts.ConcludeStepsLeft,`
+  assignment.
+
+Doc comment repair at `agentloop/options.go:395-405`:
+
+- Delete the words `ConcludeStepsLeft is not` and the following
+  `negative,`.
+- The comment today stops at "and finally a positive
+  HeartbeatInterval requires a non-nil Bus". That is wrong. Two
+  checks run after it: `o.WorkBudget.validate()` at
+  `agentloop/options.go:462` and `o.ToolBudget.validate()` at `:465`.
+- Move the word "finally" off the heartbeat clause. End the comment
+  with a clause naming both budget checks in that order.
+- The comment must list the checks in the order `Validate` runs them.
+  This is the invariant the comment claims. Re-read the function body
+  from `agentloop/options.go:407` to `:469` after the edit and confirm
+  every check appears once, in order.
+
+### Item A test rewrites
+
+Every scenario survives. No scenario is deleted. Two test functions
+are renamed. Neither new name exists today; `command grep -rn "func
+TestRunConcludeMargin" agentloop/` confirms it.
+
+- `agentloop/agentloop_test/conclude_terms_test.go:149-183`: rename
+  `TestRunConcludeStepsLeftThresholdFires` to
+  `TestRunConcludeMarginThresholdFires`. Replace `ConcludeStepsLeft: 4`
+  with `ConcludeMargin: 4`. Keep `MaxIterations: 5`. Keep every
+  assertion. Rewrite the doc comment to name `ConcludeMargin` and keep
+  the same worked arithmetic.
+- `agentloop/agentloop_test/conclude_terms_test.go:260-290`: rename
+  `TestRunConcludeStepsLeftBoundary` to
+  `TestRunConcludeMarginBoundary`. Replace `ConcludeStepsLeft: 3` with
+  `ConcludeMargin: 3`. Keep `MaxIterations: 5`. Keep every assertion.
+- `agentloop/agentloop_test/conclude_terms_test.go:231-258`
+  (`TestRunConcludeZeroTermsDoNotFire`): delete the
+  `ConcludeStepsLeft: 0` line at `:240`. Drop `ConcludeStepsLeft` from
+  the doc comment at `:230`.
+- `agentloop/agentloop_test/conclude_terms_test.go:292-329`
+  (`TestRunConcludeZeroTermsKExceedsMaxIterations`): delete the
+  `ConcludeStepsLeft: 0` line at `:307`.
+- `agentloop/agentloop_test/options_test.go:249-259`
+  (`TestOptionsValidateCompleterBeforeConclude`): delete the
+  `o.ConcludeStepsLeft = -1` line at `:253`. Change the doc comment
+  "negative ConcludeDeadline and StepsLeft" to "negative
+  ConcludeDeadline". The test keeps its subject: `ErrNoCompleter` wins
+  over a later conclude check.
+
+### Item A: the OR test needs a reachable second term
+
+`TestRunConcludeTermsOREDTogether` at
+`agentloop/agentloop_test/conclude_terms_test.go:187-227` needs care.
+Its in-body comment claims that several terms fire at different
+points. That claim must stay true after the change.
+
+- The fixture is `twoIterCompleter`, so the run ends at iteration 2.
+  Only k=1 and k=2 ever reach `shouldConclude`.
+- Today `ConcludeMargin: 1` with `MaxIterations: 5` first qualifies at
+  k=5. The in-body comment at `:190` says so. That k never runs.
+- So the margin disjunct is unreachable in this test. Dropping
+  `ConcludeStepsLeft: 4` and keeping `ConcludeMargin: 1` would leave
+  one live term.
+- The notice-count assertion at `:225` would still hold in that state.
+  The past deadline qualifies at both k=1 and k=2 on its own, so a
+  broken dedup guard still drives the count to 2. The assertion is not
+  the reason to change the value.
+- The reason is the comment. A relabelled "two OR-ed terms" comment
+  over one live term is a false claim about control flow. See
+  `.agents/memories/comment_claim_equals_promise.md`.
+- Fix: change `ConcludeMargin: 1` at `:201` to `ConcludeMargin: 4`,
+  the same arithmetic the deleted `ConcludeStepsLeft: 4` carried.
+  Margin then qualifies at k=2, because 5-2=3 is less than 4.
+- Delete the `ConcludeStepsLeft: 4` line at `:203`. Keep
+  `ConcludeDeadline: time.Hour` and the past `StartTime`, which
+  qualify at k=1.
+- Both terms now qualify inside the run, at different k. The comment
+  and the code agree again.
+- Rewrite the in-body comment block at `:190-196`. State that Deadline
+  qualifies at k=1 and Margin at k=2. Change "three OR-ed terms" to
+  "two OR-ed terms" in the doc comment at `:187`.
+- The block at `:193-196` carries a bare `StepsLeft` token, not the
+  full field name. Delete it with the rest of the block. A grep for
+  `ConcludeStepsLeft` alone does not see it.
+
+Collision decision for `agentloop/agentloop_test/options_test.go:149-160`:
+
+- The three `ConcludeStepsLeft` rows are "negative fails", "zero
+  passes", and "positive passes".
+- `options_test.go:125-136` already carries the same three rows for
+  `ConcludeMargin`. A rewrite of the `ConcludeStepsLeft` rows produces
+  a duplicate of those rows.
+- Decision: fold. Delete the three `ConcludeStepsLeft` rows. Do not
+  add a distinguishing threshold. A second copy of the same table row
+  proves nothing the first copy does not.
+- The `ConcludeMargin` rows at `:125-136` stay unchanged. They are the
+  surviving coverage for this invariant.
+
+Collision check for the two renames:
+
+- `TestRunConcludeMarginThresholdFires` uses `twoIterCompleter` and
+  runs two iterations. Every existing `ConcludeMargin` test in
+  `conclude_test.go` uses `scriptedCompleter`. No body becomes
+  byte-identical.
+- `TestRunConcludeMarginBoundary` keeps its own fixture and its own
+  arithmetic. It is not the only proof of the strict `<`:
+  `conclude_test.go:101-105` already asserts that k=3 carries no
+  notice when `ConcludeMargin` is 2, because 5-3=2 is not less than 2.
+  Keep the renamed test. Claim no novelty for it.
+
+### Item B: remove StopDecision.ToolCalls
+
+- Verified dead: `agentloop/stop.go:52-54` declares the field.
+  `gracefulStop` fills it from `resp.ToolCalls`.
+- Verified single call site: `command grep -rn "gracefulStop"
+  --include='*.go' .` returns one call, at `agentloop/run.go:289`.
+  That call sits inside the `if len(resp.ToolCalls) == 0` branch
+  opened at `run.go:281`. The field is therefore always empty.
+- Direction: delete the field. A field that can only ever be empty is
+  a false promise to the hook author.
+
+Code sites:
+
+- `agentloop/stop.go:52-54`: delete the field and its comment.
+- `agentloop/stop.go:70`: delete the `ToolCalls: resp.ToolCalls,`
+  line in the `StopDecision` literal.
+- `agentloop/agentloop_test/continue_on_stop_test.go:381-383`: delete
+  that one `if len(d.ToolCalls) != 0` assertion and its `t.Fatalf`
+  body. The surrounding test stays. Every other assertion in it
+  stays.
+
+### Addendum docs
+
+Item A, historical plan sites. Annotate, do not delete:
+
+- `docs/plans/agentloop.md:3596`, `:3611`, and `:3632`: append the
+  clause "later removed; see the closing maintenance addendum" to each
+  `ConcludeStepsLeft` mention.
+- `docs/plans/agentloop.md:3655`: rewrite the line to name
+  `TestRunConcludeMarginThresholdFires` and the margin term, and
+  append the same clause about the old name.
+- Backtick rule for that line. Line 3655 sits in the `### Addendum
+  tests` section that opens at `:3635`. `scripts/check_plan.py`
+  cross-checks such a section: every bare `Test[A-Z]\w+` token in it
+  must name a test the package declares. `_strip_code_spans` at
+  `check_plan.py:74` scrubs single-backtick spans first.
+- So write both the new name and the old
+  `TestRunConcludeStepsLeftThresholdFires` inside backticks. A bare
+  removed or renamed test name in a cross-checked Tests section fails
+  the gate. Commit `fafd815` hit this. The precedent at `:3654`
+  backticks the removed name for the same reason.
+- The same rule governs every other Tests section this commit edits.
+
+Item A, live reference sites. Drop outright:
+
+- `docs/packages/agentloop.md:20`: drop `ConcludeStepsLeft` from the
+  `Options` field list. Keep `ConcludeNotice` on the same line.
+- `docs/packages/agentloop.md:93`: drop `ConcludeStepsLeft` only. The
+  `HeartbeatInterval`, `WorkBudget`, and `ToolBudget` clauses at
+  `:95-97` are already correct. Do not touch them.
+
+Item B, historical plan sites. Annotate, do not delete:
+
+- `docs/plans/agentloop.md:3778`: the prose bullet listing the
+  `StopDecision` fields. Append the clause about `ToolCalls`.
+- `docs/plans/agentloop.md:3815-3817`: the `StopDecision` code fence.
+  Put the clause as a trailing `//` comment on the `ToolCalls
+  []provider.ToolCall` line at `:3817`.
+- `docs/plans/agentloop.md:3863`: the `gracefulStop` code fence. Put
+  the clause as a trailing `//` comment on the `ToolCalls:
+  resp.ToolCalls,` line.
+- `docs/plans/agentloop.md:3839` reads `if len(resp.ToolCalls) == 0`.
+  That is the response field, not the struct field. Leave it alone.
+
+Item B, live reference sites. Drop outright:
+
+- `docs/packages/agentloop.md:47`: drop `ToolCalls` from the
+  `StopDecision` field list.
+- `docs/packages/agentloop.md:320-321`: change "the assistant turn,
+  the tool-call list, the iteration count, and the history" to "the
+  assistant turn, the iteration count, and the history".
+
+No change needed:
+
+- `docs/architecture.md` names neither symbol.
+
+Closing greps. Both must return zero hits:
+
+- `command grep -rni 'stepsleft' --include='*.go' . | command grep -v
+  '^\./\.claude/'`. The case-insensitive form catches the bare
+  `StepsLeft` token that the full field name misses.
+- `command grep -rn 'ToolCalls' --include='*.go' agentloop/stop.go`.
+
+### Item C: promote three inline errors to sentinels
+
+Three inline `errors.New` calls remain in `Options.Validate` after
+item A. Each becomes a package sentinel. Every message string stays
+byte-identical.
+
+- `agentloop/options.go:417` becomes `ErrSessionIDRequired`, with the
+  message `agentloop: Usage requires a non-blank SessionID`.
+- `agentloop/options.go:425` becomes `ErrMaxTotalTokens`, with the
+  message `agentloop: MaxTotalTokens must not be negative`.
+- `agentloop/options.go:445` becomes `ErrConcludeDeadline`, with the
+  message `agentloop: ConcludeDeadline must be non-negative`.
+
+Declaration style and placement:
+
+- Declare all three inside the existing `var (` block that opens at
+  `agentloop/options.go:24`. That block already holds every other
+  `Options.Validate` sentinel, including `ErrConcludeMargin` at
+  `:101` and `ErrMaxIterations` at `:35`.
+- Append the three after `ErrHeartbeatRequiresBus` at
+  `agentloop/options.go:117`, in the order `ErrSessionIDRequired`,
+  `ErrMaxTotalTokens`, `ErrConcludeDeadline`.
+- Give each a doc comment starting with the symbol name and ending
+  with `Test with errors.Is.`, matching `ErrConcludeMargin`.
+- Source order does not change the lock. The lock sorts variables by
+  name.
+
+### Item C test changes
+
+Three existing table rows in
+`agentloop/agentloop_test/options_test.go` currently pass `nil` as
+`wantErr`. A `nil` `wantErr` only asserts that some error came back.
+Each row must now name its sentinel, which `runValidateCases`
+compares with `errors.Is` at `options_test.go:50`.
+
+- `options_test.go:95-98`, row `"negative MaxTotalTokens fails"`:
+  change the `wantErr` field from `nil` to
+  `agentloop.ErrMaxTotalTokens`.
+- `options_test.go:107-110`, row `"Usage without SessionID fails"`:
+  change the `wantErr` field from `nil` to
+  `agentloop.ErrSessionIDRequired`.
+- `options_test.go:137-140`, row `"negative ConcludeDeadline fails"`:
+  change the `wantErr` field from `nil` to
+  `agentloop.ErrConcludeDeadline`.
+
+No row is deleted by item C. Each row keeps its name and its
+`mutate` function.
+
+### Addendum API
+
+Removed from `api/agentloop.txt`:
+
+- `  ConcludeStepsLeft int`, today at `api/agentloop.txt:84`, inside
+  `type Options struct`.
+- `  ToolCalls []provider.ToolCall`, today at `api/agentloop.txt:107`,
+  inside `type StopDecision struct`.
+
+Added to `api/agentloop.txt`, in the lock's alphabetical variable
+order:
+
+- `  var ErrConcludeDeadline`, after `var ErrCompactionFailed`.
+- `  var ErrMaxTotalTokens`, after `var ErrMaxIterations`.
+- `  var ErrSessionIDRequired`, after `var ErrPlanFailed`.
+
+The lock changes by five lines and nothing else. Run `make
+api-update` and commit the `api/agentloop.txt` diff in the same
+commit. Do not hand-edit the lock.
+
+`policy/layers.json` gets no change. No package gains or loses an
+import.
+
+### Addendum tests
+
+- No new test function. The change removes surface and adds three
+  sentinels for rules the tests already exercise.
+- Two renamed tests keep their fixtures, their thresholds, and their
+  assertions. Only the option name changes.
+- `TestRunConcludeTermsOREDTogether` gains a reachable second term.
+  Its notice-count assertion becomes meaningful.
+- Three `Validate` table rows gain an `errors.Is` assertion they did
+  not have.
+- `go test -race -count=1 ./agentloop/...` must pass.
+
+### Addendum verification
+
+`make verify` is not clean on this change until the commit carries
+its trailers. State the expected result plainly.
+
+- `make verify` reports two `TT01` findings from
+  `scripts/check_test_tampering.py`, which `Makefile:24` runs inside
+  `verify-fast`. `scripts/test_tampering_override.py` waives a
+  finding only through an `Allow-Test-Change:` trailer on the commit.
+- One `Allow-Test-Change: TT01 <reason>` trailer clears both
+  findings. The reason needs six significant words at least, per
+  `test_tampering_override.py:62-71`.
+- Do not add a second `TT01` trailer. `resolve_overrides` builds
+  `first_by_id` with `setdefault` at
+  `test_tampering_override.py:85-87`, so the first trailer per ID
+  wins and a second one of the same ID is parsed and ignored.
+- Commit `fafd815` is the precedent for the trailer form. Its two
+  trailers carry two different IDs, not one ID twice.
+- The ORCHESTRATOR authors and verifies that trailer. The builder
+  never adds one.
+- Every other gate must be clean with no trailer and no waiver.
+
+Gate commands the builder runs:
+
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_deps.py` passes. No edge changed.
+- `python3 scripts/check_api.py` passes after `make api-update`.
+- `python3 scripts/check_docs.py` passes. Each new sentinel carries a
+  doc comment starting with its own name.
+- `python3 scripts/check_prose.py` passes.
+- `python3 scripts/check_structure.py` passes. No touched file grows
+  past its limit. `agentloop/options.go` loses about nine lines to
+  item A and gains about nine to item C, so it stays near 469 lines,
+  well under the 500-line cap.
+- The coverage floor of 85 holds for `agentloop`. The removed
+  `Validate` row and the removed `shouldConclude` branch each take
+  their own covered lines away with them.
+
+### Predicted test-tampering findings
+
+`scripts/check_test_tampering.py` matches a removed test function by
+body hash. Both renames change the body, so no hash matches.
+
+- TT01 on `agentloop/agentloop_test/conclude_terms_test.go`, for
+  `TestRunConcludeStepsLeftThresholdFires`. Justification: renamed to
+  `TestRunConcludeMarginThresholdFires` with the same fixture, the
+  same threshold of 4, and every assertion kept. The option it named
+  no longer exists.
+- TT01 on `agentloop/agentloop_test/conclude_terms_test.go`, for
+  `TestRunConcludeStepsLeftBoundary`. Justification: renamed to
+  `TestRunConcludeMarginBoundary` with the same fixture, the same
+  threshold of 3, and every assertion kept.
+- TT04 is expected to stay silent. Both renamed functions register as
+  new test functions, which suppresses the assertion-count rule at
+  `scripts/test_tampering_rules.py:175`. If it fires, the
+  justification is the deleted `StopDecision.ToolCalls` assertion at
+  `continue_on_stop_test.go:381`, whose subject is a field the commit
+  removes.
+- TT05 is expected to stay silent. The deleted assertion's condition
+  is `len(d.ToolCalls) != 0`, which the rule's operand pattern does
+  not match, and the commit adds no bare `err` check in that hunk.
+- The builder reports these findings and this justification text. The
+  builder does not add a trailer. The orchestrator verifies each
+  finding and decides the trailer.
+
+## Addendum: reserveTools drops its redundant Reserve check
+
+### Addendum goal
+
+Delete one redundant condition in `reserveTools`. The construction
+path already rejects the state it tests. No behavior, API, or policy
+changes.
+
+### Addendum scope
+
+At `agentloop/budget.go:143`, replace
+
+```go
+	if l.toolBudget == nil || l.toolBudget.Reserve == nil {
+```
+
+with
+
+```go
+	if l.toolBudget == nil {
+```
+
+Extend `reserveTools`'s doc comment with the invariant it now relies
+on:
+
+```go
+// reserveTools runs the ToolBudget's Reserve for one turn's tool-call
+// count. A nil l.toolBudget is a no-op; Options.Validate rejects a
+// non-nil ToolBudget with a nil Reserve, so Reserve is never nil here.
+// A hook error is wrapped with the 1-based iteration count so the
+// hard fail names its cause, mirroring reserveWork.
+```
+
+Outside the addendum: `ToolBudget.validate`, `Options.Validate`, and
+every `WorkBudget` function.
+
+### Addendum proof
+
+`ToolBudget.validate` at `agentloop/budget.go:127` returns
+`ErrIncompleteToolBudget` for a non-nil budget with a nil `Reserve`.
+`Options.Validate` calls it unconditionally at
+`agentloop/options.go:465`. `New` calls `opts.Validate` as its first
+statement, at `agentloop/loop.go:114`, and returns on any error.
+
+`New` is the only constructor. `&Loop{` appears once in the module, at
+`agentloop/loop.go:125`. `Loop.toolBudget` (`loop.go:97`) and
+`Loop.workBudget` (`loop.go:93`) are unexported, so no caller outside
+the package builds a `Loop`, and no internal test builds one.
+`reserveTools` has one caller, `agentloop/run.go:295`, which runs on a
+`Loop` that `New` returned.
+
+`reserveWork` at `agentloop/budget.go:61` and `refundWork` at
+`agentloop/budget.go:74` each carry the single nil check only. The
+deletion makes the three functions agree.
+
+Residual risk, stated and accepted: `l.toolBudget` aliases the
+caller's `*ToolBudget`, so a caller that nils `Reserve` after `New`
+moves from a silent no-op to a nil-func panic. `reserveWork` and
+`refundWork` already carry that same hazard, so this is a consistency
+fix and not a new class of risk. The mutation also races the
+documented "safe for concurrent use" contract on `ToolBudget.Reserve`.
+
+### Addendum tests
+
+Add `TestToolBudgetNewRejectsNilReserve` to
+`agentloop/agentloop_test/tool_budget_test.go`. It calls
+`agentloop.New` with a `ToolBudget` whose `Reserve` is nil, and
+asserts `errors.Is(err, agentloop.ErrIncompleteToolBudget)` and a nil
+`Loop`.
+
+This test is the positive control for the deletion. Both existing
+cases reach the sentinel through `Options.Validate` directly:
+`TestToolBudgetValidateRequiresReserve` at
+`tool_budget_test.go:133`, and the "incomplete ToolBudget fails" row
+at `options_test.go:191-194`, which `runValidateCases` drives. Neither
+proves that `New` runs `Validate`, which is the precondition the
+deletion depends on.
+
+### Addendum coverage
+
+Measured on a scratch copy: `agentloop` stays at 98.6%. The 85% floor
+holds.
+
+`scripts/mutation_denylist/agentloop.json` holds a mutation floor of
+96. `make verify` runs `check_mutation.py --probe` only
+(`Makefile:59`), so that floor is not re-checked by verify. Run
+`make mutation-gate` as a follow-up if the score sits near the floor.
+
+### Addendum verification
+
+`make verify` passes. `go test ./agentloop/...` passes.
+`make api-update` produces no diff: `reserveTools` and
+`ToolBudget.validate` are unexported. A non-empty `api/` diff is a
+failure, not a lock refresh. `policy/layers.json` needs no row.
+
+Predicted `scripts/check_test_tampering.py` findings: none. The change
+deletes no test and adds one. The builder does not add a trailer.

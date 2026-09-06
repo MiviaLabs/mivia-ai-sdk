@@ -26,7 +26,7 @@ func renderedContent(t *testing.T, tool tools.Tool) (string, error) {
 		},
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -119,7 +119,7 @@ func TestRenderUnrenderableResult(t *testing.T) {
 		},
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -165,7 +165,7 @@ func TestRenderArgumentValidationFailureCarriesToolErrorPrefixAndCorrective(t *t
 			{Message: textMessage(provider.RoleAssistant, "done")},
 		},
 	}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

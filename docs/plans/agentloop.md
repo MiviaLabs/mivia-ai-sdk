@@ -4849,3 +4849,519 @@ failure, not a lock refresh. `policy/layers.json` needs no row.
 
 Predicted `scripts/check_test_tampering.py` findings: none. The change
 deletes no test and adds one. The builder does not add a trailer.
+
+## Addendum: the agentloop composition example and the Conclude and Bounds groups
+
+Status: shipped. Both parts of this addendum ship as one change.
+
+### Addendum goal
+
+- Two parts, one change.
+- Part one adds the agentloop composition example:
+  `docs/examples/_agentloop/main.go` and `docs/examples/agentloop.md`.
+  The example wires a complete `Options` and runs offline. It is the
+  oracle for part two: it sets every grouped field, so its shape fixes
+  the target API before the regrouping lands.
+- Part two folds nine flat `Options` fields into two groups,
+  `Conclude` and `Bounds`, and folds `runIteration`'s six pointer
+  parameters into one `runState` struct.
+- Working order: the builder writes the example first, against the
+  grouped shape. The example compiles only after part two lands. Both
+  parts ship in one commit.
+
+### The field map and the grep that produced it
+
+- Command:
+
+```sh
+sed -n '/^type Options struct/,/^}/p' agentloop/options.go \
+  | grep -c '^[[:space:]]*[A-Z]'
+```
+
+- It counts 34 flat fields in `Options` today.
+- The map. Nine fields move; the other 25 stay flat and unmoved.
+
+| Flat field | Group | Member |
+|---|---|---|
+| `ConcludeMargin` | `Conclude` | `Margin` |
+| `ConcludeDeadline` | `Conclude` | `Deadline` |
+| `ConcludeNotice` | `Conclude` | `Notice` |
+| `MaxIterations` | `Bounds` | `MaxIterations` |
+| `MaxCallsPerTurn` | `Bounds` | `MaxCallsPerTurn` |
+| `MaxTotalTokens` | `Bounds` | `MaxTotalTokens` |
+| `MaxConcurrentTools` | `Bounds` | `MaxConcurrentTools` |
+| `MaxConsecutiveToolFailures` | `Bounds` | `MaxConsecutiveToolFailures` |
+| `TurnResultBudget` | `Bounds` | `TurnResultBudget` |
+
+### The new types and the Validate placement
+
+The exact declarations. `Conclude` and its method land in
+`agentloop/conclude.go`. `Bounds` and its method land in a new file,
+`agentloop/bounds.go`.
+
+```go
+// Conclude groups the graceful-conclude options: when the loop starts
+// nudging the model toward a final answer, and what it says.
+type Conclude struct {
+	// Margin nudges the model once MaxIterations-k < Margin holds.
+	// Zero disables the step-count term.
+	Margin int
+	// Deadline, when positive, fires the nudge once
+	// StartTime.Add(Deadline) has passed. Zero disables the term.
+	Deadline time.Duration
+	// Notice is the RoleUser content Run appends once nudging starts.
+	// Empty Notice uses DefaultConcludeNotice.
+	Notice string
+}
+
+// Validate checks the group in a fixed order and returns the first
+// failure: Margin is not negative, then Deadline is not negative.
+func (c Conclude) Validate() error {
+	if c.Margin < 0 {
+		return ErrConcludeMargin
+	}
+	if c.Deadline < 0 {
+		return ErrConcludeDeadline
+	}
+	return nil
+}
+```
+
+```go
+// Bounds groups the loop's numeric caps. Zero means uncapped or
+// serial, per the member's own doc comment.
+type Bounds struct {
+	// MaxIterations bounds the Completer-call count of one Run.
+	MaxIterations int
+	// MaxCallsPerTurn bounds one turn's model-requested tool calls.
+	// Zero means unbounded.
+	MaxCallsPerTurn int
+	// MaxTotalTokens caps the run's cumulative billed tokens. Zero
+	// means unbounded.
+	MaxTotalTokens int
+	// MaxConcurrentTools bounds one turn's parallel tool calls. Zero
+	// and one both mean serial.
+	MaxConcurrentTools int
+	// MaxConsecutiveToolFailures bounds consecutive all-failing turns.
+	// Zero means unbounded.
+	MaxConsecutiveToolFailures int
+	// TurnResultBudget caps one turn's summed tool-result bytes. Zero
+	// means uncapped.
+	TurnResultBudget int
+}
+
+// Validate checks the caps in a fixed order and returns the first
+// failure: MaxIterations, MaxTotalTokens, TurnResultBudget,
+// MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
+// negative.
+func (b Bounds) Validate() error {
+	if b.MaxIterations < 0 {
+		return ErrMaxIterations
+	}
+	if b.MaxTotalTokens < 0 {
+		return ErrMaxTotalTokens
+	}
+	if b.TurnResultBudget < 0 {
+		return ErrTurnResultBudget
+	}
+	if b.MaxConcurrentTools < 0 {
+		return ErrMaxConcurrentTools
+	}
+	if b.MaxConsecutiveToolFailures < 0 {
+		return ErrMaxConsecutiveToolFailures
+	}
+	return nil
+}
+```
+
+Placement decisions:
+
+- `agentloop/options.go` sits at 470 lines. The swap of nine fields
+  for two, plus two type blocks and two methods, would land near the
+  500-line cap. The declarations move out instead. `stop.go` holds
+  `StopReason` for the same reason; see its comment in
+  `options.go:158-160`.
+- `agentloop/bounds.go` is a new file in the same package. It needs no
+  `policy/layers.json` row, because no import edge moves.
+- `Options` gains two fields: `Bounds Bounds` where `MaxIterations`
+  sat, and `Conclude Conclude` where `ConcludeMargin` sat.
+- Both methods use value receivers, matching `Options.Validate`.
+- New `Options.Validate` order: `ErrNoCompleter`, `ErrNoTools`,
+  `o.Bounds.Validate()`, `ErrSessionIDRequired`, the `Budget` check,
+  the `Window` block, `o.Conclude.Validate()`,
+  `ErrHeartbeatRequiresBus`, `WorkBudget.validate`,
+  `ToolBudget.validate`. Bounds first, then Conclude.
+- The flat interleaving cannot survive the split exactly. State the
+  consequence: `o.Bounds.Validate()` now runs right after the Tools
+  check. `ErrMaxTotalTokens` therefore wins over an invalid Budget,
+  where the flat order ran the Budget check first and reached
+  MaxTotalTokens after it. `ErrTurnResultBudget`,
+  `ErrMaxConcurrentTools`, and `ErrMaxConsecutiveToolFailures` move
+  with it: they used to run after the Window block, and they now
+  return before the SessionID, Budget, and Window checks.
+  `ErrConcludeMargin` keeps its place after the Window block.
+- No test pins a cross-group first-error. Verified by reading
+  `agentloop/agentloop_test/options_test.go`: every table row mutates
+  exactly one field. The only order tests are
+  `TestOptionsValidateHeartbeatOrder` (Completer before Heartbeat) and
+  `TestOptionsValidateCompleterBeforeConclude` (Completer before
+  ConcludeDeadline). Both stay green, because the Completer check
+  stays first in `Options.Validate`.
+- Rewrite the `Validate` doc comment at `options.go:399-409` to list
+  the new order. Precedent: the doc-comment repair in the
+  duplicate-conclude-term addendum.
+
+### The StartTime decision
+
+- Grep, run in the worktree:
+
+```sh
+grep -n 'StartTime' agentloop/*.go | grep -v _test
+```
+
+- Output: the declaration and comment at `options.go:264-271`, the
+  comment at `loop.go:71-76` and `loop.go:174-176`, and one code
+  consumer, `loop.go:150`:
+  `deadlineAt: computeDeadlineAt(opts.StartTime, opts.ConcludeDeadline)`.
+- `shouldConclude` at `conclude.go:37-47` reads `l.concludeMargin`,
+  `l.maxIterations`, `l.deadlineAt`, and `l.concludeDeadline`. It does
+  not read StartTime.
+- StartTime is the deadline anchor, not part of the conclude decision.
+  It stays flat on `Options`. It does not join `Conclude`.
+- `New` keeps `computeDeadlineAt(opts.StartTime, opts.Conclude.Deadline)`.
+
+### The Loop embed and New's transforms
+
+- `Loop` replaces nine unexported fields with two, both by value:
+  `conclude Conclude` and `bounds Bounds`.
+- The nine today: `maxIterations`, `maxCallsPerTurn`, `maxTotalTokens`,
+  `concludeMargin`, `concludeDeadline`, `concludeNotice`,
+  `maxConcurrent`, `maxConsecutiveFailures`, `turnResultBudget`.
+- `deadlineAt` stays its own field on `Loop`, with its comment.
+- `New` must keep two transforms on its copies. Dropping either is a
+  silent behavior change:
+  - `bounds.MaxIterations = unboundedOrSet(bounds.MaxIterations)`:
+    zero becomes `math.MaxInt32`.
+  - `conclude.Notice = resolveConcludeNotice(conclude.Notice)`: empty
+    becomes `DefaultConcludeNotice`.
+- Concrete form: copy `opts.Bounds` and `opts.Conclude` into locals,
+  apply the two transforms, then build the `&Loop{...}` literal from
+  the locals.
+
+### Sentinel preservation
+
+- Seven sentinels keep both name and wording byte-identical:
+  `ErrMaxIterations`, `ErrMaxTotalTokens`, `ErrConcludeMargin`,
+  `ErrConcludeDeadline`, `ErrTurnResultBudget`,
+  `ErrMaxConcurrentTools`, `ErrMaxConsecutiveToolFailures`.
+- The message `agentloop: ConcludeMargin must not be negative` stays,
+  although the field path becomes `Conclude.Margin`. Only the field
+  path that triggers each sentinel moves.
+
+### The mechanical rename
+
+Method:
+
+- A one-off rewrite script runs over the exact token set, in two
+  forms: the nine `Field:` literal keys and the nine `o.Field =`
+  assignment forms. Never hand-edit the ~300 test literals.
+- Literal form: the script merges same-group members within one
+  `Options` literal into one composite literal. A literal setting
+  `MaxIterations` and `MaxCallsPerTurn` gets one
+  `Bounds: agentloop.Bounds{...}` key, not two. The merged key sits
+  where the group's first member sat in that literal. Member renames
+  apply inside it: `ConcludeMargin:` to `Margin:`,
+  `ConcludeDeadline:` to `Deadline:`, `ConcludeNotice:` to `Notice:`.
+- The merge is required, not cosmetic. 61 existing test literals set
+  two or three members of one group. Wrap-per-occurrence would emit
+  duplicate `Bounds:` or `Conclude:` keys there, a compile error.
+  Grep-verified examples: `conclude_terms_test.go:196`, `:232`,
+  `:298`, and `conclude_test.go:265`.
+- Assignment form: `o.ConcludeMargin = -1` becomes
+  `o.Conclude = agentloop.Conclude{Margin: -1}`. The same rule maps
+  the six Bounds members onto `o.Bounds`. `options_test.go` carries
+  all 18 assignment sites; grep finds none in the other test files.
+- Six of the nine member names are unchanged, so the literal renames
+  are the three conclude members only.
+- The builder runs the script from outside the tree and deletes it
+  after. It is not committed.
+- Closing greps. Both must return zero hits:
+  - The three renamed keys as whole words, everywhere in Go. The
+    leading `\b` is load-bearing: without it the pattern matches
+    inside `DefaultConcludeNotice:`, which a t.Fatalf message at
+    `conclude_test.go:367` names and this change must not touch:
+
+```sh
+grep -rnE '\b(ConcludeMargin|ConcludeDeadline|ConcludeNotice):' \
+  --include='*.go' . | grep -v '^\./\.claude/'
+```
+
+  - The nine names in assignment form, in the test trees. After the
+    rewrite, grouped members sit inside `{...}` as keys, so no
+    dotted assignment form survives:
+
+```sh
+grep -rnE '\.(MaxIterations|MaxCallsPerTurn|MaxTotalTokens|ConcludeMargin|ConcludeDeadline|ConcludeNotice|MaxConcurrentTools|MaxConsecutiveToolFailures|TurnResultBudget)[[:space:]]*=' \
+  agentloop/agentloop_test/ e2e/ --include='*.go'
+```
+
+Code scope, each site grep-verified in this worktree:
+
+- `agentloop/options.go`: the struct fields and `Validate`.
+- `agentloop/loop.go`: the `Loop` struct and `New`'s copy block.
+- `agentloop/run.go`: six field reads, at lines 89, 156, 160, 238,
+  268, and 285.
+- `agentloop/toolcall.go`: four field reads, at lines 160, 174, 243,
+  and 244.
+- `agentloop/conclude.go`: two field reads, at lines 39 and 42.
+- Discovery grep for the reads:
+
+```sh
+grep -rnE 'l\.(maxIterations|maxCallsPerTurn|maxTotalTokens|concludeMargin|concludeDeadline|concludeNotice|maxConcurrent|maxConsecutiveFailures|turnResultBudget)\b' agentloop/ --include='*.go' | grep -v _test
+```
+
+- `agentloop/loop.go` and `agentloop/toolcall.go` also match flat
+  names in comments. `loop.go:71-76` names `opts.ConcludeDeadline`;
+  `loop.go:174-178` names `ConcludeDeadline` four times, at lines
+  174, 175, 176, and 178; `loop.go:208` names `l.maxIterations`;
+  `toolcall.go:51`, `:55`, and `:60` name `l.turnResultBudget`;
+  `toolcall.go:133-134` name `l.maxConcurrent`. `agentloop/budget.go`,
+  `wire.go`, `tokens.go`, and `stop.go` match in comments only.
+- Three more comment sites carry the old conclude keys in key form,
+  and closing grep one still sees them after the rename clears the
+  literal keys. The builder updates each:
+  - `agentloop/conclude.go:32-34`: shouldConclude's doc comment
+    labels its two OR-ed terms `- ConcludeMargin:` and
+    `- ConcludeDeadline:`. The fields move, so the builder rewords
+    both labels to the member names, `Margin` and `Deadline`, and
+    updates the same comment's field paths to `bounds.MaxIterations`,
+    `conclude.Margin`, and `conclude.Deadline`.
+  - `agentloop/agentloop_test/conclude_terms_test.go:324`: the doc
+    comment reads `ConcludeDeadline: 0`. The builder rewords it to
+    the grouped form the rewritten literal sets.
+  - `agentloop/agentloop_test/conclude_test.go:460`: the doc comment
+    reads `a positive ConcludeMargin:`. The builder rewords it to the
+    member name, `Margin`.
+- The builder updates every other comment mention that names a moved
+  field path, so `opts.ConcludeDeadline` reads
+  `opts.Conclude.Deadline` and `l.maxIterations` reads
+  `l.bounds.MaxIterations`. Prose mentions of the bound concepts
+  stay.
+- One hit needs no edit: `agentloop/agentloop_test/conclude_test.go:367`
+  writes `want DefaultConcludeNotice:` inside a t.Fatalf message.
+  That is assertion prose naming the unchanged DefaultConcludeNotice
+  const. The builder does not touch it. The leading word boundary in
+  closing grep one removes it from the match set.
+- The discovery grep above doubles as the comment-aware closing
+  check. After the rename and these comment updates it returns zero
+  hits: none of the old path forms match, and the new forms
+  (`l.bounds.MaxIterations`, `l.conclude.Margin`) match none of its
+  alternatives.
+- The test package `agentloop/agentloop_test/` holds 49 files with 322
+  `Field:` literal references. The script covers every one. The test
+  package never touches the unexported `Loop` fields; grep confirms
+  zero hits.
+- One file outside `agentloop`:
+  `e2e/e2e_test/anthropic_compaction_test.go` line 128,
+  `MaxIterations: 5,`.
+- Docs: `docs/packages/agentloop.md` carries 48 flat-name lines. The
+  builder moves live references to the grouped form. Sentinel message
+  quotes stay byte-identical. `docs/architecture.md` lines 358-359
+  name `MaxIterations`, `MaxCallsPerTurn`, and `MaxTotalTokens` in a
+  bound list; that line names the `Bounds` group after the change.
+- Historical plan text in `docs/plans/agentloop.md` is not rewritten.
+  This addendum is the only description of the new shape. Precedent:
+  the ConcludeToolCallsLeft addendum kept historical mentions.
+
+### The runState fold
+
+- The caller gate above, at the ConcludeToolCallsLeft addendum, fires:
+  this change touches `runIteration`'s body, so the fold ships now.
+- New unexported struct in `agentloop/run.go`:
+
+```go
+// runState carries the six pointer parameters runIteration mutated
+// in place. run constructs one per Run call and passes it down.
+type runState struct {
+	history             *[]provider.Message
+	iterations          *int
+	totalUsage          *provider.Usage
+	runningTokens       *int
+	consecutiveFailures *int
+	noticeSent          *bool
+}
+```
+
+- `run` allocates the six locals as today, builds one `*runState`,
+  and passes it.
+- `runIteration` drops from ten parameters to five: ctx, st, steer,
+  stream, surface. Its body swaps `*history` for `*st.history` and so
+  on. No behavior change.
+- Decision: `afterChat` switches too. Its signature becomes ctx, at,
+  st, noticeInRequest, surface. Five parameters replace nine. The body
+  keeps the same statements; it loses no line and gains none. It stays
+  well under the 80-line cap, so the fold is safe there.
+- `runToolStage` keeps its signature. It takes snapshot values plus
+  `*int`; its caller now passes `st.consecutiveFailures`. Nothing else
+  about it changes.
+- Scope stops here. `runChat`, `runToolCalls`, and the rest keep their
+  signatures. `steer`, `stream`, and `surface` stay separate
+  parameters; they are not per-run mutable state of the six-pointer
+  kind.
+
+### Part one: the composition example
+
+File list:
+
+- `docs/examples/_agentloop/main.go`, new, package main. The
+  underscore prefix keeps `go build ./...` and `go vet ./...` blind to
+  it. Explicit paths work on underscore directories.
+- `docs/examples/agentloop.md`, new. It matches
+  `docs/examples/agentrun.md`'s shape: intro prose, the
+  `## The program` header, one fenced Go block, closing prose.
+- `scripts/check_examples_sync.py`: append one PAIRS entry,
+  `("docs/examples/agentloop.md", "## The program",
+  "docs/examples/_agentloop/main.go")`. The fence must be
+  byte-identical to main.go.
+- `Makefile`: add one standing line to `verify-fast`:
+  `go vet ./docs/examples/_agentloop/`. Decision: yes, add it.
+  `go vet ./...` skips underscore directories, so without the explicit
+  path the example rots silently at the next API change. That gap is
+  what this slice closes. `docs/examples/_agentrun` has no Go test
+  today; the byte gate is its only standing check. The vet line gives
+  `_agentloop` the compile-level check the byte gate cannot. It costs
+  sub-second time in the pre-commit hook.
+
+main.go design:
+
+- House style follows `docs/examples/_agentrun/main.go`: a
+  `// Command agentloop` doc comment, small named builders, one
+  `Options` literal in main.
+- `cannedCompleter` (in-file) implements `provider.Completer`:
+  `Name()` returns `canned`; `Chat` returns one scripted response per
+  call, in order; `ChatStream` returns an error. Shape follows
+  `agentloop/agentloop_test/helper_test.go`'s scripted completer.
+- Scripted exchange, two turns, one tool call:
+  - Turn one: a response carrying one `provider.ToolCall`, Name
+    `upper`, Arguments `{"text":"hello"}`, with
+    `Usage{PromptTokens: 20, CompletionTokens: 10, TotalTokens: 30}`.
+  - Turn two: a response whose assistant `Message` carries the final
+    text, with a `Usage` in the same scale.
+  - The run ends with `StopNoToolCalls` after two iterations. The
+    output is deterministic.
+- `upperTool` implements `tools.Tool` and `tools.SchemaTool`: `Name`,
+  `Run`, `ParameterSchema` returning a JSON object that requires the
+  string property `text`, and `DecodeArguments` unmarshaling into a
+  struct. `Run` uppercases the text. The scope must allow it, or
+  `New` fails with `ErrNoSchemas`.
+- `shoutTool` implements `tools.Tool` only: `Name` and `Run`. It shows
+  the plain-tool path beside the schema tool. Registered and allowed,
+  but not called by the script.
+- An in-file `provider.TokenEstimator` returns a bytes-over-four
+  count. It feeds `contextplan.Calibrate(est, 0.25)`.
+- The `Options` literal sets every field this addendum touches:
+  - `Completer`, `Tools`.
+  - `Scope`: `tools.NewScope(tools.ScopeOptions{Allowlist:
+    []string{"upper", "shout"}})`.
+  - `Bounds`: `agentloop.Bounds{MaxIterations: 4, MaxCallsPerTurn: 4,
+    MaxTotalTokens: 100000, MaxConcurrentTools: 2,
+    MaxConsecutiveToolFailures: 2, TurnResultBudget: 4096}`.
+  - `Conclude`: `agentloop.Conclude{Margin: 1, Deadline: time.Minute,
+    Notice: "Wrap up with your best answer now."}`.
+  - `Window`: `&contextplan.Window{MaxTokens: 512,
+    Compaction: contextplan.Compaction{TriggerPercent: 80,
+    TargetPercent: 50}}`.
+  - `Summarizer`: `contextsummary.NewSummarizer(canned)`. It returns
+    an error; main prints and returns on it.
+  - `Calibrated`: `contextplan.Calibrate(est, 0.25)`.
+  - `Tracer`: `trace.New()`.
+  - `Hooks`: `hooks.New()` plus one handler at `hooks.PointPostTool`.
+    The handler prints the payload and returns true, nil, so `Fire`
+    continues.
+  - `Usage`: `usage.New()`; `SessionID`: `agentloop-example`.
+  - `WorkBudget`: `Reserve` and `Refund` both non-nil no-op closures.
+    A half-wired budget fails `Validate`.
+  - `ToolBudget`: `Reserve` non-nil.
+  - `Audit`: an `AuditFunc` that prints the record's kind and
+    iteration.
+- main calls `loop.RunSteerable(ctx, msgs, steer)` with
+  `steer := agentloop.NewSteer()`. No trigger fires; the call shows
+  the steerable entry point.
+- main prints `res.Stop`, `res.Iterations`, `res.Usage`, and
+  `res.Final.Content`.
+
+### Addendum tests
+
+- No test is deleted, renamed, or skipped. Every test name and every
+  assertion survives the mechanical rename.
+- Predicted `scripts/check_test_tampering.py` findings: none. No test
+  function is removed, so TT01 stays silent, and assertion counts do
+  not decrease, so the aggregate rules stay silent. The builder does
+  not add a trailer.
+- Existing `Validate` rows keep their names and their sentinels.
+  `o.ConcludeMargin = -1` becomes
+  `o.Conclude = agentloop.Conclude{Margin: -1}`; the `wantErr` value
+  is unchanged.
+- One new test, `TestConcludeValidate`, lives in
+  `agentloop/agentloop_test/options_test.go`. It calls
+  `agentloop.Conclude.Validate` directly on a `Conclude` value. It
+  does not route through `Options.Validate`. It follows the file's
+  `validateCase` table style. Rows: a negative Margin fails with
+  `agentloop.ErrConcludeMargin`; zero Margin passes; a negative
+  Deadline fails with `agentloop.ErrConcludeDeadline`; zero Deadline
+  passes; a valid group passes. Each failing row asserts with
+  `errors.Is`, so the test pins that the grouped method returns the
+  unchanged sentinels.
+- `Bounds.Validate` gains no direct test. Its five invariants stay
+  covered through the existing `Options.Validate` rows, which now
+  reach them through the `Bounds.Validate` call.
+- `go test -race -count=1 ./agentloop/... ./e2e/...` passes.
+
+### policy/pending_wiring.json
+
+- Rewrite only the agentloop row's reason. Keep `permanent: true` and
+  the target line unchanged.
+- Verified gap statuses behind the text: steering closed
+  (`agentloop/steer.go` exists), dedup closed (`Options.DedupWithinTurn`
+  in the live struct), work and tool budgets closed (`WorkBudget` and
+  `ToolBudget` in the live struct), conclude closed
+  (`agentloop/conclude.go`), injection-safe framing still plan-only
+  (`docs/plans/agents/phase82_injection_safe_framing.md` reads
+  `Status: plan, not scheduled`).
+- Full proposed reason text:
+
+```json
+"reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires every Options group offline, runs a scripted two-turn tool exchange through RunSteerable, and verify-fast vets it. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller."
+```
+
+- The provider/anthropic row already anticipates "the agentloop
+  composition example". This change makes that true. Do not edit that
+  row.
+
+### Addendum API
+
+- Run `make api-update`. Commit the `api/agentloop.txt` diff in the
+  same change. Do not hand-edit the lock.
+- The `Options` block loses the nine flat field lines and gains
+  `Bounds Bounds` and `Conclude Conclude`.
+- The lock gains two type blocks, `Conclude` and `Bounds`, with their
+  member lines, plus two method lines,
+  `func (b Bounds) Validate() (error)` and
+  `func (c Conclude) Validate() (error)`.
+- `scripts/check_docs.py` needs doc comments on `Conclude`, `Bounds`,
+  and every exported field. Each starts with its own symbol name.
+- `policy/layers.json` gets no change. No import edge moves.
+  `agentloop/bounds.go` is a file, not a package.
+
+### Addendum verification
+
+- `go vet ./docs/examples/_agentloop/` passes, after part two lands.
+- `go run ./docs/examples/_agentloop/` runs offline and prints the
+  stop reason, the iteration count, the usage, and the final content.
+  The builder captures both outputs as proof.
+- `make verify` passes. `verify-fast` now carries the new explicit vet
+  line, so the standing gates cover the example from then on.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`,
+  `scripts/check_labels.py`, and `scripts/check_names.py` pass.
+- The coverage floor of 85 holds for every package. The moved checks
+  keep their tests.

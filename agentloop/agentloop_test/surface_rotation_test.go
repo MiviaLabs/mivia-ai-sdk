@@ -75,10 +75,10 @@ func TestSurfaceHookRotatesAdvertisedSetFromSecondIteration(t *testing.T) {
 
 	comp := &surfaceRotationCompleter{}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     comp,
-		Tools:         reg,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: comp,
+		Tools:     reg,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			// From step 2 on, offer ONLY alpha.
 			return &sdkagentloop.Surface{Advertised: []provider.ToolDefinition{alphaDef}}
@@ -119,10 +119,10 @@ func TestSurfaceHookNilReturnKeepsPrior(t *testing.T) {
 	}
 	comp := &surfaceRotationCompleter{}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     comp,
-		Tools:         reg,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: comp,
+		Tools:     reg,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			return nil
 		},
@@ -148,10 +148,10 @@ func TestSurfaceHookPanicFailsRunClosed(t *testing.T) {
 	}
 	comp := &surfaceRotationCompleter{}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     comp,
-		Tools:         reg,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: comp,
+		Tools:     reg,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			panic("hook exploded")
 		},
@@ -176,10 +176,10 @@ func TestSurfaceConcurrentRunDoesNotRace(t *testing.T) {
 		}
 	}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     &surfaceRotationCompleter{},
-		Tools:         reg,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: &surfaceRotationCompleter{},
+		Tools:     reg,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{Advertised: []provider.ToolDefinition{alphaDef}}
 		},
@@ -227,11 +227,11 @@ func TestSurfaceHookScopeOverrideAndRetain(t *testing.T) {
 
 	var step int
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		Scope:         initScope,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: completer,
+		Tools:     reg,
+		Scope:     initScope,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			step++
 			if step == 1 {
@@ -299,10 +299,10 @@ func TestSurfaceHookRegistryOverrideAndRetain(t *testing.T) {
 	}}
 
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     completer,
-		Tools:         reg1,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: completer,
+		Tools:     reg1,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{
 				Advertised: []provider.ToolDefinition{alphaDef},
@@ -342,10 +342,10 @@ func TestSurfaceHookInvalidSchemaFailsRun(t *testing.T) {
 
 	comp := &surfaceRotationCompleter{}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     comp,
-		Tools:         reg,
-		Model:         "m",
-		MaxIterations: 4,
+		Completer: comp,
+		Tools:     reg,
+		Model:     "m",
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
 		Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{
 				Advertised: []provider.ToolDefinition{

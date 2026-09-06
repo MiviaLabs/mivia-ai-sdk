@@ -28,7 +28,7 @@ func TestLoopIntegrationTwoToolThreeIteration(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final answer")},
 	}}
 
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -96,7 +96,7 @@ func TestLoopIntegrationTrimBindsToContextPlanPlan(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), MaxIterations: 3, Trim: trim})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3}, Trim: trim})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

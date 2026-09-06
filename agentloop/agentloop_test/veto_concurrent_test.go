@@ -74,8 +74,7 @@ func TestVetoWhileLaterCallInFlightStillRecordsOutcome(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
-		MaxConcurrentTools: 2, Hooks: hreg, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxConcurrentTools: 2}, Hooks: hreg, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

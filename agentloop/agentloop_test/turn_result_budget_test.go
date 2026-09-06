@@ -30,7 +30,7 @@ func TestTurnResultBudgetKeepsFirstReplacesSecond(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 5},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -64,7 +64,7 @@ func TestTurnResultBudgetZeroPassesThroughWhole(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -97,7 +97,7 @@ func TestTurnResultBudgetAppliesAfterPerCallBudget(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 5},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -139,7 +139,7 @@ func TestTurnResultBudgetExactBoundary(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 10,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 10},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -183,7 +183,7 @@ func TestTurnResultBudgetErrorPolicyReportTruncated(t *testing.T) {
 	}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 6, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 6}, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -223,7 +223,7 @@ func TestTurnResultBudgetTruncatedSuccessKeepsNilErr(t *testing.T) {
 	}}
 	auditor := &recordingAuditor{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 6, Audit: auditor.Audit,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 6}, Audit: auditor.Audit,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -269,7 +269,7 @@ func TestTurnResultBudgetVetoStopsShapingConsideration(t *testing.T) {
 		),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg, TurnResultBudget: 100,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 100}, Hooks: hreg,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -312,7 +312,7 @@ func TestTurnResultBudgetStableSortTieBreak(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, TurnResultBudget: 6,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, TurnResultBudget: 6},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

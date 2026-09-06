@@ -123,12 +123,12 @@ func buildControlLoop(t *testing.T, serverURL string, client *http.Client) *agen
 	}
 
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     anthropicClient,
-		Tools:         reg,
-		MaxIterations: 5,
-		Window:        window,
-		Summarizer:    summarizer,
-		Calibrated:    contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer:  anthropicClient,
+		Tools:      reg,
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Window:     window,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("agentloop.New: %v", err)

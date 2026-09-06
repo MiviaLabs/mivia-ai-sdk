@@ -24,7 +24,7 @@ func TestDedupWithinTurnNumericLiteralFormsNotEqual(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -54,7 +54,7 @@ func TestDedupWithinTurnLargeIntegersNotEqual(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -84,7 +84,7 @@ func TestDedupWithinTurnDuplicateJSONKeyUsesLastValue(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -114,7 +114,7 @@ func TestDedupWithinTurnUnicodeEscapeFormsEqual(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -145,7 +145,7 @@ func TestDedupWithinTurnMalformedArgumentsFailOpen(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -196,7 +196,7 @@ func TestDedupWithinTurnTrailingDataFailOpen(t *testing.T) {
 				),
 				{Message: textMessage(provider.RoleAssistant, "final")},
 			}}
-			loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, DedupWithinTurn: true})
+			loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, DedupWithinTurn: true})
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
 			}

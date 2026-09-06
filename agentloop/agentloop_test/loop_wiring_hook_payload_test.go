@@ -41,7 +41,7 @@ func TestRunPreAndPostToolHookPayloadIdentity(t *testing.T) {
 		toolCallResponse(want),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -73,7 +73,7 @@ func TestRunPreAndPostToolHookOrderingMultiCallBatch(t *testing.T) {
 		),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -125,7 +125,7 @@ func TestRunPreAndPostToolHookOrderingMultiCallBatchMidVeto(t *testing.T) {
 			provider.ToolCall{ID: "call-3", Name: "echo", Arguments: []byte("{}")},
 		),
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

@@ -1,0 +1,46 @@
+package agentloop
+
+// Bounds groups the loop's numeric caps. Zero means uncapped or
+// serial, per the member's own doc comment.
+type Bounds struct {
+	// MaxIterations bounds the Completer-call count of one Run.
+	MaxIterations int
+	// MaxCallsPerTurn bounds one turn's model-requested tool calls.
+	// Zero means unbounded.
+	MaxCallsPerTurn int
+	// MaxTotalTokens caps the run's cumulative billed tokens. Zero
+	// means unbounded.
+	MaxTotalTokens int
+	// MaxConcurrentTools bounds one turn's parallel tool calls. Zero
+	// and one both mean serial.
+	MaxConcurrentTools int
+	// MaxConsecutiveToolFailures bounds consecutive all-failing turns.
+	// Zero means unbounded.
+	MaxConsecutiveToolFailures int
+	// TurnResultBudget caps one turn's summed tool-result bytes. Zero
+	// means uncapped.
+	TurnResultBudget int
+}
+
+// Validate checks the caps in a fixed order and returns the first
+// failure: MaxIterations, MaxTotalTokens, TurnResultBudget,
+// MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
+// negative.
+func (b Bounds) Validate() error {
+	if b.MaxIterations < 0 {
+		return ErrMaxIterations
+	}
+	if b.MaxTotalTokens < 0 {
+		return ErrMaxTotalTokens
+	}
+	if b.TurnResultBudget < 0 {
+		return ErrTurnResultBudget
+	}
+	if b.MaxConcurrentTools < 0 {
+		return ErrMaxConcurrentTools
+	}
+	if b.MaxConsecutiveToolFailures < 0 {
+		return ErrMaxConsecutiveToolFailures
+	}
+	return nil
+}

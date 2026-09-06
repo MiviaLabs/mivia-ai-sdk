@@ -26,7 +26,7 @@ func TestOnToolCallErrorDefaultUnchanged(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -65,7 +65,7 @@ func TestOnToolCallErrorSynthesizesMessage(t *testing.T) {
 		hookCalled bool
 	)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -128,7 +128,7 @@ func TestOnToolCallErrorSkipsWithErr(t *testing.T) {
 		hookCalled bool
 	)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -177,7 +177,7 @@ func TestOnToolCallErrorFailPolicyBypassesHook(t *testing.T) {
 		hookCalled bool
 	)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		OnToolError: agentloop.ErrorPolicyFail,
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
@@ -223,7 +223,7 @@ func TestOnToolCallErrorPartiallyPopulatedMessage(t *testing.T) {
 				{Message: textMessage(provider.RoleAssistant, "final")},
 			}}
 			loop, err := agentloop.New(agentloop.Options{
-				Completer: completer, Tools: reg, MaxIterations: 5,
+				Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 				OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 					return tc.msg, nil
 				},
@@ -257,7 +257,7 @@ func TestOnToolCallErrorZeroMessageFallsBack(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			return provider.Message{}, nil
 		},

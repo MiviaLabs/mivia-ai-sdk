@@ -35,7 +35,7 @@ func TestRunMaxTotalTokens(t *testing.T) {
 	completer := &scriptedCompleter{responses: responses}
 	acc := usage.New()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100},
 		Usage: acc, SessionID: "sess-1",
 	})
 	if err != nil {
@@ -86,7 +86,7 @@ func TestRunMaxTotalTokensUnderReportedTotal(t *testing.T) {
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -121,7 +121,7 @@ func TestRunMaxTotalTokensUnderReportedTotalUnbounded(t *testing.T) {
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -151,7 +151,7 @@ func TestRunMaxTotalTokensSurchargedTotal(t *testing.T) {
 		}(),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 40,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 40},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -182,7 +182,7 @@ func TestRunMaxTotalTokensAtCapPasses(t *testing.T) {
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -214,7 +214,7 @@ func TestRunMaxTotalTokensOneOverCapFails(t *testing.T) {
 	}
 	completer := &scriptedCompleter{responses: responses}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, MaxTotalTokens: 100,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -237,7 +237,7 @@ func TestRunZeroMaxTotalTokensUnbounded(t *testing.T) {
 		return r
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{mk("call-1"), mk("call-2")}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 2})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 2}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

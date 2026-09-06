@@ -23,7 +23,7 @@ func TestRunTrimErrorLaterIteration(t *testing.T) {
 	}}
 	calls := 0
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			calls++
 			if calls > 1 {
@@ -60,7 +60,7 @@ func TestRunTrimInvalidMessageLaterIteration(t *testing.T) {
 	}}
 	calls := 0
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			calls++
 			if calls > 1 {

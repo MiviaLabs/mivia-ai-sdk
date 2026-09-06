@@ -33,7 +33,7 @@ func TestDecodeAndRunArgumentValidationFailFails(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -62,7 +62,7 @@ func TestDecodeAndRunArgumentValidationReportsCorrective(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -94,7 +94,7 @@ func TestDecodeAndRunArgumentValidationPassesReachesDecode(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte(`{"x":"y"}`)}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -122,7 +122,7 @@ func TestNewMalformedSchemaFails(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	completer := &scriptedCompleter{}
-	_, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5})
+	_, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if !errors.Is(err, agentloop.ErrInvalidSchema) {
 		t.Fatalf("New() error = %v, want ErrInvalidSchema", err)
 	}
@@ -143,13 +143,13 @@ func TestNewCompileLoopIsScoped(t *testing.T) {
 	mustAdd(t, reg, good)
 	mustAdd(t, reg, bad)
 
-	_, err := agentloop.New(agentloop.Options{Completer: &scriptedCompleter{}, Tools: reg, MaxIterations: 5})
+	_, err := agentloop.New(agentloop.Options{Completer: &scriptedCompleter{}, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if !errors.Is(err, agentloop.ErrInvalidSchema) {
 		t.Fatalf("wide New() error = %v, want ErrInvalidSchema", err)
 	}
 
 	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"good"}})
-	loop, err := agentloop.New(agentloop.Options{Completer: &scriptedCompleter{}, Tools: reg, Scope: scope, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: &scriptedCompleter{}, Tools: reg, Scope: scope, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("narrow New() error = %v, want nil: the compile loop must be scoped, not registry-wide", err)
 	}
@@ -174,7 +174,7 @@ func TestDecodeAndRunScopeDeniedBeforeSchemaValidate(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "denied", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Scope: scope, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+		Completer: completer, Tools: reg, Scope: scope, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -200,7 +200,7 @@ func TestDecodeAndRunOversizedArgumentsFailsAdmission(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: oversized}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -239,7 +239,7 @@ func TestRunConcurrentSchemaValidatedCalls(t *testing.T) {
 		responses = append(responses, toolCallResponse(provider.ToolCall{ID: "call", Name: "echo", Arguments: []byte(`{"x":"y"}`)}))
 	}
 	completer := &scriptedCompleter{responses: responses}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: iterations})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: iterations}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

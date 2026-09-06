@@ -23,7 +23,7 @@ func BenchmarkRunOneIteration(b *testing.B) {
 		completer := &scriptedCompleter{responses: []provider.Response{
 			{Message: textMessage(provider.RoleAssistant, "hi there")},
 		}}
-		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 1})
+		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}})
 		if err != nil {
 			b.Fatalf("New() error = %v, want nil", err)
 		}
@@ -51,7 +51,7 @@ func TestRunOneIterationAllocBudget(t *testing.T) {
 		completer := &scriptedCompleter{responses: []provider.Response{
 			{Message: textMessage(provider.RoleAssistant, "hi there")},
 		}}
-		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 1})
+		loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}

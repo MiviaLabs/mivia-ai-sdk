@@ -24,6 +24,11 @@ PAIRS = [
         "## The program",
         "docs/examples/_agentrun/main.go",
     ),
+    (
+        "docs/examples/agentloop.md",
+        "## The program",
+        "docs/examples/_agentloop/main.go",
+    ),
 ]
 
 FENCE_OPEN = "```go"

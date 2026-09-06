@@ -27,7 +27,7 @@ func TestContinueOnStopBoundedByMaxIterations(t *testing.T) {
 		Message: textMessage(provider.RoleAssistant, "again"),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 4,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -58,8 +58,7 @@ func TestContinueOnStopBoundedByMaxTotalTokens(t *testing.T) {
 		Usage:   provider.Usage{TotalTokens: 10},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 0,
-		MaxTotalTokens: 25, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 0, MaxTotalTokens: 25}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -86,8 +85,7 @@ func TestContinueOnStopUnboundedWithoutBounds(t *testing.T) {
 		Message: textMessage(provider.RoleAssistant, "again"),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 0,
-		MaxTotalTokens: 0, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 0, MaxTotalTokens: 0}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -121,8 +119,8 @@ func TestContinueOnStopTrimStripsNoticeReportsNoToolCalls(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 3,
-		ConcludeMargin: 3,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3},
+		Conclude: agentloop.Conclude{Margin: 3},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			kept := make([]provider.Message, 0, len(msgs))
 			for _, m := range msgs {
@@ -169,8 +167,8 @@ func TestContinueOnStopConcludedKeepsOneNotice(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 3,
-		ConcludeMargin: 3, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3},
+		Conclude: agentloop.Conclude{Margin: 3}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -203,7 +201,7 @@ func TestContinueOnStopCancelledContextEndsRun(t *testing.T) {
 		Message: textMessage(provider.RoleAssistant, "again"),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -228,7 +226,7 @@ func TestContinueOnStopSkippedOnSteered(t *testing.T) {
 	entered := make(chan struct{})
 	c := &blockingCompleter{entered: entered}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: c, Tools: tools.New(), MaxIterations: 5,
+		Completer: c, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -273,7 +271,7 @@ func TestContinueOnStopSkippedOnHookVeto(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, Hooks: hreg,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -303,7 +301,7 @@ func TestContinueOnStopSkippedOnMaxIterations(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 2},
 		ContinueOnStop: rec.hook,
 	})
 	if err != nil {
@@ -333,8 +331,7 @@ func TestContinueOnStopSkippedOnRepeatedToolFailures(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "nonexistent_2", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 10,
-		MaxConsecutiveToolFailures: 2, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 10, MaxConsecutiveToolFailures: 2}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -363,8 +360,7 @@ func TestContinueOnStopSkippedOnTokenBudgetHardFail(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final"), Usage: provider.Usage{TotalTokens: 100}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
-		MaxTotalTokens: 10, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 10}, ContinueOnStop: rec.hook,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

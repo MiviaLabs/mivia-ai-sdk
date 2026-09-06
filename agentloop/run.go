@@ -54,6 +54,17 @@ func (l *Loop) fireStop(ctx context.Context, res Result) {
 	_ = l.hooksReg.Fire(ctx, hooks.PointStop, res)
 }
 
+// runState carries the six pointer parameters runIteration mutated
+// in place. run constructs one per Run call and passes it down.
+type runState struct {
+	history             *[]provider.Message
+	iterations          *int
+	totalUsage          *provider.Usage
+	runningTokens       *int
+	consecutiveFailures *int
+	noticeSent          *bool
+}
+
 // run is Run's loop body, run once per Run or RunSteerable call. It
 // holds only loop control: the ctx-cancellation check, the
 // MaxIterations check, one call to runIteration, and the
@@ -69,6 +80,14 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 	consecutiveFailures := 0
 	noticeSent := false
 	surface := l.initialSurface()
+	st := &runState{
+		history:             &history,
+		iterations:          &iterations,
+		totalUsage:          &totalUsage,
+		runningTokens:       &runningTokens,
+		consecutiveFailures: &consecutiveFailures,
+		noticeSent:          &noticeSent,
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -86,7 +105,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 				history = append(history, injected...)
 			}
 		}
-		if iterations >= l.maxIterations {
+		if iterations >= l.bounds.MaxIterations {
 			return Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopMaxIterations}, nil
 		}
 
@@ -109,7 +128,7 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 			}
 		}
 
-		res, err, done := l.runIteration(ctx, &history, &iterations, &totalUsage, &runningTokens, &consecutiveFailures, &noticeSent, steer, stream, surface)
+		res, err, done := l.runIteration(ctx, st, steer, stream, surface)
 		if done {
 			return res, err
 		}
@@ -120,8 +139,8 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 // token-budget check, the ConcludeMargin nudge, the Completer call,
 // audit, the token-budget check, and tool-call dispatch. It mutates
 // history, iterations, totalUsage, runningTokens, and noticeSent in
-// place through their pointers, matching run's prior inlined
-// mutation. done reports whether run must return (res, err) now; done
+// place through st, matching run's prior inlined mutation. done
+// reports whether run must return (res, err) now; done
 // false means the iteration completed normally and run should loop
 // again. EventIterationStart fires on entry; EventIterationEnd fires
 // from a deferred closure covering every exit path, so every
@@ -129,40 +148,40 @@ func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (
 // checkBudget runs after planHistory: window-based compaction can
 // bring an over-budget history back under budget, so the check must
 // see the post-compaction history, not the pre-compaction one.
-func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, consecutiveFailures *int, noticeSent *bool, steer *Steer, stream *bytes.Buffer, surface runSurface) (res Result, err error, done bool) {
-	label := iterationLabel(*iterations + 1)
+func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, stream *bytes.Buffer, surface runSurface) (res Result, err error, done bool) {
+	label := iterationLabel(*st.iterations + 1)
 	l.emitEvent(ctx, EventIterationStart, label)
 	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
 
-	trimmed, terr := l.applyTrim(ctx, *history, *iterations)
+	trimmed, terr := l.applyTrim(ctx, *st.history, *st.iterations)
 	if terr != nil {
-		return l.hardFail(*history, *iterations, *totalUsage), terr, true
+		return l.hardFail(*st.history, *st.iterations, *st.totalUsage), terr, true
 	}
-	*history = trimmed
+	*st.history = trimmed
 
 	if l.window != nil {
-		planned, perr := l.planHistory(ctx, *history, *iterations)
+		planned, perr := l.planHistory(ctx, *st.history, *st.iterations)
 		if perr != nil {
-			return l.hardFail(*history, *iterations, *totalUsage), perr, true
+			return l.hardFail(*st.history, *st.iterations, *st.totalUsage), perr, true
 		}
-		*history = planned
+		*st.history = planned
 	}
 
-	if berr := l.checkBudget(*history, *iterations); berr != nil {
-		return l.hardFail(*history, *iterations, *totalUsage), berr, true
+	if berr := l.checkBudget(*st.history, *st.iterations); berr != nil {
+		return l.hardFail(*st.history, *st.iterations, *st.totalUsage), berr, true
 	}
 
-	if !*noticeSent && l.shouldConclude(*iterations) {
-		*history = append(*history, provider.Message{Role: provider.RoleUser, Content: l.concludeNotice})
-		*noticeSent = true
+	if !*st.noticeSent && l.shouldConclude(*st.iterations) {
+		*st.history = append(*st.history, provider.Message{Role: provider.RoleUser, Content: l.conclude.Notice})
+		*st.noticeSent = true
 	}
 	// noticeSent gates noticePresent: this run's own nudge must fire.
-	noticeInRequest := *noticeSent && noticePresent(*history, l.concludeNotice)
+	noticeInRequest := *st.noticeSent && noticePresent(*st.history, l.conclude.Notice)
 
 	stopHeartbeat := l.startHeartbeat(ctx, EventCompletionHeartbeat, label)
 	at := func() chatAttempt {
 		defer stopHeartbeat()
-		return l.runChat(ctx, *history, *iterations, steer, stream, surface)
+		return l.runChat(ctx, *st.history, *st.iterations, steer, stream, surface)
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
@@ -180,14 +199,14 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 				steer.ackTriggered()
 				return Result{}, nil, false
 			}
-			return steeredStopResult(*history, *iterations, *totalUsage, stream), nil, true
+			return steeredStopResult(*st.history, *st.iterations, *st.totalUsage, stream), nil, true
 		}
 		if at.fromRecovery {
-			return Result{History: *history, Iterations: *iterations, Usage: *totalUsage}, at.err, true
+			return Result{History: *st.history, Iterations: *st.iterations, Usage: *st.totalUsage}, at.err, true
 		}
-		return l.hardFail(*history, *iterations, *totalUsage), at.err, true
+		return l.hardFail(*st.history, *st.iterations, *st.totalUsage), at.err, true
 	}
-	return l.afterChat(ctx, at, history, iterations, totalUsage, runningTokens, consecutiveFailures, noticeInRequest, surface)
+	return l.afterChat(ctx, at, st, noticeInRequest, surface)
 }
 
 // afterChat holds the second half of one iteration's body: recording
@@ -197,12 +216,12 @@ func (l *Loop) runIteration(ctx context.Context, history *[]provider.Message, it
 // computed by runIteration, picks StopConcluded over StopNoToolCalls
 // when this iteration's Completer request carried the ConcludeMargin
 // nudge.
-func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provider.Message, iterations *int, totalUsage *provider.Usage, runningTokens *int, consecutiveFailures *int, noticeInRequest bool, surface runSurface) (Result, error, bool) {
+func (l *Loop) afterChat(ctx context.Context, at chatAttempt, st *runState, noticeInRequest bool, surface runSurface) (Result, error, bool) {
 	resp, req := at.resp, at.req
-	*history = at.history
-	*history = append(*history, resp.Message)
-	*iterations++
-	*totalUsage = sumUsage(*totalUsage, resp.Usage)
+	*st.history = at.history
+	*st.history = append(*st.history, resp.Message)
+	*st.iterations++
+	*st.totalUsage = sumUsage(*st.totalUsage, resp.Usage)
 	if l.usageAcc != nil {
 		_ = l.usageAcc.Record(l.sessionID, resp.Usage)
 	}
@@ -217,15 +236,15 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 	}
 	if l.audit != nil {
 		if aerr := l.audit(ctx, AuditRecord{
-			Iteration:       *iterations,
+			Iteration:       *st.iterations,
 			Kind:            AuditKindCompletion,
 			Request:         req,
 			Response:        resp,
 			ThinkingContent: resp.Message.ReasoningContent,
 			CacheUsage:      resp.CacheUsage,
 		}); aerr != nil {
-			return l.hardFail(*history, *iterations, *totalUsage),
-				fmt.Errorf("agentloop: iteration %d: audit: %w", *iterations, aerr), true
+			return l.hardFail(*st.history, *st.iterations, *st.totalUsage),
+				fmt.Errorf("agentloop: iteration %d: audit: %w", *st.iterations, aerr), true
 		}
 	}
 	if l.calibrated != nil {
@@ -234,17 +253,17 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, history *[]provide
 			l.emitEvent(ctx, EventCalibrationDelta, data)
 		}
 	}
-	*runningTokens += billedTokens(resp.Usage)
-	if l.maxTotalTokens > 0 && *runningTokens > l.maxTotalTokens {
-		return l.hardFail(*history, *iterations, *totalUsage),
-			fmt.Errorf("agentloop: iteration %d: %w", *iterations, ErrTokenBudgetExceeded), true
+	*st.runningTokens += billedTokens(resp.Usage)
+	if l.bounds.MaxTotalTokens > 0 && *st.runningTokens > l.bounds.MaxTotalTokens {
+		return l.hardFail(*st.history, *st.iterations, *st.totalUsage),
+			fmt.Errorf("agentloop: iteration %d: %w", *st.iterations, ErrTokenBudgetExceeded), true
 	}
 
-	res, done, terr := l.runToolStage(at.iterCtx, *history, resp, *iterations, *totalUsage, consecutiveFailures, noticeInRequest, surface)
+	res, done, terr := l.runToolStage(at.iterCtx, *st.history, resp, *st.iterations, *st.totalUsage, st.consecutiveFailures, noticeInRequest, surface)
 	if done {
 		return res, terr, true
 	}
-	*history = res.History
+	*st.history = res.History
 	return Result{}, nil, false
 }
 
@@ -265,7 +284,7 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 		}
 		return l.gracefulStop(ctx, history, resp, iterations, totalUsage, stop)
 	}
-	if l.maxCallsPerTurn > 0 && len(resp.ToolCalls) > l.maxCallsPerTurn {
+	if l.bounds.MaxCallsPerTurn > 0 && len(resp.ToolCalls) > l.bounds.MaxCallsPerTurn {
 		return l.hardFail(history, iterations, totalUsage), true,
 			fmt.Errorf("agentloop: iteration %d: %w", iterations, ErrCallsPerTurnExceeded)
 	}
@@ -282,7 +301,7 @@ func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, res
 	}
 	if allFailed {
 		*consecutiveFailures++
-		if l.maxConsecutiveFailures > 0 && *consecutiveFailures >= l.maxConsecutiveFailures {
+		if l.bounds.MaxConsecutiveToolFailures > 0 && *consecutiveFailures >= l.bounds.MaxConsecutiveToolFailures {
 			return Result{History: newHistory, Iterations: iterations, Usage: totalUsage, Stop: StopRepeatedToolFailures}, true, nil
 		}
 	} else {

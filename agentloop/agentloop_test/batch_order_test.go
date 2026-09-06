@@ -53,8 +53,8 @@ func runBatchOrderTurn(t *testing.T, maxConcurrent int) *toolcallctx.BatchOrder 
 	completer := &scriptedCompleter{responses: []provider.Response{resp, final}}
 
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3,
-		DedupWithinTurn: true, MaxConcurrentTools: maxConcurrent,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3, MaxConcurrentTools: maxConcurrent},
+		DedupWithinTurn: true,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -123,7 +123,7 @@ func TestBatchOrderSettlesAbandonedCallsOnAbort(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{resp}}
 
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3},
 		OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {

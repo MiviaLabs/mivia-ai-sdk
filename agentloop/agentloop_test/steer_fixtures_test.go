@@ -61,9 +61,9 @@ func (c *blockingCompleter) callCount() int {
 func newSteerLoop(t *testing.T, completer provider.Completer, maxIterations int) *agentloop.Loop {
 	t.Helper()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     completer,
-		Tools:         tools.New(),
-		MaxIterations: maxIterations,
+		Completer: completer,
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: maxIterations},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

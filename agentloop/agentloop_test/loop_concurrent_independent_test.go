@@ -52,7 +52,7 @@ func TestRunConcurrentIndependentCallsDoNotBleedState(t *testing.T) {
 	tool := &schemaEchoTool{name: "reflect", schema: []byte(`{"type":"object"}`), result: "tool-result"}
 	mustAdd(t, reg, tool)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: reflectingToolCompleter{tool: "reflect"}, Tools: reg, MaxIterations: 5,
+		Completer: reflectingToolCompleter{tool: "reflect"}, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

@@ -24,7 +24,7 @@ func TestDecodeAndRunToolRegisteredAfterNewReportsUnderReportPolicy(t *testing.T
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -67,7 +67,7 @@ func TestDecodeAndRunToolRemovedAfterNewReportsUnknownName(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -114,7 +114,7 @@ func TestDecodeAndRunToolRemovedBetweenTwoRunCallsReportsUnknownName(t *testing.
 		{Message: textMessage(provider.RoleAssistant, "final-2")},
 	}}
 	auditor := &recordingAuditor{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, MaxIterations: 5, Audit: auditor.Audit})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Audit: auditor.Audit})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -151,7 +151,7 @@ func TestDecodeAndRunToolRegisteredAfterNewFailsUnderFailPolicy(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "late", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, OnToolError: agentloop.ErrorPolicyFail,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, OnToolError: agentloop.ErrorPolicyFail,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

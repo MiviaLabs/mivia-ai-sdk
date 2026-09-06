@@ -59,7 +59,7 @@ func TestSteerTriggerAfterPriorIteration(t *testing.T) {
 	first.Usage = provider.Usage{TotalTokens: 7}
 	entered := make(chan struct{})
 	c := &blockingCompleter{responses: []provider.Response{first}, entered: entered}
-	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestSteerFiresPointStopWithSteeredPayload(t *testing.T) {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: c, Tools: tools.New(), MaxIterations: 5, Hooks: hreg,
+		Completer: c, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -348,7 +348,7 @@ func TestSteerTriggerMidToolBatch(t *testing.T) {
 		provider.ToolCall{Index: 2, ID: "c3", Name: "seq", Arguments: []byte("{}")},
 	)
 	c := &blockingCompleter{responses: []provider.Response{batch}}
-	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

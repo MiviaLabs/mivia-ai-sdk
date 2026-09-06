@@ -105,9 +105,9 @@ func (f *injectorFixture) drainedLen() int {
 func newInjectorLoop(t *testing.T, c provider.Completer, maxIterations int) *agentloop.Loop {
 	t.Helper()
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:     c,
-		Tools:         tools.New(),
-		MaxIterations: maxIterations,
+		Completer: c,
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: maxIterations},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

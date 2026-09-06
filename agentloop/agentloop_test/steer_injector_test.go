@@ -93,7 +93,7 @@ func TestInjectorLandsAfterToolResults(t *testing.T) {
 	first := toolCallResponse(provider.ToolCall{ID: "c1", Name: "echo", Arguments: []byte("{}")})
 	final := provider.Response{Message: textMessage(provider.RoleAssistant, "ok")}
 	c := &scriptedCompleter{responses: []provider.Response{first, final}}
-	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, MaxIterations: 5})
+	loop, err := agentloop.New(agentloop.Options{Completer: c, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

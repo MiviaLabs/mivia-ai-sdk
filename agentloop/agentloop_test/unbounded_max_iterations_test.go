@@ -18,9 +18,9 @@ func TestSDKValidateAllowsUnboundedMaxIterations(t *testing.T) {
 		Completer: &replayCompleter{turns: []provider.Response{
 			{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}, FinishReason: "stop"},
 		}},
-		Tools:         tools.New(),
-		Model:         "m",
-		MaxIterations: 0,
+		Tools:  tools.New(),
+		Model:  "m",
+		Bounds: sdkagentloop.Bounds{MaxIterations: 0},
 	})
 	if err != nil {
 		t.Fatalf("New with MaxIterations=0 returned err: %v", err)
@@ -32,9 +32,9 @@ func TestSDKValidateAllowsUnboundedMaxIterations(t *testing.T) {
 // is caught immediately.
 func TestSDKValidateRejectsNegativeMaxIterations(t *testing.T) {
 	_, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:     &replayCompleter{turns: nil},
-		Tools:         tools.New(),
-		MaxIterations: -1,
+		Completer: &replayCompleter{turns: nil},
+		Tools:     tools.New(),
+		Bounds:    sdkagentloop.Bounds{MaxIterations: -1},
 	})
 	if err == nil {
 		t.Fatal("expected New with MaxIterations=-1 to fail Validate")

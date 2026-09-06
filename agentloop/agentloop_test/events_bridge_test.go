@@ -44,7 +44,7 @@ func TestEventsBridgeThinkingCacheCalibration(t *testing.T) {
 				InputTokens: 100, CachedInputTokens: 60, CacheWriteTokens: 10}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Bus: bus, HeartbeatInterval: time.Hour,
 		Calibrated: cal,
 	})
@@ -135,7 +135,7 @@ func TestEventsBridgeToolParallelFiresOncePerTurn(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
@@ -186,7 +186,7 @@ func TestEventsBridgeToolParallelAbsentOnSingleCall(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
 		Bus: bus, HeartbeatInterval: time.Hour,
 	})
 	if err != nil {
@@ -219,7 +219,7 @@ func TestEventsBridgeAuditCompletionCarriesThinkingAndCache(t *testing.T) {
 				InputTokens: 30, CachedInputTokens: 10, CacheWriteTokens: 5}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), MaxIterations: 5,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Bus: bus, HeartbeatInterval: time.Hour, Audit: auditor.Audit,
 	})
 	if err != nil {

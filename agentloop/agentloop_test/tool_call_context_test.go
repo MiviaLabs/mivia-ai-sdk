@@ -82,11 +82,11 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	}
 
 	opts := agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		Hooks:         hookReg,
-		Bus:           bus,
-		MaxIterations: 5,
+		Completer: completer,
+		Tools:     reg,
+		Hooks:     hookReg,
+		Bus:       bus,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
 	}
 
 	loop, err := agentloop.New(opts)
@@ -167,10 +167,9 @@ func TestToolCallContext_ParallelRun(t *testing.T) {
 	}
 
 	opts := agentloop.Options{
-		Completer:          completer,
-		Tools:              reg,
-		MaxConcurrentTools: 3,
-		MaxIterations:      5,
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxConcurrentTools: 3, MaxIterations: 5},
 	}
 
 	loop, err := agentloop.New(opts)
@@ -235,10 +234,10 @@ func TestToolCallContext_PreToolVeto(t *testing.T) {
 	}
 
 	opts := agentloop.Options{
-		Completer:     completer,
-		Tools:         reg,
-		Hooks:         hookReg,
-		MaxIterations: 5,
+		Completer: completer,
+		Tools:     reg,
+		Hooks:     hookReg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
 	}
 
 	loop, err := agentloop.New(opts)
@@ -295,7 +294,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 				Content:    fmt.Sprintf("recovered: %v", cerr),
 			}, nil
 		},
-		MaxIterations: 5,
+		Bounds: agentloop.Bounds{MaxIterations: 5},
 	}
 
 	loop, err := agentloop.New(opts)

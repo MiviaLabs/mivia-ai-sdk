@@ -43,7 +43,7 @@ func TestRunConcludeMarginZeroUnchanged(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-3", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3, ConcludeMargin: 0,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3}, Conclude: agentloop.Conclude{Margin: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -78,7 +78,7 @@ func TestRunConcludeMarginNudgesNextToLastCall(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Conclude: agentloop.Conclude{Margin: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -121,7 +121,7 @@ func TestRunConcludeMarginNudgesLastCallOnly(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 1,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Conclude: agentloop.Conclude{Margin: 1},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -156,7 +156,7 @@ func TestRunConcludeMarginNoNudgeBeforeThreshold(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Conclude: agentloop.Conclude{Margin: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -184,7 +184,7 @@ func TestRunConcludeMarginFiresOnFirstIteration(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 1, ConcludeMargin: 1,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Conclude: agentloop.Conclude{Margin: 1},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -219,7 +219,7 @@ func TestRunConcludeMarginModelIgnoresNudge(t *testing.T) {
 		toolCallResponse(provider.ToolCall{ID: "call-3", Name: "echo", Arguments: []byte("{}")}),
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3, ConcludeMargin: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3}, Conclude: agentloop.Conclude{Margin: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -263,7 +263,7 @@ func TestRunConcludeNoticeDefaultAndOverride(t *testing.T) {
 				{Message: textMessage(provider.RoleAssistant, "final")},
 			}}
 			loop, err := agentloop.New(agentloop.Options{
-				Completer: completer, Tools: reg, MaxIterations: 1, ConcludeMargin: 1, ConcludeNotice: c.notice,
+				Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Conclude: agentloop.Conclude{Margin: 1, Notice: c.notice},
 			})
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
@@ -297,7 +297,7 @@ func TestRunConcludeMarginNoticeSentOnce(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Conclude: agentloop.Conclude{Margin: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -339,7 +339,7 @@ func TestRunConcludeMarginTrimDropsNotice(t *testing.T) {
 		return kept, nil
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3, ConcludeMargin: 3, Trim: dropRoleUser,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3}, Conclude: agentloop.Conclude{Margin: 3}, Trim: dropRoleUser,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -398,7 +398,7 @@ func TestRunConcludeMarginTrimDropsNoticeBeforeStop(t *testing.T) {
 		return kept, nil
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 3, ConcludeMargin: 2, Trim: dropRoleUser,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3}, Conclude: agentloop.Conclude{Margin: 2}, Trim: dropRoleUser,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -439,7 +439,7 @@ func TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 1, ConcludeMargin: 0,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1}, Conclude: agentloop.Conclude{Margin: 0},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -457,7 +457,7 @@ func TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory(t *testing.T) {
 
 // TestRunConcludeMarginIgnoresCallerNoticeBeforeThreshold proves the
 // same rule as TestRunConcludeMarginZeroIgnoresCallerNoticeInHistory
-// with a positive ConcludeMargin: the threshold is never reached this
+// with a positive Margin: the threshold is never reached this
 // run, so noticeSent stays false even though the caller's starting
 // message happens to equal DefaultConcludeNotice verbatim.
 // ConcludeMargin=2, MaxIterations=5: the model stops with no tool call
@@ -468,7 +468,7 @@ func TestRunConcludeMarginIgnoresCallerNoticeBeforeThreshold(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, MaxIterations: 5, ConcludeMargin: 2,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Conclude: agentloop.Conclude{Margin: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

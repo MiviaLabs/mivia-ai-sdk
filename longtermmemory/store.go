@@ -51,6 +51,7 @@ func (s *Store) Save(ctx context.Context, e Entry) (Result, error) {
 	if e.Created == "" {
 		e.Created = time.Now().Format(dateLayout)
 	}
+	e.Scope = normalizeScope(e.Scope)
 	id := entryID(e)
 
 	s.mu.Lock()
@@ -77,7 +78,7 @@ func (s *Store) Save(ctx context.Context, e Entry) (Result, error) {
 func (s *Store) Count(ctx context.Context, scope string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.scopes[scope]), nil
+	return len(s.scopes[normalizeScope(scope)]), nil
 }
 
 // Delete removes one entry by id. Unknown id fails ErrEntryNotFound.
@@ -118,7 +119,7 @@ func (s *Store) PromoteToCore(ctx context.Context, id string) error {
 func (s *Store) CoreEntries(ctx context.Context, scope string) ([]Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ids := s.scopeIDsLocked(scope, func(r *row) bool { return r.core })
+	ids := s.scopeIDsLocked(normalizeScope(scope), func(r *row) bool { return r.core })
 	sort.Slice(ids, func(i, j int) bool {
 		return coreLess(s.rows[ids[i]], s.rows[ids[j]], ids[i], ids[j])
 	})
@@ -195,6 +196,12 @@ func (s *Store) removeFromScope(scope, id string) {
 	if len(set) == 0 {
 		delete(s.scopes, scope)
 	}
+}
+
+// normalizeScope trims surrounding whitespace from one scope, so one
+// scope has one bucket and one hash input regardless of padding.
+func normalizeScope(scope string) string {
+	return strings.TrimSpace(scope)
 }
 
 // entryID builds the content address of one stored entry: SHA-256

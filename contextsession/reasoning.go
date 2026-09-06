@@ -1,4 +1,4 @@
-package contextplan
+package contextsession
 
 import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"

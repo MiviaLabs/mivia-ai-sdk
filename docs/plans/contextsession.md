@@ -1,6 +1,6 @@
 # Plan: contextsession
 
-Status: planned, not yet built. Carves the durable session planner out of `contextplan` into `contextsession`.
+Status: shipped. Carves the durable session planner out of `contextplan` into `contextsession`.
 
 ## Goal
 
@@ -17,13 +17,13 @@ Inside:
 - Admit state machine: folded into an unexported `planState` struct with an `admit` method.
 - `planState` is allocated per `Plan` call, so `Planner` remains stateless and safe for concurrent use.
 - Sentinels: `ErrNilStore`, `ErrNilSession`.
+- Reasoning event detection: `IsReasoningEvent`.
 - Integration with `contextplan`, `contextref`, `contextstate`, `provider`, and `spool`.
 
 Outside:
 
 - Cache parameter: dropped `cache *memory.Store` and `ErrNilCache` because cache writes were unread.
 - Token budget compaction and window types. `contextplan` owns `Window`, `Compaction`, and `Compact`.
-- Reasoning event detection. `contextplan.IsReasoningEvent` owns detection; `contextsession` imports it.
 - Canonical content reference minting. `contextref` owns the minter.
 - Concrete provider implementations. Callers supply a `provider.TokenEstimator`.
 
@@ -45,6 +45,7 @@ const (
 func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, error)
 func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contextplan.Window, e provider.TokenEstimator) (PlanResult, error)
 func StubContent(content []byte) []byte
+func IsReasoningEvent(e contextstate.SourceEvent) bool
 
 type Elision struct {
     Ref      contextstate.ContentRef
@@ -73,7 +74,7 @@ var (
 Design rationale:
 
 - `contextsession` isolates the durable session planner from lightweight token compaction.
-- It imports `contextplan` for `Window` and `IsReasoningEvent`.
+- It imports `contextplan` for `Window`.
 - It drops `memory.Store` caching because `contextplan.Planner` only performed unread writes.
 - It depends on `contextstate` for payload records and `spool` for overflow storage.
 - `planState` holds running admission state for one `Plan` execution, preserving thread safety.

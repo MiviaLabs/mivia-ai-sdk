@@ -4,27 +4,18 @@ package contextplan
   const DefaultSmoothingFactor = 0.3
   const DefaultTargetPercent = 10
   const DefaultTriggerPercent = 100
-  const ElisionReasonReasoningRedacted = "reasoning_redacted"
-  const ElisionReasonRetentionExpired = "retention_expired"
-  const ElisionReasonRevoked = "revoked"
-  const ElisionReasonWindowOverflow = "window_overflow"
   const MaxCorrectionFactor = 2.0
   const MaxRecentTail = 64
   const MinCorrectionFactor = 0.5
-  const StubContentBytes = 256
   func (c *Calibrated) EstimateTokens(req provider.Request) (int, error)
   func (c *Calibrated) Observe(estimated, actual int)
   func (c Compaction) Validate() (error)
-  func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error)
   func (w Window) Budget() (int)
   func (w Window) CompactTarget() (int)
   func (w Window) CompactTrigger() (int)
   func (w Window) Validate() (error)
   func Calibrate(est provider.TokenEstimator, alpha float64) (*Calibrated)
   func Compact(msgs []provider.Message, w Window, e provider.TokenEstimator) (CompactResult, error)
-  func IsReasoningEvent(e contextstate.SourceEvent) (bool)
-  func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spool.Spool) (*Planner, error)
-  func StubContent(content []byte) ([]byte)
   type Calibrated struct {
 }
   type CompactResult struct {
@@ -44,20 +35,6 @@ package contextplan
   RecentTail int
   PreserveNames []string
 }
-  type Elision struct {
-  Ref contextstate.ContentRef
-  Reason ElisionReason
-  Kept int
-  SpoolRef string
-}
-  type ElisionReason string
-  type PlanResult struct {
-  Request provider.Request
-  Elisions []Elision
-  EstimatedTokens int
-}
-  type Planner struct {
-}
   type Window struct {
   MaxTokens int
   Reserve int
@@ -65,9 +42,6 @@ package contextplan
 }
   var ErrEstimateFailed
   var ErrMaxTokensNotPositive
-  var ErrNilCache
-  var ErrNilSession
-  var ErrNilStore
   var ErrNoMessages
   var ErrNoObjective
   var ErrReserveNegative

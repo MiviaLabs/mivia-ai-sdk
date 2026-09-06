@@ -1,9 +1,11 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -19,7 +21,7 @@ import (
 // non-empty Elision.SpoolRef back through Spool.Load. This is the
 // cut-now, retrieve-later round trip the phase exists for.
 func TestPlanSpoolIntegrationRoundTrip(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	spoolBacking, err := memory.New(1 << 20)
 	if err != nil {
 		t.Fatalf("memory.New: %v", err)
@@ -28,7 +30,7 @@ func TestPlanSpoolIntegrationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

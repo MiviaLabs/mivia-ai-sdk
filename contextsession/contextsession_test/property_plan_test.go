@@ -1,10 +1,12 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -30,8 +32,8 @@ func TestPropertyPlanNeverExceedsWindow(t *testing.T) {
 		{"single small event", []spec{{10, contextstate.RetentionSession}}, 100, 0},
 		{"single event over budget", []spec{{500, contextstate.RetentionSession}}, 50, 0},
 		{"compliance stub over budget", []spec{{500, contextstate.RetentionCompliance}}, 50, 0},
-		{"compliance stub exactly at boundary", []spec{{500, contextstate.RetentionCompliance}}, contextplan.StubContentBytes, 0},
-		{"compliance stub one under boundary", []spec{{500, contextstate.RetentionCompliance}}, contextplan.StubContentBytes - 1, 0},
+		{"compliance stub exactly at boundary", []spec{{500, contextstate.RetentionCompliance}}, contextsession.StubContentBytes, 0},
+		{"compliance stub one under boundary", []spec{{500, contextstate.RetentionCompliance}}, contextsession.StubContentBytes - 1, 0},
 		{"many mixed retention events", []spec{
 			{50, contextstate.RetentionSession},
 			{500, contextstate.RetentionCompliance},
@@ -45,8 +47,7 @@ func TestPropertyPlanNeverExceedsWindow(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStore(t)
-			cache := newCache(t)
-			planner, err := contextplan.NewPlanner(store, cache, nil)
+			planner, err := contextsession.NewPlanner(store, nil)
 			if err != nil {
 				t.Fatalf("NewPlanner: %v", err)
 			}

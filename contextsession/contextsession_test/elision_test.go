@@ -1,4 +1,4 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"bytes"
@@ -7,24 +7,24 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 )
 
 func TestStubContent(t *testing.T) {
 	short := []byte("small content")
-	if got := contextplan.StubContent(short); !bytes.Equal(got, short) {
+	if got := contextsession.StubContent(short); !bytes.Equal(got, short) {
 		t.Fatalf("StubContent(short) = %q, want unchanged", got)
 	}
 
-	exact := []byte(strings.Repeat("e", contextplan.StubContentBytes))
-	if got := contextplan.StubContent(exact); !bytes.Equal(got, exact) {
+	exact := []byte(strings.Repeat("e", contextsession.StubContentBytes))
+	if got := contextsession.StubContent(exact); !bytes.Equal(got, exact) {
 		t.Fatalf("StubContent at exactly the cap changed content")
 	}
 
-	long := []byte(strings.Repeat("l", contextplan.StubContentBytes+100))
-	got := contextplan.StubContent(long)
-	if len(got) != contextplan.StubContentBytes {
-		t.Fatalf("StubContent(long) len = %d, want %d", len(got), contextplan.StubContentBytes)
+	long := []byte(strings.Repeat("l", contextsession.StubContentBytes+100))
+	got := contextsession.StubContent(long)
+	if len(got) != contextsession.StubContentBytes {
+		t.Fatalf("StubContent(long) len = %d, want %d", len(got), contextsession.StubContentBytes)
 	}
 	if !bytes.Contains(got, []byte("[elided]")) {
 		t.Fatalf("StubContent(long) = %q, want a truncation marker", got)
@@ -42,18 +42,18 @@ func TestStubContentRuneSafe(t *testing.T) {
 	}{
 		{
 			name:       "cut inside a rune",
-			content:    []byte(strings.Repeat("é", contextplan.StubContentBytes)),
-			wantLength: contextplan.StubContentBytes - 1,
+			content:    []byte(strings.Repeat("é", contextsession.StubContentBytes)),
+			wantLength: contextsession.StubContentBytes - 1,
 		},
 		{
 			name:       "ascii over the cap",
-			content:    []byte(strings.Repeat("a", contextplan.StubContentBytes+1)),
-			wantLength: contextplan.StubContentBytes,
+			content:    []byte(strings.Repeat("a", contextsession.StubContentBytes+1)),
+			wantLength: contextsession.StubContentBytes,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := contextplan.StubContent(tt.content)
+			got := contextsession.StubContent(tt.content)
 			if !utf8.Valid(got) {
 				t.Fatalf("StubContent = %q, want valid UTF-8", got)
 			}
@@ -63,8 +63,8 @@ func TestStubContentRuneSafe(t *testing.T) {
 			if len(got) != tt.wantLength {
 				t.Fatalf("len(StubContent) = %d, want %d", len(got), tt.wantLength)
 			}
-			if len(got) > contextplan.StubContentBytes {
-				t.Fatalf("len(StubContent) = %d, over the cap %d", len(got), contextplan.StubContentBytes)
+			if len(got) > contextsession.StubContentBytes {
+				t.Fatalf("len(StubContent) = %d, over the cap %d", len(got), contextsession.StubContentBytes)
 			}
 		})
 	}
@@ -72,15 +72,11 @@ func TestStubContentRuneSafe(t *testing.T) {
 
 func TestNewPlannerNilArguments(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
 
-	if _, err := contextplan.NewPlanner(nil, cache, nil); !errors.Is(err, contextplan.ErrNilStore) {
+	if _, err := contextsession.NewPlanner(nil, nil); !errors.Is(err, contextsession.ErrNilStore) {
 		t.Fatalf("err = %v, want ErrNilStore", err)
 	}
-	if _, err := contextplan.NewPlanner(store, nil, nil); !errors.Is(err, contextplan.ErrNilCache) {
-		t.Fatalf("err = %v, want ErrNilCache", err)
-	}
-	p, err := contextplan.NewPlanner(store, cache, nil)
+	p, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

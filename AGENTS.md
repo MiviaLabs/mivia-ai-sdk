@@ -24,7 +24,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `mcp/` — Model Context Protocol client over stdio/HTTP.
 - `a2a/` / `a2aclient/` / `a2aack/` — A2A v1.0 protocol integration.
 - `dispatch/` — NDJSON envelope HTTP endpoint.
-- `contextplan/` / `contextref/` / `contextstate/` / `contextsummary/` — context window management, content references & compaction.
+- `contextplan/` / `contextsession/` / `contextref/` / `contextstate/` / `contextsummary/` — context window management, durable planning, content references & compaction.
 - `longtermmemory/` / `memory/` — tiered long-term and content-addressed memory.
 - `channel/` / `scheduler/` / `trigger/` / `heartbeat/` / `discovery/` — supporting primitives.
 - `policy/` — `layers.json` allowed imports; `pending_wiring.json`.

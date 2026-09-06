@@ -60,6 +60,11 @@
       "reason": "JSON-config composition layer over agentrun. A deployment's own main package loads a runner definition; no SDK package composes runconfig further.",
       "target": "external application code (outside this module)",
       "permanent": true
+    },
+    "contextsession": {
+      "reason": "Durable session planner carved out of contextplan. Intended caller is external application code adapting Plan to agentloop.Options.Trim.",
+      "target": "agentloop or an external session-backed runner; see docs/plans/spool.md's read-back section",
+      "permanent": false
     }
   }
 }

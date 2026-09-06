@@ -1,4 +1,4 @@
-package contextplan
+package contextsession
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 // payload.
 type ElisionReason string
 
-// The three reasons Plan records against an Elision.
+// The reasons Plan records against an Elision.
 const (
 	// ElisionReasonWindowOverflow marks a payload dropped because the
 	// window filled before this payload's turn.

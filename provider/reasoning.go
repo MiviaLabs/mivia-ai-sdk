@@ -2,7 +2,7 @@ package provider
 
 // ReasoningEventKind is the contextstate.SourceEvent.Kind value that
 // marks a reasoning trace. The one place the literal appears;
-// contextplan.IsReasoningEvent compares against this constant, never
+// contextsession.IsReasoningEvent compares against this constant, never
 // the literal.
 const ReasoningEventKind = "reasoning"
 

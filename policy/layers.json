@@ -57,11 +57,8 @@
     "channel": [],
     "contextbudget": [],
     "contextplan": [
-      "contextstate",
-      "provider",
-      "memory",
-      "spool",
-      "contextref"
+      "contextref",
+      "provider"
     ],
     "contextref": [],
     "contextsession": [

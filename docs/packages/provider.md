@@ -67,7 +67,7 @@ below mirrors `api/provider.txt`.
   `Response`; a caller carries it alongside its own session state.
 - `ReasoningEventKind` — the `contextstate.SourceEvent.Kind` value
   that marks a reasoning trace. The one place the literal appears;
-  `contextplan.IsReasoningEvent` compares against this constant.
+  `contextsession.IsReasoningEvent` compares against this constant.
 - `MaxNameBytes` — 128, the byte bound `Message.Validate` applies to a
   non-empty `Name`.
 

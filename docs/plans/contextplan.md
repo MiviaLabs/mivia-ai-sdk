@@ -1411,7 +1411,7 @@ non-orphan roots, so half-wired packages become visible to the gate.
 
 ## Addendum: split session planner into contextsession
 
-Status: planned, extends Compact.
+Status: shipped, extends Compact.
 
 ### Addendum goal
 

@@ -1,9 +1,11 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -16,8 +18,7 @@ import (
 // describe one consistent outcome.
 func TestPlanIntegrationFullSession(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -49,13 +50,13 @@ func TestPlanIntegrationFullSession(t *testing.T) {
 		t.Fatalf("EstimatedTokens = %d, over budget %d", result.EstimatedTokens, w.Budget())
 	}
 
-	byRef := map[string]contextplan.Elision{}
+	byRef := map[string]contextsession.Elision{}
 	for _, e := range result.Elisions {
 		byRef[e.Ref.Ref] = e
 	}
 
 	reasoningElision, ok := byRef[refReasoning.Ref]
-	if !ok || reasoningElision.Reason != contextplan.ElisionReasonReasoningRedacted {
+	if !ok || reasoningElision.Reason != contextsession.ElisionReasonReasoningRedacted {
 		t.Fatalf("reasoning elision = %+v, want reasoning redacted", reasoningElision)
 	}
 	for _, m := range result.Request.Messages {
@@ -70,7 +71,7 @@ func TestPlanIntegrationFullSession(t *testing.T) {
 	}
 
 	if complianceElision, ok := byRef[refCompliance.Ref]; ok {
-		if complianceElision.Reason == contextplan.ElisionReasonWindowOverflow && complianceElision.Kept != 0 {
+		if complianceElision.Reason == contextsession.ElisionReasonWindowOverflow && complianceElision.Kept != 0 {
 			t.Fatalf("compliance elision = %+v, a window overflow must carry Kept == 0", complianceElision)
 		}
 	}

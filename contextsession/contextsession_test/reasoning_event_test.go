@@ -1,9 +1,9 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
@@ -22,7 +22,7 @@ func TestIsReasoningEvent(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := contextstate.SourceEvent{Kind: tc.kind}
-			if got := contextplan.IsReasoningEvent(e); got != tc.want {
+			if got := contextsession.IsReasoningEvent(e); got != tc.want {
 				t.Fatalf("IsReasoningEvent(%q) = %v, want %v", tc.kind, got, tc.want)
 			}
 		})

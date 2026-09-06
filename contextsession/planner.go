@@ -1,11 +1,11 @@
-package contextplan
+package contextsession
 
 import (
 	"context"
 	"errors"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
-	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 )
@@ -13,11 +13,9 @@ import (
 // Sentinel errors for NewPlanner and Plan; test with errors.Is.
 var (
 	// ErrNilStore is NewPlanner's error when store is nil.
-	ErrNilStore = errors.New("contextplan: store must not be nil")
-	// ErrNilCache is NewPlanner's error when cache is nil.
-	ErrNilCache = errors.New("contextplan: cache must not be nil")
+	ErrNilStore = errors.New("contextsession: store must not be nil")
 	// ErrNilSession is Plan's error when sess is nil.
-	ErrNilSession = errors.New("contextplan: session must not be nil")
+	ErrNilSession = errors.New("contextsession: session must not be nil")
 )
 
 // PlanResult is Plan's output: the built request, every elision
@@ -32,28 +30,35 @@ type PlanResult struct {
 
 // Planner fits one session's source events into a bounded provider
 // request. Built only through NewPlanner. Safe for concurrent use:
-// its three dependencies guard their own state, and Plan holds no
-// other mutable state of its own between calls.
+// its dependencies guard their own state, and Plan holds no
+// mutable state of its own between calls.
 type Planner struct {
 	store   *contextstate.MemStore
-	cache   *memory.Store
 	spooler *spool.Spool
 }
 
 // NewPlanner builds a Planner over store, the durable payload source,
-// cache, a same-process decode cache, and spooler, an optional durable
-// overflow target. A nil store wraps ErrNilStore; a nil cache wraps
-// ErrNilCache. A nil spooler is valid: Plan never calls Spool.Spool,
+// and spooler, an optional durable overflow target. A nil store returns
+// ErrNilStore. A nil spooler is valid: Plan never calls Spool.Spool,
 // and behaves exactly as it does with a wired spooler that never gets
 // used, byte for byte.
-func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spool.Spool) (*Planner, error) {
+func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, error) {
 	if store == nil {
 		return nil, ErrNilStore
 	}
-	if cache == nil {
-		return nil, ErrNilCache
-	}
-	return &Planner{store: store, cache: cache, spooler: spooler}, nil
+	return &Planner{store: store, spooler: spooler}, nil
+}
+
+// planState holds running admission state for one Plan execution,
+// preserving thread safety.
+type planState struct {
+	ctx        context.Context
+	e          provider.TokenEstimator
+	spooler    *spool.Spool
+	budget     int
+	messages   []provider.Message
+	elisions   []Elision
+	overBudget bool
 }
 
 // Plan walks sess.Source newest to oldest. For every event it
@@ -76,7 +81,7 @@ func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spoo
 // Plan returns a non-nil error only on a malformed
 // Window, a nil sess, or a payload-resolution failure other than a
 // revocation; it never returns a partial PlanResult.
-func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window, e provider.TokenEstimator) (PlanResult, error) {
+func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contextplan.Window, e provider.TokenEstimator) (PlanResult, error) {
 	if sess == nil {
 		return PlanResult{}, ErrNilSession
 	}
@@ -85,34 +90,37 @@ func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window
 	}
 	budget := w.Budget()
 
-	var messages []provider.Message
-	var elisions []Elision
-	overBudget := false
+	state := &planState{
+		ctx:     ctx,
+		e:       e,
+		spooler: p.spooler,
+		budget:  budget,
+	}
 
 	for i := len(sess.Source) - 1; i >= 0; i-- {
 		event := sess.Source[i]
 		record, err := p.resolvePayload(event)
 		if err != nil {
 			if errors.Is(err, contextstate.ErrPayloadRevoked) {
-				elisions = append(elisions, Elision{Ref: record.Ref, Reason: ElisionReasonRevoked})
+				state.elisions = append(state.elisions, Elision{Ref: record.Ref, Reason: ElisionReasonRevoked})
 				continue
 			}
 			return PlanResult{}, err
 		}
 		if IsReasoningEvent(event) {
-			elisions = append(elisions, Elision{Ref: record.Ref, Reason: ElisionReasonReasoningRedacted})
+			state.elisions = append(state.elisions, Elision{Ref: record.Ref, Reason: ElisionReasonReasoningRedacted})
 			continue
 		}
-		messages, overBudget, elisions = admit(ctx, e, p.spooler, budget, messages, elisions, overBudget, event, record)
+		state.admit(event, record)
 	}
 
-	final, err := e.EstimateTokens(provider.Request{Messages: messages})
+	final, err := e.EstimateTokens(provider.Request{Messages: state.messages})
 	if err != nil {
 		final = 0
 	}
 	return PlanResult{
-		Request:         provider.Request{Messages: messages},
-		Elisions:        elisions,
+		Request:         provider.Request{Messages: state.messages},
+		Elisions:        state.elisions,
 		EstimatedTokens: final,
 	}, nil
 }
@@ -125,33 +133,34 @@ func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w Window
 // spooler receives the full record.Data for the two budget-driven
 // drop paths, best-effort: a spool.Spool error leaves the returned
 // Elision's SpoolRef empty and never fails admit.
-func admit(ctx context.Context, e provider.TokenEstimator, spooler *spool.Spool, budget int, messages []provider.Message, elisions []Elision, overBudget bool, event contextstate.SourceEvent, record contextstate.PayloadRecord) ([]provider.Message, bool, []Elision) {
-	if !overBudget {
-		candidate := prepend(messages, event.Role, record.Data)
-		if tokens, err := e.EstimateTokens(provider.Request{Messages: candidate}); err == nil && tokens <= budget {
-			return candidate, false, elisions
+func (s *planState) admit(event contextstate.SourceEvent, record contextstate.PayloadRecord) {
+	if !s.overBudget {
+		candidate := prepend(s.messages, event.Role, record.Data)
+		if tokens, err := s.e.EstimateTokens(provider.Request{Messages: candidate}); err == nil && tokens <= s.budget {
+			s.messages = candidate
+			return
 		}
-		overBudget = true
+		s.overBudget = true
 	}
 	if record.Retention == contextstate.RetentionCompliance {
 		stub := StubContent(record.Data)
-		candidate := prepend(messages, event.Role, stub)
-		if tokens, err := e.EstimateTokens(provider.Request{Messages: candidate}); err == nil && tokens <= budget {
-			elisions = append(elisions, Elision{
+		candidate := prepend(s.messages, event.Role, stub)
+		if tokens, err := s.e.EstimateTokens(provider.Request{Messages: candidate}); err == nil && tokens <= s.budget {
+			s.elisions = append(s.elisions, Elision{
 				Ref:      record.Ref,
 				Reason:   ElisionReasonRetentionExpired,
 				Kept:     len(stub),
-				SpoolRef: spoolRecord(ctx, spooler, record),
+				SpoolRef: spoolRecord(s.ctx, s.spooler, record),
 			})
-			return candidate, true, elisions
+			s.messages = candidate
+			return
 		}
 	}
-	elisions = append(elisions, Elision{
+	s.elisions = append(s.elisions, Elision{
 		Ref:      record.Ref,
 		Reason:   ElisionReasonWindowOverflow,
-		SpoolRef: spoolRecord(ctx, spooler, record),
+		SpoolRef: spoolRecord(s.ctx, s.spooler, record),
 	})
-	return messages, true, elisions
 }
 
 // spoolRecord writes record.Data to spooler under record.Ref.SubjectID
@@ -180,9 +189,8 @@ func prepend(messages []provider.Message, role string, content []byte) []provide
 
 // resolvePayload resolves event's full PayloadRecord through one
 // store.Get call, on every call: no cache-hit skip, so a Revoke
-// issued between two Plan calls is visible on the very next call. On
-// success it backfills cache, preserving today's write-side
-// population. On contextstate.ErrPayloadRevoked, it makes one more
+// issued between two Plan calls is visible on the very next call.
+// On contextstate.ErrPayloadRevoked, it makes one more
 // call, store.Status, to recover the denied record's metadata for the
 // caller's Elision, and returns that record alongside the original
 // error. Any other resolution failure, including one from Status,
@@ -200,6 +208,5 @@ func (p *Planner) resolvePayload(event contextstate.SourceEvent) (contextstate.P
 		}
 		return contextstate.PayloadRecord{}, err
 	}
-	_, _ = p.cache.Put(record.Data)
 	return record, nil
 }

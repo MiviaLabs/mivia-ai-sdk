@@ -1,4 +1,4 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -74,8 +76,8 @@ func (f putFailingStore) Get(ref string) ([]byte, error) {
 }
 
 func TestPlanNilSpoolerLeavesSpoolRefEmpty(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -97,13 +99,13 @@ func TestPlanNilSpoolerLeavesSpoolRefEmpty(t *testing.T) {
 }
 
 func TestPlanSpoolsWindowOverflow(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -120,7 +122,7 @@ func TestPlanSpoolsWindowOverflow(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonWindowOverflow {
+	if e.Reason != contextsession.ElisionReasonWindowOverflow {
 		t.Fatalf("Reason = %v, want window overflow", e.Reason)
 	}
 	if e.SpoolRef == "" {
@@ -136,13 +138,13 @@ func TestPlanSpoolsWindowOverflow(t *testing.T) {
 }
 
 func TestPlanSpoolsRetentionExpired(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -161,9 +163,9 @@ func TestPlanSpoolsRetentionExpired(t *testing.T) {
 	if len(result.Elisions) != 1 {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
-	stub := contextplan.StubContent(oldestData)
+	stub := contextsession.StubContent(oldestData)
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonRetentionExpired || e.Kept != len(stub) {
+	if e.Reason != contextsession.ElisionReasonRetentionExpired || e.Kept != len(stub) {
 		t.Fatalf("Elision = %+v, want retention expired kept %d", e, len(stub))
 	}
 	if e.SpoolRef == "" {
@@ -185,13 +187,13 @@ func TestPlanSpoolsRetentionExpired(t *testing.T) {
 // TestPlanSpoolsWindowOverflow already proves for a plain
 // RetentionSession payload.
 func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -208,7 +210,7 @@ func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonWindowOverflow {
+	if e.Reason != contextsession.ElisionReasonWindowOverflow {
 		t.Fatalf("Reason = %v, want window overflow even though Retention is Compliance", e.Reason)
 	}
 	if e.SpoolRef == "" {
@@ -224,12 +226,12 @@ func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
 }
 
 func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	sp, err := spool.NewSpool(putFailingStore{t: t}, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -246,7 +248,7 @@ func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonReasoningRedacted {
+	if e.Reason != contextsession.ElisionReasonReasoningRedacted {
 		t.Fatalf("Reason = %v, want reasoning redacted", e.Reason)
 	}
 	if e.SpoolRef != "" {
@@ -255,12 +257,12 @@ func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
 }
 
 func TestPlanRevokedNeverSpools(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	sp, err := spool.NewSpool(putFailingStore{t: t}, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -280,7 +282,7 @@ func TestPlanRevokedNeverSpools(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonRevoked {
+	if e.Reason != contextsession.ElisionReasonRevoked {
 		t.Fatalf("Reason = %v, want revoked", e.Reason)
 	}
 	if e.SpoolRef != "" {
@@ -289,14 +291,14 @@ func TestPlanRevokedNeverSpools(t *testing.T) {
 }
 
 func TestPlanSpoolWriteFailureDoesNotFailPlan(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	contentStore.putErr = errors.New("store unavailable")
 	sp, err := spool.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -318,13 +320,13 @@ func TestPlanSpoolWriteFailureDoesNotFailPlan(t *testing.T) {
 }
 
 func TestPlanSpoolBudgetDoesNotFailPlan(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 10)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

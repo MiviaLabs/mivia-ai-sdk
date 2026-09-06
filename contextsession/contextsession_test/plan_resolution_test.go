@@ -1,4 +1,4 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
@@ -9,36 +9,12 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
+
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
-
-// resolvePayload's cache-hit branch still confirms the record against
-// the store; a cache hit over a payload never committed to the store
-// must still fail. Seeding the cache directly (never calling
-// store.Put) reaches that branch, distinct from every other
-// resolution-failure case in plan_test.go, which never populates the
-// cache and so only exercises the cache-miss error path.
-func TestPlanResolutionCacheHitStoreMiss(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
-	if err != nil {
-		t.Fatalf("NewPlanner: %v", err)
-	}
-	data := []byte("cached but never committed")
-	if _, err := cache.Put(data); err != nil {
-		t.Fatalf("cache.Put: %v", err)
-	}
-	ref := unstoredRef(t, "sess-a", data)
-	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
-		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
-	}}
-	_, err = planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 100}, byteEstimator{})
-	if !errors.Is(err, contextstate.ErrPayloadNotFound) {
-		t.Fatalf("err = %v, want ErrPayloadNotFound", err)
-	}
-}
 
 // TestPlanResolutionSecondCallReflectsStoreMutation pins the current
 // design: resolvePayload drops its cache-hit fast path, so every Plan
@@ -48,8 +24,8 @@ func TestPlanResolutionCacheHitStoreMiss(t *testing.T) {
 // whose assertion (a second call must not see an intervening Put)
 // pinned the fast path this change deletes and is now false.
 func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -57,7 +33,7 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 	// smaller than the full content, distinguishing a stub decision
 	// from a full-fit decision under byteEstimator's byte-per-token
 	// count.
-	data := make([]byte, contextplan.StubContentBytes+50)
+	data := make([]byte, contextsession.StubContentBytes+50)
 	for i := range data {
 		data[i] = 'a'
 	}
@@ -87,12 +63,12 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 	// Between the stub's estimate (StubContentBytes) and the full
 	// content's estimate (len(data)): the full insert overflows, so
 	// only a still-protected payload earns a stub instead of a drop.
-	stubWin := contextplan.Window{MaxTokens: contextplan.StubContentBytes}
+	stubWin := contextplan.Window{MaxTokens: contextsession.StubContentBytes}
 	second, err := planner.Plan(context.Background(), sess, stubWin, est)
 	if err != nil {
 		t.Fatalf("second Plan: %v", err)
 	}
-	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextplan.ElisionReasonWindowOverflow || second.Elisions[0].Kept != 0 {
+	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextsession.ElisionReasonWindowOverflow || second.Elisions[0].Kept != 0 {
 		t.Fatalf("second Elisions = %+v, want one WindowOverflow full drop: the mutated RetentionSession record no longer earns a stub", second.Elisions)
 	}
 }
@@ -105,8 +81,7 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 // concurrency guarantees together.
 func TestPlanResolutionConcurrentSameRef(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -120,7 +95,7 @@ func TestPlanResolutionConcurrentSameRef(t *testing.T) {
 	win := contextplan.Window{MaxTokens: 100}
 
 	const n = 8
-	results := make([]contextplan.PlanResult, n)
+	results := make([]contextsession.PlanResult, n)
 	errs := make([]error, n)
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -172,8 +147,7 @@ func (c countingEstimator) EstimateTokens(req provider.Request) (int, error) {
 // applied to the one estimator call outside admit.
 func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -208,19 +182,19 @@ func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
 // full, enters Request.Messages as a stub whose Content is valid
 // UTF-8.
 func TestPlanStubStaysValidUTF8(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
-	data := []byte(strings.Repeat("é", contextplan.StubContentBytes))
+	data := []byte(strings.Repeat("é", contextsession.StubContentBytes))
 	ref := putPayload(t, store, "sess-a", contextstate.RetentionCompliance, data)
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
 	// The budget sits between the stub's byte count and the full
 	// payload's, so the payload earns a stub rather than a full fit.
-	win := contextplan.Window{MaxTokens: contextplan.StubContentBytes}
+	win := contextplan.Window{MaxTokens: contextsession.StubContentBytes}
 	result, err := planner.Plan(context.Background(), sess, win, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -235,7 +209,7 @@ func TestPlanStubStaysValidUTF8(t *testing.T) {
 	if !utf8.ValidString(content) {
 		t.Fatalf("stub content = %q, want valid UTF-8", content)
 	}
-	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextplan.ElisionReasonRetentionExpired {
+	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextsession.ElisionReasonRetentionExpired {
 		t.Fatalf("Elisions = %+v, want one retention_expired entry", result.Elisions)
 	}
 }
@@ -259,8 +233,8 @@ func (o overheadEstimator) EstimateTokens(req provider.Request) (int, error) {
 // already exceeds the budget drops every event and still reports that
 // overhead.
 func TestPlanOverheadEstimatorExceedsBudget(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -283,7 +257,7 @@ func TestPlanOverheadEstimatorExceedsBudget(t *testing.T) {
 		t.Fatalf("Elisions = %d, want one per source event", len(result.Elisions))
 	}
 	for _, e := range result.Elisions {
-		if e.Reason != contextplan.ElisionReasonWindowOverflow {
+		if e.Reason != contextsession.ElisionReasonWindowOverflow {
 			t.Fatalf("Elision reason = %q, want window_overflow", e.Reason)
 		}
 	}

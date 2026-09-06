@@ -1,5 +1,4 @@
-// Package contextplan holds two concerns. NewPlanner and Plan fit a
-// durable contextstate session into a bounded provider request;
-// Compact, Window, and Calibrated do token-budget compaction, the
-// half agentloop consumes. See docs/plans/contextplan.md.
+// Package contextplan manages token budget windows and compaction.
+// Compact and Calibrated adapt provider messages to bounded context windows.
+// See docs/plans/contextplan.md.
 package contextplan

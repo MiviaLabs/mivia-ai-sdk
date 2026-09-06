@@ -6,8 +6,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
-	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -60,11 +60,7 @@ func TestLoopIntegrationTrimBindsToContextPlanPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("contextstate.New: %v", err)
 	}
-	cache, err := memory.New(1 << 20)
-	if err != nil {
-		t.Fatalf("memory.New: %v", err)
-	}
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

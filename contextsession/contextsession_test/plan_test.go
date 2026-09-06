@@ -1,10 +1,12 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -13,8 +15,7 @@ import (
 
 func TestPlanFitsWhole(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -49,8 +50,7 @@ func TestPlanFitsWhole(t *testing.T) {
 
 func TestPlanElidesOldestFirst(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestPlanElidesOldestFirst(t *testing.T) {
 	}
 	elided := map[string]bool{}
 	for _, e := range result.Elisions {
-		if e.Reason != contextplan.ElisionReasonWindowOverflow || e.Kept != 0 {
+		if e.Reason != contextsession.ElisionReasonWindowOverflow || e.Kept != 0 {
 			t.Fatalf("Elision = %+v, want window overflow, kept 0", e)
 		}
 		elided[e.Ref.Ref] = true
@@ -92,8 +92,7 @@ func TestPlanElidesOldestFirst(t *testing.T) {
 
 func TestPlanRespectsRetention(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -114,9 +113,9 @@ func TestPlanRespectsRetention(t *testing.T) {
 	if len(result.Elisions) != 1 {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
-	stub := contextplan.StubContent(oldestData)
+	stub := contextsession.StubContent(oldestData)
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonRetentionExpired || e.Kept != len(stub) {
+	if e.Reason != contextsession.ElisionReasonRetentionExpired || e.Kept != len(stub) {
 		t.Fatalf("Elision = %+v, want retention expired kept %d", e, len(stub))
 	}
 	if len(result.Request.Messages) != 2 {
@@ -141,8 +140,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			store := newStore(t)
-			cache := newCache(t)
-			planner, err := contextplan.NewPlanner(store, cache, nil)
+			planner, err := contextsession.NewPlanner(store, nil)
 			if err != nil {
 				t.Fatalf("NewPlanner: %v", err)
 			}
@@ -163,7 +161,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 				t.Fatalf("Elisions = %v, want 1", result.Elisions)
 			}
 			e := result.Elisions[0]
-			if e.Reason != contextplan.ElisionReasonWindowOverflow || e.Kept != 0 || e.Ref.Ref != refOldest.Ref {
+			if e.Reason != contextsession.ElisionReasonWindowOverflow || e.Kept != 0 || e.Ref.Ref != refOldest.Ref {
 				t.Fatalf("Elision = %+v, want window overflow, kept 0, over the oldest ref", e)
 			}
 			if len(result.Request.Messages) != 1 {
@@ -175,8 +173,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 
 func TestPlanReservesHeadroom(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -196,15 +193,14 @@ func TestPlanReservesHeadroom(t *testing.T) {
 	if len(result.Request.Messages) != 0 {
 		t.Fatalf("Messages = %d, want 0: 40 bytes exceeds the 30-token budget", len(result.Request.Messages))
 	}
-	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextplan.ElisionReasonWindowOverflow {
+	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextsession.ElisionReasonWindowOverflow {
 		t.Fatalf("Elisions = %v, want one window overflow", result.Elisions)
 	}
 }
 
 func TestPlanStubDoesNotFit(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -225,7 +221,7 @@ func TestPlanStubDoesNotFit(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonWindowOverflow || e.Kept != 0 {
+	if e.Reason != contextsession.ElisionReasonWindowOverflow || e.Kept != 0 {
 		t.Fatalf("Elision = %+v, want window overflow despite retention, kept 0", e)
 	}
 	if len(result.Request.Messages) != 1 || result.Request.Messages[0].Content != string(newest) {
@@ -238,8 +234,7 @@ func TestPlanStubDoesNotFit(t *testing.T) {
 
 func TestPlanStubBoundaryStacked(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -262,16 +257,16 @@ func TestPlanStubBoundaryStacked(t *testing.T) {
 	if len(result.Elisions) != 2 {
 		t.Fatalf("Elisions = %v, want 2", result.Elisions)
 	}
-	byRef := map[string]contextplan.Elision{}
+	byRef := map[string]contextsession.Elision{}
 	for _, e := range result.Elisions {
 		byRef[e.Ref.Ref] = e
 	}
 	middle, ok := byRef[refMiddle.Ref]
-	if !ok || middle.Reason != contextplan.ElisionReasonRetentionExpired || middle.Kept == 0 {
+	if !ok || middle.Reason != contextsession.ElisionReasonRetentionExpired || middle.Kept == 0 {
 		t.Fatalf("middle elision = %+v, want a kept stub", middle)
 	}
 	oldest, ok := byRef[refOldest.Ref]
-	if !ok || oldest.Reason != contextplan.ElisionReasonWindowOverflow || oldest.Kept != 0 {
+	if !ok || oldest.Reason != contextsession.ElisionReasonWindowOverflow || oldest.Kept != 0 {
 		t.Fatalf("oldest elision = %+v, want a full drop", oldest)
 	}
 	if result.EstimatedTokens > w.Budget() {
@@ -281,8 +276,7 @@ func TestPlanStubBoundaryStacked(t *testing.T) {
 
 func TestPlanReasoningEvents(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -305,7 +299,7 @@ func TestPlanReasoningEvents(t *testing.T) {
 		t.Fatalf("Elisions = %v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonReasoningRedacted {
+	if e.Reason != contextsession.ElisionReasonReasoningRedacted {
 		t.Fatalf("Elision reason = %v, want reasoning redacted", e.Reason)
 	}
 	if e.Ref.Ref != refReasoning.Ref {
@@ -317,20 +311,20 @@ func TestPlanErrorCases(t *testing.T) {
 	validWindow := contextplan.Window{MaxTokens: 100}
 
 	t.Run("nil session", func(t *testing.T) {
-		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache, nil)
+		store := newStore(t)
+		planner, err := contextsession.NewPlanner(store, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
 		_, err = planner.Plan(context.Background(), nil, validWindow, byteEstimator{})
-		if !errors.Is(err, contextplan.ErrNilSession) {
+		if !errors.Is(err, contextsession.ErrNilSession) {
 			t.Fatalf("err = %v, want ErrNilSession", err)
 		}
 	})
 
 	t.Run("invalid window", func(t *testing.T) {
-		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache, nil)
+		store := newStore(t)
+		planner, err := contextsession.NewPlanner(store, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -342,8 +336,8 @@ func TestPlanErrorCases(t *testing.T) {
 	})
 
 	t.Run("resolution failure for a payload that would be kept", func(t *testing.T) {
-		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache, nil)
+		store := newStore(t)
+		planner, err := contextsession.NewPlanner(store, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -366,8 +360,8 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 	validWindow := contextplan.Window{MaxTokens: 100}
 
 	t.Run("resolution failure for a payload that would be fully dropped", func(t *testing.T) {
-		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache, nil)
+		store := newStore(t)
+		planner, err := contextsession.NewPlanner(store, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -386,8 +380,8 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 	})
 
 	t.Run("resolution failure for a reasoning event", func(t *testing.T) {
-		store, cache := newStore(t), newCache(t)
-		planner, err := contextplan.NewPlanner(store, cache, nil)
+		store := newStore(t)
+		planner, err := contextsession.NewPlanner(store, nil)
 		if err != nil {
 			t.Fatalf("NewPlanner: %v", err)
 		}
@@ -406,8 +400,7 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 
 func TestPlanConcurrentUse(t *testing.T) {
 	store := newStore(t)
-	cache := newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -425,7 +418,7 @@ func TestPlanConcurrentUse(t *testing.T) {
 		}}
 	}
 
-	results := make([]contextplan.PlanResult, n)
+	results := make([]contextsession.PlanResult, n)
 	errs := make([]error, n)
 	done := make(chan int, n)
 	for i := 0; i < n; i++ {

@@ -5,7 +5,7 @@ agent-to-agent messaging: envelope, room, machine, flow, events,
 heartbeat, identity, discovery, a2a, a2aclient, a2aack, a2aloopback,
 dispatch, tools, hooks, contextbudget, contextstate, schema, mcp,
 ledger, durablefence, memory, provider, providerregistry, toolcallctx,
-usage, contextplan, channel, trigger, trace, skills, scheduler, agent,
+usage, contextplan, contextsession, channel, trigger, trace, skills, scheduler, agent,
 agentrun, agentloop, runconfig, subagent, taskrun, e2e, envfile,
 secretpath, workspace, spool, contextsummary, contextref, and longtermmemory. Each
 package covers one concern and composes through its exported API.
@@ -82,7 +82,8 @@ into a `tools.Registry` through `subagent`:
 - [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, the request and response types, and the reasoning vocabulary.
 - [packages/toolcallctx.md](packages/toolcallctx.md) — the tool-call context carrier: `WithToolCall` attaches a `provider.ToolCall` to a `context.Context`, and `ToolCallFromContext` reads it back.
 - [packages/usage.md](packages/usage.md) — the per-session usage accounting package: `Record` sums one `provider.Usage` call onto a running total keyed by session id, and `Total` reads the current sum.
-- [packages/contextplan.md](packages/contextplan.md) — fits one durable session into a bounded provider request: a token `Window`, per-payload elision decisions, and an EWMA-calibrated token estimator.
+- [packages/contextplan.md](packages/contextplan.md) — manages token budget windows and history compaction: a token `Window`, compaction thresholds, atomic units, and an EWMA-calibrated estimator.
+- [packages/contextsession.md](packages/contextsession.md) — fits one durable session into a bounded provider request: `Planner`, per-payload elision decisions, retention rules, and overflow spooling.
 - [packages/contextsummary.md](packages/contextsummary.md) — the LLM summarizer for compaction: one bounded `provider.Completer` call turns dropped messages into one validated, bounded `Summary`, injected as a named user message.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
 - [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.

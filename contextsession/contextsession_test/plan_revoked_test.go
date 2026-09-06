@@ -1,8 +1,10 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -12,8 +14,8 @@ import (
 // TestPlanRevokedMiddleEvent kills a mutation that propagates
 // ErrPayloadRevoked as a Plan-level failure.
 func TestPlanRevokedMiddleEvent(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -39,7 +41,7 @@ func TestPlanRevokedMiddleEvent(t *testing.T) {
 		t.Fatalf("Elisions = %+v, want 1", result.Elisions)
 	}
 	e := result.Elisions[0]
-	if e.Reason != contextplan.ElisionReasonRevoked || e.Kept != 0 {
+	if e.Reason != contextsession.ElisionReasonRevoked || e.Kept != 0 {
 		t.Fatalf("Elision = %+v, want revoked, kept 0", e)
 	}
 	if e.Ref.Ref != refRevoked.Ref {
@@ -60,8 +62,8 @@ func TestPlanRevokedMiddleEvent(t *testing.T) {
 // must pass against this change. Kills a mutation that reintroduces a
 // cache-hit skip of store.Get.
 func TestPlanRevokeAfterWarmCache(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -94,7 +96,7 @@ func TestPlanRevokeAfterWarmCache(t *testing.T) {
 	if len(second.Request.Messages) != 0 {
 		t.Fatalf("second Messages = %+v, want none: the ref is revoked", second.Request.Messages)
 	}
-	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextplan.ElisionReasonRevoked {
+	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextsession.ElisionReasonRevoked {
 		t.Fatalf("second Elisions = %+v, want one revoked entry", second.Elisions)
 	}
 	if second.Elisions[0].Ref.Ref != ref.Ref {
@@ -105,8 +107,8 @@ func TestPlanRevokeAfterWarmCache(t *testing.T) {
 // TestPlanRevokedRetentionCompliance kills a mutation that runs the
 // retention-stub path before the revoked check.
 func TestPlanRevokedRetentionCompliance(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -125,7 +127,7 @@ func TestPlanRevokedRetentionCompliance(t *testing.T) {
 	if len(result.Request.Messages) != 0 {
 		t.Fatalf("Messages = %+v, want none: revoked content never gets a stub", result.Request.Messages)
 	}
-	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextplan.ElisionReasonRevoked || result.Elisions[0].Kept != 0 {
+	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextsession.ElisionReasonRevoked || result.Elisions[0].Kept != 0 {
 		t.Fatalf("Elisions = %+v, want one revoked entry with Kept 0", result.Elisions)
 	}
 }
@@ -133,8 +135,8 @@ func TestPlanRevokedRetentionCompliance(t *testing.T) {
 // TestPlanRevokedReasoningEvent kills a mutation that reorders the
 // revoked check and the reasoning check.
 func TestPlanRevokedReasoningEvent(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -150,7 +152,7 @@ func TestPlanRevokedReasoningEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextplan.ElisionReasonRevoked {
+	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextsession.ElisionReasonRevoked {
 		t.Fatalf("Elisions = %+v, want one revoked entry, not reasoning_redacted", result.Elisions)
 	}
 }
@@ -158,8 +160,8 @@ func TestPlanRevokedReasoningEvent(t *testing.T) {
 // TestPlanEveryEventRevoked kills a mutation that fails Plan when
 // Request.Messages ends up empty.
 func TestPlanEveryEventRevoked(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -184,7 +186,7 @@ func TestPlanEveryEventRevoked(t *testing.T) {
 		t.Fatalf("Elisions = %d, want %d", len(result.Elisions), len(events))
 	}
 	for _, e := range result.Elisions {
-		if e.Reason != contextplan.ElisionReasonRevoked {
+		if e.Reason != contextsession.ElisionReasonRevoked {
 			t.Fatalf("Elision reason = %q, want revoked", e.Reason)
 		}
 	}
@@ -194,8 +196,8 @@ func TestPlanEveryEventRevoked(t *testing.T) {
 // affect the common path: a session with no revoked payload plans
 // exactly as before.
 func TestPlanNonRevokedStaysGreen(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
-	planner, err := contextplan.NewPlanner(store, cache, nil)
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}

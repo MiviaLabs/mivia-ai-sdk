@@ -16,10 +16,9 @@ The ref's format is a `ContentStore` implementation's own choice.
 `spool` does not guarantee a `contextstate.ContentRef`-shaped string;
 `memory.Store`'s refs happen to be `envelope.ContextRef` values today,
 but a caller using a different `ContentStore` may mint refs some other
-way. `contextplan` consumes `spool` today: `Planner` writes a
+way. `contextsession` consumes `spool` today: `Planner` writes a
 budget-driven elision's full payload to a wired `*spool.Spool`, keyed
-to the payload's `SubjectID`. See `docs/plans/contextplan.md`'s
-"contextplan spools its own overflow" section.
+to the payload's `SubjectID`. See `docs/plans/contextsession.md`.
 `e2e/e2e_test/spool_test.go` proves a caller-driven
 `SpoolTool`/`ReadOutputTool` pairing runs through a live `agentrun`
 composition path; see "Change: prove ReadOutputTool reaches a live

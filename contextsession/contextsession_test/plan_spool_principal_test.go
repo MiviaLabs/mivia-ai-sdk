@@ -1,10 +1,12 @@
-package contextplan_test
+package contextsession_test
 
 import (
 	"context"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextsession"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
@@ -27,8 +29,8 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 
 	data := []byte(strings.Repeat("x", 50))
 
-	storeA, cacheA := newStore(t), newCache(t)
-	plannerA, err := contextplan.NewPlanner(storeA, cacheA, sp)
+	storeA := newStore(t)
+	plannerA, err := contextsession.NewPlanner(storeA, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -44,8 +46,8 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 		t.Fatalf("Elisions (store A) = %+v, want one spooled elision", resultA.Elisions)
 	}
 
-	storeB, cacheB := newStore(t), newCache(t)
-	plannerB, err := contextplan.NewPlanner(storeB, cacheB, sp)
+	storeB := newStore(t)
+	plannerB, err := contextsession.NewPlanner(storeB, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -69,13 +71,13 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 // caller-level principal across payloads: each spooled ref is granted
 // to its own record's SubjectID, not a Planner-wide principal.
 func TestPlanSpoolPrincipalIsContentSubject(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -140,13 +142,13 @@ func TestPlanSpoolPrincipalIsContentSubject(t *testing.T) {
 // shared *spool.Spool: proves contextplan's new call site adds no
 // race of its own. Run under go test -race.
 func TestPlanConcurrentUseWithSpool(t *testing.T) {
-	store, cache := newStore(t), newCache(t)
+	store := newStore(t)
 	contentStore := newFakeContentStore()
 	sp, err := spool.NewSpool(contentStore, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	planner, err := contextplan.NewPlanner(store, cache, sp)
+	planner, err := contextsession.NewPlanner(store, sp)
 	if err != nil {
 		t.Fatalf("NewPlanner: %v", err)
 	}
@@ -167,7 +169,7 @@ func TestPlanConcurrentUseWithSpool(t *testing.T) {
 		}}
 	}
 
-	results := make([]contextplan.PlanResult, n)
+	results := make([]contextsession.PlanResult, n)
 	errs := make([]error, n)
 	done := make(chan int, n)
 	for i := 0; i < n; i++ {

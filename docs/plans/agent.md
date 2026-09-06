@@ -229,6 +229,13 @@ step and no cycle, so it has nothing for a cycle check to reject.
 Either path, agent.New's plan argument is safe by the time it reaches
 flow.Run.
 
+  - Annotation: the `len(d.steps) == 0` special case no longer exists.
+    See the flow addendum on runLoop dropping its zero-step and
+    one-step branches. The zero-step behavior is unchanged. The
+    general loop's count guard produces it. The pointer to
+    flow/runner.go was always wrong; the branch lived in
+    flow/resume.go.
+
 This satisfies the phase requirement "rejects a step plan with a
 cycle" by delegation, not duplication. agent.New's own contribution is
 the nil check: a caller that forgets to build a plan, or passes a nil

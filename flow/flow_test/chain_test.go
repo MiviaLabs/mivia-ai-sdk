@@ -413,9 +413,8 @@ func TestRunChainedStepChildGetsFreshInOut(t *testing.T) {
 
 // TestRunOneMemberPanelAmongOtherStepsCallsConfirm proves a one-member
 // panel scheduled alongside other steps runs through the group-based
-// singleton branch in Run's multi-step loop, not just the
-// len(d.steps)==1 shortcut. It must still call confirm for the
-// panel's sole member.
+// singleton branch in Run's multi-step loop. It must still call
+// confirm for the panel's sole member.
 func TestRunOneMemberPanelAmongOtherStepsCallsConfirm(t *testing.T) {
 	t.Parallel()
 	const statusMid = machine.Status("mid")

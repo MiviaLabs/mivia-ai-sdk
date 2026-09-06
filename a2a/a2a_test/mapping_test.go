@@ -60,15 +60,34 @@ func TestToPartRoundTrip(t *testing.T) {
 	}
 }
 
-// TestToPartRejectsInvalidMessage proves ToPart calls Validate first
-// and returns an error, not a zero Mapped disguised as success, on an
-// empty Payload.
+// TestToPartRejectsInvalidMessage proves ToPart rejects an invalid
+// message and returns an error, not a zero Mapped disguised as
+// success, on an empty Payload.
 func TestToPartRejectsInvalidMessage(t *testing.T) {
 	m := validMessage()
 	m.Payload = ""
 	_, err := a2a.ToPart(m)
 	if err == nil {
 		t.Fatal("ToPart accepted a message with an empty payload")
+	}
+}
+
+// TestToPartInvalidMessageErrorMatchesValidate proves ToPart returns
+// the Validate error unwrapped. Encode validates first and returns
+// that error as-is; the test fails if a future Encode wraps it.
+func TestToPartInvalidMessageErrorMatchesValidate(t *testing.T) {
+	m := validMessage()
+	m.Payload = ""
+	want := m.Validate()
+	if want == nil {
+		t.Fatal("Validate accepted a message with an empty payload")
+	}
+	_, err := a2a.ToPart(m)
+	if err == nil {
+		t.Fatal("ToPart accepted a message with an empty payload")
+	}
+	if err.Error() != want.Error() {
+		t.Fatalf("ToPart error = %q, want %q", err.Error(), want.Error())
 	}
 }
 

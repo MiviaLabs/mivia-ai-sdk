@@ -612,6 +612,10 @@ The checkpoint tests, shipped in phase 25, live in `flow/flow_test/`:
   five-check entry order; a `Done` entry naming a real step whose own
   `Needs` entry is absent from `Done` surfaces as an error through the
   seeded walk's own transition check, not a dedicated `Resume` check.
+  - Annotation: the one-step short-circuit named above no longer
+    exists. See the addendum "runLoop drops its zero-step and one-step
+    branches". The case now runs through the general loop, and the
+    test keeps every assertion.
 - `checkpoint_skip_resume_test.go` — closes the gap where a route
   exclusion or an admission skip, once dropped from a checkpoint, came
   back to life on `Resume`. A three-step graph pauses right after the
@@ -1063,6 +1067,9 @@ line-count decision in Fix scope above:
   `sort.StringsAreSorted(nil)` is true, so this pins that the new
   check does not regress the zero-list case Run's single-step
   short-circuit produces.
+  - Annotation: `Run` has no single-step short-circuit after the
+    addendum "runLoop drops its zero-step and one-step branches". The
+    zero-list case now comes from the general loop.
 - `TestCheckpointDecodeRejectsUnsortedDone` — `Decode` on hand-built
   JSON bytes encoding `{"status":"s","done":["b","a"]}` returns an
   error. Proves the untrusted entry point, not only `Validate`

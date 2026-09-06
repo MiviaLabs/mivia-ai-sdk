@@ -58,8 +58,8 @@ func TestCheckpointValidateAcceptsSortedLists(t *testing.T) {
 }
 
 // TestCheckpointValidateAcceptsEmptyLists pins that
-// sort.StringsAreSorted(nil) is true, so the zero-list case Run's
-// single-step short-circuit produces still passes.
+// sort.StringsAreSorted(nil) is true, so the zero-list case a Run
+// that resolves no step produces still passes.
 func TestCheckpointValidateAcceptsEmptyLists(t *testing.T) {
 	c := flow.Checkpoint{Status: machine.Status("s")}
 	if err := c.Validate(); err != nil {

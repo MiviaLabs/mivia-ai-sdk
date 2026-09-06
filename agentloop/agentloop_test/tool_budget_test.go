@@ -136,3 +136,22 @@ func TestToolBudgetValidateRequiresReserve(t *testing.T) {
 		t.Fatalf("Validate() error = %v, want ErrIncompleteToolBudget", err)
 	}
 }
+
+// TestToolBudgetNewRejectsNilReserve proves New runs Options.Validate,
+// so a non-nil ToolBudget with a nil Reserve never reaches a Loop.
+func TestToolBudgetNewRejectsNilReserve(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
+	completer := &scriptedCompleter{}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  completer,
+		Tools:      reg,
+		ToolBudget: &agentloop.ToolBudget{Reserve: nil},
+	})
+	if !errors.Is(err, agentloop.ErrIncompleteToolBudget) {
+		t.Fatalf("New() error = %v, want ErrIncompleteToolBudget", err)
+	}
+	if loop != nil {
+		t.Fatalf("New() loop = %v, want nil", loop)
+	}
+}

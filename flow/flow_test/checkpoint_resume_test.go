@@ -124,7 +124,8 @@ func TestResumeAllDoneCheckpointCallsNothing(t *testing.T) {
 // checkpoint whose Done already names the single step's ID in a
 // one-step Definition returns the checkpoint's status and record
 // without calling confirm or onCheckpoint. This pins the one-step
-// short-circuit's guard, separate from the multi-step case above.
+// input class against the loop's count guard, separate from the
+// multi-step case above.
 func TestResumeAllDoneOneStepCheckpointCallsNothing(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
@@ -381,5 +382,96 @@ func TestResumeRejectsTopologicallyInconsistentDone(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no transition to status") {
 		t.Fatalf("error %q should be pickTransition's no-transition failure for the re-run of a prerequisite step", err.Error())
+	}
+}
+
+// TestResumeOneStepPendingRunsStep proves Resume on a one-step
+// Definition whose checkpoint resolves nothing runs the step, fires
+// one checkpoint, and reports the step succeeded.
+func TestResumeOneStepPendingRunsStep(t *testing.T) {
+	t.Parallel()
+	d := singleStepGraph(t)
+	m := singleTransitionMachine(t)
+	checkpoint := flow.Checkpoint{
+		Status: statusStart,
+		Record: machine.InOut{Input: "seed"},
+	}
+	var confirmed []string
+	confirm := func(ctx context.Context, step flow.Step) error {
+		confirmed = append(confirmed, step.ID)
+		return nil
+	}
+	var fired []flow.Checkpoint
+	onCheckpoint := func(c flow.Checkpoint) {
+		fired = append(fired, c)
+	}
+	report, err := flow.Resume(context.Background(), d, m, checkpoint, confirm, nil, onCheckpoint)
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if len(confirmed) != 1 || confirmed[0] != "a" {
+		t.Fatalf("confirmed = %v, want one call for step \"a\"", confirmed)
+	}
+	if len(fired) != 1 {
+		t.Fatalf("onCheckpoint called %d times, want 1", len(fired))
+	}
+	if len(fired[0].Done) != 1 || fired[0].Done[0] != "a" {
+		t.Fatalf("checkpoint Done = %v, want [a]", fired[0].Done)
+	}
+	if fired[0].Status != statusDone {
+		t.Fatalf("checkpoint status = %q, want %q", fired[0].Status, statusDone)
+	}
+	if report.Status() != statusDone {
+		t.Fatalf("status = %q, want %q", report.Status(), statusDone)
+	}
+	if got := report.Outcomes()["a"]; got != flow.OutcomeSucceeded {
+		t.Fatalf("outcome[\"a\"] = %v, want %v", got, flow.OutcomeSucceeded)
+	}
+	if report.Record().Input != "seed" {
+		t.Fatalf("record = %+v, want the seeded record", report.Record())
+	}
+}
+
+// TestResumeEmptyGraphReturnsCheckpointState proves Resume on a
+// zero-step Definition returns the checkpoint's status and record
+// with an empty outcome map, and calls neither confirm nor
+// onCheckpoint.
+func TestResumeEmptyGraphReturnsCheckpointState(t *testing.T) {
+	t.Parallel()
+	d, err := flow.New(nil, nil)
+	if err != nil {
+		t.Fatalf("flow.New: %v", err)
+	}
+	m := singleTransitionMachine(t)
+	checkpoint := flow.Checkpoint{
+		Status: statusDone,
+		Record: machine.InOut{Input: "seed"},
+	}
+	var confirmCalls, checkpointCalls int
+	confirm := func(ctx context.Context, step flow.Step) error {
+		confirmCalls++
+		return nil
+	}
+	onCheckpoint := func(c flow.Checkpoint) {
+		checkpointCalls++
+	}
+	report, err := flow.Resume(context.Background(), d, m, checkpoint, confirm, nil, onCheckpoint)
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if confirmCalls != 0 {
+		t.Fatalf("confirm called %d times, want 0", confirmCalls)
+	}
+	if checkpointCalls != 0 {
+		t.Fatalf("onCheckpoint called %d times, want 0", checkpointCalls)
+	}
+	if report.Status() != checkpoint.Status {
+		t.Fatalf("status = %q, want %q", report.Status(), checkpoint.Status)
+	}
+	if report.Record().Input != checkpoint.Record.Input {
+		t.Fatalf("record = %+v, want %+v", report.Record(), checkpoint.Record)
+	}
+	if len(report.Outcomes()) != 0 {
+		t.Fatalf("outcomes = %v, want empty", report.Outcomes())
 	}
 }

@@ -17,10 +17,10 @@ The exported surface below mirrors `api/a2a.txt`.
 
 ## Functions
 
-- `ToPart(m)` — validates `m`, then builds `Part.Data` by calling
-  `m.Encode` and wrapping the result in `json.RawMessage`. Returns an
-  error, not a zero `Mapped`, on a `Validate` failure. Signs nothing
-  and does not modify `m`.
+- `ToPart(m)` — builds `Part.Data` by calling `m.Encode` and wrapping
+  the result in `json.RawMessage`. `m.Encode` validates `m` before it
+  marshals, so `ToPart` returns an error, not a zero `Mapped`, on a
+  `Validate` failure. Signs nothing and does not modify `m`.
 - `FromPart(mapped)` — unmarshals `mapped.Part.Data` into an
   `envelope.Message`, overwrites `ThreadID` with `mapped.ContextID`
   and `ID` with `mapped.MessageID`, then calls `Validate` before

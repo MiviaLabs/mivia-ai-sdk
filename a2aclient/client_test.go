@@ -116,7 +116,8 @@ func TestSendRejectsInvalidMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFromTransport: %v", err)
 	}
-	// Missing ThreadID fails envelope.Validate, which a2a.ToPart calls.
+	// Missing ThreadID fails envelope.Validate, which a2a.ToPart
+	// reaches through m.Encode.
 	invalid := envelope.Message{Version: envelope.Version, ID: "msg-1"}
 	h, err := c.Send(context.Background(), invalid)
 	if err == nil {

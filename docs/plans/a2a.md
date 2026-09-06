@@ -67,8 +67,9 @@ type Mapped struct {
 }
 
 // ToPart maps a signed or unsigned envelope.Message onto a Mapped
-// value. It calls m.Validate first and returns an error, not a zero
-// Mapped, on failure. It signs nothing and does not modify m. ToPart
+// value. It returns an error, not a zero Mapped, on failure: m.Encode
+// validates m before it marshals, so an invalid message never reaches
+// Part.Data. It signs nothing and does not modify m. ToPart
 // builds Part.Data by calling m.Encode and wrapping the result in
 // json.RawMessage, reusing envelope's wire encoder instead of a
 // second marshal call; Text, Raw, and URL stay empty. Mapped.ContextID

@@ -295,10 +295,10 @@ func TestRunPausesWhenContextAlreadyCanceled(t *testing.T) {
 
 // TestRunSingleStepChecksCanceledCtx proves Run checks ctx for
 // cancellation before starting a one-step Definition's only step, the
-// same as it does before each step of a multi-step graph. The
-// one-step branch is a separate code path from the loop the
-// multi-step case exercises, so a multi-step-only pause test cannot
-// catch a missing check here.
+// same as it does before each step of a multi-step graph. This
+// guards the one-step input class, which now runs through the same
+// loop; a multi-step-only pause test never drives a graph of one
+// step.
 func TestRunSingleStepChecksCanceledCtx(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)
@@ -327,9 +327,9 @@ func TestRunSingleStepChecksCanceledCtx(t *testing.T) {
 
 // TestRunSingleStepFiresCheckpointOnce proves Run fires onCheckpoint
 // once, with Done holding the single step's ID, when a one-step
-// Definition completes. The one-step branch builds its Checkpoint on
-// a different return path than the multi-step loop; a multi-step-only
-// checkpoint test cannot catch a missing call here.
+// Definition completes. This guards the one-step input class, which
+// now fires its checkpoint from the same loop; a multi-step-only
+// checkpoint test never drives a graph of one step.
 func TestRunSingleStepFiresCheckpointOnce(t *testing.T) {
 	t.Parallel()
 	d := singleStepGraph(t)

@@ -93,36 +93,17 @@ func hasStep(steps []Step, id string) bool {
 // takes the seed cur, rec, and outcomes: Run seeds outcomes empty and
 // cur at m.Initial(); Resume seeds outcomes from a checkpoint's Done
 // and cur/rec from the checkpoint's Status/Record. runLoop always
-// starts pending empty: a single-step Definition can never declare an
-// AdmissionOnFailed step (validateFailureAdmission rejects a needless
-// root), and a multi-step resume re-derives every still-pending
+// starts pending empty: a resume re-derives every still-pending
 // handler set the same way a fresh Run does, from the steps whose
-// outcome the seed leaves unresolved.
+// outcome the seed leaves unresolved. A zero-step Definition never
+// enters the loop; a one-step Definition runs one iteration, through
+// nextReadyGroup and advanceGroup like any larger graph.
 func runLoop(
 	ctx context.Context, d *Definition, m *machine.Definition,
 	cur machine.Status, rec machine.InOut, outcomes map[string]Outcome,
 	confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint),
 ) (Report, error) {
 	pending := make(map[string]*handledFailure)
-
-	if len(d.steps) == 0 {
-		return Report{status: cur, record: rec, outcomes: outcomes}, nil
-	}
-	if len(d.steps) == 1 {
-		if _, done := outcomes[d.steps[0].ID]; done {
-			return Report{status: cur, record: rec, outcomes: outcomes}, nil
-		}
-		if err := ctx.Err(); err != nil {
-			return Report{status: cur, record: rec, outcomes: outcomes}, errorf("run paused: %w", err)
-		}
-		var err error
-		cur, rec, err = runSingletonAndMark(ctx, m, cur, rec, d.steps[0], confirm, bus, outcomes, pending)
-		if err != nil {
-			return Report{status: cur, record: rec, outcomes: outcomes}, err
-		}
-		fireCheckpoint(onCheckpoint, cur, rec, outcomes)
-		return Report{status: cur, record: rec, outcomes: outcomes}, nil
-	}
 
 	for len(outcomes) < len(d.steps) {
 		if err := ctx.Err(); err != nil {

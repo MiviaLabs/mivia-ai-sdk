@@ -135,11 +135,12 @@ func (b *ToolBudget) validate() error {
 }
 
 // reserveTools runs the ToolBudget's Reserve for one turn's tool-call
-// count. A nil l.toolBudget is a no-op; a hook error is wrapped with
-// the 1-based iteration count so the hard fail names its cause,
-// mirroring reserveWork.
+// count. A nil l.toolBudget is a no-op; Options.Validate rejects a
+// non-nil ToolBudget with a nil Reserve, so Reserve is never nil here.
+// A hook error is wrapped with the 1-based iteration count so the
+// hard fail names its cause, mirroring reserveWork.
 func (l *Loop) reserveTools(ctx context.Context, calls int, iteration int) error {
-	if l.toolBudget == nil || l.toolBudget.Reserve == nil {
+	if l.toolBudget == nil {
 		return nil
 	}
 	if err := l.toolBudget.Reserve(ctx, calls); err != nil {

@@ -4,6 +4,7 @@ package subagent
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"time"
 
@@ -56,8 +57,10 @@ func (t *schedulerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, err
 	switch cmd.Op {
 	case OpEvery:
 		// scheduler.Every turns a non-positive duration into an inert
-		// never-firing Schedule. Reject the value here instead.
-		if cmd.EveryMs <= 0 {
+		// never-firing Schedule. Reject the value here instead. A
+		// millisecond count above the conversion bound overflows into
+		// just such a duration.
+		if cmd.EveryMs <= 0 || cmd.EveryMs > math.MaxInt64/int64(time.Millisecond) {
 			return tools.Out{}, badCommand(t.name)
 		}
 		return t.add(cmd.ID, scheduler.Every(time.Duration(cmd.EveryMs)*time.Millisecond))

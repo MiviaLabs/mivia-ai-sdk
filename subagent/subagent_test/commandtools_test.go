@@ -107,6 +107,39 @@ func TestSchedulerToolRejectsNonPositiveEvery(t *testing.T) {
 	}
 }
 
+// TestSchedulerToolRejectsEveryMsOverflow proves an every_ms whose
+// nanosecond conversion overflows fails the call and registers
+// nothing, the same as a non-positive value. One row wraps negative,
+// one row wraps to a sub-millisecond runaway.
+func TestSchedulerToolRejectsEveryMsOverflow(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name    string
+		everyMs int64
+	}{
+		{"negative wrap", 10000000000000},
+		{"runaway wrap", 18446744073710},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := scheduler.New()
+			job := func(ctx context.Context) error { return nil }
+			tool := subagent.SchedulerTool("sched", s, job)
+			cmd, err := json.Marshal(subagent.SchedulerCommand{
+				Op: subagent.OpEvery, ID: "ghost", EveryMs: tc.everyMs,
+			})
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if _, err := tool.Run(ctx, inString(string(cmd))); !errors.Is(err, subagent.ErrBadCommand) {
+				t.Fatalf("every_ms %d: err = %v, want ErrBadCommand", tc.everyMs, err)
+			}
+			if err := s.Add("ghost", scheduler.At(time.Now().Add(time.Hour)), job); err != nil {
+				t.Fatalf("rejected call kept the id: %v", err)
+			}
+		})
+	}
+}
+
 // TestHeartbeatToolReportsLiveness proves beat, alive, and dead
 // against explicit clock values, with no sleeps.
 func TestHeartbeatToolReportsLiveness(t *testing.T) {

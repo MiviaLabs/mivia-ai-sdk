@@ -82,6 +82,53 @@ func (p *profiledNapTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Class: p.class, Timeout: p.timeout}
 }
 
+// deadlineReport is a probe tool's Out.Value. bounded records whether
+// the context carried a deadline. remaining records
+// time.Until(deadline); it is zero when bounded is false.
+type deadlineReport struct {
+	bounded   bool
+	remaining time.Duration
+}
+
+// newDeadlineReport builds one report from a run context.
+func newDeadlineReport(ctx context.Context) deadlineReport {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return deadlineReport{}
+	}
+	return deadlineReport{bounded: true, remaining: time.Until(deadline)}
+}
+
+// deadlineProbe reports its context deadline and publishes one
+// declared Timeout.
+type deadlineProbe struct {
+	name    string
+	timeout time.Duration
+}
+
+func (p *deadlineProbe) Name() string { return p.name }
+
+func (p *deadlineProbe) Run(ctx context.Context, _ tools.InOut) (tools.Out, error) {
+	return tools.Out{Value: newDeadlineReport(ctx)}, nil
+}
+
+func (p *deadlineProbe) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Timeout: p.timeout}
+}
+
+// bareDeadlineProbe reports its context deadline and declares
+// nothing. It implements Tool only, so it exercises the undeclared
+// path; adding an ExecutionProfile method would void that.
+type bareDeadlineProbe struct {
+	name string
+}
+
+func (p *bareDeadlineProbe) Name() string { return p.name }
+
+func (p *bareDeadlineProbe) Run(ctx context.Context, _ tools.InOut) (tools.Out, error) {
+	return tools.Out{Value: newDeadlineReport(ctx)}, nil
+}
+
 // selfDeadlineTool fails immediately with its own
 // context.DeadlineExceeded, well inside any registry bound.
 type selfDeadlineTool struct{}
@@ -90,6 +137,10 @@ func (selfDeadlineTool) Name() string { return "self-deadline" }
 
 func (selfDeadlineTool) Run(context.Context, tools.InOut) (tools.Out, error) {
 	return tools.Out{}, context.DeadlineExceeded
+}
+
+func (selfDeadlineTool) ExecutionProfile() tools.ExecutionProfile {
+	return tools.ExecutionProfile{Timeout: 200 * time.Millisecond}
 }
 
 // panicTool always panics, modeling a hostile tool.
@@ -175,23 +226,27 @@ func TestRunDeclaredTimeoutExpires(t *testing.T) {
 	}
 }
 
-// TestRunConfiguredDefaultExpires pins the configured-default path
-// end to end: no declaration, WithDefaultRunTimeout bounds the run,
-// and the expiry identity matches invariant 8.
-func TestRunConfiguredDefaultExpires(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(20 * time.Millisecond))
-	tl := &gateTool{name: "configured-slow", gate: make(chan struct{})}
+// TestRunScopedDeclaredTimeoutExpires pins the expiry identity
+// through RunScoped: a declared bound expires as ErrRunTimeout
+// wrapped with the tool name and the bound.
+func TestRunScopedDeclaredTimeoutExpires(t *testing.T) {
+	r := tools.New()
+	tl := &profiledGateTool{
+		gateTool: gateTool{name: "scoped-slow", gate: make(chan struct{})},
+		timeout:  20 * time.Millisecond,
+	}
 	if err := r.Add(tl); err != nil {
 		t.Fatalf("Add error = %v, want nil", err)
 	}
 	defer close(tl.gate)
 
-	_, err := r.Run(context.Background(), "configured-slow", tools.InOut{})
+	scope := tools.NewScope(tools.ScopeOptions{})
+	_, err := r.RunScoped(context.Background(), "scoped-slow", tools.InOut{}, scope)
 	if !errors.Is(err, tools.ErrRunTimeout) {
-		t.Fatalf("Run error = %v, want errors.Is ErrRunTimeout", err)
+		t.Fatalf("RunScoped error = %v, want errors.Is ErrRunTimeout", err)
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, `"configured-slow"`) || !strings.Contains(msg, "20ms") {
+	if !strings.Contains(msg, `"scoped-slow"`) || !strings.Contains(msg, "20ms") {
 		t.Fatalf("error message %q lacks the tool name or the 20ms bound", msg)
 	}
 }
@@ -216,73 +271,84 @@ func TestFastToolRepeatedSuccessUnderDefault(t *testing.T) {
 	}
 }
 
-// TestProfileLongerThanConfiguredFiresLonger proves precedence rule
-// 2: a declared 120 ms bound governs a 30 ms configured registry, so
-// a 60 ms tool succeeds; a silent min() would expire it instead.
-func TestProfileLongerThanConfiguredFiresLonger(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(30 * time.Millisecond))
-	tl := &profiledNapTool{
-		napTool: napTool{name: "long-declared", d: 60 * time.Millisecond, val: "done"},
-		timeout: 120 * time.Millisecond,
+// TestNegativeProfileExemptsFromBackstop pins the surviving
+// per-tool exemption: a negative profile Timeout leaves the tool's
+// context with no deadline, while a positive one sets one.
+func TestNegativeProfileExemptsFromBackstop(t *testing.T) {
+	r := tools.New()
+	exempt := &deadlineProbe{name: "exempt-declared", timeout: tools.TimeoutNone}
+	bound := &deadlineProbe{name: "bound-declared", timeout: 50 * time.Millisecond}
+	for _, tl := range []*deadlineProbe{exempt, bound} {
+		if err := r.Add(tl); err != nil {
+			t.Fatalf("Add(%s) error = %v, want nil", tl.name, err)
+		}
 	}
-	if err := r.Add(tl); err != nil {
-		t.Fatalf("Add error = %v, want nil", err)
-	}
-	out, err := r.Run(context.Background(), "long-declared", tools.InOut{})
+
+	out, err := r.Run(context.Background(), exempt.name, tools.InOut{})
 	if err != nil {
-		t.Fatalf("Run error = %v, want nil", err)
+		t.Fatalf("Run(%s) error = %v, want nil", exempt.name, err)
 	}
-	if out.Value != "done" {
-		t.Fatalf("Run Value = %v, want done", out.Value)
+	got, ok := out.Value.(deadlineReport)
+	if !ok {
+		t.Fatalf("Run(%s) Value = %T, want deadlineReport", exempt.name, out.Value)
+	}
+	if got.bounded {
+		t.Fatalf("negative declared Timeout still bounded the run, remaining %v", got.remaining)
+	}
+
+	// The positive control: the same probe type with a positive
+	// declared Timeout must carry a deadline.
+	out, err = r.Run(context.Background(), bound.name, tools.InOut{})
+	if err != nil {
+		t.Fatalf("Run(%s) error = %v, want nil", bound.name, err)
+	}
+	got, ok = out.Value.(deadlineReport)
+	if !ok {
+		t.Fatalf("Run(%s) Value = %T, want deadlineReport", bound.name, out.Value)
+	}
+	if !got.bounded {
+		t.Fatal("positive declared Timeout left the run unbounded")
 	}
 }
 
-// TestNegativeProfileExemptsUnderAggressiveConfigured pins invariant
-// 3: a negative profile Timeout exempts the tool under a tight
-// registry default.
-func TestNegativeProfileExemptsUnderAggressiveConfigured(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(20 * time.Millisecond))
-	tl := &profiledNapTool{
-		napTool: napTool{name: "exempt-declared", d: 100 * time.Millisecond, val: "finished"},
-		timeout: tools.TimeoutNone,
-	}
+// TestUndeclaredToolAlwaysBounded pins the resolved fallback bound
+// against DefaultRunTimeout. A tool that declares no profile always
+// runs under a deadline, and that deadline is DefaultRunTimeout. Both
+// range ends are symbolic, so the test pins the resolver against the
+// constant, never the constant's value.
+func TestUndeclaredToolAlwaysBounded(t *testing.T) {
+	r := tools.New()
+	tl := &bareDeadlineProbe{name: "undeclared"}
 	if err := r.Add(tl); err != nil {
 		t.Fatalf("Add error = %v, want nil", err)
 	}
-	out, err := r.Run(context.Background(), "exempt-declared", tools.InOut{})
+	out, err := r.Run(context.Background(), tl.name, tools.InOut{})
 	if err != nil {
 		t.Fatalf("Run error = %v, want nil", err)
 	}
-	if out.Value != "finished" {
-		t.Fatalf("Run Value = %v, want finished", out.Value)
+	got, ok := out.Value.(deadlineReport)
+	if !ok {
+		t.Fatalf("Run Value = %T, want deadlineReport", out.Value)
 	}
-}
-
-// TestWithDefaultRunTimeoutNoneExemptsUndeclared pins invariant 4:
-// WithDefaultRunTimeout(TimeoutNone) restores unbounded runs for
-// undeclared tools.
-func TestWithDefaultRunTimeoutNoneExemptsUndeclared(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(tools.TimeoutNone))
-	tl := &napTool{name: "exempt-configured", d: 150 * time.Millisecond, val: "late-but-fine"}
-	if err := r.Add(tl); err != nil {
-		t.Fatalf("Add error = %v, want nil", err)
+	if !got.bounded {
+		t.Fatal("undeclared tool ran with no deadline, want the backstop")
 	}
-	out, err := r.Run(context.Background(), "exempt-configured", tools.InOut{})
-	if err != nil {
-		t.Fatalf("Run error = %v, want nil", err)
-	}
-	if out.Value != "late-but-fine" {
-		t.Fatalf("Run Value = %v, want late-but-fine", out.Value)
+	if got.remaining <= tools.DefaultRunTimeout-time.Minute || got.remaining > tools.DefaultRunTimeout {
+		t.Fatalf("remaining = %v, want within one minute below %v",
+			got.remaining, tools.DefaultRunTimeout)
 	}
 }
 
 // TestParentCancelMidRunBeatsDeadline pins invariant 6: canceling the
 // parent mid-run surfaces context.Canceled, never ErrRunTimeout.
 func TestParentCancelMidRunBeatsDeadline(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(1 * time.Hour))
+	r := tools.New()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	tl := &gateTool{name: "cancelable", gate: make(chan struct{}), started: make(chan struct{}, 1)}
+	tl := &profiledGateTool{
+		gateTool: gateTool{name: "cancelable", gate: make(chan struct{}), started: make(chan struct{}, 1)},
+		timeout:  1 * time.Hour,
+	}
 	if err := r.Add(tl); err != nil {
 		t.Fatalf("Add error = %v, want nil", err)
 	}
@@ -311,10 +377,10 @@ func TestParentCancelMidRunBeatsDeadline(t *testing.T) {
 
 // TestToolOwnDeadlineErrorStaysUntouched pins invariant 7 against the
 // indistinguishable-identity case: a tool failing fast with its own
-// context.DeadlineExceeded under a much longer bound keeps its exact
-// error; the backstop reclassifies nothing.
+// context.DeadlineExceeded under a much longer declared bound keeps
+// its exact error; the backstop reclassifies nothing.
 func TestToolOwnDeadlineErrorStaysUntouched(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(200 * time.Millisecond))
+	r := tools.New()
 	if err := r.Add(selfDeadlineTool{}); err != nil {
 		t.Fatalf("Add error = %v, want nil", err)
 	}
@@ -331,10 +397,11 @@ func TestToolOwnDeadlineErrorStaysUntouched(t *testing.T) {
 // true RunScoped approve branch: a 60 ms Approve outruns a 20 ms
 // bound untouched, because the budget starts when t.Run starts.
 func TestSlowApproveDoesNotConsumeBudget(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(20 * time.Millisecond))
+	r := tools.New()
 	tl := &profiledNapTool{
 		napTool: napTool{name: "approved-fast", val: "post-approve"},
 		class:   tools.ExecutionClassRead,
+		timeout: 20 * time.Millisecond,
 	}
 	if err := r.Add(tl); err != nil {
 		t.Fatalf("Add error = %v, want nil", err)
@@ -369,7 +436,7 @@ func TestSlowApproveDoesNotConsumeBudget(t *testing.T) {
 // unknown name still returns bare ErrUnknownName from Run and
 // RunScoped, with no backstop engaged.
 func TestUnknownNameUnchangedUnderBackstop(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(20 * time.Millisecond))
+	r := tools.New()
 	_, err := r.Run(context.Background(), "ghost", tools.InOut{})
 	if !errors.Is(err, tools.ErrUnknownName) || err.Error() != tools.ErrUnknownName.Error() {
 		t.Fatalf("Run error = %v, want the naked ErrUnknownName", err)
@@ -385,14 +452,18 @@ func TestUnknownNameUnchangedUnderBackstop(t *testing.T) {
 // own ErrRunTimeout carrying their own tool name, with no cross-talk
 // across the derived contexts.
 func TestConcurrentBlockingCallsEachExpire(t *testing.T) {
-	r := tools.New(tools.WithDefaultRunTimeout(25 * time.Millisecond))
+	r := tools.New()
 	const n = 8
 	names := make([]string, n)
 	gates := make([]chan struct{}, n)
 	for i := 0; i < n; i++ {
 		name := fmt.Sprintf("blocker-%02d", i)
 		names[i], gates[i] = name, make(chan struct{})
-		if err := r.Add(&gateTool{name: name, gate: gates[i]}); err != nil {
+		blocker := &profiledGateTool{
+			gateTool: gateTool{name: name, gate: gates[i]},
+			timeout:  25 * time.Millisecond,
+		}
+		if err := r.Add(blocker); err != nil {
 			t.Fatalf("Add(%s) error = %v, want nil", name, err)
 		}
 	}

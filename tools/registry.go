@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 )
 
 // Sentinel errors for Registry operations; test with errors.Is.
@@ -49,21 +48,13 @@ type ToolCall struct {
 type Registry struct {
 	mu    sync.RWMutex
 	tools map[string]Tool
-	// defaultRunTimeout is the fallback bound for tools whose profile
-	// declares no Timeout; zero means DefaultRunTimeout at resolution.
-	// Immutable after New applies its options left to right.
-	defaultRunTimeout time.Duration
 }
 
-// New creates an empty Registry and applies opts left to right. With
-// no options every run is bounded by DefaultRunTimeout unless the
-// tool's profile declares its own Timeout.
-func New(opts ...Option) *Registry {
-	r := &Registry{tools: make(map[string]Tool)}
-	for _, opt := range opts {
-		opt(r)
-	}
-	return r
+// New creates an empty Registry. Every run is bounded by
+// DefaultRunTimeout unless the tool's profile declares its own
+// Timeout.
+func New() *Registry {
+	return &Registry{tools: make(map[string]Tool)}
 }
 
 // Add registers t under t.Name(). Rejects a nil t (t == nil) with

@@ -24,25 +24,22 @@ func (t profileOnlyTool) ExecutionProfile() ExecutionProfile {
 	return ExecutionProfile{Timeout: t.timeout}
 }
 
-// TestEffectiveRunTimeout table-drives the resolution precedence: a
-// positive declared Timeout wins in both directions; a negative one
-// beats every configuration; an undeclared tool falls through to the
-// configured value; zero or negative configuration falls further to
-// DefaultRunTimeout or none.
+// TestEffectiveRunTimeout table-drives the resolution precedence from
+// the tool alone. A positive declared Timeout binds verbatim, longer
+// or shorter than DefaultRunTimeout. A negative one never caps. An
+// undeclared or zero Timeout falls through to DefaultRunTimeout.
 func TestEffectiveRunTimeout(t *testing.T) {
 	tests := []struct {
 		name       string
 		declared   time.Duration
 		hasProfile bool
-		configured time.Duration
 		want       time.Duration
 	}{
-		{"undeclared-unset-defaults", 0, false, 0, DefaultRunTimeout},
-		{"positive-beats-smaller-configured", 80 * time.Millisecond, true, 20 * time.Millisecond, 80 * time.Millisecond},
-		{"positive-beats-larger-configured", 30 * time.Millisecond, true, 90 * time.Millisecond, 30 * time.Millisecond},
-		{"negative-profile-none", TimeoutNone, true, 20 * time.Millisecond, 0},
-		{"negative-configured-none-undeclared", 0, false, TimeoutNone, 0},
-		{"zero-configured-defaults", 0, false, 0, DefaultRunTimeout},
+		{"undeclared-defaults", 0, false, DefaultRunTimeout},
+		{"declared-zero-falls-through", 0, true, DefaultRunTimeout},
+		{"declared-positive-verbatim", 80 * time.Millisecond, true, 80 * time.Millisecond},
+		{"declared-longer-than-default", 20 * time.Minute, true, 20 * time.Minute},
+		{"declared-negative-none", TimeoutNone, true, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,9 +47,9 @@ func TestEffectiveRunTimeout(t *testing.T) {
 			if tt.hasProfile {
 				tool = profileOnlyTool{timeout: tt.declared}
 			}
-			if got := effectiveRunTimeout(tool, tt.configured); got != tt.want {
-				t.Fatalf("effectiveRunTimeout(declared=%v, configured=%v) = %v, want %v",
-					tt.declared, tt.configured, got, tt.want)
+			if got := effectiveRunTimeout(tool); got != tt.want {
+				t.Fatalf("effectiveRunTimeout(declared=%v) = %v, want %v",
+					tt.declared, got, tt.want)
 			}
 		})
 	}
@@ -81,6 +78,10 @@ type lateProducerTool struct {
 
 func (t *lateProducerTool) Name() string { return "late-producer" }
 
+func (t *lateProducerTool) ExecutionProfile() ExecutionProfile {
+	return ExecutionProfile{Timeout: 15 * time.Millisecond}
+}
+
 func (t *lateProducerTool) Run(context.Context, InOut) (Out, error) {
 	<-t.release
 	out := Out{Value: t.payload}
@@ -100,7 +101,7 @@ func (t *lateProducerTool) Run(context.Context, InOut) (Out, error) {
 // after release, no goroutine may remain parked inside runBounded,
 // so an unbuffered handoff regression strands exactly this test.
 func TestRunBoundedLateProducerBufferedSend(t *testing.T) {
-	r := New(WithDefaultRunTimeout(15 * time.Millisecond))
+	r := New()
 	tl := &lateProducerTool{
 		release:  make(chan struct{}),
 		payload:  "late-value",

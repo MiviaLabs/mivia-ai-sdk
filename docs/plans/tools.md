@@ -549,7 +549,7 @@ consistent, non-corrupt snapshot and no call panics.
 
 ### Run timeout backstop
 
-Status: shipped, with the removal below pending. Every `Run` and
+Status: shipped. Every `Run` and
 `RunScoped` dispatch runs the tool under a deadline. This section
 describes the surviving behavior after that removal.
 
@@ -585,8 +585,8 @@ its name and panic value.
 
 ### Removal: the functional-option constructor
 
-Status: planned, extends New. `tools` is the one package in this
-module that uses the functional-option pattern.
+Status: shipped. `tools` was the one package in this
+module that used the functional-option pattern.
 `docs/plans/workspace.md` records the rule, in the bullet on the
 per-call read override: this module uses no functional-option
 pattern. Grep that file for `functional-option` to find it; a sibling

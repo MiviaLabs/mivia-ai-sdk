@@ -8,8 +8,7 @@ import (
 )
 
 // DefaultRunTimeout bounds a run when the tool declares no profile
-// Timeout and no WithDefaultRunTimeout option applies. Protection is
-// the floor; no caller opts in.
+// Timeout. Protection is the floor; no caller opts in.
 const DefaultRunTimeout time.Duration = 10 * time.Minute
 
 // TimeoutNone is the canonical negative duration meaning "never cap
@@ -21,25 +20,11 @@ const TimeoutNone time.Duration = -1
 // bound; test with errors.Is, never by matching the naked sentinel.
 var ErrRunTimeout = errors.New("tools: tool run exceeded its timeout")
 
-// Option configures one Registry at New time. Options apply left to
-// right during New; the configuration stays immutable afterward, so
-// concurrent Runs need no lock over it.
-type Option func(*Registry)
-
-// WithDefaultRunTimeout sets the registry-wide bound for tools whose
-// profile declares no Timeout. Positive binds verbatim; zero selects
-// DefaultRunTimeout; any negative, canonically TimeoutNone, restores
-// an unbounded run. No argument value is rejected.
-func WithDefaultRunTimeout(d time.Duration) Option {
-	return func(r *Registry) { r.defaultRunTimeout = d }
-}
-
-// effectiveRunTimeout resolves one call's bound from the declared
-// profile and the configured default. A positive profile Timeout wins
-// outright; a negative profile Timeout never caps; an undeclared
-// profile falls through: positive configured binds verbatim, negative
-// configured never caps, otherwise DefaultRunTimeout.
-func effectiveRunTimeout(t Tool, configured time.Duration) time.Duration {
+// effectiveRunTimeout resolves one call's bound from the tool alone.
+// A positive profile Timeout binds verbatim; a negative profile
+// Timeout never caps; a zero or undeclared profile Timeout falls
+// through to DefaultRunTimeout.
+func effectiveRunTimeout(t Tool) time.Duration {
 	if pt, ok := t.(ProfiledTool); ok {
 		if declared := pt.ExecutionProfile().Timeout; declared != 0 {
 			if declared < 0 {
@@ -48,14 +33,7 @@ func effectiveRunTimeout(t Tool, configured time.Duration) time.Duration {
 			return declared
 		}
 	}
-	switch {
-	case configured > 0:
-		return configured
-	case configured < 0:
-		return 0 // non-positive marker: skip the wrap
-	default:
-		return DefaultRunTimeout
-	}
+	return DefaultRunTimeout
 }
 
 // timeoutResult carries one bounded run's outcome over runBounded's
@@ -69,7 +47,7 @@ type timeoutResult struct {
 	panicV any
 }
 
-// runBounded dispatches one t.Run under the effective bound for r.
+// runBounded dispatches one t.Run under t's effective bound.
 // A non-positive bound calls t.Run inline with the caller's exact
 // context. Results pass through byte-identical whenever the tool
 // finishes first, whatever they contain, including errors shaped like
@@ -79,7 +57,7 @@ type timeoutResult struct {
 // The deadline covers t.Run only; RunScoped calls this after Approve,
 // so approval time never consumes the budget.
 func (r *Registry) runBounded(ctx context.Context, name string, t Tool, in InOut) (Out, error) {
-	bound := effectiveRunTimeout(t, r.defaultRunTimeout)
+	bound := effectiveRunTimeout(t)
 	if bound <= 0 {
 		return t.Run(ctx, in)
 	}

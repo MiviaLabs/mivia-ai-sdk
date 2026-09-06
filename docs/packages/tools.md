@@ -25,9 +25,6 @@ unknown name fails. The exported surface below mirrors
   registry enforces `Timeout`; see "Run timeout backstop" below. It
   still never enforces `ResourceKey`; see "Published, not enforced"
   below.
-- `Option` — a construction option for `Registry`. `New` applies
-  options left to right; the configuration is immutable afterward.
-  One option exists: `WithDefaultRunTimeout`.
 - `DefaultRunTimeout` — ten minutes, the built-in run bound.
 - `TimeoutNone` — minus one, the canonical "never cap" value.
 - `ProfiledTool` — optional interface. A `Tool` implements
@@ -55,13 +52,9 @@ unknown name fails. The exported surface below mirrors
 
 ## Functions and methods
 
-- `New(opts ...Option)` — creates an empty `Registry` and applies
-  the options left to right. With no options, every run is bounded by
+- `New()` — creates an empty `Registry`. Every run is bounded by
   `DefaultRunTimeout` unless the tool declares its own profile
   `Timeout`.
-- `WithDefaultRunTimeout(d)` — returns the option that sets one
-  registry's fallback bound. Positive binds verbatim; zero selects
-  `DefaultRunTimeout`; any negative restores unbounded runs.
 - `Registry.Add(t)` — registers `t` under `t.Name()`.
 - `Registry.Get(name)` — resolves `name` to a `Tool`. Returns false
   for an unknown name.
@@ -201,21 +194,19 @@ left this group: the registry enforces it; see the next section.
 ### Run timeout backstop
 
 Every `Run` and `RunScoped` dispatch carries a deadline. The bound
-resolves in one pass. A positive `Timeout` in the tool's profile wins
-verbatim, longer or shorter than anything configured. Otherwise a
-positive configured default applies. Otherwise `DefaultRunTimeout`,
-ten minutes, applies.
+resolves in one pass over the tool alone. A positive `Timeout` in the
+tool's profile binds verbatim, longer or shorter than
+`DefaultRunTimeout`. A negative one never caps that tool. Otherwise
+`DefaultRunTimeout`, ten minutes, applies.
 
 | Value | Positive | Zero | Negative |
 | --- | --- | --- | --- |
 | `ExecutionProfile.Timeout` | Enforced verbatim | Undeclared; fall through | None; never cap this tool |
-| `WithDefaultRunTimeout(d)` | Registry-wide bound | Use `DefaultRunTimeout` | None; restore unbounded |
 
 Any negative means "never cap"; `TimeoutNone` names the canonical
-constant. The escape hatches point both ways. A negative profile
-exempts one tool under any registry configuration.
-`WithDefaultRunTimeout(tools.TimeoutNone)` restores unbounded runs
-for one whole registry.
+constant. One escape hatch exists: a negative profile `Timeout`
+exempts one tool. No registry-wide exemption exists. A tool that
+declares no `Timeout` always runs under `DefaultRunTimeout`.
 
 The budget starts when the tool's `Run` starts. It never covers
 `Scope.Allowed` or `Approve`. A human approval that answers hours

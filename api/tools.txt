@@ -15,11 +15,10 @@ package tools
   func (s *Scope) Allowed(name string, t Tool) (bool)
   func ExecutionProfileOf(t Tool) (ExecutionProfile)
   func IsPrivileged(t Tool) (bool)
-  func New(opts ...Option) (*Registry)
+  func New() (*Registry)
   func NewScope(opts ScopeOptions) (*Scope)
   func ResultBudgetOf(t Tool) (int, bool)
   func SchemaOf(t Tool) ([]byte, bool)
-  func WithDefaultRunTimeout(d time.Duration) (Option)
   type ExecutionClass string
   type ExecutionProfile struct {
   Class ExecutionClass
@@ -29,7 +28,6 @@ package tools
   type InOut struct {
   Value any
 }
-  type Option func(*Registry)
   type Out struct {
   Value any
 }

@@ -216,7 +216,10 @@ type Usage struct {
 // SessionID and DisableProviderReplay use their natural zero-value
 // "not set" reading. ReasoningEffort's zero value means send no
 // reasoning field at all. ReasoningDialect's zero value means use the
-// completer's own default dialect. See Request.Validate for the
+// completer's own default dialect. CacheStyle's zero value means the
+// completer's own default caching decision; a non-empty value asks
+// the completer to place its cache markers, in whatever wire form it
+// uses for CacheStyle's value. See Request.Validate for the
 // ToolChoice rule.
 type Request struct {
 	Model    string
@@ -237,6 +240,7 @@ type Request struct {
 	DisableProviderReplay bool
 	ReasoningEffort       ReasoningEffort
 	ReasoningDialect      ReasoningDialect
+	CacheStyle            CacheStyle
 }
 
 // Response is the aggregated result of one turn. Model echoes the

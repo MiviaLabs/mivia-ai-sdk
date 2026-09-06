@@ -269,18 +269,19 @@ func TestStreamRetryAndErrors(t *testing.T) {
 	}
 }
 
-func TestStreamErrorEventsAndRefusal(t *testing.T) {
-	// 1. Stream error event with anthropic error
-	_, fixErr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+// streamFirstErrChunk starts a stream from a server that writes sseBody
+// verbatim over SSE and returns the first chunk carrying a non-nil Err.
+func streamFirstErrChunk(t *testing.T, sseBody string) *provider.Chunk {
+	t.Helper()
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		if flusher, ok := w.(http.Flusher); ok {
-			fmt.Fprintf(w, "event: error\ndata: {\"error\":{\"message\":\"overloaded\"}}\n\n")
+			fmt.Fprint(w, sseBody)
 			flusher.Flush()
 		}
 	})
-
-	ch, err := fixErr.client.ChatStream(context.Background(), provider.Request{})
+	ch, err := fix.client.ChatStream(context.Background(), provider.Request{})
 	if err != nil {
 		t.Fatalf("ChatStream: %v", err)
 	}
@@ -290,49 +291,39 @@ func TestStreamErrorEventsAndRefusal(t *testing.T) {
 			errChunk = &chunk
 		}
 	}
-	if errChunk == nil || errChunk.Err.Error() != "anthropic: overloaded" {
-		t.Fatalf("expected overloaded stream error, got %v", errChunk)
+	return errChunk
+}
+
+func TestStreamErrorEventsAndRefusal(t *testing.T) {
+	// 1. Stream error event classified by its declared type, matching
+	// the classification mapHTTPError applies to a pre-header failure.
+	errChunk := streamFirstErrChunk(t, "event: error\ndata: {\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\n\n")
+	if errChunk == nil || !errors.Is(errChunk.Err, anthropic.ErrServer) {
+		t.Fatalf("expected errors.Is ErrServer, got %v", errChunk)
+	}
+	if errChunk.Err.Error() != "anthropic: server error: overloaded" {
+		t.Errorf("error message = %q, want 'anthropic: server error: overloaded'", errChunk.Err.Error())
+	}
+
+	// 1b. A rate-limit type mid-stream classifies as ErrRateLimited,
+	// not the ErrServer default.
+	rateChunk := streamFirstErrChunk(t, "event: error\ndata: {\"error\":{\"type\":\"rate_limit_error\",\"message\":\"slow down\"}}\n\n")
+	if rateChunk == nil || !errors.Is(rateChunk.Err, anthropic.ErrRateLimited) {
+		t.Fatalf("expected errors.Is ErrRateLimited, got %v", rateChunk)
 	}
 
 	// 2. Stream refusal
-	_, fixRefusal := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		if flusher, ok := w.(http.Flusher); ok {
-			fmt.Fprintf(w, "event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"refusal\",\"stop_details\":{\"category\":\"hate_speech\"}}}\n\n")
-			fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
-			flusher.Flush()
-		}
-	})
-
-	chRef, err := fixRefusal.client.ChatStream(context.Background(), provider.Request{})
-	if err != nil {
-		t.Fatalf("ChatStream: %v", err)
-	}
-	var refChunk *provider.Chunk
-	for chunk := range chRef {
-		if chunk.Err != nil {
-			refChunk = &chunk
-		}
-	}
+	refChunk := streamFirstErrChunk(t,
+		"event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"refusal\",\"stop_details\":{\"category\":\"hate_speech\"}}}\n\n"+
+			"event: message_stop\ndata: {}\n\n")
 	if refChunk == nil || !errors.Is(refChunk.Err, anthropic.ErrRefused) {
 		t.Fatalf("expected ErrRefused, got %v", refChunk)
 	}
 
 	// 3. Raw stream error event
-	_, fixRawErr := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		if flusher, ok := w.(http.Flusher); ok {
-			fmt.Fprintf(w, "event: error\ndata: raw failure\n\n")
-			flusher.Flush()
-		}
-	})
-	chRaw, _ := fixRawErr.client.ChatStream(context.Background(), provider.Request{})
-	for chunk := range chRaw {
-		if chunk.Err == nil {
-			t.Errorf("expected chunk error on raw failure event")
-		}
+	rawChunk := streamFirstErrChunk(t, "event: error\ndata: raw failure\n\n")
+	if rawChunk == nil {
+		t.Errorf("expected chunk error on raw failure event")
 	}
 }
 
@@ -346,26 +337,65 @@ func TestHTTPErrorStatusMapping(t *testing.T) {
 		{http.StatusRequestTimeout, anthropic.ErrServer},
 		{http.StatusConflict, anthropic.ErrServer},
 		{http.StatusBadGateway, anthropic.ErrServer},
+		{http.StatusRequestEntityTooLarge, anthropic.ErrBadRequest},
+		{http.StatusUnprocessableEntity, anthropic.ErrBadRequest},
 	}
 
 	for _, tc := range testCases {
+		var attempts int32
 		_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&attempts, 1)
 			writeJSON(w, tc.status, map[string]any{
 				"error": map[string]any{"message": "err"},
 			})
 		})
 
 		client, _ := anthropic.New(anthropic.Options{
-			APIKey:     "test-key",
-			BaseURL:    fix.baseURL,
-			HTTPClient: fix.httpCli,
-			MaxRetries: 0,
+			APIKey:         "test-key",
+			BaseURL:        fix.baseURL,
+			HTTPClient:     fix.httpCli,
+			DisableRetries: true,
 		})
 
 		_, err := client.Chat(context.Background(), provider.Request{})
 		if !errors.Is(err, tc.wantErr) {
 			t.Errorf("status %d: error %v, want %v", tc.status, err, tc.wantErr)
 		}
+		if got := atomic.LoadInt32(&attempts); got != 1 {
+			t.Errorf("status %d: attempts = %d, want 1 (DisableRetries)", tc.status, got)
+		}
+	}
+}
+
+// TestDisableRetriesOverridesMaxRetries pins that DisableRetries is a
+// real off switch: MaxRetries alone cannot express zero retries,
+// since a zero value means "use the default".
+func TestDisableRetriesOverridesMaxRetries(t *testing.T) {
+	var attempts int32
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": map[string]any{"message": "err"},
+		})
+	})
+
+	client, err := anthropic.New(anthropic.Options{
+		APIKey:         "test-key",
+		BaseURL:        fix.baseURL,
+		HTTPClient:     fix.httpCli,
+		MaxRetries:     5,
+		DisableRetries: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = client.Chat(context.Background(), provider.Request{})
+	if !errors.Is(err, anthropic.ErrServer) {
+		t.Fatalf("err = %v, want errors.Is ErrServer", err)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Errorf("attempts = %d, want 1", got)
 	}
 }
 

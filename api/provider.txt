@@ -5,8 +5,10 @@ package provider
   const MaxNameBytes = 128
   const ReasoningEffortHigh = "high"
   const ReasoningEffortLow = "low"
+  const ReasoningEffortMax = "max"
   const ReasoningEffortMedium = "medium"
   const ReasoningEffortNone = "none"
+  const ReasoningEffortXHigh = "xhigh"
   const ReasoningEventKind = "reasoning"
   const RoleAssistant = "assistant"
   const RoleSystem = "system"
@@ -78,6 +80,7 @@ package provider
   DisableProviderReplay bool
   ReasoningEffort ReasoningEffort
   ReasoningDialect ReasoningDialect
+  CacheStyle CacheStyle
 }
   type Response struct {
   Model string

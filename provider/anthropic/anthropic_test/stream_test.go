@@ -2,8 +2,10 @@ package anthropic_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -165,6 +167,63 @@ func TestChatStreamingCumulativeUsage(t *testing.T) {
 	}
 	if termChunk.Usage.TotalTokens != 32 {
 		t.Errorf("TotalTokens = %d, want 32", termChunk.Usage.TotalTokens)
+	}
+}
+
+// TestChatStreamLongLine pins that an SSE data line well over the
+// default bufio.Scanner 64 KiB token cap arrives intact instead of
+// silently ending the stream. A large content_block_delta or a large
+// tool-call input_json_delta line can legitimately exceed 64 KiB.
+func TestChatStreamLongLine(t *testing.T) {
+	longText := strings.Repeat("x", 200*1024) // 200 KiB, well past the 64 KiB default cap
+
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		deltaData, err := json.Marshal(map[string]any{
+			"type": "content_block_delta", "index": 0,
+			"delta": map[string]any{"type": "text_delta", "text": longText},
+		})
+		if err != nil {
+			t.Fatalf("marshal delta: %v", err)
+		}
+		fmt.Fprintf(w, "event: message_start\ndata: {}\n\n")
+		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", deltaData)
+		fmt.Fprintf(w, "event: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
+		fmt.Fprintf(w, "event: message_stop\ndata: {}\n\n")
+		flusher.Flush()
+	})
+
+	ch, err := fix.client.ChatStream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var textBuilder strings.Builder
+	var gotDone bool
+	var gotErr error
+	for chunk := range ch {
+		textBuilder.WriteString(chunk.Delta)
+		if chunk.Done {
+			gotDone = true
+		}
+		if chunk.Err != nil {
+			gotErr = chunk.Err
+		}
+	}
+	if gotErr != nil {
+		t.Fatalf("unexpected chunk error: %v", gotErr)
+	}
+	if !gotDone {
+		t.Fatal("stream ended with no terminal Done chunk")
+	}
+	if textBuilder.Len() != len(longText) {
+		t.Errorf("received %d bytes, want %d (the long line must not be dropped)", textBuilder.Len(), len(longText))
 	}
 }
 

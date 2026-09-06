@@ -19,6 +19,7 @@ package provider/anthropic
   MaxTokensNonStreaming int
   MaxTokensStreaming int
   MaxRetries int
+  DisableRetries bool
   HTTPClient *http.Client
   ContextWindow int
   DefaultEffort provider.ReasoningEffort

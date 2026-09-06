@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"time"
 
@@ -16,6 +17,20 @@ const (
 	defaultBaseURL      = "https://api.anthropic.com"
 	messagesPath        = "/v1/messages"
 	anthropicVersionHdr = "2023-06-01"
+)
+
+// defaultHTTPTimeout bounds a request made through a caller-unset
+// HTTPClient. A hung read on http.DefaultClient (no timeout) would
+// otherwise block until ctx cancels, which may be never.
+const defaultHTTPTimeout = 10 * time.Minute
+
+// backoffBaseDelay and backoffCapDelay bound the exponential backoff
+// between retries. A retryable status without a Retry-After header
+// uses this schedule with full jitter, matching the Messages API's
+// own documented retry guidance.
+const (
+	backoffBaseDelay = 500 * time.Millisecond
+	backoffCapDelay  = 8 * time.Second
 )
 
 var (
@@ -37,10 +52,13 @@ func New(opts Options) (*Client, error) {
 	}
 	httpClient := opts.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if opts.MaxRetries == 0 {
 		opts.MaxRetries = DefaultMaxRetries
+	}
+	if opts.ContextWindow == 0 {
+		opts.ContextWindow = defaultContextWindow(opts.Model)
 	}
 	return &Client{
 		opts:       opts,
@@ -122,60 +140,24 @@ func (c *Client) newHTTPRequest(ctx context.Context, payload []byte) (*http.Requ
 	return httpReq, nil
 }
 
-func (c *Client) postWithRetry(ctx context.Context, payload []byte) ([]byte, error) {
-	maxRetries := c.opts.MaxRetries
-	var attempt int
-
-	for {
-		httpReq, err := c.newHTTPRequest(ctx, payload)
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := c.httpClient.Do(httpReq)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			if attempt < maxRetries {
-				attempt++
-				if backoffErr := sleepBackoff(ctx, attempt, 0); backoffErr != nil {
-					return nil, backoffErr
-				}
-				continue
-			}
-			return nil, err
-		}
-
-		respBytes, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return nil, readErr
-		}
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return respBytes, nil
-		}
-
-		apiErr := c.mapHTTPError(resp.StatusCode, respBytes)
-		if !isRetryable(resp.StatusCode) || attempt >= maxRetries {
-			return nil, apiErr
-		}
-
-		var retryAfter time.Duration
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
-		}
-
-		attempt++
-		if err := sleepBackoff(ctx, attempt, retryAfter); err != nil {
-			return nil, err
-		}
+// effectiveMaxRetries returns the retry budget for one call: 0 when
+// DisableRetries asks for a real off switch, else the configured or
+// default MaxRetries. Options.MaxRetries alone cannot express "no
+// retries", since 0 already means "use the default".
+func (c *Client) effectiveMaxRetries() int {
+	if c.opts.DisableRetries {
+		return 0
 	}
+	return c.opts.MaxRetries
 }
 
-func (c *Client) postStreamWithRetry(ctx context.Context, payload []byte) (io.ReadCloser, error) {
-	maxRetries := c.opts.MaxRetries
+// doWithRetry sends payload and retries a transport error or a
+// retryable status, following the same schedule for both the plain
+// and the streaming call. On a 2xx response it returns the *http.Response
+// unread and unclosed; the caller reads and closes the body, since
+// postWithRetry and postStreamWithRetry need different things from it.
+func (c *Client) doWithRetry(ctx context.Context, payload []byte) (*http.Response, error) {
+	maxRetries := c.effectiveMaxRetries()
 	var attempt int
 
 	for {
@@ -200,7 +182,7 @@ func (c *Client) postStreamWithRetry(ctx context.Context, payload []byte) (io.Re
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return resp.Body, nil
+			return resp, nil
 		}
 
 		respBytes, _ := io.ReadAll(resp.Body)
@@ -211,16 +193,33 @@ func (c *Client) postStreamWithRetry(ctx context.Context, payload []byte) (io.Re
 			return nil, apiErr
 		}
 
-		var retryAfter time.Duration
-		if resp.StatusCode == http.StatusTooManyRequests {
-			retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
-		}
-
+		retryAfter := retryAfterFor(resp.Header)
 		attempt++
 		if err := sleepBackoff(ctx, attempt, retryAfter); err != nil {
 			return nil, err
 		}
 	}
+}
+
+func (c *Client) postWithRetry(ctx context.Context, payload []byte) ([]byte, error) {
+	resp, err := c.doWithRetry(ctx, payload)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return respBytes, nil
+}
+
+func (c *Client) postStreamWithRetry(ctx context.Context, payload []byte) (io.ReadCloser, error) {
+	resp, err := c.doWithRetry(ctx, payload)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
 }
 
 func isRetryable(code int) bool {
@@ -243,6 +242,8 @@ func (c *Client) mapHTTPError(statusCode int, body []byte) error {
 	switch {
 	case statusCode == http.StatusBadRequest:
 		return fmt.Errorf("%w: %s", ErrBadRequest, errMsg)
+	case statusCode == http.StatusRequestEntityTooLarge || statusCode == http.StatusUnprocessableEntity:
+		return fmt.Errorf("%w: %s", ErrBadRequest, errMsg)
 	case statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden:
 		return fmt.Errorf("%w: %s", ErrAuth, errMsg)
 	case statusCode == http.StatusTooManyRequests:
@@ -256,20 +257,46 @@ func (c *Client) mapHTTPError(statusCode int, body []byte) error {
 	}
 }
 
-func parseRetryAfter(header string) time.Duration {
-	if header == "" {
+// retryAfterFor reads a Retry-After header, which the Messages API
+// sends on 429 and may send on other retryable statuses. The value is
+// either an integer count of seconds or an HTTP-date; a value in
+// neither form yields no caller-side hint, and the caller falls back
+// to the computed backoff schedule.
+func retryAfterFor(header http.Header) time.Duration {
+	return parseRetryAfter(header.Get("Retry-After"))
+}
+
+func parseRetryAfter(value string) time.Duration {
+	if value == "" {
 		return 0
 	}
-	if d, err := time.ParseDuration(header + "s"); err == nil && d > 0 {
+	if d, err := time.ParseDuration(value + "s"); err == nil && d > 0 {
 		return d
 	}
+	if t, err := http.ParseTime(value); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
 	return 0
+}
+
+// backoffDelay returns a full-jitter exponential backoff delay for
+// the given attempt: a uniform random duration in [0, min(cap, base *
+// 2^(attempt-1))). Full jitter avoids every concurrent caller retrying
+// in lockstep after a shared failure (a "thundering herd").
+func backoffDelay(attempt int) time.Duration {
+	d := backoffBaseDelay * time.Duration(1<<uint(attempt-1))
+	if d <= 0 || d > backoffCapDelay {
+		d = backoffCapDelay
+	}
+	return time.Duration(rand.Int63n(int64(d)) + 1)
 }
 
 func sleepBackoff(ctx context.Context, attempt int, retryAfter time.Duration) error {
 	delay := retryAfter
 	if delay <= 0 {
-		delay = time.Duration(1<<(attempt-1)) * 5 * time.Millisecond
+		delay = backoffDelay(attempt)
 	}
 	select {
 	case <-ctx.Done():

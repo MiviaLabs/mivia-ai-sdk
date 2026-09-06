@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider/anthropic"
@@ -37,6 +38,73 @@ func TestPostWithRetryErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unexpected HTTP status 404") {
 		t.Errorf("stream err = %v, want unexpected HTTP status 404", err)
+	}
+}
+
+// TestRetryAfterOnServerError pins that Retry-After is honored on a
+// retryable 5xx, not only on 429; the header used to be read only on
+// StatusTooManyRequests.
+func TestRetryAfterOnServerError(t *testing.T) {
+	var attempts int32
+	start := time.Now()
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempts, 1) == 1 {
+			w.Header().Set("Retry-After", "1")
+			writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+				"error": map[string]any{"message": "unavailable"},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_ra", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
+	if _, err := fix.client.Chat(context.Background(), provider.Request{}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("elapsed = %v, want at least ~1s (Retry-After honored on a 5xx)", elapsed)
+	}
+	if atomic.LoadInt32(&attempts) != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
+	}
+}
+
+// TestRetryAfterHTTPDate pins that an HTTP-date Retry-After value is
+// parsed, not only an integer count of seconds.
+func TestRetryAfterHTTPDate(t *testing.T) {
+	// http.TimeFormat has whole-second resolution, so the target must
+	// clear at least a full second of margin to survive truncation.
+	var attempts int32
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempts, 1) == 1 {
+			w.Header().Set("Retry-After", time.Now().Add(2*time.Second).UTC().Format(http.TimeFormat))
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error": map[string]any{"message": "slow down"},
+			})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_date", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
+	start := time.Now()
+	if _, err := fix.client.Chat(context.Background(), provider.Request{}); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 900*time.Millisecond {
+		t.Errorf("elapsed = %v, want at least ~1s (HTTP-date Retry-After honored)", elapsed)
+	}
+	if atomic.LoadInt32(&attempts) != 2 {
+		t.Errorf("attempts = %d, want 2", attempts)
 	}
 }
 

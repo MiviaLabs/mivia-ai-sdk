@@ -7,18 +7,20 @@ package provider
 const ReasoningEventKind = "reasoning"
 
 // ReasoningEffort is the provider-neutral reasoning effort vocabulary,
-// closed by four constants below. A ReasoningPolicy implementation
+// closed by six constants below. A ReasoningPolicy implementation
 // may report any of these from ReasoningEffort() string; the
 // interface's return type stays string to keep the existing lock, but
 // a caller compares against these constants instead of a literal.
 type ReasoningEffort string
 
-// The four reasoning effort levels.
+// The six reasoning effort levels.
 const (
 	ReasoningEffortNone   ReasoningEffort = "none"
 	ReasoningEffortLow    ReasoningEffort = "low"
 	ReasoningEffortMedium ReasoningEffort = "medium"
 	ReasoningEffortHigh   ReasoningEffort = "high"
+	ReasoningEffortXHigh  ReasoningEffort = "xhigh"
+	ReasoningEffortMax    ReasoningEffort = "max"
 )
 
 // ReasoningBlock is one reasoning segment a model produced. Content is

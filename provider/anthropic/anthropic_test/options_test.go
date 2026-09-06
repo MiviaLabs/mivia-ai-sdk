@@ -57,6 +57,33 @@ func optionsTestCases() []optionsTestCase {
 	}
 }
 
+// TestNewDefaultsContextWindow pins that a zero Options.ContextWindow
+// is not left at zero: New derives it from Model (or DefaultModel when
+// Model is empty), and a caller-set value always wins.
+func TestNewDefaultsContextWindow(t *testing.T) {
+	cases := []struct {
+		name string
+		opts anthropic.Options
+		want int
+	}{
+		{"default model", anthropic.Options{APIKey: "k"}, 1000000},
+		{"named current model", anthropic.Options{APIKey: "k", Model: "claude-haiku-4-5"}, 200000},
+		{"unrecognized model falls back", anthropic.Options{APIKey: "k", Model: "some-future-model"}, 200000},
+		{"caller value wins", anthropic.Options{APIKey: "k", ContextWindow: 42}, 42},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, err := anthropic.New(tc.opts)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			if got := c.ContextWindow(); got != tc.want {
+				t.Errorf("ContextWindow() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestOptionsValidate(t *testing.T) {
 	for _, tc := range optionsTestCases() {
 		t.Run(tc.name, func(t *testing.T) {

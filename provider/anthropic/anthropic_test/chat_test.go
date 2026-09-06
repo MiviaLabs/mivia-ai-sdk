@@ -169,7 +169,7 @@ func TestChatPromptCaching(t *testing.T) {
 	})
 
 	req := provider.Request{
-		ReasoningDialect: provider.ReasoningDialect(provider.CacheStyleExplicit),
+		CacheStyle: provider.CacheStyleExplicit,
 		Messages: []provider.Message{
 			{Role: provider.RoleSystem, Content: "System prompt 1"},
 			{Role: provider.RoleSystem, Content: "System prompt 2"},
@@ -212,6 +212,43 @@ func TestChatPromptCaching(t *testing.T) {
 	}
 	if resp.Usage.CachedTokens != 40 {
 		t.Errorf("Usage.CachedTokens = %d, want 40", resp.Usage.CachedTokens)
+	}
+}
+
+// TestReasoningDialectDoesNotEnableCaching pins the fix that
+// separated CacheStyle from ReasoningDialect: a dialect string used
+// to switch caching on by accident whenever it was non-empty.
+func TestReasoningDialectDoesNotEnableCaching(t *testing.T) {
+	var capturedReq map[string]any
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &capturedReq)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_1", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
+	req := provider.Request{
+		ReasoningDialect: "openai",
+		Messages: []provider.Message{
+			{Role: provider.RoleSystem, Content: "System prompt"},
+			{Role: provider.RoleUser, Content: "User message"},
+		},
+	}
+	if _, err := fix.client.Chat(context.Background(), req); err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	sys, ok := capturedReq["system"].([]any)
+	if !ok || len(sys) != 1 {
+		t.Fatalf("system blocks = %v, want 1", capturedReq["system"])
+	}
+	lastSys := sys[0].(map[string]any)
+	if _, ok := lastSys["cache_control"]; ok {
+		t.Errorf("system cache_control = %v, want none: ReasoningDialect must not enable caching", lastSys["cache_control"])
 	}
 }
 
@@ -368,11 +405,12 @@ func TestRunTurnAdapter(t *testing.T) {
 	}
 }
 
-// TestChatEmptyAssistantMessageWireForm pins the wire contract that an
-// assistant message with no text and no tool calls marshals as a
-// content array holding one empty text block. The Messages API
-// rejects a "content": null field.
-func TestChatEmptyAssistantMessageWireForm(t *testing.T) {
+// TestChatEmptyAssistantMessageDropped pins the wire contract that an
+// assistant message with no text and no tool calls is dropped from
+// the replayed history instead of marshaling as "content": null or as
+// an empty text block; either form risks rejection by the Messages
+// API, and the turn carries nothing worth replaying.
+func TestChatEmptyAssistantMessageDropped(t *testing.T) {
 	var capturedReq map[string]any
 	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -402,5 +440,16 @@ func TestChatEmptyAssistantMessageWireForm(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "null") {
 		t.Errorf("request messages contain null: %s", raw)
+	}
+
+	msgs, ok := capturedReq["messages"].([]any)
+	if !ok || len(msgs) != 2 {
+		t.Fatalf("messages = %v, want 2 (the empty assistant turn dropped)", capturedReq["messages"])
+	}
+	for _, m := range msgs {
+		mm := m.(map[string]any)
+		if mm["role"] == "assistant" {
+			t.Errorf("messages = %v, want no assistant entry", capturedReq["messages"])
+		}
 	}
 }

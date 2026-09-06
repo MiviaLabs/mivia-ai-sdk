@@ -2,6 +2,7 @@ package anthropic
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -58,7 +59,8 @@ type anthropicToolChoice struct {
 }
 
 type anthropicThinking struct {
-	Type string `json:"type"`
+	Type    string `json:"type"`
+	Display string `json:"display,omitempty"`
 }
 
 type anthropicOutputCfg struct {
@@ -66,11 +68,17 @@ type anthropicOutputCfg struct {
 }
 
 func isPromptCachingActive(req provider.Request) bool {
-	if req.ReasoningDialect == provider.ReasoningDialect(provider.CacheStyleExplicit) {
+	return req.CacheStyle != provider.CacheStyleNone && req.CacheStyle != ""
+}
+
+func isValidReasoningEffort(e provider.ReasoningEffort) bool {
+	switch e {
+	case provider.ReasoningEffortLow, provider.ReasoningEffortMedium,
+		provider.ReasoningEffortHigh, provider.ReasoningEffortXHigh, provider.ReasoningEffortMax:
 		return true
+	default:
+		return false
 	}
-	style := provider.CacheStyle(req.ReasoningDialect)
-	return style != provider.CacheStyleNone && style != ""
 }
 
 func resolveMaxTokens(c *Client, req provider.Request, isStream bool) int {
@@ -136,10 +144,11 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message) 
 			})
 		}
 		if len(parts) == 0 {
-			// The Messages API rejects a null content field; a
-			// thinking-only turn yields an otherwise empty assistant
-			// message.
-			parts = []anthropicContentPart{{Type: "text"}}
+			// A turn with no visible text and no tool call (a
+			// thinking-only or empty response) carries nothing worth
+			// replaying; sending an empty text block risks rejection
+			// by the Messages API, so the turn is dropped instead.
+			return
 		}
 		*anthropicMsgs = append(*anthropicMsgs, anthropicMessage{Role: anthropicRoleAssistant, Content: parts})
 	case provider.RoleTool:
@@ -213,7 +222,15 @@ func buildRequestBody(c *Client, req provider.Request, isStream bool) (*anthropi
 	var thinking *anthropicThinking
 	var outCfg *anthropicOutputCfg
 	if effort != "" && effort != provider.ReasoningEffortNone {
+		if !isValidReasoningEffort(effort) {
+			return nil, fmt.Errorf("%w: reasoning effort %q is not one of low, medium, high, xhigh, max", ErrInvalidOptions, effort)
+		}
 		thinking = &anthropicThinking{Type: "adaptive"}
+		if c.opts.ExposeReasoning || c.opts.OnReasoning != nil {
+			// The API omits thinking text by default; ExposeReasoning
+			// and OnReasoning both need the readable summary form.
+			thinking.Display = "summarized"
+		}
 		outCfg = &anthropicOutputCfg{Effort: string(effort)}
 	}
 

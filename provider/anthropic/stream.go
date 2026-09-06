@@ -15,7 +15,13 @@ import (
 type sseEvent struct {
 	Event string
 	Data  []byte
+	Err   error
 }
+
+// maxSSELineSize caps one SSE line, well above any real Messages API
+// event; the default bufio.Scanner cap (64 KiB) is too small for a
+// large content_block_start or input_json_delta line.
+const maxSSELineSize = 32 << 20
 
 type sseMessageStart struct {
 	Message struct {
@@ -78,6 +84,7 @@ func readSSEEvents(r io.Reader, done <-chan struct{}) <-chan sseEvent {
 	go func() {
 		defer close(ch)
 		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineSize)
 		var eventName string
 		var dataBuf bytes.Buffer
 
@@ -119,6 +126,13 @@ func readSSEEvents(r io.Reader, done <-chan struct{}) <-chan sseEvent {
 				return
 			}
 		}
+
+		if err := scanner.Err(); err != nil {
+			select {
+			case ch <- sseEvent{Err: err}:
+			case <-done:
+			}
+		}
 	}()
 	return ch
 }
@@ -141,6 +155,10 @@ func (c *Client) handleStream(ctx context.Context, body io.ReadCloser) <-chan pr
 				return
 			case ev, ok := <-eventsCh:
 				if !ok {
+					return
+				}
+				if ev.Err != nil {
+					sendChunkOrDone(ctx, out, provider.Chunk{Err: fmt.Errorf("anthropic: stream read: %w", ev.Err)})
 					return
 				}
 				if stop := c.processSSEEvent(ctx, ev, state, out); stop {
@@ -275,7 +293,7 @@ func (c *Client) handleMessageStop(ctx context.Context, s *streamState, out chan
 func (c *Client) handleErrorEvent(ctx context.Context, data []byte, out chan<- provider.Chunk) bool {
 	var errResp anthropicResponse
 	if err := json.Unmarshal(data, &errResp); err == nil && errResp.Error != nil {
-		sendChunkOrDone(ctx, out, provider.Chunk{Err: fmt.Errorf("anthropic: %s", errResp.Error.Message)})
+		sendChunkOrDone(ctx, out, provider.Chunk{Err: mapAPIErrorType(errResp.Error.Type, errResp.Error.Message)})
 	} else {
 		sendChunkOrDone(ctx, out, provider.Chunk{Err: fmt.Errorf("anthropic: stream error: %s", string(data))})
 	}

@@ -114,13 +114,12 @@ type Definition struct {
 // that sets sub beside tool or internal, an empty step ID, an
 // undeclared external tool, a blank or duplicate tool name, an unknown
 // internal kind, an unknown when value, an internal section key a Kind
-// constant does not name or a caller-built Kind names, and an invalid
-// internal section config. It also wraps any rejection from machine.New,
-// flow.New, or an internal builder. It wraps every failure in
-// ErrBadDocument. A present options.budget maps onto Options.Budget as a
-// *contextbudget.Limits, with no range check; Runner's call into
-// agentrun.New rejects a negative field. The loader never reads the
-// environment.
+// constant does not name or a caller-built Kind names, an invalid
+// internal section config, and a negative budget field. It also wraps
+// any rejection from machine.New, flow.New, or an internal builder. It
+// wraps every failure in ErrBadDocument. A present options.budget maps
+// onto Options.Budget as a *contextbudget.Limits and must pass
+// Limits.Validate. The loader never reads the environment.
 func Load(data []byte) (*Definition, error) {
 	var doc wireDocument
 	if err := json.Unmarshal(data, &doc); err != nil {
@@ -150,6 +149,9 @@ func Load(data []byte) (*Definition, error) {
 			def.Options.Budget = &contextbudget.Limits{
 				MaxBytes:  doc.Options.Budget.MaxBytes,
 				MaxEvents: doc.Options.Budget.MaxEvents,
+			}
+			if err := def.Options.Budget.Validate(); err != nil {
+				return nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
 			}
 		}
 		if doc.Options.Trace {

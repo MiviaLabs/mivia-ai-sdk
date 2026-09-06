@@ -120,6 +120,54 @@ func TestChatStreamingToolCall(t *testing.T) {
 	}
 }
 
+// TestChatStreamingCumulativeUsage pins the contract that a
+// message_delta's usage.output_tokens is a cumulative running total:
+// the last event's value is the turn's output-token count, never a
+// sum over the events.
+func TestChatStreamingCumulativeUsage(t *testing.T) {
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			return
+		}
+
+		sendEvent := func(event, data string) {
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+			flusher.Flush()
+		}
+
+		sendEvent("message_start", `{"type":"message_start","message":{"id":"msg_cum","type":"message","role":"assistant","usage":{"input_tokens":7}}}`)
+		sendEvent("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`)
+		sendEvent("message_delta", `{"type":"message_delta","delta":{},"usage":{"output_tokens":10}}`)
+		sendEvent("message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":25}}`)
+		sendEvent("message_stop", `{"type":"message_stop"}`)
+	})
+
+	ch, err := fix.client.ChatStream(context.Background(), provider.Request{})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+
+	var termChunk *provider.Chunk
+	for chunk := range ch {
+		if chunk.Done {
+			termChunk = &chunk
+		}
+	}
+	if termChunk == nil {
+		t.Fatal("terminal chunk not found")
+	}
+	if termChunk.Usage.CompletionTokens != 25 {
+		t.Errorf("CompletionTokens = %d, want 25 (the last cumulative value)", termChunk.Usage.CompletionTokens)
+	}
+	if termChunk.Usage.TotalTokens != 32 {
+		t.Errorf("TotalTokens = %d, want 32", termChunk.Usage.TotalTokens)
+	}
+}
+
 func TestChatStreamDisconnect(t *testing.T) {
 	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

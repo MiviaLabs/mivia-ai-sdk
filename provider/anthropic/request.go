@@ -135,6 +135,12 @@ func appendTurnMessage(anthropicMsgs *[]anthropicMessage, msg provider.Message) 
 				Input: json.RawMessage(raw),
 			})
 		}
+		if len(parts) == 0 {
+			// The Messages API rejects a null content field; a
+			// thinking-only turn yields an otherwise empty assistant
+			// message.
+			parts = []anthropicContentPart{{Type: "text"}}
+		}
 		*anthropicMsgs = append(*anthropicMsgs, anthropicMessage{Role: anthropicRoleAssistant, Content: parts})
 	case provider.RoleTool:
 		part := anthropicContentPart{

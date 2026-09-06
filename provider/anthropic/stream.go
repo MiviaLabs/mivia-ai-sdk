@@ -180,7 +180,9 @@ func (c *Client) processSSEEvent(ctx context.Context, ev sseEvent, s *streamStat
 			if md.Delta.StopDetails != nil {
 				s.stopDetails = md.Delta.StopDetails
 			}
-			s.outputTokens += md.Usage.OutputTokens
+			// usage.output_tokens is a cumulative running total;
+			// the last message_delta carries the turn's final count.
+			s.outputTokens = md.Usage.OutputTokens
 		}
 	case "message_stop":
 		return c.handleMessageStop(ctx, s, out)

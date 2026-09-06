@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -364,5 +365,42 @@ func TestRunTurnAdapter(t *testing.T) {
 	}
 	if resp.Message.Content != "turn completed" {
 		t.Errorf("content = %q, want 'turn completed'", resp.Message.Content)
+	}
+}
+
+// TestChatEmptyAssistantMessageWireForm pins the wire contract that an
+// assistant message with no text and no tool calls marshals as a
+// content array holding one empty text block. The Messages API
+// rejects a "content": null field.
+func TestChatEmptyAssistantMessageWireForm(t *testing.T) {
+	var capturedReq map[string]any
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &capturedReq)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id": "msg_empty", "type": "message", "role": "assistant",
+			"stop_reason": "end_turn",
+			"content":     []map[string]any{{"type": "text", "text": "ok"}},
+			"usage":       map[string]any{"input_tokens": 1, "output_tokens": 1},
+		})
+	})
+
+	_, err := fix.client.Chat(context.Background(), provider.Request{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: "go"},
+			{Role: provider.RoleAssistant},
+			{Role: provider.RoleUser, Content: "continue"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Chat: %v", err)
+	}
+
+	raw, err := json.Marshal(capturedReq["messages"])
+	if err != nil {
+		t.Fatalf("marshal messages: %v", err)
+	}
+	if strings.Contains(string(raw), "null") {
+		t.Errorf("request messages contain null: %s", raw)
 	}
 }

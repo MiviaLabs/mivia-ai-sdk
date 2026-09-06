@@ -19,14 +19,15 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-five packages and the import edges
+The diagram shows the forty-six packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextstate`,
+imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,
 `longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
-package in this module. `envelope` imports `contextstate` alone.
-`contextplan` imports `contextstate`, `provider`, `memory`, and
+package in this module. `envelope` imports `contextref` alone.
+`contextstate` imports `contextref` alone.
+`contextplan` imports `contextstate`, `contextref`, `provider`, `memory`, and
 `spool`. `spool` imports `tools` alone. `a2aloopback` imports `a2a` and
 `envelope`, the same two internal packages `a2aclient` imports.
 `workspace` imports `secretpath` alone. `runconfig` imports
@@ -43,8 +44,10 @@ flowchart LR
     agent --> machine
     agent --> heartbeat
     agent --> contextbudget
-    envelope --> contextstate
+    envelope --> contextref
+    contextstate --> contextref
     contextplan --> contextstate
+    contextplan --> contextref
     contextplan --> provider
     contextplan --> memory
     contextplan --> spool
@@ -158,10 +161,11 @@ flowchart LR
     usage[usage]
     envfile[envfile]
     longtermmemory[longtermmemory]
+    contextref[contextref]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. `ContextRef` delegates to `contextstate.Mint`, so
+  VerifyThread. `ContextRef` delegates to `contextref.Mint`, so
   every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
@@ -477,19 +481,20 @@ flowchart LR
   at or under their caps; it keeps no running total of its own.
   `contextbudget` imports no other package in this module; `agent`
   imports it for `Run`'s optional budget check.
-- `contextstate/` — the durable context contract and the canonical
-  content-reference minter. It provides `HashPrefix`, `Digest`,
-  `Mint`, `IsRef`, the contract types (`ContentRef`,
-  `NewContentRef`, `PayloadRecord`, `Reassemble`, `SourceID`,
-  `SourceRange`, `SourceEvent`, `Revision`, `BindingRevision`,
+- `contextstate/` — the durable context contract. It provides the contract
+  types (`ContentRef`, `NewContentRef`, `PayloadRecord`, `Reassemble`,
+  `SourceID`, `SourceRange`, `SourceEvent`, `Revision`, `BindingRevision`,
   `CheckpointID`, `Checkpoint`, `Session`), `CommitRequest` with
   `NewCommitRequest` and `Validate`, `Limits` with `Validate`, and
   the `MemStore` with `New`, `Put`, `Get`, `Checkpoint`, and
-  `Session`. `Mint` mints the `sha256:`-prefixed ref; a reused
-  `OperationID` with an equal request is a no-op success, and with a
-  different request it wraps `ErrCheckpointConflict`. `envelope`
-  imports it: `ContextRef` delegates to `Mint`, so every ref in this
-  SDK has one form. See [packages/contextstate.md](packages/contextstate.md).
+  `Session`. It uses `contextref` for content address minting and
+  validation. A reused `OperationID` with an equal request is a
+  no-op success, and with a different request it wraps
+  `ErrCheckpointConflict`. See [packages/contextstate.md](packages/contextstate.md).
+- `contextref/` — the canonical content-reference minter and parser.
+  It provides `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
+  `envelope`, `contextstate`, and `contextplan` import it, so every ref in
+  this SDK has one form. See [packages/contextref.md](packages/contextref.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Request.Validate`,

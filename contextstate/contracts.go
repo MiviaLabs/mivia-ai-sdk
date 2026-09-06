@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
 )
 
 // Shape bounds pin the FORM of a durable value, not its volume.
@@ -109,12 +111,12 @@ type ContentRef struct {
 // non-negative Size. Namespace is caller-owned; no SDK constant is
 // compared against it.
 func (r ContentRef) Validate() error {
-	if !IsRef(r.Ref) {
+	if !contextref.IsRef(r.Ref) {
 		return invalid("content.ref", "must be a canonical content address")
 	}
 	// IsRef plus this equality imply SHA256 is 64 lowercase hex
 	// characters; no third check can fire after both.
-	if r.Ref != HashPrefix+r.SHA256 {
+	if r.Ref != contextref.HashPrefix+r.SHA256 {
 		return invalid("content.ref", "does not match the bare digest")
 	}
 	if err := validateIdentifier("content.namespace", r.Namespace); err != nil {
@@ -144,9 +146,9 @@ func NewContentRef(namespace string, workspaceID string, sessionID string, subje
 		size += len(chunk)
 	}
 	ref := ContentRef{
-		Ref:         Mint(chunks...),
+		Ref:         contextref.Mint(chunks...),
 		Namespace:   namespace,
-		SHA256:      Digest(chunks...),
+		SHA256:      contextref.Digest(chunks...),
 		WorkspaceID: workspaceID,
 		SessionID:   sessionID,
 		SubjectID:   subjectID,
@@ -189,7 +191,7 @@ func (p PayloadRecord) Validate() error {
 	if len(p.Data) > 0 && p.Ref.Size != len(p.Data) {
 		return invalid("payload.data", "size does not match the content address")
 	}
-	if len(p.Data) > 0 && Digest(p.Data) != p.Ref.SHA256 {
+	if len(p.Data) > 0 && contextref.Digest(p.Data) != p.Ref.SHA256 {
 		return invalid("payload.data", "does not match the content address digest")
 	}
 	return nil
@@ -213,7 +215,7 @@ func Reassemble(ref ContentRef, retention RetentionClass, chunks ...[]byte) (Pay
 	if len(data) != ref.Size {
 		return PayloadRecord{}, invalid("payload.data", "size does not match the content address")
 	}
-	if Digest(chunks...) != ref.SHA256 {
+	if contextref.Digest(chunks...) != ref.SHA256 {
 		return PayloadRecord{}, invalid("payload.data", "does not match the content address digest")
 	}
 	return PayloadRecord{Ref: ref, Retention: retention, Data: data}, nil

@@ -1,12 +1,10 @@
-// Package contextstate holds the durable context contract and the
-// single canonical content-reference minter. Sessions, checkpoints,
-// commit validation, retention classes, and volume Limits live here.
-// envelope and memory reuse the minter, so every ref in this SDK has
-// one form.
+// Package contextstate holds the durable context contract. Sessions,
+// checkpoints, commit validation, retention classes, and volume Limits
+// live here.
 //
-// Map: ref.go = HashPrefix, Digest, Mint, IsRef. contracts.go =
-// shape bounds, sentinels, ValidationError, ContentRef, PayloadRecord,
-// Reassemble. checkpoint.go = SourceID through Session. commit.go =
+// Map: contracts.go = shape bounds, sentinels, ValidationError,
+// ContentRef, PayloadRecord, Reassemble. ref.go = canonical reference
+// minter aliases. checkpoint.go = SourceID through Session. commit.go =
 // CommitRequest and its validators. limits.go = Limits. store.go =
 // MemStore.
 // Rationale: ../docs/plans/contextstate.md. Contribution rules:

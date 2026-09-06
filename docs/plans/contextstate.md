@@ -712,3 +712,37 @@ In `contextstate/contextstate_test/store_test.go`:
   `MemStore.Get` and `MemStore.Status` and must handle the new error
   case in the same change, or `Plan` starts failing on every revoked
   payload it meets.
+
+## Addendum: carve ref minter into contextref
+
+Status: planned, extends HashPrefix.
+
+### Addendum goal
+
+Carve the canonical reference minter out of `contextstate` into the leaf package `contextref`.
+
+### Addendum scope
+
+Inside:
+
+- Delegate `contextstate.HashPrefix`, `Digest`, `Mint`, and `IsRef` to `contextref`.
+- Add an allowed import of `contextref` to `contextstate` in `policy/layers.json`.
+- Keep the exported signatures in `api/contextstate.txt` identical for backward compatibility.
+
+Outside:
+
+- Changing existing payload storage, commit validation, or session logic in `contextstate`.
+
+### Addendum API
+
+No breaking changes to `api/contextstate.txt`. Exported symbols `HashPrefix`, `Digest`, `Mint`, and `IsRef` remain available as aliases or wrappers.
+
+### Addendum tests
+
+All existing tests in `contextstate/contextstate_test/ref_test.go` and `ref_fuzz_test.go` must continue to pass.
+
+### Addendum verification
+
+- `policy/layers.json` updates `contextstate` imports to include `contextref`.
+- `make verify` passes.
+- `api/contextstate.txt` produces no diff.

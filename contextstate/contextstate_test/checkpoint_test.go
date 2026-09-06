@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 )
 
@@ -110,7 +111,7 @@ func TestSourceEventValidate(t *testing.T) {
 		{"valid", func(*contextstate.SourceEvent) {}, false},
 		{"optional fields set", func(e *contextstate.SourceEvent) {
 			e.ToolCallID = "call-1"
-			e.PayloadRef = contextstate.Mint([]byte("payload"))
+			e.PayloadRef = contextref.Mint([]byte("payload"))
 		}, false},
 		{"blank kind", func(e *contextstate.SourceEvent) { e.Kind = "" }, true},
 		{"blank role", func(e *contextstate.SourceEvent) { e.Role = " " }, true},

@@ -387,3 +387,39 @@ Doc site, found by grep, landing in the same commit:
 
 `docs/packages/envelope.md` and `docs/packages/contextstate.md`
 document no unexported helper. Leave both unchanged.
+
+## Addendum: migrate canonical ref delegation to contextref
+
+Status: planned, extends ContextRef.
+
+### Addendum goal
+
+Migrate reference minting and checking delegation from `contextstate` to `contextref`.
+
+### Addendum scope
+
+Inside:
+
+- Update `envelope/message.go` to import `contextref` instead of `contextstate`.
+- Delegate `ContextRef` to `contextref.Mint`.
+- Delegate `isHashRef` to `contextref.IsRef`.
+- Alias `hashPrefix` to `contextref.HashPrefix`.
+- Update `policy/layers.json` to replace `contextstate` with `contextref` for `envelope`.
+
+Outside:
+
+- Any wire format or API signature changes in `envelope`.
+
+### Addendum API
+
+No exported symbol changes in `api/envelope.txt`.
+
+### Addendum tests
+
+All existing tests in `envelope/` must continue to pass without changes.
+
+### Addendum verification
+
+- `policy/layers.json` updates `envelope`'s allowed imports to `["contextref"]`.
+- `make verify` passes.
+- `api/envelope.txt` produces no diff.

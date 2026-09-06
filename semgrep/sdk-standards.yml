@@ -90,7 +90,7 @@ rules:
   - id: sdk.go.hash-prefix-centralized
     languages: [go]
     severity: ERROR
-    message: Use the HashPrefix const (contextstate/ref.go); the literal may appear in its definition only.
+    message: Use the HashPrefix const (contextref/ref.go); the literal may appear in its definition only.
     paths:
       include: ["/**/*.go"]
       exclude: ["/**/*_test.go", "/scripts/**"]

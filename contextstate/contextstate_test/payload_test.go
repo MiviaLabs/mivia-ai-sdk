@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 )
 
@@ -76,7 +77,7 @@ func TestPayloadRecordValidate(t *testing.T) {
 
 func TestContentRefValidate(t *testing.T) {
 	base := func() contextstate.ContentRef { return fixtureRef(t, []byte("ref-bytes")) }
-	otherDigest := contextstate.Digest([]byte("other-bytes"))
+	otherDigest := contextref.Digest([]byte("other-bytes"))
 	cases := []struct {
 		name    string
 		mutate  func(*contextstate.ContentRef)
@@ -85,7 +86,7 @@ func TestContentRefValidate(t *testing.T) {
 		{"valid", func(*contextstate.ContentRef) {}, false},
 		{"non-canonical ref", func(r *contextstate.ContentRef) { r.Ref = "not-a-ref" }, true},
 		{"ref off the bare digest", func(r *contextstate.ContentRef) {
-			r.Ref = contextstate.HashPrefix + otherDigest
+			r.Ref = contextref.HashPrefix + otherDigest
 		}, true},
 		{"sha256 off the ref digest", func(r *contextstate.ContentRef) {
 			r.SHA256 = otherDigest

@@ -890,3 +890,36 @@ No shipped test pins the raw-key behavior. No test rewrite is needed.
 - `python3 scripts/check_plan.py`, `scripts/check_prose.py`,
   `scripts/check_labels.py`, and `scripts/check_deps.py` pass.
 - No conformance vector: this package carries no wire format.
+
+## Addendum: evaluate content addressing dependency
+
+Status: planned, not yet built.
+
+### Addendum goal
+
+Evaluate whether `longtermmemory` should adopt `contextref` or keep independent entry IDs.
+
+### Addendum scope
+
+Inside:
+
+- Document that `longtermmemory` entry IDs are raw SHA-256 hex strings without prefixes.
+- Keep `longtermmemory` as an independent leaf package without an import edge to `contextref`.
+
+Outside:
+
+- Changing entry ID formats or invalidating stored in-memory entries.
+
+### Addendum API
+
+No exported API changes. `longtermmemory` remains a leaf package.
+
+### Addendum tests
+
+All existing tests in `longtermmemory/` must continue to pass.
+
+### Addendum verification
+
+- `policy/layers.json` keeps `"longtermmemory": []`.
+- `make verify` passes.
+- `api/longtermmemory.txt` produces no diff.

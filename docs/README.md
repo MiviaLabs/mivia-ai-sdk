@@ -7,7 +7,7 @@ dispatch, tools, hooks, contextbudget, contextstate, schema, mcp,
 ledger, durablefence, memory, provider, providerregistry, toolcallctx,
 usage, contextplan, channel, trigger, trace, skills, scheduler, agent,
 agentrun, agentloop, runconfig, subagent, taskrun, e2e, envfile,
-secretpath, workspace, spool, contextsummary, and longtermmemory. Each
+secretpath, workspace, spool, contextsummary, contextref, and longtermmemory. Each
 package covers one concern and composes through its exported API.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
@@ -71,7 +71,8 @@ into a `tools.Registry` through `subagent`:
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
 - [packages/spool.md](packages/spool.md) — the principal-scoped grant store for oversized content: a bounded view, a reference, and `SpoolTool` for wrapping any tool.
 - [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
-- [packages/contextstate.md](packages/contextstate.md) — the durable context contract and the canonical content-reference minter: sessions, checkpoints, commit validation, retention classes, volume `Limits`, and the in-memory store.
+- [packages/contextstate.md](packages/contextstate.md) — the durable context contract: sessions, checkpoints, commit validation, retention classes, volume `Limits`, and the in-memory store.
+- [packages/contextref.md](packages/contextref.md) — the canonical content-reference minter and parser: `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
 - [packages/schema.md](packages/schema.md) — the JSON Schema compile/validate/corrective-message primitive: `Compile` admits and compiles a schema, `Validate` checks a payload against it, and `Corrective` renders a bounded, model-facing correction message.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.

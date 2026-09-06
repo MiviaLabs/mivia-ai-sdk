@@ -60,9 +60,20 @@
       "contextstate",
       "provider",
       "memory",
+      "spool",
+      "contextref"
+    ],
+    "contextref": [],
+    "contextsession": [
+      "contextplan",
+      "contextref",
+      "contextstate",
+      "provider",
       "spool"
     ],
-    "contextstate": [],
+    "contextstate": [
+      "contextref"
+    ],
     "contextsummary": [
       "provider"
     ],
@@ -89,7 +100,7 @@
       "tools"
     ],
     "envelope": [
-      "contextstate"
+      "contextref"
     ],
     "envfile": [],
     "events": [],

@@ -3,7 +3,7 @@ package contextplan
 import (
 	"encoding/json"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -39,7 +39,7 @@ type fingerprintDoc struct {
 }
 
 // compactionKey builds the idempotency key: CompactionAlgorithm, a
-// colon, then contextstate.Mint over the canonical JSON fingerprint.
+// colon, then contextref.Mint over the canonical JSON fingerprint.
 // Repeated Compact calls on equal inputs return equal keys.
 func compactionKey(kept []provider.Message, budget, trigger, target int) string {
 	doc := fingerprintDoc{
@@ -65,5 +65,5 @@ func compactionKey(kept []provider.Message, budget, trigger, target int) string 
 	// The document holds only strings, ints, and byte slices, so
 	// Marshal cannot fail; a nil payload keeps the key well-formed.
 	payload, _ := json.Marshal(doc)
-	return CompactionAlgorithm + ":" + contextstate.Mint(payload)
+	return CompactionAlgorithm + ":" + contextref.Mint(payload)
 }

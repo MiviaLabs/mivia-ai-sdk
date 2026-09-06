@@ -1408,3 +1408,45 @@ makes three edits and no others.
 
 Teach `check_orphan_packages.py` to count callers reachable from
 non-orphan roots, so half-wired packages become visible to the gate.
+
+## Addendum: split session planner into contextsession
+
+Status: planned, extends Compact.
+
+### Addendum goal
+
+Carve the durable session planner out of `contextplan` into `contextsession`.
+
+### Addendum scope
+
+Inside:
+
+- Retain `Compact`, `Compaction`, `Window`, `Calibrated`, and `Calibrate` in `contextplan`.
+- Migrate `Planner`, `Plan`, `PlanResult`, `Elision`, `StubContent`, and `IsReasoningEvent` to `contextsession`.
+- Update `contextplan/wire.go` to use `contextref.Mint` instead of `contextstate.Mint`.
+- Update `contextplan` imports in `policy/layers.json` to depend on `contextref` and `provider`.
+- Drop `contextstate`, `memory`, and `spool` from `contextplan` imports in `policy/layers.json`.
+
+Outside:
+
+- Any token compaction algorithm changes.
+
+### Addendum API
+
+`contextplan` exported API will contain only compaction and token calibration types:
+- `Compact` and `CompactResult`.
+- `Compaction` and threshold constants.
+- `Window` with compaction configuration.
+- `Calibrate` and `Calibrated`.
+
+### Addendum tests
+
+Compaction and calibration tests remain in `contextplan/contextplan_test/`. Planner tests move to `contextsession`.
+
+### Addendum verification
+
+- `policy/layers.json` updates `contextplan` allowed imports.
+- `api/contextplan.txt` locks the streamlined compaction surface.
+- `python3 scripts/check_plan.py` passes.
+- `python3 scripts/check_deps.py` passes.
+- `python3 scripts/check_prose.py docs/plans/contextplan.md` passes.

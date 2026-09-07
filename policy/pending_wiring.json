@@ -67,7 +67,7 @@
       "permanent": true
     },
     "workspace": {
-      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section. No internal caller remains. Its own import, secretpath, is reachable only through workspace, so a future consumer must take both.",
+      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section. No internal caller remains. Phase 86 folded its secretpath dependency into it, so a future consumer takes one package.",
       "target": "external application code",
       "permanent": true
     }

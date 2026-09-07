@@ -1,10 +1,10 @@
-package secretpath_test
+package workspace_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
+	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 func TestMatchesGlobCases(t *testing.T) {
@@ -22,7 +22,7 @@ func TestMatchesGlobCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := secretpath.NewMatcher(tt.patterns)
+			m, err := workspace.NewMatcher(tt.patterns)
 			if err != nil {
 				t.Fatalf("NewMatcher: %v", err)
 			}
@@ -34,7 +34,7 @@ func TestMatchesGlobCases(t *testing.T) {
 }
 
 func TestMatchesDirectoryPattern(t *testing.T) {
-	m, err := secretpath.NewMatcher([]string{"secrets/"})
+	m, err := workspace.NewMatcher([]string{"secrets/"})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestMatchesDirectoryGlob(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := secretpath.NewMatcher(tt.patterns)
+			m, err := workspace.NewMatcher(tt.patterns)
 			if err != nil {
 				t.Fatalf("NewMatcher: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestMatchesDirectoryGlobNegation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := secretpath.NewMatcher(tt.patterns)
+			m, err := workspace.NewMatcher(tt.patterns)
 			if err != nil {
 				t.Fatalf("NewMatcher: %v", err)
 			}
@@ -140,7 +140,7 @@ func TestNewMatcherInvalidDirectoryGlob(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := secretpath.NewMatcher([]string{tt.pattern})
+			_, err := workspace.NewMatcher([]string{tt.pattern})
 			if err == nil {
 				t.Fatalf("NewMatcher(%q) = nil error, want error", tt.pattern)
 			}
@@ -190,7 +190,7 @@ func TestMatchesNegation(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m, err := secretpath.NewMatcher(tt.patterns)
+			m, err := workspace.NewMatcher(tt.patterns)
 			if err != nil {
 				t.Fatalf("NewMatcher: %v", err)
 			}
@@ -204,7 +204,7 @@ func TestMatchesNegation(t *testing.T) {
 }
 
 func TestMatchesNormalization(t *testing.T) {
-	m, err := secretpath.NewMatcher([]string{"secrets/key.pem"})
+	m, err := workspace.NewMatcher([]string{"secrets/key.pem"})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestMatchesNormalization(t *testing.T) {
 }
 
 func TestNewMatcherInvalidPattern(t *testing.T) {
-	_, err := secretpath.NewMatcher([]string{"ok/*", "bad/[unbalanced"})
+	_, err := workspace.NewMatcher([]string{"ok/*", "bad/[unbalanced"})
 	if err == nil {
 		t.Fatal("NewMatcher() = nil error, want error")
 	}
@@ -231,7 +231,7 @@ func TestNewMatcherInvalidPattern(t *testing.T) {
 }
 
 func TestNewMatcherEmptyPatternList(t *testing.T) {
-	m, err := secretpath.NewMatcher(nil)
+	m, err := workspace.NewMatcher(nil)
 	if err != nil {
 		t.Fatalf("NewMatcher(nil): %v", err)
 	}
@@ -243,7 +243,7 @@ func TestNewMatcherEmptyPatternList(t *testing.T) {
 // TestMatchesNilReceiver pins the nil guard. Without it the method
 // reads m.patterns on a nil receiver and panics.
 func TestMatchesNilReceiver(t *testing.T) {
-	var m *secretpath.Matcher
+	var m *workspace.Matcher
 	cases := []string{"secrets/key.pem", "", "/etc/passwd"}
 	for _, input := range cases {
 		t.Run(input, func(t *testing.T) {
@@ -255,7 +255,7 @@ func TestMatchesNilReceiver(t *testing.T) {
 }
 
 func TestMatchesEmptyPathInput(t *testing.T) {
-	m, err := secretpath.NewMatcher([]string{"secrets/*"})
+	m, err := workspace.NewMatcher([]string{"secrets/*"})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestMatchesEmptyPathInput(t *testing.T) {
 }
 
 func TestMatchesTraversal(t *testing.T) {
-	m, err := secretpath.NewMatcher([]string{"secrets/"})
+	m, err := workspace.NewMatcher([]string{"secrets/"})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestMatchesTraversal(t *testing.T) {
 }
 
 func TestMatchesCaseSensitive(t *testing.T) {
-	m, err := secretpath.NewMatcher([]string{"secrets/key.pem"})
+	m, err := workspace.NewMatcher([]string{"secrets/key.pem"})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
 	}
@@ -315,7 +315,7 @@ func FuzzMatches(f *testing.F) {
 		f.Add(s.pattern, s.path)
 	}
 	f.Fuzz(func(t *testing.T, pattern, path string) {
-		m, err := secretpath.NewMatcher([]string{pattern})
+		m, err := workspace.NewMatcher([]string{pattern})
 		if err != nil {
 			return
 		}

@@ -18,11 +18,11 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-three packages and the import edges
+The diagram shows the forty-two packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
-`longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
+`longtermmemory`, `provider`, `schema`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
 `contextstate` imports `contextref` alone.
@@ -30,7 +30,7 @@ package in this module. `envelope` imports `contextref` alone.
 `contextsession` imports `contextplan`, `contextstate`,
 `provider`, and `spool`. `spool` imports `tools` alone.
 `a2aloopback` imports `a2a` and `envelope`, the same two internal
-packages `a2aclient` imports. `workspace` imports `secretpath` alone.
+packages `a2aclient` imports. `workspace` imports no other package in this module.
 `runconfig` imports `agentrun`, `contextbudget`, `flow`, `heartbeat`,
 `ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
 
@@ -112,7 +112,6 @@ flowchart LR
     subagent --> tools
     subagent --> trace
     subagent --> trigger
-    workspace --> secretpath
     runconfig --> agentrun
     runconfig --> contextbudget
     runconfig --> flow

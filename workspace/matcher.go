@@ -1,4 +1,4 @@
-package secretpath
+package workspace
 
 import (
 	"fmt"

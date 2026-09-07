@@ -131,7 +131,6 @@
       "events"
     ],
     "schema": [],
-    "secretpath": [],
     "skills": [],
     "spool": [
       "tools"
@@ -165,8 +164,6 @@
     "tools": [],
     "trace": [],
     "trigger": [],
-    "workspace": [
-      "secretpath"
-    ]
+    "workspace": []
   }
 }

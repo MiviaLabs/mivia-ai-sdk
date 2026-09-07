@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 )
 
 // DefaultMaxReadBytes is the read bound a Workspace uses when its
@@ -64,7 +62,7 @@ type Workspace struct {
 	root         string
 	r            *os.Root
 	maxReadBytes int64
-	deny         *secretpath.Matcher
+	deny         *Matcher
 }
 
 // Options configures one Workspace at open time. See OpenWith.
@@ -76,7 +74,7 @@ type Options struct {
 	MaxReadBytes int64
 	// Deny refuses a path it matches, and refuses any path holding a
 	// symlink component. A nil Deny denies nothing. See ErrSecretPath.
-	Deny *secretpath.Matcher
+	Deny *Matcher
 }
 
 // Validate reports whether o names a usable Workspace. Root must not

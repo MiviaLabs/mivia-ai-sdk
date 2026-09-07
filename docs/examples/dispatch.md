@@ -55,7 +55,7 @@ Size `Options.ReplayLease` above `Handler.Handle`'s expected p99
 latency. `taskrun.Run` claims the replay key once, then calls `Handle`
 synchronously with no lease renewal. A lease shorter than `Handle`'s
 real latency re-runs `Handle` on an ordinary slow call, not only on a
-crash. An `agentrun`-backed `Handler` can exceed the 30-second
+crash. An `workflow/run`-backed `Handler` can exceed the 30-second
 `DefaultReplayLease` during normal operation, so size `ReplayLease`
 for that handler explicitly; do not rely on the default.
 
@@ -147,13 +147,13 @@ endpoint, err := dispatch.New(dispatch.Options{
 })
 ```
 
-## Wiring into agent.Run
+## Wiring into workflow.Run
 
 A caller resolving a gated `flow.Step`'s ack over this transport wraps
-`Send` into an `agent.AckWait`:
+`Send` into a `workflow.AckWait`:
 
 ```go
-ackWait := agent.AckWait(func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+ackWait := workflow.AckWait(func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 	results, err := dispatch.Send(ctx, srv.URL, []envelope.Message{msg})
 	if err != nil {
 		return envelope.Ack{}, err

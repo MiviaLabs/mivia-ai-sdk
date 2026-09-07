@@ -7,7 +7,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/dispatch"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -16,6 +15,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // deliveredAckedCounts tallies MessageDeliveredEvent and
@@ -33,7 +33,7 @@ func countingBus(t testing.TB, extra ...events.Name) (*events.Bus, *deliveredAck
 	t.Helper()
 	counts := &deliveredAckedCounts{}
 	bus := events.New()
-	if err := bus.Subscribe(agent.MessageDeliveredEvent, func(context.Context, events.Event) error {
+	if err := bus.Subscribe(workflow.MessageDeliveredEvent, func(context.Context, events.Event) error {
 		counts.mu.Lock()
 		counts.delivered++
 		counts.mu.Unlock()
@@ -41,7 +41,7 @@ func countingBus(t testing.TB, extra ...events.Name) (*events.Bus, *deliveredAck
 	}); err != nil {
 		t.Fatalf("Subscribe(MessageDeliveredEvent) error: %v", err)
 	}
-	if err := bus.Subscribe(agent.MessageAckedEvent, func(context.Context, events.Event) error {
+	if err := bus.Subscribe(workflow.MessageAckedEvent, func(context.Context, events.Event) error {
 		counts.mu.Lock()
 		counts.acked++
 		counts.mu.Unlock()
@@ -58,7 +58,7 @@ func countingBus(t testing.TB, extra ...events.Name) (*events.Bus, *deliveredAck
 	return bus, counts
 }
 
-// TestIntegrationSendClosesTheLoop drives a real agent.Agent run whose
+// TestIntegrationSendClosesTheLoop drives a real workflow.Agent run whose
 // one gated step resolves through an AckWait built from dispatch.Send,
 // against a live dispatch.Endpoint. It proves the endpoint answers the
 // client's opened loop and that both sides' buses see
@@ -89,7 +89,7 @@ func TestIntegrationSendClosesTheLoop(t *testing.T) {
 	srv := httptest.NewServer(endpoint.Handler())
 	defer srv.Close()
 
-	ackWait := agent.AckWait(func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+	ackWait := workflow.AckWait(func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		results, err := dispatch.Send(ctx, srv.URL, []envelope.Message{msg})
 		if err != nil {
 			return envelope.Ack{}, err
@@ -110,12 +110,12 @@ func TestIntegrationSendClosesTheLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New() error: %v", err)
 	}
-	a, err := agent.New(senderID, discovery.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
+	a, err := workflow.New(senderID, discovery.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New() error: %v", err)
+		t.Fatalf("workflow.New() error: %v", err)
 	}
 
-	clientBus, clientCounts := countingBus(t, flow.StepCompletedEvent, agent.ThreadVerifiedEvent)
+	clientBus, clientCounts := countingBus(t, flow.StepCompletedEvent, workflow.ThreadVerifiedEvent)
 
 	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, ackWait, clientBus, nil, roomID, nil)
 	if err != nil {

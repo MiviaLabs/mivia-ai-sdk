@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // panelTool mirrors the workflow engine's agent_panel step: one
@@ -48,7 +48,7 @@ func (p *panelTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) 
 // panelMemberRunner builds one one-step subagent runner whose member
 // verdict is its final status. A failing member ends at an error
 // instead.
-func panelMemberRunner(t *testing.T, name string, fail bool) *agentrun.Runner {
+func panelMemberRunner(t *testing.T, name string, fail bool) *run.Runner {
 	t.Helper()
 	final := "ok-" + name
 	plan, err := flow.New([]flow.Step{{ID: "work", To: final, Payload: "review"}}, nil)
@@ -64,11 +64,11 @@ func panelMemberRunner(t *testing.T, name string, fail bool) *agentrun.Runner {
 	if err := reg.Add(memberTool{name: name, fail: fail}); err != nil {
 		t.Fatalf("registry.Add member %s: %v", name, err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "panel-"+name, plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New member %s: %v", name, err)
+		t.Fatalf("run.New member %s: %v", name, err)
 	}
 	return runner
 }
@@ -93,13 +93,13 @@ func (m memberTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) 
 // reviewPanelPlan wires the panel step, a synthesis step chained to
 // its output, a review gate routing on the panel verdict, and both
 // gate branches.
-func reviewPanelPlan(t *testing.T, artifacts *agentrun.Artifacts) *flow.Definition {
+func reviewPanelPlan(t *testing.T, artifacts *run.Artifacts) *flow.Definition {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "review_panel", To: "paneled", Payload: "review-the-change"},
 		{
 			ID: "synthesis", To: "synthesized", Needs: []string{"review_panel"},
-			PayloadFrom: agentrun.PayloadOf("review_panel", artifacts),
+			PayloadFrom: run.PayloadOf("review_panel", artifacts),
 		},
 		{
 			ID: "review_gate", To: "gated", Needs: []string{"synthesis"}, Payload: "route-verdict",
@@ -143,10 +143,10 @@ func reviewPanelMachine(t *testing.T) *machine.Definition {
 // proceeds over the two survivors, and the gate still approves the
 // merge, naming the failed member in the artifact.
 func TestReviewPanelPartialFailureStillApproves(t *testing.T) {
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	plan := reviewPanelPlan(t, artifacts)
 	m := reviewPanelMachine(t)
-	if err := agentrun.ValidateMatrix(plan, m); err != nil {
+	if err := run.ValidateMatrix(plan, m); err != nil {
 		t.Fatalf("ValidateMatrix = %v, want nil", err)
 	}
 	reg := tools.New()
@@ -161,12 +161,12 @@ func TestReviewPanelPartialFailureStillApproves(t *testing.T) {
 		e2e.PrefixTool{ToolName: "merge", Prefix: "merged:"},
 		e2e.PrefixTool{ToolName: "rework", Prefix: "reworked:"},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "panel-orchestrator", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-panel", machine.InOut{})
 	if err != nil {
@@ -191,7 +191,7 @@ func TestReviewPanelPartialFailureStillApproves(t *testing.T) {
 // policy: when every member fails, the panel step itself fails and
 // the run error names the panel.
 func TestReviewPanelAllMembersFailFailsRun(t *testing.T) {
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	plan := reviewPanelPlan(t, artifacts)
 	m := reviewPanelMachine(t)
 	reg := tools.New()
@@ -205,12 +205,12 @@ func TestReviewPanelAllMembersFailFailsRun(t *testing.T) {
 		e2e.PrefixTool{ToolName: "merge", Prefix: "merged:"},
 		e2e.PrefixTool{ToolName: "rework", Prefix: "reworked:"},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "panel-orchestrator", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	_, _, err = runner.Run(context.Background(), "thread-panel-dead", machine.InOut{})
 	if err == nil {

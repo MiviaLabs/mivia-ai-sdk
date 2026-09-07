@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
-// pipelineWork returns a work func that drives one real agentrun
+// pipelineWork returns a work func that drives one real workflow/run
 // pipeline and counts its own calls.
 func pipelineWork(t *testing.T, calls *int) func(context.Context) error {
 	t.Helper()
@@ -33,15 +33,15 @@ func pipelineWork(t *testing.T, calls *int) func(context.Context) error {
 	if err := reg.Add(e2e.PrefixTool{ToolName: "build", Prefix: "built:"}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	artifacts := &agentrun.Artifacts{}
-	runner, err := agentrun.New(agentrun.Options{
+	artifacts := &run.Artifacts{}
+	runner, err := run.New(run.Options{
 		Agent:     e2eAgent(t, "ceremony-agent", plan),
 		Machine:   m,
 		Tools:     reg,
 		Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return func(ctx context.Context) error {
 		*calls++
@@ -61,7 +61,7 @@ func pipelineWork(t *testing.T, calls *int) func(context.Context) error {
 }
 
 // TestTaskrunWrapsARun proves the ledger ceremony drives one full
-// agentrun pipeline once, replays return the terminal sentinel
+// workflow/run pipeline once, replays return the terminal sentinel
 // without re-running work, and a failed dependency blocks its
 // dependent.
 func TestTaskrunWrapsARun(t *testing.T) {

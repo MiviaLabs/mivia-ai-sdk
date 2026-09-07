@@ -71,12 +71,12 @@ mirrors `api/heartbeat.txt`.
 owning a clock. This keeps a test deterministic: the test drives a
 fake clock and asserts `Alive` and `Dead` at exact instants. The same
 `Monitor`, with no internal clock dependency, also serves a real
-caller such as `agent.Run`, which passes wall-clock time. One
+caller such as `workflow.Run`, which passes wall-clock time. One
 implementation, two callers, no clock abstraction needed.
 
 ## Cross-references
 
-- [agent.md](agent.md) — `Agent.Run` takes an optional `Monitor`
+- [workflow.md](workflow.md) — `Agent.Run` takes an optional `Monitor`
   parameter and beats one id per gated step.
 
 ## Usage

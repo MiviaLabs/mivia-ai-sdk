@@ -70,7 +70,7 @@ type ndjsonAnswerLine struct {
 // already canceled but whose background write or read has not yet
 // resolved, returns ErrNotifierBusy immediately, without touching r
 // or w. A caller that wires this closure into more than one
-// concurrent call site (for example two independent agent.Run calls
+// concurrent call site (for example two independent workflow.Run calls
 // sharing one stdio pipe) must serialize its own calls or expect
 // ErrNotifierBusy on overlap.
 //

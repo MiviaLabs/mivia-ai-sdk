@@ -192,7 +192,7 @@ calls opt in explicitly.
 publishes and never enforces. No function dedups a call by
 `ResourceKey`. Neither `Run` nor `RunScoped` truncates or rejects a
 result using `ResultBudgetOf`. A future agent-binding caller may
-enforce them when it wires a `Registry` into `agent.Run`. `Timeout`
+enforce them when it wires a `Registry` into `workflow.Run`. `Timeout`
 left this group: the registry enforces it; see the next section.
 
 ### Run timeout backstop

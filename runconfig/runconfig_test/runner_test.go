@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -16,6 +14,8 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // stubTool is an external tool the runner tests register by name.
@@ -44,15 +44,15 @@ func loadForRunner(t *testing.T, register bool) *runconfig.Definition {
 }
 
 // agentOver builds an Agent over d's loaded plan.
-func agentOver(t *testing.T, d *runconfig.Definition) *agent.Agent {
+func agentOver(t *testing.T, d *runconfig.Definition) *workflow.Agent {
 	t.Helper()
 	id, err := identity.New()
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "runner-test", Capabilities: []string{"cap"}}, d.Plan)
+	a, err := workflow.New(id, discovery.Card{Name: "runner-test", Capabilities: []string{"cap"}}, d.Plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
 	return a
 }
@@ -82,8 +82,8 @@ func TestRunnerResolves(t *testing.T) {
 	t.Run("nil agent", func(t *testing.T) {
 		d := loadForRunner(t, true)
 		_, err := d.Runner()
-		if !errors.Is(err, agentrun.ErrNoAgent) {
-			t.Fatalf("err = %v, want agentrun.ErrNoAgent", err)
+		if !errors.Is(err, run.ErrNoAgent) {
+			t.Fatalf("err = %v, want run.ErrNoAgent", err)
 		}
 	})
 	t.Run("bad budget", func(t *testing.T) {
@@ -172,9 +172,9 @@ func TestRunnerResolvesNewKindsStub(t *testing.T) {
 	}
 }
 
-// innerRunner builds a minimal *agentrun.Runner: a two-status machine,
+// innerRunner builds a minimal *run.Runner: a two-status machine,
 // a one-step plan, and one registered tool matching the step ID.
-func innerRunner(t *testing.T) *agentrun.Runner {
+func innerRunner(t *testing.T) *run.Runner {
 	t.Helper()
 	m, err := machine.New("start", machine.Transition{From: "start", To: "done", Trigger: "go"})
 	if err != nil {
@@ -188,26 +188,26 @@ func innerRunner(t *testing.T) *agentrun.Runner {
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
+	a, err := workflow.New(id, discovery.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
 	reg := tools.New()
 	if err := reg.Add(stubTool{name: "only"}); err != nil {
 		t.Fatalf("reg.Add: %v", err)
 	}
-	r, err := agentrun.New(agentrun.Options{Agent: a, Machine: m, Tools: reg})
+	r, err := run.New(run.Options{Agent: a, Machine: m, Tools: reg})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return r
 }
 
 // TestRunnerResolvesAsToolReal proves AsToolKind composes with a real
-// nested *agentrun.Runner, driving it to completion through the full
+// nested *run.Runner, driving it to completion through the full
 // agent chain. Unlike the five file/diff tools' typed-argument
 // contract, AsTool.Run accepts a plain string input, matching
-// subagent.FlowTool, so it runs unchanged through agentrun's chain.
+// subagent.FlowTool, so it runs unchanged through workflow/run's chain.
 func TestRunnerResolvesAsToolReal(t *testing.T) {
 	nested := innerRunner(t)
 	asTool := subagent.AsTool("s1", nested, subagent.ToolOptions{})

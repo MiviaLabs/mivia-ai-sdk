@@ -12,7 +12,7 @@ each block alone; e2e proves the handoffs. The harness below mirrors
   and a one-capability card.
 - `PrefixTool` — returns its prefix joined to the payload, so each
   step records a distinct, deterministic result.
-- `EscalateTool` — fails with an error wrapping `agent.ErrEscalated`,
+- `EscalateTool` — fails with an error wrapping `workflow.ErrEscalated`,
   so a wired `Ask` round trip can resolve it.
 - `Recorder` — `NewRecorder` builds one; `Handler` subscribes it;
   `Names` reports every observed event name in arrival order.
@@ -35,7 +35,7 @@ wrapping `ErrFault`; every other call passes through.
   faults.
 - `FaultCompleter` — wraps a `provider.Completer`. Its `FaultOn`-th
   `Chat` or `ChatStream` call faults.
-- `FaultWait` — wraps an `agent.AckWait`. Its `FaultOn`-th ack
+- `FaultWait` — wraps a `workflow.AckWait`. Its `FaultOn`-th ack
   resolution faults.
 - `HangCompleter` — blocks `Chat` and `ChatStream` until the context
   cancels, then returns the context error.
@@ -90,7 +90,7 @@ behavior:
   one-step, non-panel plan; the panic propagates out of `Run` uncaught
   and the test's own `recover` sees a value matching `ErrFault`.
 - `spool_test.go` — a `spool.SpoolTool` wired around an oversized-
-  result tool inside an `agentrun` step; the spooled view names a ref
+  result tool inside a `workflow/run` step; the spooled view names a ref
   a follow-up `Spool.Load` call resolves back to the full result.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map.
@@ -111,9 +111,9 @@ See [../plans/e2e.md](../plans/e2e.md) for the scenario map.
 
 The fault kit owns one sentinel, `ErrFault`. Every injected fault
 wraps it, so a scenario asserts `errors.Is(runErr, e2e.ErrFault)`.
-`EscalateTool.Run` wraps `agent.ErrEscalated`, so a caller with no
+`EscalateTool.Run` wraps `workflow.ErrEscalated`, so a caller with no
 `Ask` wired sees the run fail with an error matching
-`agent.ErrEscalated`. Pinned by `e2e_test/escalation_test.go`.
+`workflow.ErrEscalated`. Pinned by `e2e_test/escalation_test.go`.
 
 ## Invariants
 

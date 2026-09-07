@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // TestFaultStoreHangSurfacesDeadline proves a ledger store that hangs
@@ -21,7 +21,7 @@ import (
 func TestFaultStoreHangSurfacesDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 
 	// The store hangs on its first call: Admit.Load.
 	store := &e2e.FaultStore{Store: ledger.NewMemStore(), HangOn: 1}
@@ -49,12 +49,12 @@ func TestFaultStoreHangSurfacesDeadline(t *testing.T) {
 		e2e.PrefixTool{ToolName: "insp", Prefix: "built:"},
 		&shipCeremonyTool{l: l},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "fault-store-hang-agent", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 
 	_, _, err = runner.Run(ctx, "thread-store-hang", machine.InOut{})

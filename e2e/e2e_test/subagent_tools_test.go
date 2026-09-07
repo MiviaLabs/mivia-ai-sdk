@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // subagentToolCommand marshals one internal-tool command to the
@@ -30,7 +30,7 @@ func subagentToolCommand(t *testing.T, cmd any) string {
 // ledger, a memory store, and the sub plan and machine wiring one
 // step per internal tool.
 func internalToolsFixture(t *testing.T, ledgerCmd, memoryCmd string) (
-	*ledger.Ledger, *memory.Store, *flow.Definition, *machine.Definition, *tools.Registry, *agentrun.Artifacts,
+	*ledger.Ledger, *memory.Store, *flow.Definition, *machine.Definition, *tools.Registry, *run.Artifacts,
 ) {
 	t.Helper()
 	l, err := ledger.New(nil, nil)
@@ -77,7 +77,7 @@ func internalToolsFixture(t *testing.T, ledgerCmd, memoryCmd string) (
 		subagent.LedgerTool("ledgerstep", l, "sub-actor", time.Minute),
 		subagent.MemoryTool("memstep", store),
 	)
-	return l, store, plan, m, reg, &agentrun.Artifacts{}
+	return l, store, plan, m, reg, &run.Artifacts{}
 }
 
 // TestSubagentDrivesInternalTools proves one spawned subagent runs a
@@ -94,12 +94,12 @@ func TestSubagentDrivesInternalTools(t *testing.T) {
 	l, store, plan, m, reg, subArtifacts :=
 		internalToolsFixture(t, ledgerCmd, memoryCmd)
 
-	subRunner, err := agentrun.New(agentrun.Options{
+	subRunner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "worker", plan), Machine: m,
 		Tools: reg, Artifacts: subArtifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New sub: %v", err)
+		t.Fatalf("run.New sub: %v", err)
 	}
 
 	orchPlan, err := flow.New([]flow.Step{
@@ -113,17 +113,17 @@ func TestSubagentDrivesInternalTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New orch: %v", err)
 	}
-	orchArtifacts := &agentrun.Artifacts{}
+	orchArtifacts := &run.Artifacts{}
 	orchReg := tools.New()
 	addTools(t, orchReg, subagent.AsTool("delegate", subRunner, subagent.ToolOptions{
 		Artifact: "ledgerstep", Artifacts: subArtifacts,
 	}))
-	orch, err := agentrun.New(agentrun.Options{
+	orch, err := run.New(run.Options{
 		Agent: e2eAgent(t, "orchestrator", orchPlan), Machine: orchMachine,
 		Tools: orchReg, Artifacts: orchArtifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New orch: %v", err)
+		t.Fatalf("run.New orch: %v", err)
 	}
 
 	status, _, err := orch.Run(ctx, "thread-subtools", machine.InOut{})

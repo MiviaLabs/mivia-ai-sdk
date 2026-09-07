@@ -18,7 +18,7 @@ package e2e
   func (t EscalateTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t PrefixTool) Name() (string)
   func (t PrefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
-  func NewAgent(name string, plan *flow.Definition) (*agent.Agent, error)
+  func NewAgent(name string, plan *flow.Definition) (*workflow.Agent, error)
   func NewRecorder() (*Recorder)
   func NewThreadCapture() (*ThreadCapture)
   type EscalateTool struct {
@@ -38,7 +38,7 @@ package e2e
   HangOn int32
 }
   type FaultWait struct {
-  Inner agent.AckWait
+  Inner workflow.AckWait
   FaultOn int32
 }
   type HangCompleter struct {

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // wireMachine is the JSON form of the machine section.
@@ -67,7 +67,7 @@ type wireOptions struct {
 	Trace  bool        `json:"trace"`
 }
 
-// wireBudget is the JSON form of an agentrun.Options.Budget cap.
+// wireBudget is the JSON form of a run.Options.Budget cap.
 type wireBudget struct {
 	MaxBytes  int `json:"max_bytes"`
 	MaxEvents int `json:"max_events"`
@@ -97,7 +97,7 @@ type Definition struct {
 	// Machine is the resolved status model.
 	Machine *machine.Definition
 	// Options carries the string scalars and the caller-set Agent.
-	Options agentrun.Options
+	Options run.Options
 	// Tools lists the document's external tool names.
 	Tools []string
 	// Bindings holds one entry per bound step, in plan order.

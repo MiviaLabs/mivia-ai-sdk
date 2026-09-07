@@ -5,8 +5,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
@@ -14,13 +12,15 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // pipelinePlan builds one plan holding a sequential step, a
 // two-member panel, a two-step sub-workflow, and a two-iteration
 // loop. The loop child's Route alternates its final status, so the
 // parent never needs a self-row machine.New forbids.
-func pipelinePlan(t *testing.T, artifacts *agentrun.Artifacts, parity *int32) *flow.Definition {
+func pipelinePlan(t *testing.T, artifacts *run.Artifacts, parity *int32) *flow.Definition {
 	t.Helper()
 	subChild, err := flow.New([]flow.Step{
 		{ID: "s1", To: "subMid", Payload: "sub-a"},
@@ -60,7 +60,7 @@ func pipelinePlan(t *testing.T, artifacts *agentrun.Artifacts, parity *int32) *f
 		},
 		{
 			ID: "ship", To: "shipped", Needs: []string{"looper"},
-			PayloadFrom: agentrun.PayloadOf("review", artifacts),
+			PayloadFrom: run.PayloadOf("review", artifacts),
 		},
 	}, []flow.Panel{{"p1", "p2"}})
 	if err != nil {
@@ -119,13 +119,13 @@ func pipelineRegistry(t *testing.T) *tools.Registry {
 	return reg
 }
 
-// TestPipelineRunsEveryPlanShape drives one agentrun run through a
+// TestPipelineRunsEveryPlanShape drives one workflow/run run through a
 // sequential step, a panel wave, a sub-workflow, and a two-iteration
 // loop. It asserts the final status, the artifacts, the stored refs,
 // the event counts, and the validator's agreement.
 func TestPipelineRunsEveryPlanShape(t *testing.T) {
 	ctx := context.Background()
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	parity := int32(0)
 	plan := pipelinePlan(t, artifacts, &parity)
 	m := pipelineMachine(t)
@@ -135,12 +135,12 @@ func TestPipelineRunsEveryPlanShape(t *testing.T) {
 	}
 
 	// The validator and the runner must agree on this machine.
-	if err := agentrun.ValidateMatrix(plan, m); err != nil {
+	if err := run.ValidateMatrix(plan, m); err != nil {
 		t.Fatalf("ValidateMatrix = %v, want nil", err)
 	}
 
 	rec := e2e.NewRecorder()
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent:     e2eAgent(t, "pipeline-agent", plan),
 		Machine:   m,
 		Tools:     pipelineRegistry(t),
@@ -148,11 +148,11 @@ func TestPipelineRunsEveryPlanShape(t *testing.T) {
 		Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent, agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
+		workflow.MessageDeliveredEvent, workflow.MessageAckedEvent,
+		workflow.ThreadVerifiedEvent,
 	} {
 		if err := runner.Bus().Subscribe(name, rec.Handler()); err != nil {
 			t.Fatalf("Subscribe(%s): %v", name, err)
@@ -176,7 +176,7 @@ func TestPipelineRunsEveryPlanShape(t *testing.T) {
 // assertPipelineArtifacts checks every recorded artifact and its
 // content-addressed store ref, and that no panel member leaked into
 // the ack chain.
-func assertPipelineArtifacts(t *testing.T, artifacts *agentrun.Artifacts, store *memory.Store) {
+func assertPipelineArtifacts(t *testing.T, artifacts *run.Artifacts, store *memory.Store) {
 	t.Helper()
 	wantArtifacts := map[string]string{
 		"review": "reviewed:invoice-42",
@@ -221,20 +221,20 @@ func assertPipelineEvents(t *testing.T, rec *e2e.Recorder) {
 		}
 		return n
 	}
-	if got := count(agent.MessageDeliveredEvent); got != 10 {
+	if got := count(workflow.MessageDeliveredEvent); got != 10 {
 		t.Errorf("delivered events = %d, want 10", got)
 	}
-	if got := count(agent.MessageAckedEvent); got != 10 {
+	if got := count(workflow.MessageAckedEvent); got != 10 {
 		t.Errorf("acked events = %d, want 10", got)
 	}
-	if got := count(agent.ThreadVerifiedEvent); got != 1 {
+	if got := count(workflow.ThreadVerifiedEvent); got != 1 {
 		t.Errorf("thread-verified events = %d, want 1", got)
 	}
 	names := rec.Names()
-	if last := names[len(names)-1]; last != agent.ThreadVerifiedEvent {
+	if last := names[len(names)-1]; last != workflow.ThreadVerifiedEvent {
 		t.Errorf("last event = %s, want the thread verification", last)
 	}
-	if names[0] != agent.MessageDeliveredEvent || names[1] != agent.MessageAckedEvent {
+	if names[0] != workflow.MessageDeliveredEvent || names[1] != workflow.MessageAckedEvent {
 		t.Errorf("first events = %s,%s, want a delivered then acked pair", names[0], names[1])
 	}
 }

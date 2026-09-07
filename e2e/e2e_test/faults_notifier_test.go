@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // TestFaultNotifierSurfacesEscalationAsStepFailure proves a channel
@@ -30,12 +30,12 @@ func TestFaultNotifierSurfacesEscalationAsStepFailure(t *testing.T) {
 		},
 		FaultOn: 1,
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "fault-notifier-agent", plan), Machine: m,
 		Tools: reg, Ask: ask.Notify, AskTo: "human-1",
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 
 	_, _, err = runner.Run(ctx, "thread-notifier", machine.InOut{})

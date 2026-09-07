@@ -9,12 +9,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // ErrMaxDepth reports a spawn past the tool's depth bound.
@@ -30,7 +30,7 @@ const defaultMaxDepth = 3
 // set, receives the spawned run's agent events.
 type ToolOptions struct {
 	Artifact  string
-	Artifacts *agentrun.Artifacts
+	Artifacts *run.Artifacts
 	Depth     int
 	Bus       *events.Bus
 	// Tracer opens one span per spawn, named subagent.spawn, carrying
@@ -48,7 +48,7 @@ var threadSeq uint64
 // depth, so a subagent spawning subagents stops at the bound. The
 // input string seeds the run's starting record; the result is the
 // named artifact, or the final status when no artifact is named.
-func AsTool(name string, r *agentrun.Runner, opts ToolOptions) tools.Tool {
+func AsTool(name string, r *run.Runner, opts ToolOptions) tools.Tool {
 	return &subTool{name: name, runner: r, opts: opts}
 }
 
@@ -58,7 +58,7 @@ const subToolMaxResultBytes = 64 << 10
 // subTool adapts one runner to the tools.Tool interface.
 type subTool struct {
 	name   string
-	runner *agentrun.Runner
+	runner *run.Runner
 	opts   ToolOptions
 	once   sync.Once
 }
@@ -132,8 +132,8 @@ func (t *subTool) attachForwarder() {
 		return nil
 	}
 	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent, agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
+		workflow.MessageDeliveredEvent, workflow.MessageAckedEvent,
+		workflow.ThreadVerifiedEvent,
 	} {
 		_ = src.Subscribe(name, forward)
 	}

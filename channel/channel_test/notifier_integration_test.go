@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // ackWaitFromNotifier is the fixed identity string the wrapper
@@ -15,10 +15,10 @@ import (
 const ackWaitFromNotifier = "receiver-identity"
 
 // TestNotifierBacksAckWait proves a channel.Notifier-backed closure
-// satisfies agent.AckWait's exact signature. It wraps a
+// satisfies workflow.AckWait's exact signature. It wraps a
 // channel.Notifier in a second closure that sources
 // envelope.Ack.From from a fixed identity string, assigns the result
-// to a variable of the real agent.AckWait type, and calls it with a
+// to a variable of the real workflow.AckWait type, and calls it with a
 // real envelope.Message to check the resulting envelope.Ack.
 func TestNotifierBacksAckWait(t *testing.T) {
 	var notify channel.Notifier = func(ctx context.Context, q channel.Question) (channel.Answer, error) {
@@ -29,7 +29,7 @@ func TestNotifierBacksAckWait(t *testing.T) {
 		}, nil
 	}
 
-	var wait agent.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+	var wait workflow.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		q := channel.Question{
 			ID:        msg.ID,
 			Recipient: ackWaitFromNotifier,
@@ -99,7 +99,7 @@ func TestNotifierBacksAckWaitCorrected(t *testing.T) {
 		}, nil
 	}
 
-	var wait agent.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+	var wait workflow.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		q := channel.Question{
 			ID:        msg.ID,
 			Recipient: ackWaitFromNotifier,

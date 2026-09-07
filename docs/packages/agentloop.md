@@ -553,13 +553,13 @@ path exactly.
 
 ## Why this shape
 
-`agentloop` sits beside `flow` and `agentrun` as a second composition
+`agentloop` sits beside `flow` and `workflow/run` as a second composition
 path for tool calling, not a change to the step-graph runner: a
 caller with a single model loop and no branching workflow does not
 need `machine.Definition` or `flow.Definition` to drive one. `Run`
 calls `Registry.RunScoped`, never `Registry.Run`, so a model-chosen
 call always passes through the caller's `Scope`, matching
-`agentrun.Runner.chain`'s precedent of never letting a model bypass
+`run.Runner.chain`'s precedent of never letting a model bypass
 scoping. `Options.Trim`'s signature stays type-compatible with a
 closure over `contextplan.Planner.Plan`, so a caller can bind context
 trimming without `agentloop` importing `contextplan` itself. See
@@ -573,7 +573,7 @@ trimming without `agentloop` importing `contextplan` itself. See
   `ResultBudgetTool` publishes the bound the render path truncates
   against; `tools` never enforces it itself. See "Render path" above.
 - [hooks.md](hooks.md) — `PointPreTool`, `PointPostTool`, and
-  `PointStop` fire the same way `agentrun.Runner.Run` fires them.
+  `PointStop` fire the same way `run.Runner.Run` fires them.
 - [trace.md](trace.md) — a wired `Tracer` opens one span per
   iteration and one per tool call.
 - [events.md](events.md) — `Bus.Subscribe` and `Bus.Emit` back the

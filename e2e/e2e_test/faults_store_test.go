@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // shipCeremonyTool is a step tool that runs a real ledger ceremony:
@@ -49,7 +49,7 @@ func (s *shipCeremonyTool) Run(ctx context.Context, in tools.InOut) (tools.Out, 
 // leaves step one's artifact in the bag.
 func TestFaultStoreMidCeremonyFailsRunAndKeepsStepOneArtifact(t *testing.T) {
 	ctx := context.Background()
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 
 	// The store faults on its fifth call: Admit.Load, Admit.CAS,
 	// Claim.Load, Claim.CAS, then Complete.Load.
@@ -78,12 +78,12 @@ func TestFaultStoreMidCeremonyFailsRunAndKeepsStepOneArtifact(t *testing.T) {
 		e2e.PrefixTool{ToolName: "insp", Prefix: "built:"},
 		&shipCeremonyTool{l: l},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "fault-store-agent", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 
 	_, _, err = runner.Run(ctx, "thread-store", machine.InOut{})

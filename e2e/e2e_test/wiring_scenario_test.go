@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -16,6 +15,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 	"github.com/MiviaLabs/mivia-ai-sdk/usage"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // wiredCompleter answers one fixed reply and can fail. It backs the
@@ -52,7 +52,7 @@ func (c *wiredCompleter) ChatStream(ctx context.Context, req provider.Request) (
 // wiredSubRunner builds the spawned runner: a one-step plan whose tool
 // is ProviderRegistryTool over a primary that fails and a usage-wrapped
 // backup that answers, both traced by tr.
-func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *usage.Accumulator, session string, primaryCalls *int) *agentrun.Runner {
+func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *usage.Accumulator, session string, primaryCalls *int) *run.Runner {
 	t.Helper()
 	wrapped, err := usage.WrapCompleter(session, acc, &wiredCompleter{name: "backup", reply: "backup says hi"})
 	if err != nil {
@@ -79,12 +79,12 @@ func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *usage.Accumulator, sess
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "wired-sub", plan), Machine: m,
 		Tools: toolReg, Tracer: tr,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return runner
 }
@@ -126,12 +126,12 @@ func TestWiredStackComposesAllFour(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "wired-orchestrator", plan), Machine: m,
 		Tools: reg, Hooks: hookReg, Tracer: tr,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-wired", machine.InOut{})
 	if err != nil {

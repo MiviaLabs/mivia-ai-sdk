@@ -12,7 +12,7 @@ const (
 	// PointPreTool fires before a tool call runs.
 	PointPreTool
 	// PointPostTool fires once one tool call completes. The payload
-	// type depends on the fire site: agentrun/wire.go sends the
+	// type depends on the fire site: workflow/run/wire.go sends the
 	// confirmed envelope.Ack; agentloop/toolcall.go sends the
 	// provider.ToolCall. Handlers must type-switch the payload.
 	PointPostTool

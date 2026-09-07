@@ -32,19 +32,19 @@ package in this module. `envelope` imports `contextref` alone.
 `provider`, and `spool`. `spool` imports `tools` alone.
 `a2aloopback` imports `a2a` and `envelope`, the same two internal
 packages `a2aclient` imports. `workspace` imports `secretpath` alone.
-`runconfig` imports `agentrun`, `contextbudget`, `flow`, `heartbeat`,
+`runconfig` imports `workflow/run`, `contextbudget`, `flow`, `heartbeat`,
 `ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
 
 ```mermaid
 flowchart LR
-    agent --> identity
-    agent --> discovery
-    agent --> flow
-    agent --> envelope
-    agent --> events
-    agent --> machine
-    agent --> heartbeat
-    agent --> contextbudget
+    workflow --> identity
+    workflow --> discovery
+    workflow --> flow
+    workflow --> envelope
+    workflow --> events
+    workflow --> machine
+    workflow --> heartbeat
+    workflow --> contextbudget
     envelope --> contextref
     contextstate --> contextref
     contextplan --> contextref
@@ -87,28 +87,28 @@ flowchart LR
     scheduler --> events
     a2aack --> a2aclient
     a2aack --> envelope
-    dispatch --> agent
+    dispatch --> workflow
     dispatch --> envelope
     dispatch --> events
     dispatch --> ledger
     dispatch --> room
     dispatch --> taskrun
-    agentrun --> agent
-    agentrun --> channel
-    agentrun --> contextbudget
-    agentrun --> envelope
-    agentrun --> events
-    agentrun --> flow
-    agentrun --> heartbeat
-    agentrun --> hooks
-    agentrun --> identity
-    agentrun --> machine
-    agentrun --> memory
-    agentrun --> tools
-    agentrun --> trace
+    run["workflow/run"] --> workflow
+    run["workflow/run"] --> channel
+    run["workflow/run"] --> contextbudget
+    run["workflow/run"] --> envelope
+    run["workflow/run"] --> events
+    run["workflow/run"] --> flow
+    run["workflow/run"] --> heartbeat
+    run["workflow/run"] --> hooks
+    run["workflow/run"] --> identity
+    run["workflow/run"] --> machine
+    run["workflow/run"] --> memory
+    run["workflow/run"] --> tools
+    run["workflow/run"] --> trace
     taskrun --> ledger
-    subagent --> agent
-    subagent --> agentrun
+    subagent --> workflow
+    subagent --> run["workflow/run"]
     subagent --> channel
     subagent --> discovery
     subagent --> envelope
@@ -128,7 +128,7 @@ flowchart LR
     subagent --> trace
     subagent --> trigger
     workspace --> secretpath
-    runconfig --> agentrun
+    runconfig --> run["workflow/run"]
     runconfig --> contextbudget
     runconfig --> flow
     runconfig --> heartbeat
@@ -139,7 +139,7 @@ flowchart LR
     runconfig --> subagent
     runconfig --> tools
     runconfig --> trace
-    e2e --> agent
+    e2e --> workflow
     e2e --> channel
     e2e --> discovery
     e2e --> envelope
@@ -235,7 +235,7 @@ flowchart LR
   duplicate capability. `Match` compares a capability request against
   the card, case-insensitive and exact. See
   [packages/discovery.md](packages/discovery.md).
-- `agent/` — the composition layer. It provides `Agent`, `New`,
+- `workflow/` — the composition layer. It provides `Agent`, `New`,
   `Name`, and `Capabilities`. `New` wires an `identity.Identity`, a
   `discovery.Card`, and a `flow.Definition` into one agent. It rejects
   a nil identity, an invalid card, and a nil plan, in that order. It
@@ -269,18 +269,18 @@ flowchart LR
   byte total of every message built so far plus the step about to run.
   A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
   without beating, waiting, or emitting `MessageAckedEvent` for that
-  step. A panel step reaches no `Fits` check either. `agent` imports
+  step. A panel step reaches no `Fits` check either. `workflow` imports
   `envelope`, `events`, `machine`, `heartbeat`, and `contextbudget`;
-  none of those five packages imports `agent` or any of the other
+  none of those five packages imports `workflow` or any of the other
   four. `provider`, `tools`, `mcp`, `ledger`, and `memory` compose
   around `Run` through `AckWait` and plan construction, not through a
   direct import edge; the flowchart above draws no new arrow for them.
-  See [packages/agent.md](packages/agent.md).
+  See [packages/workflow.md](packages/workflow.md).
 - `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
   `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
   `MissedEvent`. `Monitor` tracks liveness by time: it records the
   last beat per id and reports which ids have gone silent past a
-  fixed timeout. `agent`, `agentrun`, `runconfig`, and `subagent`
+  fixed timeout. `workflow`, `workflow/run`, `runconfig`, and `subagent`
   import it. It imports `events` only, for the `MissedEvent`
   constant. See [packages/heartbeat.md](packages/heartbeat.md).
 - `a2a/` — the A2A v1.0 mapping. It provides `Part`, `Mapped`,
@@ -312,14 +312,14 @@ flowchart LR
   `a2aack`'s tests do.
 - `a2aack/` — the remote step ack. It provides `Options`,
   `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
-  a func matching `agent.AckWait`'s signature, `func(context.Context,
+  a func matching `workflow.AckWait`'s signature, `func(context.Context,
   envelope.Message) (envelope.Ack, error)`, that sends a gated step as
   a remote task, polls `Status`, fetches `Result`, re-verifies its
   signature, and builds a confirmed ack keyed off the sent message. A
   failed, canceled, or rejected task ends the poll with
   `ErrRemoteFailed`, and so does a state the loop cannot resolve.
   `a2aack` imports `a2aclient` and `envelope`; it returns an unnamed
-  func rather than importing `agent` for the `AckWait` name. It
+  func rather than importing `workflow` for the `AckWait` name. It
   carries no a2a-go import of its own. See
   [packages/a2aack.md](packages/a2aack.md).
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
@@ -333,12 +333,12 @@ flowchart LR
   diagnostics called after their point in the ladder; their error
   return never fails a line. `Send` posts a batch of signed messages
   as one NDJSON request and parses the reply into one `SendResult` per
-  line, in order. `dispatch` imports `agent`, `envelope`, `events`,
+  line, in order. `dispatch` imports `workflow`, `envelope`, `events`,
   `ledger`, `room`, and `taskrun`; it carries no third-party or
   network-transport import beyond the standard library `net/http`. See
   [packages/dispatch.md](packages/dispatch.md).
-- `agentrun/` — the config-struct composition layer over `agent.Run`.
-  See [packages/agentrun.md](packages/agentrun.md).
+- `workflow/run/` — the config-struct composition layer over `workflow.Run`.
+  See [packages/workflow/run.md](packages/workflow/run.md).
 - `taskrun/` — the ledger admit, claim, run, complete ceremony around
   one work func. See [packages/taskrun.md](packages/taskrun.md).
 - `subagent/` — the SDK's blocks as tools. `AsTool` wraps a built
@@ -363,7 +363,7 @@ flowchart LR
   before `DecodeArguments`, and a wired `Options.Audit` receives one
   `AuditRecord` per completion and per tool call, keeping `agentloop`
   envelope-agnostic: a caller signs its own audit trail from those
-  records, outside the block, the way `agent.confirmStep` signs `flow`
+  records, outside the block, the way `workflow.confirmStep` signs `flow`
   steps. A non-nil `Options.Window` plans every iteration against a
   token budget: under the trigger the history passes through; at or
   above it, `contextplan.Compact` plus one `contextsummary` call
@@ -486,7 +486,7 @@ flowchart LR
   dimension. `Validate` rejects a negative `MaxBytes` or `MaxEvents`.
   `Fits` reports whether a candidate byte and event total both stay
   at or under their caps; it keeps no running total of its own.
-  `contextbudget` imports no other package in this module; `agent`
+  `contextbudget` imports no other package in this module; `workflow`
   imports it for `Run`'s optional budget check.
 - `contextstate/` — the durable context contract. It provides the contract
   types (`ContentRef`, `NewContentRef`, `PayloadRecord`, `Reassemble`,
@@ -817,7 +817,7 @@ payload:
   threads live inside rooms. Membership lives in the `room` package: a
   moderator-gated roster with roles, and `Room.Accepts` gates a
   message on signer and recipient membership. The envelope carries the
-  address; `room` carries the roster. `agent.Run` may stamp a
+  address; `room` carries the roster. `workflow.Run` may stamp a
   caller-chosen room name onto each step message before signing, so a
   plan whose caller supplies one produces messages a `room.Room` can
   admit.
@@ -915,7 +915,7 @@ accepts is the caller's decision, with no revocation or key-rotation
 story yet. A status transition precedes its ack check: the `flow`
 runner fires a step's status transition, then waits on the step's ack;
 a rejected or escalated ack halts the walk but does not roll the
-status or its record back to the pre-step value. `agent.Run` signs
+status or its record back to the pre-step value. `workflow.Run` signs
 each step's message, waits for a confirmed ack through a
 caller-supplied `AckWait`, and only advances the walk once the ack
 confirms.

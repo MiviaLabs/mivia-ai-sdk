@@ -3,15 +3,15 @@ package e2e_test
 import (
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // e2eAgent builds a named agent over plan, failing the test on the
 // first error.
-func e2eAgent(t *testing.T, name string, plan *flow.Definition) *agent.Agent {
+func e2eAgent(t *testing.T, name string, plan *flow.Definition) *workflow.Agent {
 	t.Helper()
 	a, err := e2e.NewAgent(name, plan)
 	if err != nil {

@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // fanoutTool is one orchestrator step tool that spawns every spec's
@@ -38,7 +38,7 @@ func (f *fanoutTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
 
 // blockedRunner builds a one-step runner whose tool signals label,
 // then blocks until release: spawned subagents must overlap.
-func blockedRunner(t *testing.T, label string, started chan<- string, release <-chan struct{}) *agentrun.Runner {
+func blockedRunner(t *testing.T, label string, started chan<- string, release <-chan struct{}) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{{ID: "work", To: "done", Payload: "go"}}, nil)
 	if err != nil {
@@ -53,11 +53,11 @@ func blockedRunner(t *testing.T, label string, started chan<- string, release <-
 	if err := reg.Add(labelTool{label: label, started: started, release: release}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, label, plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return runner
 }
@@ -104,11 +104,11 @@ func TestSubagentsSpawnInParallel(t *testing.T) {
 	if err := reg.Add(&fanoutTool{specs: specs}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "orchestrator", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 
 	done := make(chan machine.Status, 1)

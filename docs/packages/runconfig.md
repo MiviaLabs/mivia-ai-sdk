@@ -1,16 +1,16 @@
 # Package reference: runconfig
 
 The runconfig package loads a JSON document into a validated
-`agentrun` runner and its tool set. A deployment defines a runner as
+`workflow/run` runner and its tool set. A deployment defines a runner as
 data, without recompiling. `Load` feeds `flow.New`, `machine.New`, and
-`agentrun.New`; it never re-runs their validation logic itself. The
+`run.New`; it never re-runs their validation logic itself. The
 exported surface below mirrors `api/runconfig.txt`. The full document
 grammar lives in `docs/plans/runconfig.md`.
 
 ## Types
 
 - `Definition` — the resolved document: `Plan *flow.Definition`,
-  `Machine *machine.Definition`, `Options agentrun.Options`,
+  `Machine *machine.Definition`, `Options run.Options`,
   `Tools []string` (the document's declared external tool names),
   `Bindings []Binding` (one per bound step, in plan order),
   `Blocks *Blocks` (the internal tool sources), and
@@ -81,17 +81,17 @@ fails `Load` with `ErrBadDocument` wrapping `ErrCallerBuilt`.
   rejection from `machine.New`, `flow.New`, or an internal builder. A
   present `options.budget` maps onto `Options.Budget` as a
   `*contextbudget.Limits` with no range check; `Runner`'s call into
-  `agentrun.New` rejects a negative field. `Load` never reads the
+  `run.New` rejects a negative field. `Load` never reads the
   environment.
 - `NewBlocks()` — returns an empty `*Blocks`.
 - `Blocks.Set(kind, t)` — registers `t` under `kind`, replacing any
   earlier tool set for that `Kind`.
-- `Definition.Runner()` — builds a validated `*agentrun.Runner`. The
+- `Definition.Runner()` — builds a validated `*run.Runner`. The
   caller must first set `Options.Agent`, register the document's
   external tools on `External`, and set every bound internal `Kind` on
   `Blocks`. `Runner` resolves each binding, builds one `tools.Registry`
   keyed by step ID, sets `Options.Machine` and `Options.Tools`, and
-  passes `Options` to `agentrun.New`. Returns `agentrun.ErrNoAgent` for
+  passes `Options` to `run.New`. Returns `run.ErrNoAgent` for
   a nil `Options.Agent`, `ErrUnknownTool` for a missing external tool,
   and `ErrUnknownInternal` for a missing internal `Kind`.
 
@@ -180,9 +180,9 @@ in `docs/plans/runconfig.md`.
 
 ## Cross-references
 
-- [agentrun.md](agentrun.md) — `Definition.Runner` builds and returns
-  an `*agentrun.Runner`; `Definition.Options` is a plain
-  `agentrun.Options` value the caller finishes wiring after `Load`.
+- [workflow/run.md](../workflow/run.md) — `Definition.Runner` builds and returns
+  an `*run.Runner`; `Definition.Options` is a plain
+  `run.Options` value the caller finishes wiring after `Load`.
 - [flow.md](flow.md) and [machine.md](machine.md) — `Load` resolves
   the document's `plan` and `machine` sections through `flow.New` and
   `machine.New`, and returns their own rejections wrapped in

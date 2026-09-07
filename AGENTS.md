@@ -16,10 +16,10 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `tools/` — tool registry: execution profiles, scopes, approval gating.
 - `provider/` — model provider interface and reasoning vocabulary.
 - `provider/anthropic/` — Anthropic Messages API concrete adapter.
-- `agent/` — composition layer wiring blocks into an agent.
-- `agentrun/` — config-struct runner composition over agent.Run.
+- `workflow/` — composition layer wiring blocks into an agent.
+- `workflow/run/` — config-struct runner composition over workflow.Run.
 - `subagent/` — blocks as tools, concurrent spawns, and mailboxes.
-- `runconfig/` — JSON-document loader binding a step graph to agentrun.Options.
+- `runconfig/` — JSON-document loader binding a step graph to run.Options.
 - `ledger/` — durable task admission, leased claims, fenced takeover.
 - `workspace/` — filesystem confinement via `os.Root` and secret denial.
 - `mcp/` — Model Context Protocol client over stdio/HTTP.

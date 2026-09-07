@@ -12,7 +12,7 @@ package runconfig
   const SchedulerKind = "scheduler"
   const TriggerKind = "trigger"
   func (b *Blocks) Set(kind Kind, t tools.Tool)
-  func (d *Definition) Runner() (*agentrun.Runner, error)
+  func (d *Definition) Runner() (*run.Runner, error)
   func (s *stepTool) DecodeArguments(raw []byte) (tools.InOut, error)
   func (s *stepTool) ExecutionProfile() (tools.ExecutionProfile)
   func (s *stepTool) MaxResultBytes() (int)
@@ -33,7 +33,7 @@ package runconfig
   type Definition struct {
   Plan *flow.Definition
   Machine *machine.Definition
-  Options agentrun.Options
+  Options run.Options
   Tools []string
   Bindings []Binding
   Blocks *Blocks

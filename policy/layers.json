@@ -16,16 +16,6 @@
       "a2a",
       "envelope"
     ],
-    "agent": [
-      "identity",
-      "discovery",
-      "flow",
-      "envelope",
-      "events",
-      "machine",
-      "heartbeat",
-      "contextbudget"
-    ],
     "agentloop": [
       "provider",
       "tools",
@@ -38,21 +28,6 @@
       "contextplan",
       "contextsummary",
       "toolcallctx"
-    ],
-    "agentrun": [
-      "agent",
-      "channel",
-      "contextbudget",
-      "envelope",
-      "events",
-      "flow",
-      "heartbeat",
-      "hooks",
-      "identity",
-      "machine",
-      "memory",
-      "tools",
-      "trace"
     ],
     "channel": [],
     "contextbudget": [],
@@ -75,7 +50,7 @@
     ],
     "discovery": [],
     "dispatch": [
-      "agent",
+      "workflow",
       "envelope",
       "events",
       "ledger",
@@ -84,7 +59,7 @@
     ],
     "durablefence": [],
     "e2e": [
-      "agent",
+      "workflow",
       "channel",
       "discovery",
       "envelope",
@@ -136,7 +111,7 @@
       "envelope"
     ],
     "runconfig": [
-      "agentrun",
+      "workflow/run",
       "contextbudget",
       "flow",
       "heartbeat",
@@ -158,8 +133,8 @@
       "tools"
     ],
     "subagent": [
-      "agent",
-      "agentrun",
+      "workflow",
+      "workflow/run",
       "channel",
       "discovery",
       "envelope",
@@ -190,6 +165,31 @@
     "trigger": [],
     "usage": [
       "provider"
+    ],
+    "workflow": [
+      "identity",
+      "discovery",
+      "flow",
+      "envelope",
+      "events",
+      "machine",
+      "heartbeat",
+      "contextbudget"
+    ],
+    "workflow/run": [
+      "workflow",
+      "channel",
+      "contextbudget",
+      "envelope",
+      "events",
+      "flow",
+      "heartbeat",
+      "hooks",
+      "identity",
+      "machine",
+      "memory",
+      "tools",
+      "trace"
     ],
     "workspace": [
       "secretpath"

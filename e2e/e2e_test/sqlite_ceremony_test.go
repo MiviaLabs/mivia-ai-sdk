@@ -29,7 +29,7 @@ func openSQLite(t *testing.T, path string) (*ledger.Ledger, *ledger.SQLiteStore)
 }
 
 // TestCeremonySurvivesStoreReopen drives the full taskrun ceremony
-// around one agentrun pipeline over a SQLite file, closes the store,
+// around one workflow/run pipeline over a SQLite file, closes the store,
 // reopens it from the same path, and proves the record and the
 // replay sentinel survive: durability across a restart.
 func TestCeremonySurvivesStoreReopen(t *testing.T) {

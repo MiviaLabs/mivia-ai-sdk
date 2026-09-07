@@ -7,24 +7,24 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // NewAgent builds an Agent over plan under a fresh identity and a
 // one-capability card, failing only when key generation fails.
-func NewAgent(name string, plan *flow.Definition) (*agent.Agent, error) {
+func NewAgent(name string, plan *flow.Definition) (*workflow.Agent, error) {
 	id, err := identity.New()
 	if err != nil {
 		return nil, fmt.Errorf("e2e: identity for %q: %w", name, err)
 	}
 	card := discovery.Card{Name: name, Capabilities: []string{"e2e"}}
-	return agent.New(id, card, plan)
+	return workflow.New(id, card, plan)
 }
 
 // PrefixTool returns its prefix joined to the string payload it
@@ -44,7 +44,7 @@ func (t PrefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) 
 }
 
 // EscalateTool fails every run with an error wrapping
-// agent.ErrEscalated, so a wired Ask round trip can resolve it.
+// workflow.ErrEscalated, so a wired Ask round trip can resolve it.
 type EscalateTool struct {
 	ToolName string
 }
@@ -54,7 +54,7 @@ func (t EscalateTool) Name() string { return t.ToolName }
 
 // Run reports that the step needs a human decision.
 func (t EscalateTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	return tools.Out{}, fmt.Errorf("e2e: %w: step needs a human", agent.ErrEscalated)
+	return tools.Out{}, fmt.Errorf("e2e: %w: step needs a human", workflow.ErrEscalated)
 }
 
 // Recorder counts every event it observes, in arrival order. It is
@@ -84,7 +84,7 @@ func (r *Recorder) Names() []events.Name {
 	return append([]events.Name(nil), r.names...)
 }
 
-// ThreadCapture is an agent.AckWait that confirms every step message
+// ThreadCapture is a workflow.AckWait that confirms every step message
 // and records the signed messages for later thread verification.
 type ThreadCapture struct {
 	mu   sync.Mutex

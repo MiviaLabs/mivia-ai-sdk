@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // wireQuestion mirrors the transport's question line; wireAnswer
@@ -85,7 +85,7 @@ func TestEscalationRoundTripOverChannel(t *testing.T) {
 	if err := reg.Add(e2e.EscalateTool{ToolName: "decide"}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent:   e2eAgent(t, "escalation-agent", plan),
 		Machine: m,
 		Tools:   reg,
@@ -93,7 +93,7 @@ func TestEscalationRoundTripOverChannel(t *testing.T) {
 		AskTo:   "human-1",
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(ctx, "thread-escalate", machine.InOut{})
 	if err != nil {
@@ -113,7 +113,7 @@ func TestEscalationDeclinedFailsRun(t *testing.T) {
 	if err := reg.Add(e2e.EscalateTool{ToolName: "decide"}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent:   e2eAgent(t, "escalation-agent", plan),
 		Machine: m,
 		Tools:   reg,
@@ -121,7 +121,7 @@ func TestEscalationDeclinedFailsRun(t *testing.T) {
 		AskTo:   "human-1",
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	_, _, err = runner.Run(ctx, "thread-decline", machine.InOut{})
 	if err == nil {
@@ -134,7 +134,7 @@ func TestEscalationDeclinedFailsRun(t *testing.T) {
 
 // TestEscalationWithoutAskWrapsErrEscalated proves an escalated tool
 // error, with no Ask wired, reaches the caller still matching
-// agent.ErrEscalated.
+// workflow.ErrEscalated.
 func TestEscalationWithoutAskWrapsErrEscalated(t *testing.T) {
 	ctx := context.Background()
 	plan, m := decidePlanMachine(t)
@@ -142,17 +142,17 @@ func TestEscalationWithoutAskWrapsErrEscalated(t *testing.T) {
 	if err := reg.Add(e2e.EscalateTool{ToolName: "decide"}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent:   e2eAgent(t, "escalation-agent", plan),
 		Machine: m,
 		Tools:   reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	_, _, err = runner.Run(ctx, "thread-no-ask", machine.InOut{})
-	if !errors.Is(err, agent.ErrEscalated) {
-		t.Fatalf("Run error = %v, want agent.ErrEscalated", err)
+	if !errors.Is(err, workflow.ErrEscalated) {
+		t.Fatalf("Run error = %v, want workflow.ErrEscalated", err)
 	}
 }
 

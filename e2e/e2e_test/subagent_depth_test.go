@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // TestOrchestratorDepthBoundStopsRecursion proves a self-spawning
@@ -32,11 +32,11 @@ func TestOrchestratorDepthBoundStopsRecursion(t *testing.T) {
 	// tool is the subagent tool that spawns it again.
 	reg := tools.New()
 	addTools(t, reg, okTool{name: "child"})
-	inner, err := agentrun.New(agentrun.Options{
+	inner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "worker", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New inner: %v", err)
+		t.Fatalf("run.New inner: %v", err)
 	}
 	if !reg.Remove("child") {
 		t.Fatal("Remove placeholder: name not held")
@@ -49,11 +49,11 @@ func TestOrchestratorDepthBoundStopsRecursion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New orch: %v", err)
 	}
-	orch, err := agentrun.New(agentrun.Options{
+	orch, err := run.New(run.Options{
 		Agent: e2eAgent(t, "orchestrator", orchPlan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New orch: %v", err)
+		t.Fatalf("run.New orch: %v", err)
 	}
 
 	_, _, err = orch.Run(ctx, "thread-depth", machine.InOut{})

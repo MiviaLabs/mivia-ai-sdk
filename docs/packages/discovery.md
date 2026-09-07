@@ -98,5 +98,5 @@ _ = matched // "invoice.review", the stored entry, not the query casing
 _ = ok      // true
 ```
 
-Cross-reference: [agent.md](agent.md) — `agent.New` validates a card
+Cross-reference: [workflow.md](workflow.md) — `workflow.New` validates a card
 through `Card.Validate` before it binds an `Agent`.

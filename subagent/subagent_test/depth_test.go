@@ -26,7 +26,7 @@ func TestDepthGuardStopsSelfSpawn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New: %v", err)
 	}
-	// agentrun.New validates the registry up front, so a placeholder
+	// run.New validates the registry up front, so a placeholder
 	// tool holds the step's name until the real, self-referencing
 	// tool exists to replace it. One tracer counts the spawn spans.
 	tr := trace.New()

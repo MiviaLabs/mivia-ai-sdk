@@ -479,10 +479,10 @@ call, so a transition's written output reaches the ack through
 `step.Payload` without a captured pointer.
 
 Agents are one caller of this contract, not a special case inside
-`flow`. The `agent` package composes a `machine.Definition` and a
+`flow`. The `workflow` package composes a `machine.Definition` and a
 `flow.Definition` the same way any other automation would. `flow`
-never imports `agent`; see [policy/layers.json](../../policy/layers.json).
-See [agent.md](agent.md) for the composition layer's full reference.
+never imports `workflow`; see [policy/layers.json](../../policy/layers.json).
+See [workflow.md](workflow.md) for the composition layer's full reference.
 
 ### Two attachment mechanisms, not three
 

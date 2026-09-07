@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // implementTool writes one code revision per call.
@@ -144,10 +144,10 @@ func TestFeatureDeliveryReviewLoopThenHumanMerge(t *testing.T) {
 	parity, implementCalls := 0, 0
 	plan := featureDeliveryPlan(t, script, &parity)
 	m := featureDeliveryMachine(t)
-	if err := agentrun.ValidateMatrix(plan, m); err != nil {
+	if err := run.ValidateMatrix(plan, m); err != nil {
 		t.Fatalf("ValidateMatrix = %v, want nil", err)
 	}
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	reg := tools.New()
 	addTools(t, reg,
 		implementTool{calls: &implementCalls},
@@ -158,13 +158,13 @@ func TestFeatureDeliveryReviewLoopThenHumanMerge(t *testing.T) {
 		e2e.PrefixTool{ToolName: "verify", Prefix: "verified:"},
 		e2e.EscalateTool{ToolName: "deliver"},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "feature-agent", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 		Ask: mergeHuman(t, true), AskTo: "maintainer-1",
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-feature", machine.InOut{})
 	if err != nil {

@@ -1,7 +1,7 @@
 # Example: a2aack remote step ack
 
 This walkthrough resolves one gated step through a remote A2A task.
-`a2aack.Wait` turns an `a2aclient.Client` into an `agent.AckWait`.
+`a2aack.Wait` turns an `a2aclient.Client` into a `workflow.AckWait`.
 The step's message goes out as a remote task; the remote agent's reply
 becomes the confirmed ack's restatement.
 
@@ -10,7 +10,7 @@ becomes the confirmed ack's restatement.
 The code blocks below are illustrative fragments, not a complete program.
 They reference `ag`, `threadID`, `machineDef`, `start`, and `bus` without
 defining them. Adapt the shown pieces into your own program alongside a
-real `agent.Agent`, thread ID, `machine.Definition`, start step, and
+real `workflow.Agent`, thread ID, `machine.Definition`, start step, and
 `events.Bus`.
 
 `a2aclient.Client` already sends a signed message, polls task state,
@@ -49,7 +49,7 @@ if err != nil {
 `Wait` validates eagerly. A nil client returns `ErrNoClient`. Invalid
 options return their error before any task is sent.
 
-Give the `AckWait` to an `agent.Agent` run as the resolver for its
+Give the `AckWait` to a `workflow.Agent` run as the resolver for its
 gated steps:
 
 ```go

@@ -3,21 +3,21 @@ package runconfig
 import (
 	"fmt"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
-// Runner builds a validated agentrun.Runner from the loaded
+// Runner builds a validated run.Runner from the loaded
 // definition. The caller must first set Options.Agent, register the
 // document's external tools on External, and ensure every bound
 // internal Kind is on Blocks: Load sets the wireable Kinds the
 // document's internal section declares, and the caller sets the
 // caller-built Kinds. Runner resolves each binding, builds one
 // tools.Registry keyed by step ID, sets Options.Machine and
-// Options.Tools, and passes Options to agentrun.New. A nil Agent
-// yields agentrun.ErrNoAgent; a missing external tool yields
+// Options.Tools, and passes Options to run.New. A nil Agent
+// yields run.ErrNoAgent; a missing external tool yields
 // ErrUnknownTool; a missing internal Kind yields ErrUnknownInternal.
-func (d *Definition) Runner() (*agentrun.Runner, error) {
+func (d *Definition) Runner() (*run.Runner, error) {
 	reg := tools.New()
 	for _, b := range d.Bindings {
 		inner, err := d.resolve(b)
@@ -31,7 +31,7 @@ func (d *Definition) Runner() (*agentrun.Runner, error) {
 	opts := d.Options
 	opts.Machine = d.Machine
 	opts.Tools = reg
-	return agentrun.New(opts)
+	return run.New(opts)
 }
 
 // resolve resolves one binding to its underlying tool.

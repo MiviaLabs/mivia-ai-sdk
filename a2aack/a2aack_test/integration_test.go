@@ -10,18 +10,18 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // integrationFixture boots a live Loopback and a real client, then
 // builds a one-step agent whose AckWait resolves through a2aack.Wait.
 // It returns the AckWait, the agent, and the machine model.
-func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Definition) {
+func integrationFixture(t testing.TB) (workflow.AckWait, *workflow.Agent, *machine.Definition) {
 	t.Helper()
 	addr, stop, err := a2aloopback.Loopback()
 	if err != nil {
@@ -60,9 +60,9 @@ func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Def
 	if err != nil {
 		t.Fatalf("identity.New() error: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "A2A", Capabilities: []string{"ack"}}, plan)
+	a, err := workflow.New(id, discovery.Card{Name: "A2A", Capabilities: []string{"ack"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New() error: %v", err)
+		t.Fatalf("workflow.New() error: %v", err)
 	}
 	return ackFn, a, m
 }
@@ -82,12 +82,12 @@ func ackCountingBus(t testing.TB) (*events.Bus, *ackCounts) {
 	counts := &ackCounts{}
 	bus := events.New()
 	noop := func(context.Context, events.Event) error { return nil }
-	for _, name := range []events.Name{agent.MessageDeliveredEvent, flow.StepCompletedEvent} {
+	for _, name := range []events.Name{workflow.MessageDeliveredEvent, flow.StepCompletedEvent} {
 		if err := bus.Subscribe(name, noop); err != nil {
 			t.Fatalf("Subscribe(%q) error: %v", name, err)
 		}
 	}
-	if err := bus.Subscribe(agent.MessageAckedEvent, func(ctx context.Context, e events.Event) error {
+	if err := bus.Subscribe(workflow.MessageAckedEvent, func(ctx context.Context, e events.Event) error {
 		counts.mu.Lock()
 		defer counts.mu.Unlock()
 		counts.acked++
@@ -98,7 +98,7 @@ func ackCountingBus(t testing.TB) (*events.Bus, *ackCounts) {
 	}); err != nil {
 		t.Fatalf("Subscribe(MessageAckedEvent) error: %v", err)
 	}
-	if err := bus.Subscribe(agent.ThreadVerifiedEvent, func(ctx context.Context, e events.Event) error {
+	if err := bus.Subscribe(workflow.ThreadVerifiedEvent, func(ctx context.Context, e events.Event) error {
 		counts.mu.Lock()
 		counts.threadFired++
 		counts.mu.Unlock()
@@ -109,7 +109,7 @@ func ackCountingBus(t testing.TB) (*events.Bus, *ackCounts) {
 	return bus, counts
 }
 
-// TestIntegrationAgentStepThroughWait drives one real agent.Agent whose
+// TestIntegrationAgentStepThroughWait drives one real workflow.Agent whose
 // single gated step resolves through Wait over a live Loopback. It
 // asserts the final status, one confirmed MessageAckedEvent, and one
 // ThreadVerifiedEvent.

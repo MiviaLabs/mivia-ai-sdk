@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
@@ -15,6 +14,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/usage"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // wiredEdgePlan returns a one-step dispatch plan and machine the edge
@@ -52,12 +52,12 @@ func TestWiredHookVetoFailsRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("hooks.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "veto-orchestrator", plan), Machine: m,
 		Tools: reg, Hooks: hookReg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	_, _, err = runner.Run(context.Background(), "thread-veto", machine.InOut{})
 	if err == nil {
@@ -94,19 +94,19 @@ func TestWiredAllProvidersFailedSurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New sub: %v", err)
 	}
-	sub, err := agentrun.New(agentrun.Options{
+	sub, err := run.New(run.Options{
 		Agent: e2eAgent(t, "dead-sub", subPlan), Machine: subM, Tools: toolReg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New sub: %v", err)
+		t.Fatalf("run.New sub: %v", err)
 	}
 	top := tools.New()
 	addTools(t, top, subagent.AsTool("dispatch", sub, subagent.ToolOptions{}))
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "dead-orchestrator", plan), Machine: m, Tools: top,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	_, _, err = runner.Run(context.Background(), "thread-dead", machine.InOut{})
 	if !errors.Is(err, providerregistry.ErrAllFailed) {
@@ -129,20 +129,20 @@ func TestWiredUsageIsolatedPerSession(t *testing.T) {
 	addTools(t, second, subagent.AsTool("dispatch",
 		wiredSubRunner(t, nil, acc, "session-b", &primary),
 		subagent.ToolOptions{}))
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "usage-orchestrator", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	if _, _, err := runner.Run(context.Background(), "thread-usage-a", machine.InOut{}); err != nil {
 		t.Fatalf("Run a: %v", err)
 	}
-	runnerB, err := agentrun.New(agentrun.Options{
+	runnerB, err := run.New(run.Options{
 		Agent: e2eAgent(t, "usage-orchestrator-b", plan), Machine: m, Tools: second,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New b: %v", err)
+		t.Fatalf("run.New b: %v", err)
 	}
 	if _, _, err := runnerB.Run(context.Background(), "thread-usage-b", machine.InOut{}); err != nil {
 		t.Fatalf("Run b: %v", err)
@@ -168,12 +168,12 @@ func TestWiredStopHookVetoFailsAfterWalk(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("hooks.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "stop-orchestrator", plan), Machine: m,
 		Tools: reg, Hooks: hookReg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-stop", machine.InOut{})
 	if err == nil || !strings.Contains(err.Error(), "stop hook") {

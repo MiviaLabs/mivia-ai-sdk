@@ -7,9 +7,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // ndjsonAckWaitFrom is the fixed identity string the wrapper closure
@@ -18,7 +18,7 @@ import (
 const ndjsonAckWaitFrom = "desktop-app"
 
 // TestNDJSONNotifierBacksAckWait proves an NDJSON transport built by
-// NewNDJSONNotifier composes with the same real agent.AckWait call
+// NewNDJSONNotifier composes with the same real workflow.AckWait call
 // site notifier_integration_test.go already proves for a plain
 // closure, over a real io.Pipe pair standing in for the desktop app's
 // stdio pipe.
@@ -43,7 +43,7 @@ func TestNDJSONNotifierBacksAckWait(t *testing.T) {
 		_ = json.NewEncoder(aw).Encode(reply)
 	}()
 
-	var wait agent.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
+	var wait workflow.AckWait = func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		q := channel.Question{
 			ID:        msg.ID,
 			Recipient: ndjsonAckWaitFrom,

@@ -4,19 +4,19 @@ import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // observeSubRunner builds the one-step worker the orchestrator
 // spawns and observes.
-func observeSubRunner(t *testing.T) *agentrun.Runner {
+func observeSubRunner(t *testing.T) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "work", To: "done", Payload: "go"},
@@ -31,11 +31,11 @@ func observeSubRunner(t *testing.T) *agentrun.Runner {
 	}
 	reg := tools.New()
 	addTools(t, reg, e2e.PrefixTool{ToolName: "work", Prefix: "ran:"})
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "worker", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New sub: %v", err)
+		t.Fatalf("run.New sub: %v", err)
 	}
 	return runner
 }
@@ -74,12 +74,12 @@ func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 	// the real tool can bind the bus.
 	orchReg := tools.New()
 	addTools(t, orchReg, okTool{name: "delegate"})
-	orch, err := agentrun.New(agentrun.Options{
+	orch, err := run.New(run.Options{
 		Agent:   e2eAgent(t, "orchestrator", orchPlan),
 		Machine: orchMachine, Tools: orchReg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New orch: %v", err)
+		t.Fatalf("run.New orch: %v", err)
 	}
 	if !orchReg.Remove("delegate") {
 		t.Fatal("Remove placeholder: name not held")
@@ -89,8 +89,8 @@ func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 
 	rec := e2e.NewRecorder()
 	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent, agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
+		workflow.MessageDeliveredEvent, workflow.MessageAckedEvent,
+		workflow.ThreadVerifiedEvent,
 	} {
 		if err := orch.Bus().Subscribe(name, rec.Handler()); err != nil {
 			t.Fatalf("Subscribe(%s): %v", name, err)
@@ -108,9 +108,9 @@ func TestOrchestratorObservesSpawnedRun(t *testing.T) {
 	// The subagent's forwarded thread verification lands alongside
 	// the orchestrator's own: two of each event on one bus.
 	for name, want := range map[events.Name]int{
-		agent.ThreadVerifiedEvent:   2,
-		agent.MessageDeliveredEvent: 2,
-		agent.MessageAckedEvent:     2,
+		workflow.ThreadVerifiedEvent:   2,
+		workflow.MessageDeliveredEvent: 2,
+		workflow.MessageAckedEvent:     2,
 	} {
 		if got := countName(names, name); got != want {
 			t.Errorf("%s = %d, want %d", name, got, want)

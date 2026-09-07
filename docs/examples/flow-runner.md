@@ -104,7 +104,7 @@ their shared `To` selects. `Run` never calls `confirm` for a wave of
 two or more members, so the panel members produce no approval line.
 This matches the panel contract documented in
 [flow.md](../packages/flow.md) and reused by
-[agent.md](../packages/agent.md): a panel step never reaches a
+[workflow.md](../packages/workflow.md): a panel step never reaches a
 `Confirm` call.
 
 The final status is `joined`, the status the `join` step's transition

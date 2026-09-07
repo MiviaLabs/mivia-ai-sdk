@@ -50,7 +50,7 @@ package subagent
   func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
   func (t *triggerTool) Name() (string)
   func (t *triggerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
-  func AsTool(name string, r *agentrun.Runner, opts ToolOptions) (tools.Tool)
+  func AsTool(name string, r *run.Runner, opts ToolOptions) (tools.Tool)
   func ChannelTool(name string, ask channel.Notifier, recipient string) (tools.Tool)
   func DiscoveryTool(name string) (tools.Tool)
   func FlowTool(name string, plan *flow.Definition, m *machine.Definition, bus *events.Bus) (tools.Tool)
@@ -107,12 +107,12 @@ package subagent
 }
   type Spec struct {
   Name string
-  Runner *agentrun.Runner
+  Runner *run.Runner
   In machine.InOut
 }
   type ToolOptions struct {
   Artifact string
-  Artifacts *agentrun.Artifacts
+  Artifacts *run.Artifacts
   Depth int
   Bus *events.Bus
   Tracer *trace.Tracer

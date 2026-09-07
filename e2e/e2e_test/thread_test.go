@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // threadPlan builds a two-step plan whose second step needs the
@@ -50,13 +50,13 @@ func TestRunThreadVerifiesAcrossHops(t *testing.T) {
 	run := func(thread string) (machine.Status, []envelope.Message) {
 		t.Helper()
 		capture := e2e.NewThreadCapture()
-		runner, err := agentrun.New(agentrun.Options{
+		runner, err := run.New(run.Options{
 			Agent:   e2eAgent(t, "thread-agent", plan),
 			Machine: m,
 			Wait:    capture.Wait,
 		})
 		if err != nil {
-			t.Fatalf("agentrun.New: %v", err)
+			t.Fatalf("run.New: %v", err)
 		}
 		status, _, err := runner.Run(ctx, thread, machine.InOut{})
 		if err != nil {

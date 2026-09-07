@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // hangRunner builds a one-step runner whose tool is a provider that
 // never answers until its ctx is canceled.
-func hangRunner(t *testing.T) *agentrun.Runner {
+func hangRunner(t *testing.T) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{{ID: "chat", To: "done", Payload: "go"}}, nil)
 	if err != nil {
@@ -31,11 +31,11 @@ func hangRunner(t *testing.T) *agentrun.Runner {
 	if err := reg.Add(subagent.ProviderTool("chat", &e2e.HangCompleter{})); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "hang-agent", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return runner
 }

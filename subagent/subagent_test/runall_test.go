@@ -5,16 +5,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // gateRunner builds a runner whose tool signals it started, then
 // waits for the release channel: RunAll members must truly overlap.
-func gateRunner(t *testing.T, name string, started chan<- string, release <-chan struct{}) *agentrun.Runner {
+func gateRunner(t *testing.T, name string, started chan<- string, release <-chan struct{}) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{{ID: "work", To: "done", Payload: "go"}}, nil)
 	if err != nil {
@@ -94,9 +94,9 @@ func TestRunAllRunsMembersConcurrently(t *testing.T) {
 func TestRunAllMemberErrorDoesNotCancelOthers(t *testing.T) {
 	ctx := context.Background()
 	specs := []subagent.Spec{
-		{Name: "ok1", Runner: prefixRunner(t, "one:", &agentrun.Artifacts{})},
+		{Name: "ok1", Runner: prefixRunner(t, "one:", &run.Artifacts{})},
 		{Name: "bad", Runner: failingRunner(t, "member broke")},
-		{Name: "ok2", Runner: prefixRunner(t, "two:", &agentrun.Artifacts{})},
+		{Name: "ok2", Runner: prefixRunner(t, "two:", &run.Artifacts{})},
 	}
 	results := subagent.RunAll(ctx, specs)
 	if len(results) != 3 {

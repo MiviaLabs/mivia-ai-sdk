@@ -5,19 +5,19 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // prefixRunner builds a one-step runner whose "work" tool returns
 // prefix plus the input payload, recording into artifacts.
-func prefixRunner(t *testing.T, prefix string, artifacts *agentrun.Artifacts) *agentrun.Runner {
+func prefixRunner(t *testing.T, prefix string, artifacts *run.Artifacts) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "work", To: "done", Payload: "go"},
@@ -39,24 +39,24 @@ func prefixRunner(t *testing.T, prefix string, artifacts *agentrun.Artifacts) *a
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
-	r, err := agentrun.New(agentrun.Options{
+	r, err := run.New(run.Options{
 		Agent:     a,
 		Machine:   m,
 		Tools:     reg,
 		Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return r
 }
 
 // failingRunner builds a runner whose step tool always fails.
-func failingRunner(t *testing.T, msg string) *agentrun.Runner {
+func failingRunner(t *testing.T, msg string) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "work", To: "done", Payload: "go"},
@@ -78,32 +78,32 @@ func failingRunner(t *testing.T, msg string) *agentrun.Runner {
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
-	r, err := agentrun.New(agentrun.Options{Agent: a, Machine: m, Tools: reg})
+	r, err := run.New(run.Options{Agent: a, Machine: m, Tools: reg})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return r
 }
 
 // runnerOver builds a runner over a ready plan, machine, and
 // registry, failing the test on the first error.
-func runnerOver(t *testing.T, plan *flow.Definition, m *machine.Definition, reg *tools.Registry) *agentrun.Runner {
+func runnerOver(t *testing.T, plan *flow.Definition, m *machine.Definition, reg *tools.Registry) *run.Runner {
 	t.Helper()
 	id, err := identity.New()
 	if err != nil {
 		t.Fatalf("identity.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
-	r, err := agentrun.New(agentrun.Options{Agent: a, Machine: m, Tools: reg})
+	r, err := run.New(run.Options{Agent: a, Machine: m, Tools: reg})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return r
 }

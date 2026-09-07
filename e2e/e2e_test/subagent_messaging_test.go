@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -15,6 +13,8 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // namedIdentity builds a fresh identity and its agent name.
@@ -29,7 +29,7 @@ func namedIdentity(t *testing.T, name string) *identity.Identity {
 
 // messagingSubRunner builds the worker that drains its inbox and
 // replies into the orchestrator's mailbox.
-func messagingSubRunner(t *testing.T, subID *identity.Identity, subBox, parentBox *subagent.Mailbox) (*agentrun.Runner, *agentrun.Artifacts) {
+func messagingSubRunner(t *testing.T, subID *identity.Identity, subBox, parentBox *subagent.Mailbox) (*run.Runner, *run.Artifacts) {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "inbox", To: "received", Payload: "drain"},
@@ -50,23 +50,23 @@ func messagingSubRunner(t *testing.T, subID *identity.Identity, subBox, parentBo
 		subagent.InboxTool("inbox", subBox),
 		subagent.SendTool("reply", parentBox, subID),
 	)
-	artifacts := &agentrun.Artifacts{}
-	a, err := agent.New(subID, discovery.Card{Name: "worker", Capabilities: []string{"c"}}, plan)
+	artifacts := &run.Artifacts{}
+	a, err := workflow.New(subID, discovery.Card{Name: "worker", Capabilities: []string{"c"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New sub: %v", err)
+		t.Fatalf("workflow.New sub: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: a, Machine: m, Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New sub: %v", err)
+		t.Fatalf("run.New sub: %v", err)
 	}
 	return runner, artifacts
 }
 
 // messagingOrchestrator builds the parent that greets, admits the
 // subagent's signer, delegates, and collects the reply.
-func messagingOrchestrator(t *testing.T, parentID *identity.Identity, subID *identity.Identity, subRunner *agentrun.Runner, subArtifacts *agentrun.Artifacts, subBox, parentBox *subagent.Mailbox, r *room.Room) (*agentrun.Runner, *agentrun.Artifacts) {
+func messagingOrchestrator(t *testing.T, parentID *identity.Identity, subID *identity.Identity, subRunner *run.Runner, subArtifacts *run.Artifacts, subBox, parentBox *subagent.Mailbox, r *room.Room) (*run.Runner, *run.Artifacts) {
 	t.Helper()
 	admitCmd := subagentToolCommand(t, subagent.RoomCommand{
 		Op: subagent.OpAdmit, ID: subID.Signer(),
@@ -98,16 +98,16 @@ func messagingOrchestrator(t *testing.T, parentID *identity.Identity, subID *ide
 		}),
 		subagent.InboxTool("collect", parentBox),
 	)
-	artifacts := &agentrun.Artifacts{}
-	a, err := agent.New(parentID, discovery.Card{Name: "orchestrator", Capabilities: []string{"c"}}, plan)
+	artifacts := &run.Artifacts{}
+	a, err := workflow.New(parentID, discovery.Card{Name: "orchestrator", Capabilities: []string{"c"}}, plan)
 	if err != nil {
-		t.Fatalf("agent.New orch: %v", err)
+		t.Fatalf("workflow.New orch: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: a, Machine: m, Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New orch: %v", err)
+		t.Fatalf("run.New orch: %v", err)
 	}
 	return runner, artifacts
 }
@@ -161,7 +161,7 @@ func TestAgentsAndHumansMessageTheSubagent(t *testing.T) {
 
 // assertMessagingResults checks the drained inbox, the collected
 // reply, and the room admission.
-func assertMessagingResults(t *testing.T, subArtifacts, orchArtifacts *agentrun.Artifacts, r *room.Room, subID *identity.Identity) {
+func assertMessagingResults(t *testing.T, subArtifacts, orchArtifacts *run.Artifacts, r *room.Room, subID *identity.Identity) {
 	t.Helper()
 	inbox, ok := subArtifacts.Get("inbox")
 	if !ok {

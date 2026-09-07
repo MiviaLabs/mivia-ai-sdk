@@ -46,10 +46,10 @@ match them with `errors.Is`.
 
 ## Cross-references
 
-- [agent.md](agent.md) — `agent.Run` takes an optional
+- [workflow.md](workflow.md) — `workflow.Run` takes an optional
   `*contextbudget.Limits` and calls `Validate` once and `Fits` before
   every gated step's `wait` call; a run that does not fit returns
-  `agent.ErrOverBudget`.
+  `workflow.ErrOverBudget`.
 
 ## Usage
 

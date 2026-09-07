@@ -53,7 +53,7 @@ fail-fast:
    here.
 2. `Message.VerifySignature` — an unsigned or tampered message fails
    here.
-3. `agent.EmitMessageDelivered`, best-effort: its error return is
+3. `workflow.EmitMessageDelivered`, best-effort: its error return is
    ignored, so it never fails the line. This is why
    `MessageDeliveredEvent` means "signature verified," not
    "room-admitted": it fires here, before the next stage.
@@ -65,7 +65,7 @@ fail-fast:
 6. `Options.Resolve` — a lookup failure for the message fails here.
 7. `Handler.Handle` — a handler error, or `envelope.NewAck` rejecting
    a blank restatement, fails here.
-8. `Ack.Confirm`, `agent.EmitMessageAcked` (best-effort, error
+8. `Ack.Confirm`, `workflow.EmitMessageAcked` (best-effort, error
    ignored), then `Ack.Encode` build the reply line.
 
 A failing stage answers one JSON object, `{"error":"..."}`, naming the
@@ -122,7 +122,7 @@ slow call, not only after a crash. A claim past its lease is eligible
 for a later replay to retry once; this trades "replay never re-runs
 work" for "a stuck claim eventually gets a retry," and it is the
 correct choice for a crashed claimant, not a defect. Size `ReplayLease`
-deliberately for an `agentrun`-backed `Handler`, which can exceed the
+deliberately for a `workflow/run`-backed `Handler`, which can exceed the
 default during normal operation.
 
 ## Failure modes
@@ -178,6 +178,6 @@ default during normal operation.
 `dispatch` carries no session state, no streaming push, and no task
 lifecycle: one request holds zero or more messages, and the response
 answers each in order. It threads no received message into a `flow`
-run; a caller wires a handler that calls into `agentrun` or any other
+run; a caller wires a handler that calls into `workflow/run` or any other
 runner on its own. TLS, auth beyond signatures, and rate limiting stay
 with the caller's reverse proxy.

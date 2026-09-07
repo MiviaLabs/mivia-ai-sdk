@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // prHostTool mirrors the delivery endpoint: it opens the pull request
@@ -120,16 +120,16 @@ func deliveryPlan(t *testing.T, last *string) (*flow.Definition, *machine.Defini
 
 // runDelivery drives one delivery scenario and returns the run
 // status, artifacts, and error.
-func runDelivery(t *testing.T, stubborn bool, budget int) (machine.Status, *agentrun.Artifacts, error) {
+func runDelivery(t *testing.T, stubborn bool, budget int) (machine.Status, *run.Artifacts, error) {
 	t.Helper()
 	title := "bug fix"
 	attempts, repairs := 0, 0
 	last := "unrun"
 	plan, m := deliveryPlan(t, &last)
-	if err := agentrun.ValidateMatrix(plan, m); err != nil {
+	if err := run.ValidateMatrix(plan, m); err != nil {
 		t.Fatalf("ValidateMatrix = %v, want nil", err)
 	}
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	reg := tools.New()
 	addTools(t, reg,
 		prHostTool{title: &title, attempts: &attempts, stubborn: stubborn, last: &last,
@@ -139,12 +139,12 @@ func runDelivery(t *testing.T, stubborn bool, budget int) (machine.Status, *agen
 		e2e.PrefixTool{ToolName: "ship_pr", Prefix: "shipped:"},
 		e2e.PrefixTool{ToolName: "done", Prefix: "done:"},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "delivery-agent", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-delivery", machine.InOut{})
 	if !stubborn && err != nil {

@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // goldenDoc is the golden document: one external tool, one flow
@@ -49,9 +49,9 @@ func TestGoldenDocumentRuns(t *testing.T) {
 		t.Fatalf("identity.New: %v", err)
 	}
 	card := discovery.Card{Name: "golden-agent", Capabilities: []string{"cap"}}
-	a, err := agent.New(id, card, d.Plan)
+	a, err := workflow.New(id, card, d.Plan)
 	if err != nil {
-		t.Fatalf("agent.New: %v", err)
+		t.Fatalf("workflow.New: %v", err)
 	}
 	d.Blocks = blocks
 	d.Options.Agent = a
@@ -103,8 +103,8 @@ func innerMachine(t *testing.T) *machine.Definition {
 // TestBudgetGatesDeclaredPayloadSize proves the true invariant
 // options.budget gates: the cumulative byte total of every step's own
 // declared payload, checked before the bound tool runs, independent
-// of the tool's own output or behavior. See agent/run.go:80-93's doc
-// comment and confirmStep (agent/run.go:153-183).
+// of the tool's own output or behavior. See workflow/run.go:80-93's doc
+// comment and confirmStep (workflow/run.go:153-183).
 func TestBudgetGatesDeclaredPayloadSize(t *testing.T) {
 	t.Run("rejects an oversized declared payload", func(t *testing.T) {
 		doc := `{
@@ -128,8 +128,8 @@ func TestBudgetGatesDeclaredPayloadSize(t *testing.T) {
 			t.Fatalf("Runner: %v", err)
 		}
 		_, _, err = runner.Run(context.Background(), "thread-budget", machine.InOut{})
-		if !errors.Is(err, agent.ErrOverBudget) {
-			t.Fatalf("err = %v, want agent.ErrOverBudget", err)
+		if !errors.Is(err, workflow.ErrOverBudget) {
+			t.Fatalf("err = %v, want workflow.ErrOverBudget", err)
 		}
 	})
 
@@ -138,7 +138,7 @@ func TestBudgetGatesDeclaredPayloadSize(t *testing.T) {
 	// affecting the outcome either way. AsToolKind is a witness that a
 	// no-decode Kind still runs unchanged: AsTool.Run accepts a plain
 	// string input, matching subagent.FlowTool, so it runs through
-	// agentrun's chain with no schema decode.
+	// workflow/run's chain with no schema decode.
 	t.Run("kind binding composes with a permissive budget", func(t *testing.T) {
 		nested := innerRunner(t)
 		asTool := subagent.AsTool("s", nested, subagent.ToolOptions{})

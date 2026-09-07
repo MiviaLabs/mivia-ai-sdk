@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -14,6 +13,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // stubCompleter is the concrete provider.Completer the fault kit needs
@@ -62,7 +62,7 @@ func (f *trackedFanoutTool) Run(ctx context.Context, in tools.InOut) (tools.Out,
 }
 
 // faultMemberRunner builds one one-step subagent runner over tool.
-func faultMemberRunner(t *testing.T, name string, tool tools.Tool) *agentrun.Runner {
+func faultMemberRunner(t *testing.T, name string, tool tools.Tool) *run.Runner {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{{ID: tool.Name(), To: "done", Payload: "go"}}, nil)
 	if err != nil {
@@ -77,11 +77,11 @@ func faultMemberRunner(t *testing.T, name string, tool tools.Tool) *agentrun.Run
 	if err := reg.Add(tool); err != nil {
 		t.Fatalf("registry.Add member %s: %v", name, err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, name, plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New member %s: %v", name, err)
+		t.Fatalf("run.New member %s: %v", name, err)
 	}
 	return runner
 }
@@ -116,11 +116,11 @@ func TestFaultMidFanoutReportsFailingSpecAndKeepsSiblings(t *testing.T) {
 	if err := reg.Add(&trackedFanoutTool{specs: specs, results: &results}); err != nil {
 		t.Fatalf("registry.Add fanout: %v", err)
 	}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "fault-fanout-orchestrator", plan), Machine: m, Tools: reg,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New orchestrator: %v", err)
+		t.Fatalf("run.New orchestrator: %v", err)
 	}
 
 	_, _, err = runner.Run(ctx, "thread-fanout-fault", machine.InOut{})
@@ -151,7 +151,7 @@ func TestFaultMidFanoutReportsFailingSpecAndKeepsSiblings(t *testing.T) {
 	}
 }
 
-// TestFaultWaitAckResolverFailsRun proves the agentrun Wait decorator
+// TestFaultWaitAckResolverFailsRun proves the workflow/run Wait decorator
 // faults on the Nth ack and the run reports the fault.
 func TestFaultWaitAckResolverFailsRun(t *testing.T) {
 	ctx := context.Background()
@@ -167,11 +167,11 @@ func TestFaultWaitAckResolverFailsRun(t *testing.T) {
 	res := &e2e.FaultWait{FaultOn: 1, Inner: func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		return envelope.Ack{}, errors.New("underlying wait must not run")
 	}}
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "fault-wait-agent", plan), Machine: m, Wait: res.Wait,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 
 	_, _, err = runner.Run(ctx, "thread-wait-fault", machine.InOut{})
@@ -181,8 +181,8 @@ func TestFaultWaitAckResolverFailsRun(t *testing.T) {
 	if !errors.Is(err, e2e.ErrFault) {
 		t.Fatalf("Run error = %v, want e2e.ErrFault", err)
 	}
-	if !strings.Contains(err.Error(), "agentrun wait fault") {
-		t.Fatalf("Run error %q does not name the agentrun wait fault", err)
+	if !strings.Contains(err.Error(), "run wait fault") {
+		t.Fatalf("Run error %q does not name the run wait fault", err)
 	}
 }
 

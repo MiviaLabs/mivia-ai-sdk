@@ -10,19 +10,19 @@ from pathlib import Path
 
 PAIRS = [
     (
-        "docs/examples/agent-composition.md",
+        "docs/examples/workflow-composition.md",
         "## The program",
-        "docs/examples/_agentcomposition/main.go",
+        "docs/examples/_workflowcomposition/main.go",
     ),
     (
-        "docs/examples/agent-composition.md",
+        "docs/examples/workflow-composition.md",
         "## SQLiteStore variant",
-        "docs/examples/_agentcompositionsqlite/main.go",
+        "docs/examples/_workflowcompositionsqlite/main.go",
     ),
     (
-        "docs/examples/agentrun.md",
+        "docs/examples/workflow-run.md",
         "## The program",
-        "docs/examples/_agentrun/main.go",
+        "docs/examples/_workflowrun/main.go",
     ),
     (
         "docs/examples/agentloop.md",

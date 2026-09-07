@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // TestAsToolForwardsEventsToParentBus proves a caller-supplied bus
@@ -19,8 +19,8 @@ func TestAsToolForwardsEventsToParentBus(t *testing.T) {
 	seen := map[events.Name]int{}
 	noop := func(context.Context, events.Event) error { return nil }
 	for _, name := range []events.Name{
-		agent.MessageDeliveredEvent, agent.MessageAckedEvent,
-		agent.ThreadVerifiedEvent,
+		workflow.MessageDeliveredEvent, workflow.MessageAckedEvent,
+		workflow.ThreadVerifiedEvent,
 	} {
 		if err := parent.Subscribe(name, noop); err != nil {
 			t.Fatalf("Subscribe(%s): %v", name, err)
@@ -32,15 +32,15 @@ func TestAsToolForwardsEventsToParentBus(t *testing.T) {
 			t.Fatalf("Subscribe(%s): %v", name, err)
 		}
 	}
-	runner := prefixRunner(t, "ran:", &agentrun.Artifacts{})
+	runner := prefixRunner(t, "ran:", &run.Artifacts{})
 	tool := subagent.AsTool("sub", runner, subagent.ToolOptions{Bus: parent})
 	if _, err := tool.Run(ctx, tools.InOut{Value: "go"}); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	for name, want := range map[events.Name]int{
-		agent.MessageDeliveredEvent: 1,
-		agent.MessageAckedEvent:     1,
-		agent.ThreadVerifiedEvent:   1,
+		workflow.MessageDeliveredEvent: 1,
+		workflow.MessageAckedEvent:     1,
+		workflow.ThreadVerifiedEvent:   1,
 	} {
 		if seen[name] != want {
 			t.Errorf("%s = %d, want %d", name, seen[name], want)

@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // ErrFault is the error every fault decorator wraps on its injected
@@ -145,12 +145,12 @@ func (f *FaultCompleter) ChatStream(ctx context.Context, req provider.Request) (
 	return f.Completer.ChatStream(ctx, req)
 }
 
-// FaultWait wraps an agent.AckWait and faults one call. The FaultOn-th
+// FaultWait wraps a workflow.AckWait and faults one call. The FaultOn-th
 // ack resolution returns an error wrapping ErrFault; every other call
 // passes through.
 type FaultWait struct {
-	// Inner is the wrapped agent.AckWait. Required.
-	Inner agent.AckWait
+	// Inner is the wrapped workflow.AckWait. Required.
+	Inner workflow.AckWait
 	// FaultOn is the 1-based ack to fail. Zero disables faults.
 	FaultOn int32
 
@@ -158,10 +158,10 @@ type FaultWait struct {
 }
 
 // Wait faults on the target ack, else passes through. It satisfies
-// agent.AckWait, so a caller assigns the method value.
+// workflow.AckWait, so a caller assigns the method value.
 func (f *FaultWait) Wait(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 	if fault(&f.calls, f.FaultOn) {
-		return envelope.Ack{}, faultErr("agentrun wait")
+		return envelope.Ack{}, faultErr("run wait")
 	}
 	return f.Inner(ctx, msg)
 }

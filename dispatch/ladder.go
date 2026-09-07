@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // replayKey builds the ledger.IdempotencyKey for m. The len(ThreadID)
@@ -67,7 +67,7 @@ func (e *Endpoint) processLine(ctx context.Context, line []byte) []byte {
 	if err := m.VerifySignature(); err != nil {
 		return encodeErrorLine(fmt.Errorf("verify: %w", err))
 	}
-	_ = agent.EmitMessageDelivered(ctx, e.bus, m)
+	_ = workflow.EmitMessageDelivered(ctx, e.bus, m)
 	if err := e.room.Accepts(m); err != nil {
 		return encodeErrorLine(fmt.Errorf("admit: %w", err))
 	}
@@ -96,7 +96,7 @@ func (e *Endpoint) processLine(ctx context.Context, line []byte) []byte {
 		return encodeErrorLine(err)
 	}
 	ack = ack.Confirm()
-	_ = agent.EmitMessageAcked(ctx, e.bus, ack)
+	_ = workflow.EmitMessageAcked(ctx, e.bus, ack)
 	// out cannot fail: ack comes from a validated NewAck plus Confirm,
 	// which always yields a Validate-clean Ack for Encode to marshal.
 	out, _ := ack.Encode()

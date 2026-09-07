@@ -34,87 +34,79 @@ go get github.com/MiviaLabs/mivia-ai-sdk
 
 ## Quick Start
 
-Compose an agent pipeline from an identity, a capability card, a two-step plan, and registered tools. A single `agentrun.Options` literal wires and validates the pipeline:
+Run a model-driven agent loop: one schema tool, one `Run` call. The program needs `ANTHROPIC_API_KEY` in the environment at run time.
 
 ```go
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
-	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
-	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider/anthropic"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-type prefixTool struct {
-	name   string
-	prefix string
+// upperTool implements tools.Tool and tools.SchemaTool.
+type upperTool struct{}
+
+func (upperTool) Name() string { return "upper" }
+
+func (upperTool) ParameterSchema() []byte {
+	return []byte(`{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}`)
 }
 
-func (t prefixTool) Name() string { return t.name }
+func (upperTool) DecodeArguments(raw []byte) (tools.InOut, error) {
+	var args struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return tools.InOut{}, err
+	}
+	return tools.InOut{Value: args.Text}, nil
+}
 
-func (t prefixTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
+func (upperTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	s, _ := in.Value.(string)
-	return tools.Out{Value: t.prefix + s}, nil
+	return tools.Out{Value: strings.ToUpper(s)}, nil
 }
 
 func main() {
-	artifacts := &agentrun.Artifacts{}
-	plan, err := flow.New([]flow.Step{
-		{ID: "review", To: "reviewed", Payload: "invoice 42"},
-		{ID: "ship", To: "shipped", Needs: []string{"review"},
-			PayloadFrom: agentrun.PayloadOf("review", artifacts)},
-	}, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	id, err := identity.New()
-	if err != nil {
-		panic(err)
-	}
-	a, err := agent.New(id, discovery.Card{
-		Name: "invoice-agent", Capabilities: []string{"invoice.review"},
-	}, plan)
-	if err != nil {
-		panic(err)
-	}
-
-	reg := tools.New()
-	_ = reg.Add(prefixTool{name: "review", prefix: "reviewed: "})
-	_ = reg.Add(prefixTool{name: "ship", prefix: "shipped: "})
-
-	m, err := machine.New("queued",
-		machine.Transition{From: "queued", To: "reviewed", Trigger: "run"},
-		machine.Transition{From: "reviewed", To: "shipped", Trigger: "run"},
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	runner, err := agentrun.New(agentrun.Options{
-		Agent: a, Machine: m, Tools: reg, Artifacts: artifacts,
+	completer, err := anthropic.New(anthropic.Options{
+		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	status, _, err := runner.Run(context.Background(), "thread-1", machine.InOut{})
+	reg := tools.New()
+	_ = reg.Add(upperTool{})
+
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.DefaultBounds(),
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	ship, _ := artifacts.Get("ship")
-	fmt.Println("status:", status)      // prints "status: shipped"
-	fmt.Println("ship artifact:", ship) // prints "shipped: reviewed: invoice 42"
+	res, err := loop.Run(context.Background(), []provider.Message{
+		{Role: provider.RoleUser, Content: "Uppercase the word hello."},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res.Final.Content)
 }
 ```
+
+Use `agentloop` for model-driven agents; use `workflow` for fixed step graphs. See [docs/examples/workflow-run.md](docs/examples/workflow-run.md) for the flow-pipeline example. This Quick Start no longer shows the flow pipeline itself.
 
 ## Documentation
 

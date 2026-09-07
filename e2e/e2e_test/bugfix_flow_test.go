@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // verdictScript hands out scripted verdicts in order and remembers the
@@ -139,7 +139,7 @@ func TestBugfixTriageRoutes(t *testing.T) {
 			hunt := 0
 			plan := bugfixAuditPlan(t, script)
 			m := bugfixAuditMachine(t)
-			if err := agentrun.ValidateMatrix(plan, m); err != nil {
+			if err := run.ValidateMatrix(plan, m); err != nil {
 				t.Fatalf("ValidateMatrix = %v, want nil", err)
 			}
 			reg := tools.New()
@@ -152,13 +152,13 @@ func TestBugfixTriageRoutes(t *testing.T) {
 				e2e.PrefixTool{ToolName: "implement", Prefix: "fix:"},
 				e2e.PrefixTool{ToolName: "clean_exit", Prefix: "clean:"},
 			)
-			artifacts := &agentrun.Artifacts{}
-			runner, err := agentrun.New(agentrun.Options{
+			artifacts := &run.Artifacts{}
+			runner, err := run.New(run.Options{
 				Agent: e2eAgent(t, "bugfix-audit", plan), Machine: m,
 				Tools: reg, Artifacts: artifacts,
 			})
 			if err != nil {
-				t.Fatalf("agentrun.New: %v", err)
+				t.Fatalf("run.New: %v", err)
 			}
 			status, _, err := runner.Run(context.Background(), "thread-bugfix", machine.InOut{})
 			if err != nil {
@@ -265,7 +265,7 @@ func bugfixRepairMachine(t *testing.T) *machine.Definition {
 // passes and ships. An ack rejection stays fatal, so a gate that
 // must route to repair reports failure as output, never error.
 func TestBugfixEvidenceRepairLoop(t *testing.T) {
-	artifacts := &agentrun.Artifacts{}
+	artifacts := &run.Artifacts{}
 	fixes, gateCalls := 0, 0
 	lastVerdict := "evidence:unrun"
 	child, err := flow.New([]flow.Step{
@@ -298,7 +298,7 @@ func TestBugfixEvidenceRepairLoop(t *testing.T) {
 		t.Fatalf("flow.New repair plan: %v", err)
 	}
 	m := bugfixRepairMachine(t)
-	if err := agentrun.ValidateMatrix(plan, m); err != nil {
+	if err := run.ValidateMatrix(plan, m); err != nil {
 		t.Fatalf("ValidateMatrix = %v, want nil", err)
 	}
 	reg := tools.New()
@@ -309,12 +309,12 @@ func TestBugfixEvidenceRepairLoop(t *testing.T) {
 		e2e.PrefixTool{ToolName: "validate", Prefix: "validated:"},
 		e2e.PrefixTool{ToolName: "ship", Prefix: "ship:"},
 	)
-	runner, err := agentrun.New(agentrun.Options{
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "bugfix-repair", plan), Machine: m,
 		Tools: reg, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	status, _, err := runner.Run(context.Background(), "thread-repair", machine.InOut{})
 	if err != nil {

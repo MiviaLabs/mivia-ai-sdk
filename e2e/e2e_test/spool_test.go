@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // readSpooledOutputName is the registered name of the tool
@@ -36,7 +36,7 @@ func (l largeOutputTool) Run(ctx context.Context, in tools.InOut) (tools.Out, er
 }
 
 // TestSpoolToolTruncatesLargeStepResult wires SpoolTool around a
-// large-output tool inside an agentrun step, then confirms the
+// large-output tool inside a workflow/run step, then confirms the
 // spooled view names a ref that a follow-up Spool.Load call resolves
 // to the tool's full result.
 func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
@@ -93,7 +93,7 @@ func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
 	}
 
 	// Resolve the same ref through reg.RunScoped, the same registry
-	// and scope agentrun.New validated and wired for the chain above.
+	// and scope run.New validated and wired for the chain above.
 	// This proves ReadOutputTool is present, schema-typed, and
 	// resolvable by name and scope in that live registry, not only
 	// that sp.Load works when called directly.
@@ -105,10 +105,10 @@ func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
 }
 
 // buildSpoolRunner wires wrapped and readBack into one registry, an
-// allowlist scope naming both, and an agentrun.Runner over a single
+// allowlist scope naming both, and a run.Runner over a single
 // tail step. It returns the same registry, scope, runner, and
 // artifacts a real caller assembles once up front.
-func buildSpoolRunner(t *testing.T, wrapped, readBack tools.Tool) (*tools.Registry, *tools.Scope, *agentrun.Runner, *agentrun.Artifacts) {
+func buildSpoolRunner(t *testing.T, wrapped, readBack tools.Tool) (*tools.Registry, *tools.Scope, *run.Runner, *run.Artifacts) {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "tail", To: "tailed", Payload: "go"},
@@ -127,13 +127,13 @@ func buildSpoolRunner(t *testing.T, wrapped, readBack tools.Tool) (*tools.Regist
 	scope := tools.NewScope(tools.ScopeOptions{
 		Allowlist: []string{"tail", readSpooledOutputName},
 	})
-	artifacts := &agentrun.Artifacts{}
-	runner, err := agentrun.New(agentrun.Options{
+	artifacts := &run.Artifacts{}
+	runner, err := run.New(run.Options{
 		Agent: e2eAgent(t, "tailer", plan), Machine: m,
 		Tools: reg, Scope: scope, Artifacts: artifacts,
 	})
 	if err != nil {
-		t.Fatalf("agentrun.New: %v", err)
+		t.Fatalf("run.New: %v", err)
 	}
 	return reg, scope, runner, artifacts
 }

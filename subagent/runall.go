@@ -8,14 +8,14 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
 )
 
 // Spec names one runner and its starting record for RunAll.
 type Spec struct {
 	Name   string
-	Runner *agentrun.Runner
+	Runner *run.Runner
 	In     machine.InOut
 }
 

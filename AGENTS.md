@@ -216,7 +216,12 @@ follow reliably. Each has a gate behind it.
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.
   `scripts/check_mutation.py` covers the packages with a stored floor
-  in `scripts/mutation_denylist/`.
+  in `scripts/mutation_denylist/`. A symbol at 100% coverage with no
+  production caller is not a separate failure mode: it is exactly
+  what `check_symbol_wiring.py` already catches, read the other way.
+  A coverage number alone never proves a caller exists; cross-check
+  a suspiciously test-only-covered symbol against that gate's output
+  rather than trusting the percentage on its own.
 - Do not delete, skip, or weaken a test instead of fixing the code
   behind it; do not drop a test function or a conformance vector. The
   gate watches four cases: a dropped test function (TT01), a new skip
@@ -265,3 +270,19 @@ careless agents. They are not a security boundary. GitHub Actions CI
 now runs `make verify` on every push and pull request to `main`. No
 branch protection rule exists yet, so CI stays informational only: a
 failing check does not block a merge or a direct push.
+
+- Optional, not blocking: `make lint-unparam` runs golangci-lint's
+  `unparam` linter against `.golangci.yml`. It needs golangci-lint
+  installed locally. It is not part of `verify-fast` or `verify` and
+  never blocks a commit or CI. Run it by hand to find a function
+  parameter every call site passes the same value for.
+- Optional, not blocking: `make advisory` runs
+  `scripts/check_interface_implementers.py`, a heuristic scan for an
+  interface with exactly one production implementer and no real
+  consumer - premature interface extraction. It matches methods by
+  name only, not by type signature, so it favors precision over
+  recall on purpose. A public SDK legitimately ships some
+  single-implementer interfaces as an intentional extension point, so
+  this stays advisory: it always exits 0 unless run by hand with
+  `--strict`. It is not part of `verify-fast` or `verify` and never
+  blocks a commit or CI.

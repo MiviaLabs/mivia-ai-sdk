@@ -41,7 +41,10 @@ Review, in order:
    preconditions, not by reading its name. A concurrency test needs
    proof both ways, that correct behavior passes and a planted
    mispairing or race fails, under the same fixture. Name the
-   assertion that discriminates between them.
+   assertion that discriminates between them. A symbol at 100%
+   coverage proves only that its own test calls it, never that
+   production code does; item 2's `check_symbol_wiring.py` run is the
+   check that distinguishes the two, not the percentage.
 7. Doc-comment claims inside branching code paths: a comment in
    `if`/`switch`/`for`/`select` that runs longer than one line of "what"
    is a behavioral claim about that branch's control flow. Re-read the

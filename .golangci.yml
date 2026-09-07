@@ -1,0 +1,17 @@
+# Optional, non-blocking lint config. Run by hand with `make
+# lint-unparam`; never wired into verify-fast or verify (see AGENTS.md
+# "Gate tiers"). Scoped to one linter on purpose: unparam flags a
+# function parameter every call site passes the same value for, a
+# narrow slice of the same "unused flexibility" problem the repo's
+# other gates address. golangci-lint is not a required tool for this
+# repo; a stranger with only Go and Python can still run every
+# blocking gate.
+version: "2"
+linters:
+  default: none
+  enable:
+    - unparam
+  exclusions:
+    paths:
+      - _test\.go
+      - docs/examples/

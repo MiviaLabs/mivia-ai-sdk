@@ -143,3 +143,18 @@ thirdparty-update:
 
 install-hooks:
 	git config core.hooksPath .githooks
+
+# lint-unparam is optional and never runs inside verify-fast or
+# verify: it needs golangci-lint installed locally, and this repo
+# must stay verifiable by a stranger with only Go and Python. It
+# checks one linter, unparam, against .golangci.yml. Run it by hand.
+lint-unparam:
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "lint-unparam: golangci-lint not installed, skipping optional check"; exit 0; }
+	golangci-lint run --config .golangci.yml
+
+# advisory runs checks that report a real signal but stay out of
+# verify and verify-fast on purpose: each one trades recall for
+# precision, or names a legitimate pattern often enough that a hard
+# fail would be noise. Run it by hand; it never blocks a commit or CI.
+advisory:
+	python3 scripts/check_interface_implementers.py

@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `scheduler`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: trigger
 
 The trigger package gives every part of this SDK one shared vocabulary
@@ -98,11 +102,11 @@ import (
     "errors"
     "fmt"
 
-    "github.com/MiviaLabs/mivia-ai-sdk/trigger"
+    "github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 func main() {
-    r := trigger.New()
+    r := scheduler.New()
 
     ready := func(ctx context.Context) (bool, error) { return true, nil }
     run := func(ctx context.Context) error {
@@ -115,7 +119,7 @@ func main() {
     }
 
     err := r.Fire(context.Background(), "deploy")
-    if errors.Is(err, trigger.ErrConditionNotMet) {
+    if errors.Is(err, scheduler.ErrConditionNotMet) {
         fmt.Println("not ready yet")
         return
     }

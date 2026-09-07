@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/contextsession`. The core module no longer
+> ships it.
+
 # Package reference: contextsession
 
 `contextsession` plans durable session history into a bounded provider request. It resolves payloads from durable storage, enforces retention rules, and spools elided content. The exported surface below mirrors `api/contextsession.txt`.

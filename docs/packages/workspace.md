@@ -13,7 +13,7 @@ exported surface below mirrors `api/workspace.txt`.
   unexported; build one with `Open` or `OpenWith`, and release it with
   `Close`.
 - `Options` — the open-time configuration: `Root string`,
-  `MaxReadBytes int64`, and `Deny *secretpath.Matcher`. A nil `Deny`
+  `MaxReadBytes int64`, and `Deny *workspace.Matcher`. A nil `Deny`
   denies nothing. See `OpenWith`.
 
 ## Constants
@@ -140,8 +140,8 @@ Four limits apply to `Options.Deny`. Each one lives in the
 
 ## Cross-references
 
-- `secretpath` — `Options.Deny` is a `*secretpath.Matcher`. The caller
-  compiles the pattern list with `secretpath.NewMatcher` and handles a
+- `secretpath` — `Options.Deny` is a `*workspace.Matcher`. The caller
+  compiles the pattern list with `workspace.NewMatcher` and handles a
   bad pattern where it wrote it.
 
 The `subagent` file-tool wrapper around `workspace` was removed as

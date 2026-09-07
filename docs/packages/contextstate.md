@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/contextstate`. The core module no longer
+> ships it.
+
 # Package reference: contextstate
 
 `contextstate` holds the durable context contract. The contract types

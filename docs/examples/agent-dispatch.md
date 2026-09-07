@@ -21,23 +21,23 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 )
 
 func main() {
 	// The dispatching agent's own key pair.
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		fmt.Println("identity.New:", err)
+		fmt.Println("envelope.New:", err)
 		return
 	}
 
 	// The receiver's key pair; it founds the room and acks the message.
-	receiver, err := identity.New()
+	receiver, err := envelope.New()
 	if err != nil {
-		fmt.Println("identity.New receiver:", err)
+		fmt.Println("envelope.New receiver:", err)
 		return
 	}
 
@@ -159,7 +159,7 @@ sequenceDiagram
 
 ## What the program shows
 
-`identity.New` generates the dispatching agent's ed25519 key pair.
+`envelope.New` generates the dispatching agent's ed25519 key pair.
 `flow.Card` names the agent and lists one capability,
 `task.dispatch`; `agent.New` validates the card before it binds
 identity, card, and plan into an `Agent`. The plan is one gated step

@@ -21,7 +21,7 @@ Outside: message semantics (envelope), persistence, federation.
 
 `Room` tracks admission only; it never tracks activity on its own.
 `StaleMembers` reports current roster members that have gone silent,
-backed by a caller-supplied `*heartbeat.Monitor`. It intersects the
+backed by a caller-supplied `*flow.Monitor`. It intersects the
 `Monitor`'s `Dead` result with `Room`'s own roster, under `Room`'s own
 lock, so a removed id never appears even if the `Monitor` still holds
 a beat record for it.
@@ -67,7 +67,7 @@ see gates.md; the api_surface fixes changed no symbol.
 
 ### The staleness API
 
-- `func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)`
+- `func (r *Room) StaleMembers(hb *flow.Monitor, now time.Time) ([]string, error)`
   returns the sorted, defensively copied current roster members that
   `hb.Dead(now)` also reports. A nil `hb` returns `nil` and
   `ErrNoMonitor`, checked before `r` touches its own lock.
@@ -77,7 +77,7 @@ see gates.md; the api_surface fixes changed no symbol.
 No other exported symbol changes. The expected `api/room.txt` diff:
 
 ```text
-+ func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)
++ func (r *Room) StaleMembers(hb *flow.Monitor, now time.Time) ([]string, error)
 + var ErrNoMonitor
 ```
 
@@ -151,7 +151,7 @@ Status: shipped.
 
 - Verified: `room.StaleMembers` and `room.ErrNoMonitor`
   (`room/liveness.go:13,25`) have no callers outside room's tests.
-  `heartbeat.MissedEvent` has zero users. The real consumer,
+  `flow.MissedEvent` has zero users. The real consumer,
   `subagent/heartbeattool.go:63`, calls `monitor.Dead` directly.
   `policy/pending_wiring.json` says nothing about these symbols; the
   orphan gate covers packages, not exported symbols.
@@ -279,7 +279,7 @@ other importer.
 `api/room.txt` loses two lines and gains none:
 
 ```text
-- func (r *Room) StaleMembers(hb *heartbeat.Monitor, now time.Time) ([]string, error)
+- func (r *Room) StaleMembers(hb *flow.Monitor, now time.Time) ([]string, error)
 - var ErrNoMonitor
 ```
 

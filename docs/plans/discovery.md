@@ -70,7 +70,7 @@ by value. Card is a small value type once parsed: two strings and a
 slice header. A value receiver lets a caller pass a Card by copy
 without losing Match or Validate. The SDK already splits receivers
 this way. envelope.Message and envelope.Ack use value receivers; they
-are wire-decoded data. identity.Identity and events.Bus use pointer
+are wire-decoded data. envelope.Identity and events.Bus use pointer
 receivers; they hold session state or a mutex. Card holds neither; it
 is data, so it takes the Message convention. `Match` also stays a
 value-receiver method for the same reason, overriding the

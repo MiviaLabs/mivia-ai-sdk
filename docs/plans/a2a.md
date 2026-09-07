@@ -100,7 +100,7 @@ Design notes:
   into `a2aproject/a2a-go`'s `Message` type without touching `Part`'s
   shape.
 - `ToPart` performs no signing and no mutation. The caller signs
-  `m` with `envelope.Sign` or `identity.Sign` before calling `ToPart`,
+  `m` with `envelope.Sign` or `envelope.Sign` before calling `ToPart`,
   the same way `envelope.Encode` expects a caller-prepared message.
 - `ToPart` builds `Part.Text` through `m.Encode()`, not a direct
   `json.Marshal` call. `semgrep/sdk-standards.yml`'s

@@ -236,7 +236,7 @@ Status: shipped.
 
 ### Goal
 
-- Decide `heartbeat.MissedEvent`'s fate. Doc-only. The full decision
+- Decide `flow.MissedEvent`'s fate. Doc-only. The full decision
   lives in `docs/plans/room.md`'s maintenance-batch addendum.
 
 ### Scope

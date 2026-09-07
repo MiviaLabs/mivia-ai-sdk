@@ -342,7 +342,7 @@ On every hard-fail error return — a canceled ctx, a `Completer.Chat`
 error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
 `ErrCallsPerTurnExceeded`, a `Trim` error, a post-`Trim`
 `provider.Message.Validate` error, a tool error under
-`ErrorPolicyFail`, a non-veto `hooks.Fire` error, or a non-nil
+`ErrorPolicyFail`, a non-veto `events.Fire` error, or a non-nil
 `Options.Audit` return — `Run` also
 returns the partial `Result` alongside the error, not the zero value,
 once at least one iteration has completed. `Final` and `Stop` stay
@@ -534,7 +534,7 @@ path exactly.
 
 - `New` calls `Definitions` once; a tool registered after `New` but
   before `Run` is never offered to the model.
-- A `PointPreTool` veto (`errors.Is(err, hooks.ErrVetoed)`) stops the
+- A `PointPreTool` veto (`errors.Is(err, events.ErrVetoed)`) stops the
   run with `StopHookVeto` and does not run the tool. Any other
   `PointPreTool` handler error is a hard failure.
 - A wired `Hooks` registry fires `PointPreTool` before each tool

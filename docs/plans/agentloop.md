@@ -65,8 +65,8 @@ Outside:
 - `type Options struct` — `Completer provider.Completer`,
   `Tools *tools.Registry`, `Scope *tools.Scope`, `Model string`,
   `MaxIterations int`, `MaxCallsPerTurn int`, `MaxTotalTokens int`,
-  `OnToolError ErrorPolicy`, `Hooks *hooks.Registry`,
-  `Tracer *trace.Tracer`, `Usage *usage.Accumulator`,
+  `OnToolError ErrorPolicy`, `Hooks *events.Registry`,
+  `Tracer *trace.Tracer`, `Usage *provider.Accumulator`,
   `SessionID string`, `Bus *events.Bus`,
   `Budget *contextbudget.Limits`,
   `Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)`.
@@ -129,7 +129,7 @@ before a new response arrived, as with `StopHookVeto`. On every
 hard-fail error return — a canceled ctx, a `Completer.Chat` error,
 `ErrOverBudget`, `ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`,
 a `Trim` error, a post-`Trim` `provider.Message.Validate` error, a
-tool error under `ErrorPolicyFail`, or a non-veto `hooks.Fire` error
+tool error under `ErrorPolicyFail`, or a non-veto `events.Fire` error
 — `Run` also returns the partial `Result` alongside the error, not
 the zero value.
 `History`, `Iterations`, and `Usage` carry the same partial state as
@@ -210,7 +210,7 @@ sees the response that tripped the cap. `Options.Usage` recording
 itself still sums the `Completer`'s raw reported `TotalTokens`, not
 the corrected `max()` figure, and carries its own, separate
 under-reporting gap for a `Completer` that leaves `TotalTokens` at
-zero; see the addendum's Outside bullet on `usage.Accumulator`. A
+zero; see the addendum's Outside bullet on `provider.Accumulator`. A
 zero `MaxTotalTokens` means unbounded.
 
 Hitting `MaxIterations` is not an error: `Run` returns
@@ -221,14 +221,14 @@ reserved for `Options.Validate()` rejecting a non-positive
 runtime stop.
 
 `trace.Tracer` opens one span per iteration and one per tool call.
-`hooks.Registry` fires `PointPreTool` and `PointPostTool` per tool
+`events.Registry` fires `PointPreTool` and `PointPostTool` per tool
 call, and `PointStop` once at the end. When a `Fire` call returns a
-non-nil error, `Run` checks `errors.Is(err, hooks.ErrVetoed)`: a veto
+non-nil error, `Run` checks `errors.Is(err, events.ErrVetoed)`: a veto
 is the graceful `StopHookVeto` stop described above — nil error, no
 tool run. Any other `Fire` error, a handler-returned error that is not
 a veto, is a hard failure: `Run` returns the wrapped error and the
 partial `Result` per the rule above, and the tool does not run.
-`usage.Accumulator` records per iteration under `SessionID`.
+`provider.Accumulator` records per iteration under `SessionID`.
 `events.Bus` carries the loop's own events. Each of the four is
 optional and unused when nil.
 
@@ -346,7 +346,7 @@ same footprint the package already holds.
   runs once at `New` and `Run` reuses the cached result. A
   `PointPreTool` handler that returns a non-veto error fails the run
   with the wrapped handler error, asserts
-  `errors.Is(err, hooks.ErrVetoed)` is false to distinguish it from a
+  `errors.Is(err, events.ErrVetoed)` is false to distinguish it from a
   veto, and asserts the returned `Result` carries the accumulated
   `History`, `Iterations`, and `Usage` at the point of failure, not
   the zero value. A `Trim` hook returning a slice with one invalid
@@ -985,7 +985,7 @@ Inside:
 Outside:
 
 - `sumUsage` and `totalUsage`, `Result.Usage`, and
-  `Options.Usage`/`usage.Accumulator` recording. Those three continue
+  `Options.Usage`/`provider.Accumulator` recording. Those three continue
   to record the raw `resp.Usage` a `Completer` reports, unchanged: they
   are a caller-facing report of what the `Completer` said, not a
   safety cap, and correcting a `Completer`'s own under-reporting there
@@ -994,12 +994,12 @@ Outside:
 - `provider.Usage` and `provider/types.go`. This addendum adds no
   `Validate` method there; see the addendum decision above. No
   `docs/plans/provider.md` change.
-- `usage.Accumulator.Record` in `usage/accumulator.go`. It sums
+- `provider.Accumulator.Record` in `usage/accumulator.go`. It sums
   `TotalTokens` the same trust-assuming way `run.go` did, so
   `Accumulator.Total` under-reports for the same
   `TotalTokens`-left-zero `Completer` shape. This is a real, smaller
   gap in a different package, not fixed in this change. It needs its
-  own plan review against `docs/plans/usage.md`, since `usage.Record`
+  own plan review against `docs/plans/usage.md`, since `provider.Record`
   is a reporting primitive, not a safety cap, and the correct fix
   there — reporting the caller's raw numbers, or reporting a corrected
   `max()` total, or adding a `PartialUsage`-style flag — is its own
@@ -1360,7 +1360,7 @@ Window *contextplan.Window
 
 // Summarizer runs the LLM summary every compaction requires. Required
 // when Window is set.
-Summarizer *contextsummary.Summarizer
+Summarizer *contextplan.Summarizer
 
 // Calibrated estimates tokens for planning and receives one Observe
 // call after every Chat. Required when Window is set.
@@ -1429,7 +1429,7 @@ Before each `Completer.Chat`, when `l.window` is non-nil, `Run`:
 The compaction sequence:
 
 - Copies the caller's `Window` value and appends
-  `contextsummary.SummaryMessageName` to the copy's
+  `contextplan.SummaryMessageName` to the copy's
   `Compaction.PreserveNames` only when absent, into a freshly
   allocated slice. The append never mutates the caller's backing
   array, and a caller already listing the name never trips
@@ -1455,7 +1455,7 @@ The compaction sequence:
   `ErrCompactionFailed`, wrapped with the iteration count and the
   contextsummary sentinel. This is the hard rule: no request, no
   messages, no tool calls are sent for that iteration.
-- Injects `contextsummary.SummaryMessage(s)` directly after the
+- Injects `contextplan.SummaryMessage(s)` directly after the
   leading system message, or at index zero when none leads.
 - Re-estimates the rebuilt history. Above the effective window's
   `Budget()`, the iteration fails with `ErrCompactionFailed`
@@ -1549,7 +1549,7 @@ scripted `Completer` and one scripted `Summarizer` per case:
   recorded after `Chat`.
 - Over trigger: `Compact` ran, one summarizer call over the dropped
   messages, the summary message sits after the system message, its
-  `Name` is `contextsummary.SummaryMessageName`, and the request the
+  `Name` is `contextplan.SummaryMessageName`, and the request the
   `Completer` received carries the compacted history.
 - At trigger with nothing droppable: an all-mandatory history at the
   trigger yields an empty `Dropped`; the summarizer is never called,
@@ -2067,7 +2067,7 @@ Inside:
   per-tool-call heartbeat.
 - Emitting on `Bus` at each of those points. A `Bus.Emit` error is
   swallowed, the same way `Run` already swallows a
-  `hooks.Registry.Fire` error from `PointStop`: a heartbeat is
+  `events.Registry.Fire` error from `PointStop`: a heartbeat is
   observability, not a control-flow gate. The gate is decoupled
   per event class: the four lifecycle names (iteration start/end,
   tool-call start/end) fire whenever `Bus` is non-nil, while the
@@ -2167,7 +2167,7 @@ for the full field list, the failure mode, and the gating rule.
   two `EventToolCallHeartbeat` events, then `EventToolCallEnd`, in
   order.
 - `Bus.Emit` errors are swallowed, matching
-  the `PointStop`/`hooks.Registry.Fire` swallow precedent; a name
+  the `PointStop`/`events.Registry.Fire` swallow precedent; a name
   with no subscriber emits nothing; `Run` completes normally.
 - A race sub-case: heartbeat emission from the ticking goroutine and
   the main loop's own state changes run concurrently, under
@@ -3007,7 +3007,7 @@ In `agentloop/agentloop_test/compaction_test.go`:
 
 - `TestRunSummarizerFailureFailsBeforeRequest` (currently at
   `compaction_test.go:324-346`) keeps its `msgs`, `w`, fixture setup,
-  and its `ErrCompactionFailed`/`contextsummary.ErrCallFailed`/
+  and its `ErrCompactionFailed`/`contextplan.ErrCallFailed`/
   `completer.callCount() == 0` assertions unchanged. Replace only its
   final assertion:
 
@@ -3099,7 +3099,7 @@ second compaction's summarizer call failing instead of succeeding:
   1}, 1.0)}`. No `Budget`: irrelevant to this test's boundary.
 - Call `loop.Run(context.Background(), msgs)`.
 - Assert `errors.Is(err, agentloop.ErrCompactionFailed)`.
-- Assert `errors.Is(err, contextsummary.ErrCallFailed)`.
+- Assert `errors.Is(err, contextplan.ErrCallFailed)`.
 - Assert `completer.callCount() == 1`: the first iteration's
   `Completer.Chat` call ran; the second iteration hard-fails inside
   `planHistory`, before any second `Completer.Chat` call.
@@ -5285,14 +5285,14 @@ main.go design:
   - `Window`: `&contextplan.Window{MaxTokens: 512,
     Compaction: contextplan.Compaction{TriggerPercent: 80,
     TargetPercent: 50}}`.
-  - `Summarizer`: `contextsummary.NewSummarizer(canned)`. It returns
+  - `Summarizer`: `contextplan.NewSummarizer(canned)`. It returns
     an error; main prints and returns on it.
   - `Calibrated`: `contextplan.Calibrate(est, 0.25)`.
   - `Tracer`: `trace.New()`.
-  - `Hooks`: `hooks.New()` plus one handler at `hooks.PointPostTool`.
+  - `Hooks`: `events.New()` plus one handler at `events.PointPostTool`.
     The handler prints the payload and returns true, nil, so `Fire`
     continues.
-  - `Usage`: `usage.New()`; `SessionID`: `agentloop-example`.
+  - `Usage`: `provider.New()`; `SessionID`: `agentloop-example`.
   - `WorkBudget`: `Reserve` and `Refund` both non-nil no-op closures.
     A half-wired budget fails `Validate`.
   - `ToolBudget`: `Reserve` non-nil.
@@ -5434,7 +5434,7 @@ Inside:
   parallelism, 3-turn failure tripwire).
 - `EnableCompaction(o *Options, completer provider.Completer, window
   contextplan.Window, alpha float64) error`: builds the
-  `contextsummary.Summarizer` from the completer, the
+  `contextplan.Summarizer` from the completer, the
   `contextplan.Calibrated` from its `provider.TokenEstimator`
   capability, and sets all three `Options` fields. A completer
   without the estimator capability fails with `ErrNoTokenEstimator`

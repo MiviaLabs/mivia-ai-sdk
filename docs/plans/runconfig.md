@@ -442,7 +442,7 @@ Status: shipped.
 ### Addendum goal
 
 Let a document turn on run tracing without a code change. `agentrun.Options`
-already carries `Tracer *trace.Tracer` and `Hooks *hooks.Registry`, but
+already carries `Tracer *trace.Tracer` and `Hooks *events.Registry`, but
 `wireOptions` in `runconfig/loader.go` maps only `room`, `ask_to`, and
 `budget`. This addendum adds one JSON field, `options.trace`, that
 builds a `*trace.Tracer` through `Load`. It leaves `Hooks` out of the
@@ -466,7 +466,7 @@ Inside:
 
 Outside:
 
-- No `HooksKind` or any JSON path that builds a `*hooks.Registry`. See
+- No `HooksKind` or any JSON path that builds a `*events.Registry`. See
   the design note below for why.
 - No `TracerKind`. `runconfig.Kind` names a step's bound `tools.Tool`,
   resolved per step through `Blocks`. A `Tracer` is not a `tools.Tool`
@@ -480,10 +480,10 @@ Outside:
 
 ### Design note: why hooks stays out of the JSON grammar
 
-`hooks.Registry.Add` takes a `Handler`, a Go function value
+`events.Registry.Add` takes a `Handler`, a Go function value
 (`func(ctx context.Context, payload any) (bool, error)`). A JSON
 document cannot encode a function body. An `options.hooks: true` flag
-could still build an empty `hooks.New()` registry, matching the
+could still build an empty `events.New()` registry, matching the
 `trace` shape, but an empty registry changes nothing: `Fire` returns
 `nil` at once for a point with zero handlers, so `PointPreTool` never
 vetoes and `PointPostTool` and `PointStop` never observe. A document
@@ -495,7 +495,7 @@ complete without a handler.
 
 A caller that needs hooks already has a path with no runconfig change:
 `Definition.Options` is a plain `agentrun.Options` value, so the caller
-sets `def.Options.Hooks = hooks.New()` and calls `Add` in Go code after
+sets `def.Options.Hooks = events.New()` and calls `Add` in Go code after
 `Load`, the same pattern `Definition.Options.Agent` already uses for
 the caller-set agent. `runconfig` requires no new API for this; the
 field is already exported and already settable.
@@ -649,9 +649,9 @@ Design rules:
   document scalar or a value the loaded `Definition` already holds.
   A Go function value or a live object makes the `Kind` caller-built.
 - Each caller-built constructor takes one such value:
-  `scheduler.Job`, `trigger.Condition` and `trigger.Action`,
+  `scheduler.Job`, `scheduler.Condition` and `scheduler.Action`,
   `channel.Notifier`, `provider.Completer`,
-  `providerregistry.Registry` with `providerregistry.Retryable`, and
+  `provider.Registry` with `provider.Retryable`, and
   `*agentrun.Runner`. A JSON document cannot encode any of them.
 - `flow` binds the document's own `Definition.Plan` and
   `Definition.Machine`. `flow.Run` walks a plan structurally and never
@@ -701,7 +701,7 @@ Per-Kind config and constructor:
   `subagent.FlowTool(name, d.Plan, d.Machine, nil)`. A bus stays
   caller-side; a caller wanting bus events uses `Blocks.Set`.
 - `heartbeat` — field `timeout`, a duration string parsed by
-  `time.ParseDuration`. Calls `heartbeat.New(timeout)`, then
+  `time.ParseDuration`. Calls `flow.NewMonitor(timeout)`, then
   `subagent.HeartbeatTool(name, monitor)`.
 - `ledger` — fields `actor`, a non-blank string, and `lease`, a
   positive duration string. Calls
@@ -732,7 +732,7 @@ Rejections, each wrapped in `ErrBadDocument`:
 - A blank `actor`, for `room` or `ledger`, or a `lease` at or below
   zero. The loader checks these three itself; no typed constructor sees
   them.
-- Any rejection from `heartbeat.New`, `memory.New`, or `room.New`. The
+- Any rejection from `flow.New`, `memory.New`, or `room.New`. The
   loader forwards the constructor's own sentinel wrapped in
   `ErrBadDocument`, matching the `machine.New` and `flow.New` rule.
 

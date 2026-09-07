@@ -44,7 +44,7 @@ const (
     StubContentBytes                             = 256
 )
 
-func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, error)
+func NewPlanner(store *contextstate.MemStore, spooler *memory.Spool) (*Planner, error)
 func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contextplan.Window, e provider.TokenEstimator) (PlanResult, error)
 func StubContent(content []byte) []byte
 func IsReasoningEvent(e contextstate.SourceEvent) bool

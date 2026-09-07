@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `flow`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: heartbeat
 
 The heartbeat package tracks liveness by time. A sender beats on its
@@ -82,7 +86,7 @@ implementation, two callers, no clock abstraction needed.
 ## Usage
 
 ```go
-mon, err := heartbeat.New(30 * time.Second)
+mon, err := flow.NewMonitor(30 * time.Second)
 if err != nil {
     // timeout was zero or negative
 }

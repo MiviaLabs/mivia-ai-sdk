@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/envfile`. The core module no longer
+> ships it.
+
 # Package reference: envfile
 
 `envfile` loads a dotenv body into a map without ever leaking parsed

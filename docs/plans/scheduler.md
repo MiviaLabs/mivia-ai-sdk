@@ -40,7 +40,7 @@ Outside:
   survive a process restart. A caller who needs durability re-`Add`s
   every job after `New`, the same way a caller re-supplies `flow`'s
   `Definition` on every process start.
-- Holding an `events.Bus` as a `Scheduler` field. `heartbeat.Monitor`
+- Holding an `events.Bus` as a `Scheduler` field. `flow.Monitor`
   never holds a `Bus`. `flow.Run` takes `bus *events.Bus` as a
   parameter, not a field. `scheduler.Scheduler.Run` follows the same
   parameter shape, so a `Scheduler` value stays bus-agnostic between
@@ -153,7 +153,7 @@ The surface below is locked in `api/scheduler.txt` by `make api-update`.
   mirroring `flow.emitStep`'s `fmt.Sprintf("step %s completed", id)`
   style.
 - Sentinel errors, tested with `errors.Is`, mirroring
-  `heartbeat.ErrNoID`'s and `tools.ErrBlankName`'s pinned-text style:
+  `flow.ErrNoID`'s and `tools.ErrBlankName`'s pinned-text style:
   - `ErrBlankID = errors.New("scheduler: id must not be blank")`
   - `ErrNilSchedule = errors.New("scheduler: schedule must not be nil")`
   - `ErrNilJob = errors.New("scheduler: job must not be nil")`
@@ -247,7 +247,7 @@ repo's flat test layout.
     separate from the explicit-cancel case above, which asserts
     `context.Canceled`.
 - `scheduler_concurrent_test.go` — a concurrency-stress test, matching
-  `tools.Registry`'s and `heartbeat.Monitor`'s own dedicated
+  `tools.Registry`'s and `flow.Monitor`'s own dedicated
   `_concurrent_test.go` precedent. Many goroutines call `Add`,
   `Remove`, and a running `Run` concurrently on one `Scheduler`, under
   `go test -race`. Asserts no data race and no panic. This backs the

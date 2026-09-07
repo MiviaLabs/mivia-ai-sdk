@@ -59,8 +59,11 @@ or a bound trips. The exported surface below mirrors
   `EnableCompaction` and `context/plan.NewSummarizer` are the only
   sanctioned constructors for the field's value. A typed nil
   `(*context/plan.Summarizer)(nil)` stored by hand is not nil as an
-  interface: `Validate` passes it and the first `Summarize` call
-  panics.
+  interface, but `Validate` asserts the field against that one
+  sanctioned concrete type and rejects a nil pointer with
+  `ErrSummarizerRequired`, the same as an untyped nil. A custom
+  `Summarizer` of some other pointer type holding a nil receiver is
+  outside this check.
 - `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
   at a graceful stop: `Stop`, `Message`, `Iterations`, and
   `History`. See "Stop-decision hook" below.
@@ -94,8 +97,9 @@ or a bound trips. The exported surface below mirrors
   call fails with `ErrNoTokenEstimator` and leaves `Options`
   untouched. `EnableCompaction` and `context/plan.NewSummarizer`
   are the only sanctioned constructors for `Options.Summarizer`. A
-  typed nil stored by hand is not nil as an interface; see the
-  `Summarizer` type above for the warning. A minimal entry path is
+  typed nil stored by hand is not nil as an interface, but `Validate`
+  rejects the sanctioned adapter's typed-nil shape the same as an
+  untyped nil; see the `Summarizer` type above. A minimal entry path is
   therefore: `anthropic.New`,
   `tools.New`, `Options{Completer, Tools, Bounds: DefaultBounds()}`,
   `EnableCompaction`, `agentloop.New`, `Run`. See
@@ -130,10 +134,12 @@ or a bound trips. The exported surface below mirrors
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
   `validate` check. The `Summarizer` requirement is an interface nil
-  check: an untyped nil fails `ErrSummarizerRequired`. A typed nil
-  `(*context/plan.Summarizer)(nil)` passes the check, because a
-  typed nil stored in an interface field is not nil; see the
-  `Summarizer` type above for the caveat.
+  check: an untyped nil fails `ErrSummarizerRequired`, and so does a
+  typed nil `(*context/plan.Summarizer)(nil)`, which `Validate`
+  rejects through a direct type assertion against that one sanctioned
+  concrete type, since a typed nil stored in an interface field is
+  not nil by plain comparison and this module bans reflection outside
+  tests; see the `Summarizer` type above.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. Fails closed with `ErrNoSchemas` whenever `reg` is
@@ -207,10 +213,10 @@ Use `errors.Is` to test these.
   `context/plan.ErrSummarySkipped` is a skip, not this failure; see
   the skip rules under "Context planning and prompt-too-long
   recovery" below.
-- `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
+- `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") -
   `Options.Validate` returns it when `Window` is set and `Summarizer`
-  is a nil interface. See the typed-nil caveat under
-  `Options.Validate` above.
+  is a nil interface, including a nil `*context/plan.Summarizer`
+  wrapped in the interface. See `Options.Validate` above.
 - `ErrEstimatorRequired` ("agentloop: Window requires Calibrated") —
   `Options.Validate` returns it when `Window` is set and `Calibrated`
   is nil.
@@ -285,6 +291,14 @@ prior-summary state:
 Every skip path still re-estimates the rebuilt history against
 `Window.Budget` before `Run` sends it.
 
+Every compaction, skip or summarized, inserts or re-injects its
+message at the same fixed slot, directly after the leading system
+message. A host whose own compaction instead appends the summary at
+the tail of history, to extend a provider's cached prefix, must
+re-anchor any assertion pinned to that placement; adopting this
+package's mid-history insertion invalidates the cached prefix once
+per compaction.
+
 ## Capability derivation from the Completer
 
 `New` derives two Options defaults from `opts.Completer`, without any
@@ -296,7 +310,11 @@ whether `opts.Completer` implements `provider.ContextAccountant`. If
 it does, and `ContextAccountant.ContextWindow()` returns a positive
 value, `New` builds a default `context/plan.Window`: `MaxTokens` is the
 reported window, `Reserve` is one fifth of it, and `Compaction`
-triggers at 80% and targets 50%, matching the 80%-trigger reserve.
+triggers at 80% and targets 50% of `Budget`. `Budget` is `MaxTokens`
+minus `Reserve`, four fifths of `MaxTokens` here, so the derived
+Window compacts at an effective 64% of `MaxTokens` and rebuilds down
+to an effective 40%. See "Effective thresholds for host-style
+configs" in docs/plans/agentloop.md for the full percent math.
 The `opts.Summarizer != nil` gate reads an interface, since the
 `Summarizer` field holds the `Summarizer` interface type; the gate's
 behavior is unchanged.

@@ -32,7 +32,7 @@ counterpart to `Run`.
 Outside: the agent binding. A future phase wires a `Registry` into an
 agent. A tool never sees the agent. Outside: the memory store. Phase
 15 owns memory. The `tools` package does not import `agent` or a
-future `memory` package. Outside: any mivia-specific field on
+future `memory` package. Outside: any consumer-specific field on
 `ExecutionProfile` or `Scope`. The shape stays generic so any caller in
 this module, or a future one, can reuse it. Outside: any change to
 `Tool`, `Registry.Add`, `Registry.Get`, `Registry.Remove`, or

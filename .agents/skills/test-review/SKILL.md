@@ -61,9 +61,8 @@ value from the importer across the edge to the imported package and
 reads the real result? In this repo the edges are:
 
 - `a2a` imports `envelope`: `ToPart` maps an `envelope.Message` into an
-  `a2a.Mapped` value.
-- `a2aclient` imports `a2a` and `envelope`: it sends an `a2a.Mapped`
-  task and re-verifies the returned `envelope.Message` signature.
+  `a2a.Mapped` value, and `Client` sends that value as a task, then
+  re-verifies the returned `envelope.Message` signature.
 - `agent` imports `context/budget`, `envelope`, `events`, `flow`, and
   `machine`: `Run` builds signed
   `envelope.Message`s through a `flow.Definition` over a

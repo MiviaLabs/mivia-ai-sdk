@@ -300,7 +300,7 @@ type vectorFixture struct {
 // fixture part reproduces the fixture message, and FromPart on a
 // fresh ToPart mapping of the fixture message reproduces it too.
 func TestConformanceVectors(t *testing.T) {
-	entries, err := os.ReadDir("../testdata/vectors")
+	entries, err := os.ReadDir("testdata/vectors")
 	if err != nil {
 		t.Fatalf("read vectors: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestConformanceVectors(t *testing.T) {
 			t.Fatalf("vector name must start with valid_: %s", name)
 		}
 		t.Run(name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join("../testdata/vectors", name))
+			data, err := os.ReadFile(filepath.Join("testdata/vectors", name))
 			if err != nil {
 				t.Fatalf("read vector: %v", err)
 			}
@@ -364,7 +364,7 @@ func TestConformanceVectors(t *testing.T) {
 // reproduces the vector's part text byte for byte: the carrier holds
 // the exact Encode bytes.
 func TestTextVectorByteExact(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("../testdata/vectors", "valid_mapped_text.json"))
+	data, err := os.ReadFile(filepath.Join("testdata/vectors", "valid_mapped_text.json"))
 	if err != nil {
 		t.Fatalf("read vector: %v", err)
 	}

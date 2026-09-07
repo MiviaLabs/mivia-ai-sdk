@@ -8,8 +8,10 @@ import (
 )
 
 // ErrInvalidOptions is the sentinel for a Validate or constructor
-// failure on caller-supplied input. Test with errors.Is; the
-// wrapped message names the field and the violated rule.
+// failure on caller-supplied input. It also covers a call-time
+// argument that fails its rule, such as Monitor.Beat's blank id.
+// Test with errors.Is; the wrapped message names the field and the
+// violated rule.
 var ErrInvalidOptions = errors.New("flow: invalid options")
 
 // Card holds a parsed capability card: an agent's name, an optional

@@ -1,14 +1,14 @@
 {
   "comment": "Third-party import exceptions. The SDK is standard library only. A package absent from this table may import no third-party module.",
   "exceptions": {
-    "a2aclient": {
+    "a2a": {
       "modules": [
         "github.com/a2aproject/a2a-go",
         "google.golang.org/grpc"
       ],
       "tag": ""
     },
-    "a2aclient/a2atest": {
+    "a2a/a2atest": {
       "modules": [
         "github.com/a2aproject/a2a-go",
         "google.golang.org/grpc"

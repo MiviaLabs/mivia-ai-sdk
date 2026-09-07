@@ -1,16 +1,16 @@
-package a2aclient_test
+package a2a_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
-// TestWaitLiveLoopback runs the real a2aclient.Client through
+// TestWaitLiveLoopback runs the real a2a.Client through
 // a2atest.Loopback and asserts the resulting ack: MessageID equals
 // the sent step message's id, Status is confirmed, and From and the
 // restatement come from the server's reply.
@@ -25,9 +25,9 @@ func TestWaitLiveLoopback(t *testing.T) {
 		}
 	})
 
-	client, err := a2aclient.New(addr)
+	client, err := a2a.New(addr)
 	if err != nil {
-		t.Fatalf("a2aclient.New() error: %v", err)
+		t.Fatalf("a2a.New() error: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := client.Close(); err != nil {
@@ -35,8 +35,8 @@ func TestWaitLiveLoopback(t *testing.T) {
 		}
 	})
 
-	opts := a2aclient.Options{Poll: 2 * time.Millisecond, Timeout: time.Second}
-	ackFn, err := a2aclient.Wait(client, opts)
+	opts := a2a.Options{Poll: 2 * time.Millisecond, Timeout: time.Second}
+	ackFn, err := a2a.Wait(client, opts)
 	if err != nil {
 		t.Fatalf("Wait() returned validation error %v", err)
 	}

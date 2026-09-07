@@ -1,9 +1,9 @@
 // AckWait turns a remote A2A task round trip into the agent
 // composition layer's AckWait. Wait resolves one gated step through a
 // Remote: send, poll, result, verify, and ack. See
-// docs/plans/a2aclient.md for the contract.
+// docs/plans/a2a.md for the contract.
 
-package a2aclient
+package a2a
 
 import (
 	"context"
@@ -39,15 +39,15 @@ var (
 	// ErrInvalidOptions reports a Wait or Options.Validate call whose
 	// construction input fails a sanity check. Test with errors.Is
 	// and a substring check on the field name.
-	ErrInvalidOptions = errors.New("a2aclient: invalid options")
+	ErrInvalidOptions = errors.New("a2a: invalid options")
 	// ErrRemoteFailed means the remote task ended failed, canceled,
 	// rejected, or in a state a2aack cannot resolve.
-	ErrRemoteFailed = errors.New("a2aclient: remote task failed")
+	ErrRemoteFailed = errors.New("a2a: remote task failed")
 	// ErrTimeout means the exchange outran its deadline or ctx.
-	ErrTimeout = errors.New("a2aclient: remote task timed out")
+	ErrTimeout = errors.New("a2a: remote task timed out")
 	// ErrSignerMismatch means the result verified but its signer is
 	// not the pinned Options.ExpectSigner.
-	ErrSignerMismatch = errors.New("a2aclient: result signer is not the expected remote")
+	ErrSignerMismatch = errors.New("a2a: result signer is not the expected remote")
 )
 
 // Remote is the remote-task round trip a2aack polls: send, status,
@@ -125,7 +125,7 @@ func poll(ctx context.Context, c Remote, h TaskHandle, opts Options, msg envelop
 // msg.ID, the sent step's own id, not the server-minted result id.
 func ackFromResult(msg, result envelope.Message, expect string) (envelope.Ack, error) {
 	if err := result.VerifySignature(); err != nil {
-		return envelope.Ack{}, fmt.Errorf("a2aclient: result signature check failed: %w", err)
+		return envelope.Ack{}, fmt.Errorf("a2a: result signature check failed: %w", err)
 	}
 	if expect != "" && result.Signer != expect {
 		return envelope.Ack{}, fmt.Errorf("%w: got signer %s", ErrSignerMismatch, result.Signer)

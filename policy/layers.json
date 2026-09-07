@@ -4,10 +4,6 @@
     "a2a": [
       "envelope"
     ],
-    "a2aclient": [
-      "a2a",
-      "envelope"
-    ],
     "workflow": [
       "context/budget",
       "envelope",
@@ -103,10 +99,6 @@
     "trace": [],
     "workspace": [],
     "ledger/ledgertest": [],
-    "a2aclient/a2atest": [
-      "a2a",
-      "envelope"
-    ],
     "internal/e2e": [
       "workflow",
       "channel",
@@ -116,6 +108,10 @@
       "ledger",
       "provider",
       "tools"
+    ],
+    "a2a/a2atest": [
+      "a2a",
+      "envelope"
     ]
   }
 }

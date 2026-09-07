@@ -3,7 +3,7 @@
 `mivia-ai-sdk` is a Go module of composable building blocks for
 tool-calling agents. `agentloop` drives the tool-calling loop over a
 model provider and a tool registry. The remaining blocks compose
-around it: envelope, room, machine, flow, events, a2a, a2aclient,
+around it: envelope, room, machine, flow, events, a2a,
 dispatch, tools, context/budget, schema, mcp, ledger, memory,
 provider, provider/anthropic, context/plan, context/ref, channel,
 trace, scheduler, workflow, workflow/run, subagent, and workspace.
@@ -32,7 +32,7 @@ The composition stack, bottom to top:
   parallel behind a depth guard, and a signed-message mailbox
   carries both directions.
 - [packages/dispatch.md](packages/dispatch.md) and
-  [packages/a2aclient.md](packages/a2aclient.md) — the receive and remote
+  [packages/a2a.md](packages/a2a.md) — the receive and remote
   halves: an HTTP envelope endpoint, and a remote A2A task as one
   step's ack.
 
@@ -59,8 +59,7 @@ into a `tools.Registry` through `subagent`:
 - [packages/machine.md](packages/machine.md) — the state-machine building block: the status model and the move dispatch.
 - [packages/room.md](packages/room.md) — standing groups for messages: the roster, the roles, and message admission.
 - [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, the runner, the capability card, and the liveness monitor.
-- [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
-- [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter plus the remote step ack: send a message as a remote task, and resolve one gated step through send, poll, result, verify, and ack.
+- [packages/a2a.md](packages/a2a.md) — the A2A v1.0 protocol: a message part shape, the functions that map an envelope message onto it and back, the a2a-go client adapter, and the remote step ack.
 - [packages/dispatch.md](packages/dispatch.md) — the NDJSON envelope endpoint: an `http.Handler` that runs the receive ladder per line and answers with confirmed acks, plus `Send`, the client-side counterpart.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
 - [packages/budget.md](packages/budget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
@@ -114,7 +113,7 @@ that import them but not advertised as SDK surface.
 - [examples/a2a-mapping-roundtrip.md](examples/a2a-mapping-roundtrip.md) — a signed message mapped to an A2A `Part` and back, verified bit-for-bit.
 - [examples/workflow-run.md](examples/workflow-run.md) — a two-step plan run through the `workflow/run` composition layer with a tool, an artifact, and a store.
 - [examples/taskrun.md](examples/taskrun.md) — the `taskrun` ledger ceremony: a successful build, a failed build, and a replay sentinel.
-- [examples/a2aack.md](examples/a2aack.md) — one gated step resolved through a remote A2A task via `a2aclient.Wait`, confirmed by the caller's own key.
+- [examples/a2aack.md](examples/a2aack.md) — one gated step resolved through a remote A2A task via `a2a.Wait`, confirmed by the caller's own key.
 - [examples/dispatch.md](examples/dispatch.md) — one signed message posted to a live `dispatch.Endpoint`, admitted, handled, and confirmed over NDJSON.
 
 ## Internal records

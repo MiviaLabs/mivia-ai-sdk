@@ -1,4 +1,4 @@
-package a2aclient
+package a2a
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	a2acore "github.com/a2aproject/a2a-go/a2a"
 	a2asdk "github.com/a2aproject/a2a-go/a2aclient"
 	"google.golang.org/grpc/credentials/insecure"
@@ -52,7 +51,7 @@ func TestNewGRPCTransportDialsLazilyAndCloses(t *testing.T) {
 
 func TestGRPCTransportSendReturnsTaskID(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{sendResp: &a2acore.Task{ID: "task-9"}}}
-	mapped := a2a.Mapped{Part: a2a.Part{Text: "{}"}, ContextID: "ctx-1"}
+	mapped := Mapped{Part: Part{Text: "{}"}, ContextID: "ctx-1"}
 	id, err := g.Send(context.Background(), mapped)
 	if err != nil {
 		t.Fatalf("Send: %v", err)
@@ -64,7 +63,7 @@ func TestGRPCTransportSendReturnsTaskID(t *testing.T) {
 
 func TestGRPCTransportSendRejectsTransportFailure(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{sendErr: errors.New("unavailable")}}
-	mapped := a2a.Mapped{Part: a2a.Part{Text: "{}"}}
+	mapped := Mapped{Part: Part{Text: "{}"}}
 	if _, err := g.Send(context.Background(), mapped); err == nil {
 		t.Fatal("Send accepted a transport failure")
 	}
@@ -72,7 +71,7 @@ func TestGRPCTransportSendRejectsTransportFailure(t *testing.T) {
 
 func TestGRPCTransportSendRejectsNonTaskResult(t *testing.T) {
 	g := &grpcTransport{tr: &fakeSDKTransport{sendResp: &a2acore.Message{ID: "m1"}}}
-	mapped := a2a.Mapped{Part: a2a.Part{Text: "{}"}}
+	mapped := Mapped{Part: Part{Text: "{}"}}
 	_, err := g.Send(context.Background(), mapped)
 	if err == nil {
 		t.Fatal("Send accepted a non-task result")
@@ -158,7 +157,7 @@ func TestGRPCTransportResultFromHistoryFallback(t *testing.T) {
 // then decodes the envelope.
 func TestGRPCTransportResultReadsTextPart(t *testing.T) {
 	signed := signedMessage(t)
-	mappedIn, err := a2a.ToPart(signed)
+	mappedIn, err := ToPart(signed)
 	if err != nil {
 		t.Fatalf("ToPart: %v", err)
 	}
@@ -192,7 +191,7 @@ func TestGRPCTransportResultReadsTextPart(t *testing.T) {
 	if len(mapped.Part.Data) != 0 {
 		t.Fatal("Part.Data is set, want empty: Text wins over Data")
 	}
-	got, err := a2a.FromPart(mapped)
+	got, err := FromPart(mapped)
 	if err != nil {
 		t.Fatalf("FromPart: %v", err)
 	}
@@ -234,7 +233,7 @@ func TestGRPCTransportResultReadsDataPartFallback(t *testing.T) {
 	if len(mapped.Part.Data) == 0 {
 		t.Fatal("Part.Data is empty, want the re-marshaled data")
 	}
-	got, err := a2a.FromPart(mapped)
+	got, err := FromPart(mapped)
 	if err != nil {
 		t.Fatalf("FromPart on the Data fallback: %v", err)
 	}

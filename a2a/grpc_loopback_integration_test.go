@@ -1,11 +1,12 @@
-package a2aclient
+package a2a_test
 
 import (
 	"context"
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -13,7 +14,7 @@ import (
 // Client pointed at it. It registers cleanup that stops the server and
 // closes the client. Using Loopback keeps the fixture covered and
 // removes the duplicated in-package server this file once carried.
-func loopbackClient(t *testing.T) *Client {
+func loopbackClient(t *testing.T) *a2a.Client {
 	t.Helper()
 	addr, stop, err := a2atest.Loopback()
 	if err != nil {
@@ -24,7 +25,7 @@ func loopbackClient(t *testing.T) *Client {
 			t.Errorf("Loopback stop: %v", err)
 		}
 	})
-	c, err := New(addr)
+	c, err := a2a.New(addr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -37,21 +38,21 @@ func loopbackClient(t *testing.T) *Client {
 }
 
 // mustBeCompleted reads the task's state once and requires it to be
-// StateCompleted already.
+// a2a.StateCompleted already.
 //
 // No poll loop is needed and none is used. a2a-go's non-streaming
 // SendMessage returns only after the executor writes its final event,
 // so the task is terminal the moment Send returns. Asserting that on
 // the first read keeps the test deterministic, with no sleep and no
 // timing assumption.
-func mustBeCompleted(t *testing.T, c *Client, h TaskHandle) State {
+func mustBeCompleted(t *testing.T, c *a2a.Client, h a2a.TaskHandle) a2a.State {
 	t.Helper()
 	state, err := c.Status(context.Background(), h)
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if state != StateCompleted {
-		t.Fatalf("Status = %s immediately after Send, want %s", state, StateCompleted)
+	if state != a2a.StateCompleted {
+		t.Fatalf("Status = %s immediately after Send, want %s", state, a2a.StateCompleted)
 	}
 	return state
 }

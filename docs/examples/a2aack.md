@@ -1,7 +1,7 @@
 # Example: a2aack remote step ack
 
 This walkthrough resolves one gated step through a remote A2A task.
-`a2aclient.Wait` turns an `a2aclient.Client` into an `workflow.AckWait`.
+`a2a.Wait` turns an `a2a.Client` into an `workflow.AckWait`.
 The step's message goes out as a remote task; the remote agent's reply
 becomes the confirmed ack's restatement.
 
@@ -13,16 +13,16 @@ defining them. Adapt the shown pieces into your own program alongside a
 real `workflow.Agent`, thread ID, `machine.Definition`, start step, and
 `events.Bus`.
 
-`a2aclient.Client` already sends a signed message, polls task state,
+`a2a.Client` already sends a signed message, polls task state,
 and fetches the result. `a2aack` closes the loop with the composition
 layer. `Wait` depends on the minimal `Remote` interface, so
-`*a2aclient.Client` works without change:
+`*a2a.Client` works without change:
 
 ```go
 type Remote interface {
-	Send(ctx context.Context, msg envelope.Message) (a2aclient.TaskHandle, error)
-	Status(ctx context.Context, h a2aclient.TaskHandle) (a2aclient.State, error)
-	Result(ctx context.Context, h a2aclient.TaskHandle) (envelope.Message, error)
+	Send(ctx context.Context, msg envelope.Message) (a2a.TaskHandle, error)
+	Status(ctx context.Context, h a2a.TaskHandle) (a2a.State, error)
+	Result(ctx context.Context, h a2a.TaskHandle) (envelope.Message, error)
 }
 ```
 
@@ -32,12 +32,12 @@ Build a client that talks to one remote agent, then build the
 `AckWait`:
 
 ```go
-client, err := a2aclient.New("agent.example.invalid:443")
+client, err := a2a.New("agent.example.invalid:443")
 if err != nil {
 	return fmt.Errorf("dial remote agent: %w", err)
 }
 
-ackWait, err := a2aclient.Wait(client, a2aclient.Options{
+ackWait, err := a2a.Wait(client, a2a.Options{
 	Poll:    100 * time.Millisecond,
 	Timeout: 30 * time.Second,
 })

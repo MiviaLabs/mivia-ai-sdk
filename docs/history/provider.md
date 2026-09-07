@@ -1308,3 +1308,29 @@ functions share one package.
 provider.ErrInvalidOptions)` plus a substring check naming the
 rejected field, in place of the five deleted sentinel checks. No test
 function was removed.
+
+## Addendum: ErrDuplicateName restored
+
+Status: shipped.
+
+The sentinel sweep folded five sentinels into `ErrInvalidOptions`. One
+of them guarded a state conflict, not an argument fault.
+`Registry.Register` rejects a name already present. That name is
+valid. The registry's state is what refuses it. A register-if-absent
+caller branches on that case and re-uses the entry it already has. A
+sentinel it can match is the only way to branch without string
+matching.
+
+`ErrDuplicateName = errors.New("provider: name already registered")`
+is back beside `ErrInvalidOptions`. `Register` returns it unwrapped,
+so `errors.Is(err, ErrInvalidOptions)` is false on that path. The
+nil-completer and blank-name checks still wrap `ErrInvalidOptions`.
+
+Three other folded sentinels stay folded. `flow.ErrNoID`
+(`Monitor.Beat`), `memory.ErrInvalidExpiry` (`Spool.SpoolExpiring`),
+and `mcp.ErrNilProgressHandler` (`Client.CallToolWithProgress`) each
+guard a call-time argument that fails its rule. The caller supplied a
+bad value. No caller branches on which value it was. Those three read
+as construction faults, so `ErrInvalidOptions` fits them. Each of the
+three doc comments now says the sentinel also covers a call-time
+argument, and names the method.

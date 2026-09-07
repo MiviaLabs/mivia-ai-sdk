@@ -1,9 +1,9 @@
-# Convergence: mivia-agent-side task list
+# Convergence: consumer-side task list
 
 Companion to `convergence.md` (revision six). This file holds every
-item the convergence program requires in
-`github.com/MiviaLabs/mivia-agent`, so `convergence.md` stays a plan
-this repo's gates can check, and so SDK-side work is not blocked
+item the convergence program requires in the private consumer
+repository, so `convergence.md` stays a plan this repo's gates can
+check, and so SDK-side work is not blocked
 waiting on consumer-side work that has not started.
 
 Nothing here has landed. Each item cites its source section in
@@ -44,7 +44,7 @@ package rather than the SDK absorbing the consumer's code.
   filesystem mutation).
 - `namespace.go` (`Namespace = ".mivia"`, `SkillsDir`, `SessionsDir`,
   `WorktreesDir`, `ContextStorePath`, `MemoryDBPath`) never converges.
-  It stays in `internal/workspace` as mivia's own on-disk layout
+  It stays in `internal/workspace` as the consumer's own on-disk layout
   convention, composed with the SDK's `Workspace` rather than folded
   into it. `SameExistingPath` (a free function, `os.Stat` plus
   `os.SameFile`, zero dependency on `*Root`/`Workspace`) needs no SDK
@@ -316,7 +316,7 @@ has already been wrong twice elsewhere in this program.
 Source: `convergence.md`, "Concerns that never converge," and the
 boundary correction section.
 
-- `internal/workspace/namespace.go` — mivia's own `.mivia` path
+- `internal/workspace/namespace.go` — the consumer's own `.mivia` path
   convention. No second SDK consumer needs it.
 - `internal/events`'s typed UI/workflow event union (`Kind`,
   `Delivery`, `MetricsAdapter`, `CacheUsageEvent`, `TokenUsageEvent`,

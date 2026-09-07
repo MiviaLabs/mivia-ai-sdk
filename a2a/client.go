@@ -1,9 +1,4 @@
-// Package a2aclient sends an envelope.Message to a remote agent and
-// polls task status and results, through the a2aproject/a2a-go client.
-// Send creates the remote task; Status reads it; Result fetches the
-// output and re-verifies the signature after the network hop. See
-// docs/plans/a2aclient.md for the contract.
-package a2aclient
+package a2a
 
 import (
 	"context"
@@ -13,7 +8,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -24,41 +18,41 @@ import (
 // transport, wrapping a2a-go's gRPC transport. newFromTransport injects
 // a substitute transport instead of dialing a live network endpoint;
 // this is the seam this package's own internal tests use for a
-// recorded transcript, since sdk-standards.yml scopes the third-party-
-// import exception to a2aclient/*.go and an external test package
+// recorded transcript, since policy/thirdparty.json scopes the
+// third-party-import exception to a2a and an external test package
 // cannot import a2a-go directly. Both stay unexported: no caller
 // outside this package's own tests needs them. See
-// docs/plans/a2aclient.md's Verification section for the test seam.
+// docs/plans/a2a.md's Verification section for the test seam.
 // ErrUnsigned reports a Send call whose message carries no signer.
 // Test with errors.Is.
-var ErrUnsigned = errors.New("a2aclient: message must be signed")
+var ErrUnsigned = errors.New("a2a: message must be signed")
 
 // ErrNoTaskID reports a Send call whose transport returned an empty
 // task id. Test with errors.Is.
-var ErrNoTaskID = errors.New("a2aclient: transport returned an empty task id")
+var ErrNoTaskID = errors.New("a2a: transport returned an empty task id")
 
 // ErrZeroTaskHandle reports a Status or Result call against the zero
 // TaskHandle. Test with errors.Is.
-var ErrZeroTaskHandle = errors.New("a2aclient: zero TaskHandle")
+var ErrZeroTaskHandle = errors.New("a2a: zero TaskHandle")
 
 // ErrNotTerminal reports a Result call against a task that has not
 // yet reached a terminal State. Test with errors.Is.
-var ErrNotTerminal = errors.New("a2aclient: task is not terminal")
+var ErrNotTerminal = errors.New("a2a: task is not terminal")
 
 // ErrSignatureCheckFailed reports a Result call whose mapped message
 // fails VerifySignature after the remote hop. Test with errors.Is.
-var ErrSignatureCheckFailed = errors.New("a2aclient: signature check failed")
+var ErrSignatureCheckFailed = errors.New("a2a: signature check failed")
 
 type transport interface {
 	// Send creates a new remote task carrying mapped and returns its
 	// task id.
-	Send(ctx context.Context, mapped a2a.Mapped) (taskID string, err error)
+	Send(ctx context.Context, mapped Mapped) (taskID string, err error)
 	// State reads the current state of the task named by taskID.
 	State(ctx context.Context, taskID string) (State, error)
 	// Result performs one fetch of the task named by taskID and
 	// returns its mapped output beside its state, so the caller gates
 	// on a terminal state without a second call.
-	Result(ctx context.Context, taskID string) (mapped a2a.Mapped, state State, err error)
+	Result(ctx context.Context, taskID string) (mapped Mapped, state State, err error)
 	// Close releases the transport's resources. Idempotent.
 	Close() error
 }
@@ -88,7 +82,7 @@ func New(baseURL string) (*Client, error) {
 	}
 	tr, err := newGRPCTransport(baseURL, insecure.NewCredentials())
 	if err != nil {
-		return nil, fmt.Errorf("a2aclient: open transport: %w", err)
+		return nil, fmt.Errorf("a2a: open transport: %w", err)
 	}
 	return &Client{baseURL: baseURL, transport: tr}, nil
 }
@@ -108,7 +102,7 @@ func NewWithTLS(baseURL string, cfg *tls.Config) (*Client, error) {
 	}
 	tr, err := newGRPCTransport(baseURL, credentials.NewTLS(cfg))
 	if err != nil {
-		return nil, fmt.Errorf("a2aclient: open transport: %w", err)
+		return nil, fmt.Errorf("a2a: open transport: %w", err)
 	}
 	return &Client{baseURL: baseURL, transport: tr}, nil
 }
@@ -152,12 +146,12 @@ func (h TaskHandle) isZero() bool {
 	return h.taskID == ""
 }
 
-// Send maps msg to an A2A part through a2a.ToPart, then sends it to
+// Send maps msg to an A2A part through ToPart, then sends it to
 // the remote agent as a new task. Send returns the TaskHandle
 // identifying the created task. Send enforces the signed-message
 // rule: an empty msg.Signer fails with ErrUnsigned before ToPart and
 // before the transport, since Send performs no signing of its own,
-// matching a2a.ToPart's contract. A transport failure, a canceled
+// matching ToPart's contract. A transport failure, a canceled
 // ctx, or an expired ctx deadline returns an error and a zero
 // TaskHandle, never a partial one.
 func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, error) {
@@ -167,7 +161,7 @@ func (c *Client) Send(ctx context.Context, msg envelope.Message) (TaskHandle, er
 	if msg.Signer == "" {
 		return TaskHandle{}, ErrUnsigned
 	}
-	mapped, err := a2a.ToPart(msg)
+	mapped, err := ToPart(msg)
 	if err != nil {
 		return TaskHandle{}, err
 	}
@@ -197,7 +191,7 @@ func (c *Client) Status(ctx context.Context, h TaskHandle) (State, error) {
 }
 
 // Result fetches the output of the task identified by h and maps it
-// back to an envelope.Message through a2a.FromPart. One transport
+// back to an envelope.Message through FromPart. One transport
 // call returns the mapped part and the task's state together; Result
 // checks the state is terminal before it maps. Result calls
 // msg.VerifySignature on the mapped message before returning it: the
@@ -217,14 +211,14 @@ func (c *Client) Result(ctx context.Context, h TaskHandle) (envelope.Message, er
 		return envelope.Message{}, err
 	}
 	if !state.terminal() {
-		return envelope.Message{}, fmt.Errorf("a2aclient: task is %s, not terminal: %w", state, ErrNotTerminal)
+		return envelope.Message{}, fmt.Errorf("a2a: task is %s, not terminal: %w", state, ErrNotTerminal)
 	}
-	msg, err := a2a.FromPart(mapped)
+	msg, err := FromPart(mapped)
 	if err != nil {
 		return envelope.Message{}, err
 	}
 	if err := msg.VerifySignature(); err != nil {
-		return envelope.Message{}, fmt.Errorf("a2aclient: signature check failed: %w: %w", ErrSignatureCheckFailed, err)
+		return envelope.Message{}, fmt.Errorf("a2a: signature check failed: %w: %w", ErrSignatureCheckFailed, err)
 	}
 	return msg, nil
 }

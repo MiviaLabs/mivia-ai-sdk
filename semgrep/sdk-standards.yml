@@ -46,14 +46,14 @@ rules:
   - id: sdk.go.no-a2atest-import
     languages: [go]
     severity: ERROR
-    message: only a2atest's own files and a2aclient's test files may import a2aclient/a2atest; no production file may (see AGENTS.md).
+    message: only a2atest's own files and a2a's test files may import a2a/a2atest; no production file may (see AGENTS.md).
     paths:
       include: ["/**/*.go"]
       exclude:
         - "/a2atest/*.go"
-        - "/a2aclient/*_test.go"
+        - "/a2a/*_test.go"
     patterns:
-      - pattern-regex: '"github\.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest(/[^"\n]*)?"'
+      - pattern-regex: '"github\.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest(/[^"\n]*)?"'
 
   # --- Centralization: no string literals where constants exist ---
   - id: sdk.go.no-enum-string-literals
@@ -94,7 +94,7 @@ rules:
         - "/**/ack.go"
         - "/**/wire.go"
         - "/ledger/sqlite_store.go"
-        - "/a2aclient/grpc.go"
+        - "/a2a/grpc.go"
         - "/**/*_test.go"
         - "/scripts/**"
     pattern-either:

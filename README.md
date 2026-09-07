@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/mivia-logo.png" alt="mivia" width="120">
+  <img src="docs/logo.png" alt="mivia-ai-sdk" width="120">
 </p>
 
 <h1 align="center">mivia-ai-sdk</h1>
@@ -23,7 +23,7 @@ Most packages rely solely on the Go standard library, keeping dependencies minim
 - 🔒 **Verifiable Agent Messaging** — Cryptographic envelopes signed with Ed25519, tamper-evident hash audit chains, and semantic acknowledgments (`envelope`, `room`).
 - 🔄 **Deterministic Workflows & State** — Declarative step graphs, parallel execution waves, guarded state machines, retries, loops, and pause/resume checkpoints (`flow`, `machine`).
 - 🧰 **Extensible Tools & MCP** — Named tool registries, permission scoping, approval gating, and MCP client support over stdio or streamable HTTP (`tools`, `mcp`).
-- 🤝 **Interoperability & Protocols** — Native A2A v1.0 mapping, gRPC client adapter, and NDJSON HTTP streaming endpoints (`a2a`, `a2aclient`, `dispatch`).
+- 🤝 **Interoperability & Protocols** — Native A2A v1.0 mapping, gRPC client adapter, and NDJSON HTTP streaming endpoints (`a2a`, `dispatch`).
 - 🛡️ **Confinement & Long-Term Context** — Syscall-level filesystem confinement (`os.Root`), secret path denial, token-window compaction, and content-addressed memory (`workspace` and `context/plan`).
 
 ## Install

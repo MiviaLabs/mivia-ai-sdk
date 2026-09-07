@@ -1,14 +1,9 @@
 {
   "comment": "Packages with zero internal, non-test callers, declared on purpose. check_orphan_packages.py fails on any orphan package missing here, or on a stale entry: one whose package no longer exists, or one that has gained a real caller. permanent=false means an internal caller is expected later, named in target. permanent=true means this package is a composition root or a test-only fixture, consumed only by application code outside this module or only from another package's _test directory, and target names that consumer.",
   "packages": {
-    "a2aclient": {
-      "reason": "A2A v1.0 client and, since Phase 86's a2aack fold, the remote step ack adapter. Its only internal caller was a2aack, which the fold merged into it; a2aloopback is a test fixture. The sibling consumer repo had zero references to a2aclient at fold time. Kept as SDK surface.",
-      "target": "no internal consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "a2aclient/a2atest": {
-      "reason": "Test-only fixture. AGENTS.md's a2aclient entry calls it 'the loopback test fixture,' imported only from a2aclient's own _test files, which this scan excludes.",
-      "target": "a2aclient's _test files only",
+    "a2a/a2atest": {
+      "reason": "Test-only loopback fixture for the a2a package. It is imported only from a2a's own _test files, which this scan excludes. Kept as SDK surface.",
+      "target": "a2a's _test files only",
       "permanent": true
     },
     "agentloop": {
@@ -17,8 +12,8 @@
       "permanent": true
     },
     "dispatch": {
-      "reason": "NDJSON envelope HTTP endpoint. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; it ships its own HTTP wiring. Kept as SDK surface.",
-      "target": "no consumer today; kept as SDK surface",
+      "reason": "NDJSON envelope HTTP endpoint. No non-test file in this module imports it; dispatch/dispatch_test exercises it. Kept as SDK surface.",
+      "target": "application code that imports this module",
       "permanent": true
     },
     "internal/e2e": {
@@ -32,23 +27,23 @@
       "permanent": true
     },
     "mcp": {
-      "reason": "MCP client leaf. Its consumer is external application code: the sibling consumer repo imports it through internal/sdkadapter as of 2026-09-07.",
-      "target": "external application code (the sibling consumer repo)",
+      "reason": "Model Context Protocol client over stdio and HTTP. No file in this module imports it. Kept as SDK surface.",
+      "target": "application code that imports this module",
       "permanent": true
     },
     "provider/anthropic": {
-      "reason": "Anthropic Messages API adapter leaf. No external consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; it ships its own internal/provider/anthropic.go. In-repo callers are the e2e wire test and the agentloop composition example.",
-      "target": "no external consumer today; in-repo callers are the e2e wire test and the agentloop composition example",
+      "reason": "Anthropic Messages API adapter leaf. Its in-repo callers are docs/examples/_quickstart/main.go and internal/e2e/e2e_test's wire tests. Kept as SDK surface.",
+      "target": "application code that imports this module",
       "permanent": true
     },
     "subagent": {
-      "reason": "Blocks-as-tools composition: spawnable subagents, concurrent RunAll, and mailboxes. Its last internal caller was runconfig, which Phase 86 quarantined into the x/ sub-module; x/runconfig still imports it across the module boundary, and the sibling consumer repo composes it directly. Declared so the orphan gate reflects that.",
-      "target": "the x/runconfig quarantine package and external application code",
+      "reason": "Blocks-as-tools composition: spawnable subagents, concurrent RunAll, and mailboxes. No non-test file in this module imports it; internal/e2e/e2e_test exercises it. Kept as SDK surface.",
+      "target": "application code that imports this module",
       "permanent": true
     },
     "workspace": {
-      "reason": "Filesystem confinement leaf. Its only internal caller was subagent's file-editing toolbox (FileTools, WorkspaceReadTool, WorkspaceWriteTool, WorkspaceListTool, WorkspaceStatTool, DiffTool), removed as coding-agent product surface; see docs/plans/agents/convergence.md's 'Boundary correction' section. No internal caller remains. Phase 86 folded its secretpath dependency into it, so a future consumer takes one package.",
-      "target": "external application code",
+      "reason": "Filesystem confinement leaf, with secret path denial folded in. No non-test file in this module imports it; workspace/workspace_test exercises it. Kept as SDK surface.",
+      "target": "application code that imports this module",
       "permanent": true
     }
   }

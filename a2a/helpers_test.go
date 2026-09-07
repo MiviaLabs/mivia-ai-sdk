@@ -1,9 +1,9 @@
-// External tests for the a2aclient package's remote step ack.
+// External tests for the a2a package's remote step ack.
 // A fake Remote drives every loop, timing, and error outcome; the live
 // a2atest.Loopback fixture appears only in the happy-path and
 // integration tests. No test file imports a2a-go, so the Semgrep
-// stdlib-only rule holds outside a2aclient and a2aloopback.
-package a2aclient_test
+// stdlib-only rule holds outside a2a and a2a/a2atest.
+package a2a_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -72,7 +72,7 @@ type fakeRemote struct {
 	sendErr      error
 	sendCalls    atomic.Int64
 	statusErr    error
-	statusStates []a2aclient.State
+	statusStates []a2a.State
 	statusCalls  atomic.Int64
 	result       envelope.Message
 	resultErr    error
@@ -83,26 +83,26 @@ type fakeRemote struct {
 }
 
 // Send records the call and returns sendErr or a zero task handle.
-func (f *fakeRemote) Send(context.Context, envelope.Message) (a2aclient.TaskHandle, error) {
+func (f *fakeRemote) Send(context.Context, envelope.Message) (a2a.TaskHandle, error) {
 	f.sendCalls.Add(1)
 	if f.sendErr != nil {
-		return a2aclient.TaskHandle{}, f.sendErr
+		return a2a.TaskHandle{}, f.sendErr
 	}
-	return a2aclient.TaskHandle{}, nil
+	return a2a.TaskHandle{}, nil
 }
 
 // Status records the call, runs cancelOnStatus when set, and steps
 // through statusStates.
-func (f *fakeRemote) Status(context.Context, a2aclient.TaskHandle) (a2aclient.State, error) {
+func (f *fakeRemote) Status(context.Context, a2a.TaskHandle) (a2a.State, error) {
 	f.statusCalls.Add(1)
 	if f.cancelOnStatus != nil {
 		f.cancelOnStatus()
 	}
 	if f.statusErr != nil {
-		return a2aclient.StateUnspecified, f.statusErr
+		return a2a.StateUnspecified, f.statusErr
 	}
 	if len(f.statusStates) == 0 {
-		return a2aclient.StateUnspecified, nil
+		return a2a.StateUnspecified, nil
 	}
 	idx := int(f.statusCalls.Load()) - 1
 	if idx >= len(f.statusStates) {
@@ -112,7 +112,7 @@ func (f *fakeRemote) Status(context.Context, a2aclient.TaskHandle) (a2aclient.St
 }
 
 // Result returns the scripted result or resultErr.
-func (f *fakeRemote) Result(context.Context, a2aclient.TaskHandle) (envelope.Message, error) {
+func (f *fakeRemote) Result(context.Context, a2a.TaskHandle) (envelope.Message, error) {
 	if f.resultErr != nil {
 		return envelope.Message{}, f.resultErr
 	}

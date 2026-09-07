@@ -1,4 +1,4 @@
-package a2aclient
+package a2a
 
 // State is the state of a remote task, mirrored from the a2a-go task
 // state enum. Every a2a-go TaskState has one State. See the State

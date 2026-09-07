@@ -150,6 +150,7 @@ package provider
   var ErrAllFailed
   var ErrBlankSessionID
   var ErrChunkErrDoneConflict
+  var ErrDuplicateName
   var ErrEmptyOrder
   var ErrInvalidOptions
   var ErrNameInvalid

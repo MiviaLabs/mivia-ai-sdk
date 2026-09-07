@@ -8,6 +8,37 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
+// TestRegisterSentinels pins which sentinel Register returns for each
+// rejection: a state conflict is ErrDuplicateName, an argument fault
+// is ErrInvalidOptions.
+func TestRegisterSentinels(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		first     string
+		second    string
+		duplicate bool
+		invalid   bool
+	}{
+		{name: "duplicate name", first: "alpha", second: "alpha", duplicate: true},
+		{name: "blank name", first: "alpha", second: "", invalid: true},
+		{name: "whitespace name", first: "alpha", second: "   ", invalid: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := provider.NewRegistry()
+			if err := r.Register(tc.first, &fakeCompleter{name: tc.first}); err != nil {
+				t.Fatalf("Register(%q) error = %v, want nil", tc.first, err)
+			}
+			err := r.Register(tc.second, &fakeCompleter{name: "replacement"})
+			if got := errors.Is(err, provider.ErrDuplicateName); got != tc.duplicate {
+				t.Fatalf("errors.Is(%v, ErrDuplicateName) = %v, want %v", err, got, tc.duplicate)
+			}
+			if got := errors.Is(err, provider.ErrInvalidOptions); got != tc.invalid {
+				t.Fatalf("errors.Is(%v, ErrInvalidOptions) = %v, want %v", err, got, tc.invalid)
+			}
+		})
+	}
+}
+
 // TestRegister covers Register's accept path and its nil, blank-name,
 // and duplicate-name rejection cases.
 func TestRegister(t *testing.T) {
@@ -65,11 +96,11 @@ func TestRegister(t *testing.T) {
 			t.Fatalf("first Register(alpha) error = %v, want nil", err)
 		}
 		err := r.Register("alpha", &fakeCompleter{name: "replacement"})
-		if !errors.Is(err, provider.ErrInvalidOptions) {
-			t.Fatalf("second Register(alpha) error = %v, want ErrInvalidOptions", err)
+		if !errors.Is(err, provider.ErrDuplicateName) {
+			t.Fatalf("second Register(alpha) error = %v, want ErrDuplicateName", err)
 		}
-		if !strings.Contains(err.Error(), "Name") {
-			t.Fatalf("second Register(alpha) error = %v, want it to name Name", err)
+		if errors.Is(err, provider.ErrInvalidOptions) {
+			t.Fatalf("second Register(alpha) error = %v, want it not to wrap ErrInvalidOptions", err)
 		}
 		got, ok := r.Get("alpha")
 		if !ok || got != first {

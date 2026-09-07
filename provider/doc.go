@@ -9,7 +9,8 @@
 // Reset, and the sentinel error ErrBlankSessionID; wrap.go =
 // WrapCompleter, the per-call usage recorder; registry.go = Registry,
 // NewRegistry, Register, Get, Names, and the sentinel errors
-// ErrInvalidOptions, ErrUnknownName, ErrEmptyOrder, ErrAllFailed.
+// ErrInvalidOptions, ErrDuplicateName, ErrUnknownName, ErrEmptyOrder,
+// ErrAllFailed.
 // Map: types.go = Role and its constants, Message, Message.Validate,
 // ToolDefinition, ToolCall, Usage, Request, Response, Chunk,
 // Chunk.Validate, and the sentinel errors ErrToolCallIDUnexpected,

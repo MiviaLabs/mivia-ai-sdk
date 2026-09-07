@@ -343,10 +343,9 @@ the `WorkBudget` helpers.
 The invariant: the loop never carries a shape-empty assistant turn
 into planning or a request. Shape-empty means `RoleAssistant`,
 `Content` blank after `TrimSpace`, zero `ToolCalls`, and zero
-`ReasoningBlocks`. The predicate mirrors the sibling consumer's
-`DropEmptyAssistantTurns` in
-`mivia-agent/internal/provider/api_message.go`, adapted to
-`provider.Message`: `ReasoningBlocks` here, `ReasoningContent` there.
+`ReasoningBlocks`. The predicate mirrors a caller's provider adapter
+`DropEmptyAssistantTurns`, adapted to `provider.Message`:
+`ReasoningBlocks` here, `ReasoningContent` there.
 
 The filter runs at two points. In `run`, right after the
 caller-supplied messages are copied, so the initial history is

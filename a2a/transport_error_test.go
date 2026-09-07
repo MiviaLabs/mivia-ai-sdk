@@ -1,4 +1,4 @@
-package a2aclient_test
+package a2a_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -18,10 +18,10 @@ const errTimeout = time.Second
 // TestTransportResultError proves a Result error mid-loop propagates
 // unwrapped, never wrapped as ErrTimeout or ErrRemoteFailed.
 func TestTransportResultError(t *testing.T) {
-	fake := &fakeRemote{statusStates: []a2aclient.State{a2aclient.StateCompleted},
+	fake := &fakeRemote{statusStates: []a2a.State{a2a.StateCompleted},
 		resultErr: errors.New("result fetch failed")}
 	msg := signedMessage(t)
-	ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+	ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}
@@ -34,15 +34,15 @@ func TestTransportResultError(t *testing.T) {
 // TestTransportResultContextError proves a Result error that is a
 // context error wraps ErrTimeout, the same rule as Send and Status.
 func TestTransportResultContextError(t *testing.T) {
-	fake := &fakeRemote{statusStates: []a2aclient.State{a2aclient.StateCompleted},
+	fake := &fakeRemote{statusStates: []a2a.State{a2a.StateCompleted},
 		resultErr: context.DeadlineExceeded}
 	msg := signedMessage(t)
-	ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+	ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}
 	_, err = ackFn(context.Background(), msg)
-	if !errors.Is(err, a2aclient.ErrTimeout) {
+	if !errors.Is(err, a2a.ErrTimeout) {
 		t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout) for a Result context error", err)
 	}
 }
@@ -50,10 +50,10 @@ func TestTransportResultContextError(t *testing.T) {
 // TestTransportSignatureRejected proves an unsigned or tampered result
 // fails a2aack's own signature re-verification.
 func TestTransportSignatureRejected(t *testing.T) {
-	fake := &fakeRemote{statusStates: []a2aclient.State{a2aclient.StateCompleted},
+	fake := &fakeRemote{statusStates: []a2a.State{a2a.StateCompleted},
 		result: envelope.Message{ID: "res-tampered", Payload: "tampered"}}
 	msg := signedMessage(t)
-	ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+	ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}
@@ -70,7 +70,7 @@ func TestTransportSendErrors(t *testing.T) {
 		sendErr := errors.New("transport refused send")
 		fake := &fakeRemote{sendErr: sendErr}
 		msg := signedMessage(t)
-		ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+		ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -83,12 +83,12 @@ func TestTransportSendErrors(t *testing.T) {
 	t.Run("context error wraps ErrTimeout", func(t *testing.T) {
 		fake := &fakeRemote{sendErr: context.DeadlineExceeded}
 		msg := signedMessage(t)
-		ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+		ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
 		_, err = ackFn(context.Background(), msg)
-		if !errors.Is(err, a2aclient.ErrTimeout) {
+		if !errors.Is(err, a2a.ErrTimeout) {
 			t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout)", err)
 		}
 	})
@@ -101,7 +101,7 @@ func TestTransportStatusErrors(t *testing.T) {
 		stErr := errors.New("status call failed")
 		fake := &fakeRemote{statusErr: stErr}
 		msg := signedMessage(t)
-		ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+		ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -114,12 +114,12 @@ func TestTransportStatusErrors(t *testing.T) {
 	t.Run("context error wraps ErrTimeout", func(t *testing.T) {
 		fake := &fakeRemote{statusErr: context.DeadlineExceeded}
 		msg := signedMessage(t)
-		ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+		ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
 		_, err = ackFn(context.Background(), msg)
-		if !errors.Is(err, a2aclient.ErrTimeout) {
+		if !errors.Is(err, a2a.ErrTimeout) {
 			t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout)", err)
 		}
 	})
@@ -129,7 +129,7 @@ func TestTransportStatusErrors(t *testing.T) {
 // with an empty payload passes the signature check but its ack
 // construction fails on the empty restatement.
 func TestTransportNewAckRejectsEmptyRestatement(t *testing.T) {
-	fake := &fakeRemote{statusStates: []a2aclient.State{a2aclient.StateCompleted}}
+	fake := &fakeRemote{statusStates: []a2a.State{a2a.StateCompleted}}
 	msg := signedMessage(t)
 	_, key, err := ed25519.GenerateKey(nil)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestTransportNewAckRejectsEmptyRestatement(t *testing.T) {
 		Epistemic:  envelope.EpistemicAssumed,
 		Confidence: 0.5,
 	})
-	ackFn, err := a2aclient.Wait(fake, a2aclient.Options{Poll: errPoll, Timeout: errTimeout})
+	ackFn, err := a2a.Wait(fake, a2a.Options{Poll: errPoll, Timeout: errTimeout})
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}

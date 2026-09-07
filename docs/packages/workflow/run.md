@@ -148,7 +148,7 @@ escalates to a human. Pinned by `run_test/options_test.go` and
 
 ## Why this shape
 
-`workflow/run` does not import `mcp`, `a2aclient`, or `ledger`. Their wiring
+`workflow/run` does not import `mcp`, `a2a`, or `ledger`. Their wiring
 stays at caller seams. It does not change `workflow.Run`'s signature; it
 wraps it. Machine derivation from a plan stays out of scope. The
 composition example in `docs/examples/_workflowrun/` shows the same wiring

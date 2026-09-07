@@ -5,7 +5,9 @@ phase, tdd, perf, wip, draft, scratch, tmp, old, backup, or a version
 suffix like _v2, _v3 (versioning belongs in git, not in file names).
 Also gates error-string prefixes: an errors.New or fmt.Errorf literal
 that starts with "word: " must name the enclosing package, not a
-package that folded away. Exits non-zero on violations."""
+package that folded away. Also gates the private consumer
+repository's name: no tracked path and no line of a tracked text file
+may match REPO_NAME's pattern. Exits non-zero on violations."""
 import argparse
 import re
 import subprocess
@@ -23,6 +25,14 @@ FUNC_DECL = re.compile(r"\bfunc\s+(?:\([^)]*\)\s+)?(\w+)\s*\(")
 CAMEL_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+")
 PACKAGE_DECL = re.compile(r"^package\s+(\w+)")
 ERROR_LITERAL = re.compile(r'(?:errors\.New|fmt\.Errorf)\(\s*"([A-Za-z0-9_]+):\s')
+
+# REPO_NAME rejects the private consumer repository's name. The org
+# prefix is assembled from two halves so this gate file never holds
+# the pattern's own trigger text and never reports itself. This
+# module's own name is the one allowed use, hence the lookahead.
+_ORG_PREFIX = "mi" + "via"
+REPO_NAME = re.compile(_ORG_PREFIX + r"-(?!ai-sdk)", re.IGNORECASE)
+SKIP_TOP_DIRS = {"x", ".git"}
 
 
 def _has_bad_word(name: str) -> bool:
@@ -102,12 +112,59 @@ def _go_files(root: Path) -> list[Path]:
         )
 
 
+def _tracked_files(root: Path) -> list[Path]:
+    """Returns every tracked or addable file of this worktree, using
+    the same `git ls-files` call and the same filesystem-walk fallback
+    as _go_files."""
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout
+        return sorted(root / line for line in out.splitlines() if line)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return sorted(p for p in root.rglob("*") if p.is_file())
+
+
+def check_repo_name(root: Path) -> list[str]:
+    """check_repo_name rejects the private consumer repository's name
+    in any tracked path or in any line of a tracked text file. See
+    REPO_NAME for the pattern. The x/ sub-module and .git/ are out of
+    scope, and a binary file is read for its path only."""
+    violations = []
+    for path in _tracked_files(root):
+        rel = path.relative_to(root)
+        if set(rel.parts) & SKIP_TOP_DIRS:
+            continue
+        if REPO_NAME.search(rel.as_posix()):
+            violations.append(
+                f"{rel}: path matches the banned pattern {REPO_NAME.pattern}"
+            )
+        if not path.is_file():
+            continue
+        data = path.read_bytes()
+        if b"\0" in data:
+            continue
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            if REPO_NAME.search(line):
+                violations.append(
+                    f"{rel}:{n}: line matches the banned pattern "
+                    f"{REPO_NAME.pattern}"
+                )
+    return violations
+
+
 def run(root: Path) -> list[str]:
     violations = []
     for path in _go_files(root):
         if not path.is_file():
             continue
         violations.extend(check_file(path, path.relative_to(root)))
+    violations.extend(check_repo_name(root))
     return violations
 
 
@@ -166,6 +223,30 @@ def _probe_underscore_dir_exempt(tmp: Path) -> list[str]:
     return []
 
 
+def _probe_repo_name_fails(tmp: Path) -> list[str]:
+    pkg = tmp / "agentloop"
+    pkg.mkdir()
+    cited = _ORG_PREFIX + "-" + "agent/internal/provider/api_message.go"
+    (pkg / "shape.go").write_text(
+        "package agentloop\n\n// isEmptyAssistantTurn mirrors " + cited + ".\n"
+    )
+    problems = run(tmp)
+    if not any("matches the banned pattern" in p for p in problems):
+        return [f"probe_repo_name_fails: expected a banned-name hit, got {problems}"]
+    return []
+
+
+def _probe_repo_name_allows_this_module(tmp: Path) -> list[str]:
+    pkg = tmp / "agentloop"
+    pkg.mkdir()
+    cited = _ORG_PREFIX + "-" + "ai-sdk/agentloop"
+    (pkg / "shape.go").write_text("package agentloop\n\n// See " + cited + ".\n")
+    problems = run(tmp)
+    if problems:
+        return [f"probe_repo_name_allows_this_module: expected pass, got {problems}"]
+    return []
+
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = run(root)
@@ -175,7 +256,8 @@ def _probe_real_tree_passes() -> list[str]:
 
 
 def run_probe() -> bool:
-    """run_probe exercises check_error_prefixes against fixture files,
+    """run_probe exercises check_error_prefixes and check_repo_name
+    against fixture files,
     following check_deps.py's --probe convention. Fixtures are plain
     directories (no go.mod, no git repo) since _go_files falls back to
     a filesystem walk when git ls-files finds no repository there."""
@@ -185,6 +267,8 @@ def run_probe() -> bool:
         _probe_right_prefix_passes,
         _probe_test_file_exempt,
         _probe_underscore_dir_exempt,
+        _probe_repo_name_fails,
+        _probe_repo_name_allows_this_module,
     ):
         with tempfile.TemporaryDirectory(prefix="names-probe-") as tmp:
             problems.extend(fn(Path(tmp)))

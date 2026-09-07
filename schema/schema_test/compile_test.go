@@ -159,7 +159,7 @@ func TestCompileInDocumentRefAdmits(t *testing.T) {
 func TestCompileIDRebaseWithUnresolvableFragmentRejects(t *testing.T) {
 	dir := t.TempDir()
 	markerPath := filepath.Join(dir, "rebase-target.json")
-	const marker = "mivia-schema-rebase-marker-do-not-leak"
+	const marker = "sdk-schema-rebase-marker-do-not-leak"
 	if err := os.WriteFile(markerPath, []byte(`{"`+marker+`": {"type": "string"}}`), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestCompileIDRebaseWithUnresolvableFragmentRejects(t *testing.T) {
 func TestCompileIDRebaseWithResolvableFragmentAdmits(t *testing.T) {
 	dir := t.TempDir()
 	markerPath := filepath.Join(dir, "rebase-target.json")
-	const marker = "mivia-schema-rebase-marker-do-not-leak"
+	const marker = "sdk-schema-rebase-marker-do-not-leak"
 	if err := os.WriteFile(markerPath, []byte(`{"`+marker+`": {"type": "string"}}`), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestCompileIDRebaseWithResolvableFragmentAdmits(t *testing.T) {
 func TestCompileSchemaKeywordExternalURIStaysClosed(t *testing.T) {
 	dir := t.TempDir()
 	markerPath := filepath.Join(dir, "schema-keyword-target.json")
-	const marker = "mivia-schema-meta-marker-do-not-leak"
+	const marker = "sdk-schema-meta-marker-do-not-leak"
 	if err := os.WriteFile(markerPath, []byte(`{"`+marker+`": true}`), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

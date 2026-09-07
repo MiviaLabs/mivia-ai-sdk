@@ -1,4 +1,4 @@
-package a2aclient
+package a2a_test
 
 import (
 	"context"
@@ -8,18 +8,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest"
 )
 
 // TestNewWithTLSRejectsBadInput pins the constructor's validation: an
-// empty baseURL and a nil cfg both fail ErrInvalidOptions. NewWithTLS
+// empty baseURL and a nil cfg both fail a2a.ErrInvalidOptions. NewWithTLS
 // never guesses a dial mode.
 func TestNewWithTLSRejectsBadInput(t *testing.T) {
-	if _, err := NewWithTLS("", &tls.Config{}); !errors.Is(err, ErrInvalidOptions) || !strings.Contains(err.Error(), "baseURL") {
-		t.Fatalf("empty baseURL error = %v, want errors.Is ErrInvalidOptions mentioning baseURL", err)
+	if _, err := a2a.NewWithTLS("", &tls.Config{}); !errors.Is(err, a2a.ErrInvalidOptions) || !strings.Contains(err.Error(), "baseURL") {
+		t.Fatalf("empty baseURL error = %v, want errors.Is a2a.ErrInvalidOptions mentioning baseURL", err)
 	}
-	if _, err := NewWithTLS("bufnet", nil); !errors.Is(err, ErrInvalidOptions) || !strings.Contains(err.Error(), "cfg") {
-		t.Fatalf("nil cfg error = %v, want errors.Is ErrInvalidOptions mentioning cfg", err)
+	if _, err := a2a.NewWithTLS("bufnet", nil); !errors.Is(err, a2a.ErrInvalidOptions) || !strings.Contains(err.Error(), "cfg") {
+		t.Fatalf("nil cfg error = %v, want errors.Is a2a.ErrInvalidOptions mentioning cfg", err)
 	}
 }
 
@@ -27,7 +28,7 @@ func TestNewWithTLSRejectsBadInput(t *testing.T) {
 // non-nil config against an unresolvable address constructs and
 // closes, with no synchronous connect.
 func TestNewWithTLSOpensLazyTransport(t *testing.T) {
-	c, err := NewWithTLS("dns:///agent.example.invalid:443", &tls.Config{})
+	c, err := a2a.NewWithTLS("dns:///agent.example.invalid:443", &tls.Config{})
 	if err != nil {
 		t.Fatalf("NewWithTLS: %v", err)
 	}
@@ -54,7 +55,7 @@ func TestNewLiveLoopbackRoundTrip(t *testing.T) {
 			t.Errorf("stop: %v", err)
 		}
 	})
-	c, err := New(addr)
+	c, err := a2a.New(addr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -75,7 +76,7 @@ func TestNewLiveLoopbackRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Status: %v", err)
 		}
-		if state == StateCompleted || state == StateFailed {
+		if state == a2a.StateCompleted || state == a2a.StateFailed {
 			break
 		}
 	}

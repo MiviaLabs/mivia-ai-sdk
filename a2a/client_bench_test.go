@@ -1,4 +1,4 @@
-package a2aclient
+package a2a
 
 import (
 	"context"

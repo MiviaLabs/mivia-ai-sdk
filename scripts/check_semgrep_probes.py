@@ -135,21 +135,21 @@ def main() -> int:
         (tmp / "d5clean").mkdir()
         (tmp / "d5clean" / "clean.txt").write_text("nothing\n")
 
-        # a2aclient_dir: the sole surviving path-scoped fixture
+        # a2a_dir: the sole surviving path-scoped fixture
         # directory. sdk.go.no-a2atest-import still depends on it
-        # for its /a2aclient/*_test.go exclude; the five scoped
+        # for its /a2a/*_test.go exclude; the five scoped
         # third-party rules that also used to write here are gone.
-        a2aclient_dir = tmp / "a2aclient"
-        a2aclient_dir.mkdir()
+        a2a_dir = tmp / "a2a"
+        a2a_dir.mkdir()
 
         # no-a2atest-import rule pair: proves only the allowed
-        # caller paths may import a2aclient/a2atest.
+        # caller paths may import a2a/a2atest.
         no_a2atest_rid = "sdk.go.no-a2atest-import"
         (tmp / "viol_a2atest_prod_import.go").write_text(
-            'package p\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"\n\nvar _ = a2atest.Loopback\n'
+            'package p\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest"\n\nvar _ = a2atest.Loopback\n'
         )
-        (a2aclient_dir / "clean_a2atest_caller_import_test.go").write_text(
-            'package a2aclient\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"\n\nvar _ = a2atest.Loopback\n'
+        (a2a_dir / "clean_a2atest_caller_import_test.go").write_text(
+            'package a2a\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2a/a2atest"\n\nvar _ = a2atest.Loopback\n'
         )
 
         # Post-write basename-collision check. The block above holds no
@@ -197,7 +197,7 @@ def main() -> int:
 
         # Explicit no-a2atest-import assertions: the rule fires on
         # a production-looking import outside every exclude path, and
-        # stays silent on a file matching the /a2aclient/*_test.go
+        # stays silent on a file matching the /a2a/*_test.go
         # exclude.
         no_a2atest_viol_hits = hits.get("viol_a2atest_prod_import.go", set())
         no_a2atest_clean_hits = hits.get("clean_a2atest_caller_import_test.go", set())

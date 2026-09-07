@@ -1,4 +1,4 @@
-package a2aclient
+package a2a
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -31,7 +30,7 @@ type stubTransport struct {
 	stateErr   error
 	stateCalls atomic.Int64
 
-	result      a2a.Mapped
+	result      Mapped
 	resultState State
 	resultErr   error
 	resultCalls atomic.Int64
@@ -48,7 +47,7 @@ type stubTransport struct {
 
 var _ transport = (*stubTransport)(nil)
 
-func (s *stubTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, error) {
+func (s *stubTransport) Send(ctx context.Context, mapped Mapped) (string, error) {
 	s.sendCalls.Add(1)
 	if !s.ignoreCtx {
 		if err := ctx.Err(); err != nil {
@@ -82,15 +81,15 @@ func (s *stubTransport) State(ctx context.Context, taskID string) (State, error)
 	return s.states[idx], nil
 }
 
-func (s *stubTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, State, error) {
+func (s *stubTransport) Result(ctx context.Context, taskID string) (Mapped, State, error) {
 	s.resultCalls.Add(1)
 	if !s.ignoreCtx {
 		if err := ctx.Err(); err != nil {
-			return a2a.Mapped{}, StateUnspecified, err
+			return Mapped{}, StateUnspecified, err
 		}
 	}
 	if s.resultErr != nil {
-		return a2a.Mapped{}, StateUnspecified, s.resultErr
+		return Mapped{}, StateUnspecified, s.resultErr
 	}
 	return s.result, s.resultState, nil
 }
@@ -124,10 +123,10 @@ func signedMessage(t interface{ Fatalf(string, ...any) }) envelope.Message {
 	return signed
 }
 
-// mappedResult maps a signed message to a2a.Mapped, the wire shape
+// mappedResult maps a signed message to Mapped, the wire shape
 // stubTransport.result carries.
-func mappedResult(t interface{ Fatalf(string, ...any) }, msg envelope.Message) a2a.Mapped {
-	mapped, err := a2a.ToPart(msg)
+func mappedResult(t interface{ Fatalf(string, ...any) }, msg envelope.Message) Mapped {
+	mapped, err := ToPart(msg)
 	if err != nil {
 		t.Fatalf("map result: %v", err)
 	}

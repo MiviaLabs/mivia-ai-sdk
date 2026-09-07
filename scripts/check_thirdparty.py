@@ -274,8 +274,8 @@ def _write_base(root: Path) -> None:
         root, "policy/thirdparty_closure.txt",
         (REPO_ROOT / "policy" / "thirdparty_closure.txt").read_text(),
     )
-    go_packages.write_file(root, "a2aclient/a2aclient.go", (
-        "package a2aclient\n\nimport (\n"
+    go_packages.write_file(root, "a2a/a2a.go", (
+        "package a2a\n\nimport (\n"
         '\t_ "github.com/a2aproject/a2a-go/a2a"\n'
         '\t_ "github.com/a2aproject/a2a-go/a2aclient"\n'
         '\t_ "github.com/a2aproject/a2a-go/a2agrpc"\n'
@@ -284,7 +284,7 @@ def _write_base(root: Path) -> None:
         '\t_ "google.golang.org/grpc"\n'
         ")\n"
     ))
-    go_packages.write_file(root, "a2aclient/a2atest/a2atest.go", (
+    go_packages.write_file(root, "a2a/a2atest/a2atest.go", (
         "package a2atest\n\nimport (\n"
         '\t_ "github.com/a2aproject/a2a-go/a2a"\n'
         '\t_ "github.com/a2aproject/a2a-go/a2asrv"\n'
@@ -572,8 +572,8 @@ def _probe_tagged_import_passes(root: Path) -> list[str]:
 def _probe_subpath_import_passes(root: Path) -> list[str]:
     """A sub-path import matches its module entry by prefix."""
     _write_base(root)
-    go_packages.write_file(root, "a2aclient/eventqueue_extra.go", (
-        'package a2aclient\n\nimport _ "github.com/a2aproject/a2a-go/a2asrv/eventqueue"\n\nvar _ = 1\n'
+    go_packages.write_file(root, "a2a/eventqueue_extra.go", (
+        'package a2a\n\nimport _ "github.com/a2aproject/a2a-go/a2asrv/eventqueue"\n\nvar _ = 1\n'
     ))
     problems = check(root, go_packages.probe_env())
     if problems:
@@ -614,8 +614,8 @@ def _probe_dot_directory_pass_and_fail(root: Path) -> list[str]:
     is not silently disabling the whole scan. Both are needed
     together."""
     _write_base(root)
-    go_packages.write_file(root, ".worktree/a2aclient/grpc.go", (
-        'package a2aclient\n\nimport _ "google.golang.org/grpc"\n\nvar _ = 1\n'
+    go_packages.write_file(root, ".worktree/a2a/grpc.go", (
+        'package a2a\n\nimport _ "google.golang.org/grpc"\n\nvar _ = 1\n'
     ))
     problems = check(root, go_packages.probe_env())
     if problems:

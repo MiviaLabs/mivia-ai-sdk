@@ -1,6 +1,9 @@
 // Package a2a maps an envelope.Message onto an A2A v1.0 message part
-// and back. This phase carries no network call and no third-party
-// import. See docs/plans/a2a.md for the contract.
+// and back, and carries the A2A v1.0 client over that mapping. ToPart
+// and FromPart hold the mapping. Client sends a message to a remote
+// agent and polls task status and results, through the
+// a2aproject/a2a-go client. Wait turns one remote round trip into an
+// agent step ack. See docs/plans/a2a.md for the contract.
 package a2a
 
 import (

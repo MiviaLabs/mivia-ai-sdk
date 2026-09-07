@@ -9,7 +9,6 @@ enforces. It is the single design reference for this SDK. See
 [packages/flow.md](packages/flow.md),
 [packages/events.md](packages/events.md),
 [packages/a2a.md](packages/a2a.md),
-[packages/a2aclient.md](packages/a2aclient.md),
 [packages/ledger.md](packages/ledger.md),
 [packages/memory.md](packages/memory.md),
 [packages/provider.md](packages/provider.md), and
@@ -18,7 +17,7 @@ API references.
 
 ## Package map
 
-The diagram shows the thirty packages and the import edges
+The diagram shows the twenty-nine packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `context/budget`, `context/ref`,
 `events`,
@@ -27,8 +26,9 @@ imports. `channel`, `context/budget`, `context/ref`,
 package in this module. `envelope` imports `context/ref` alone.
 `context/plan` imports `context/ref` and `provider`.
 The spool half of `memory` imports `tools` alone.
-The `a2aclient/a2atest` fixture imports `a2a` and `envelope`, the
-same two internal packages `a2aclient` imports. `workspace` imports no other package in this module.
+The `a2a/a2atest` fixture imports `a2a` and `envelope`. `a2a` itself
+imports `envelope` alone. `workspace` imports no other package in this
+module.
 Six orphaned packages — `contextstate`, `contextsession`,
 `longtermmemory`, `skills`, `envfile`, and `runconfig` — live in the
 `x/` sub-module and are outside the package count and diagram above.
@@ -51,8 +51,6 @@ flowchart LR
     memory --> context/ref
     room --> envelope
     a2a --> envelope
-    a2aclient --> a2a
-    a2aclient --> envelope
     mcp --> tools
     agentloop --> provider
     agentloop --> tools
@@ -231,19 +229,19 @@ flowchart LR
   and encodes it into a `Part`. `FromPart` decodes a `Part` back into
   a `Message`, with the caller-supplied `ContextID`/`MessageID`
   overriding any value embedded in the part. `a2a` imports `envelope`
-  only; it carries no network call. See [packages/a2a.md](packages/a2a.md).
-- `a2aclient/` — the a2a-go client adapter. It provides `Client`,
+  only.
+  The same package carries the a2a-go client adapter: `Client`,
   `New`, `Close`, `TaskHandle`, `State`, and `Send`, `Status`, and
-  `Result`. `Send` maps a signed message through `a2a.ToPart` and
+  `Result`. `Send` maps a signed message through `ToPart` and
   sends it as a remote task; `Status` polls the task's state; `Result`
-  maps the output back through `a2a.FromPart` and re-verifies the
+  maps the output back through `FromPart` and re-verifies the
   signature. `State` mirrors all ten a2a-go task states, and its
   terminal set (completed, failed, canceled, rejected) equals
-  a2a-go's own. `a2aclient` imports `a2a` and `envelope`. It is one of
+  a2a-go's own. `a2a` is one of
   two packages in this module allowed to import the third-party
   `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
   dial dependency `a2a-go`'s gRPC transport needs; this is the
-  module's first external network call. `a2aclient/a2atest` is the other.
+  module's first external network call. `a2a/a2atest` is the other.
   The package also holds the remote step ack: `Options`,
   `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait`
   returns a func matching `workflow.AckWait`'s signature,
@@ -255,14 +253,14 @@ flowchart LR
   cannot resolve. The ack returns an unnamed func rather than
   importing `workflow` for the `AckWait` name, and carries no a2a-go
   import of its own.
-  See [packages/a2aclient.md](packages/a2aclient.md).
-  The package also holds the `a2aclient/a2atest` fixture: `Loopback`
+  See [packages/a2a.md](packages/a2a.md).
+  The package also holds the `a2a/a2atest` fixture: `Loopback`
   starts a real A2A server on a 127.0.0.1 port and returns the
   address and a stop function. The fixture carries the same
   third-party `a2a-go`/`grpc` exception scoped to the server-side
   packages a production client never needs. It follows the fixture
   convention: no production package may import it; only
-  `a2aclient`'s own tests do.
+  `a2a`'s own tests do.
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
   `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST
@@ -410,7 +408,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   streamable HTTP endpoint, through the official MCP Go SDK's own
   client; `ListTools` and `CallTool` map the server's tools and
   results onto `tools.Tool` and `tools.Out`. `mcp` imports `tools`
-  internally. It is the second package, after `a2aclient`, allowed to
+  internally. It is the second package, after `a2a`, allowed to
   carry a third-party import: `github.com/modelcontextprotocol/go-sdk`,
   the official MCP Go SDK. See [packages/mcp.md](packages/mcp.md).
 - `schema/` — the JSON Schema compile/validate/corrective-message
@@ -421,7 +419,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   compiles a JSON Schema document; `Validate` checks a JSON payload
   against it; `Corrective` renders a bounded, model-facing message on
   a validation failure. `schema` imports no other package in this
-  module; it is the fourth package, after `a2aclient`, `mcp`, and
+  module; it is the fourth package, after `a2a`, `mcp`, and
   `ledger`, allowed to carry a third-party import:
   `github.com/santhosh-tekuri/jsonschema/v6`.
 - `context/budget/` — a leaf primitive. It provides `Limits`,
@@ -543,10 +541,10 @@ The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
 package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
-The a2a package imports envelope only; it holds no other edge.
-The a2aclient package imports a2a and envelope. It also imports the
-third-party github.com/a2aproject/a2a-go, the one exception to this
-module's standard-library-only rule; see AGENTS.md's Rules section.
+The a2a package imports envelope only; it holds no other internal
+edge. It also imports the third-party
+github.com/a2aproject/a2a-go, one exception to this module's
+standard-library-only rule; see AGENTS.md's Rules section.
 
 The root holds no Go code. New concerns get new subpackages. The
 import policy in `policy/layers.json` states which package may import
@@ -767,7 +765,7 @@ message envelope: capability discovery (a registry concern — the
 A2A Agent Card format); streaming, push, and task lifecycle (transport
 and session concerns — `a2a` maps an envelope message onto an A2A v1.0
 message part and back with no task-lifecycle or transport claim, and
-`a2aclient` sends that mapped part to a remote agent and polls its
+its `Client` sends that mapped part to a remote agent and polls its
 status over `a2aproject/a2a-go`'s gRPC transport, adding no
 message-semantics rule of its own); voting and dissent preservation
 (governance-layer primitives beyond the two-party `challenge` and

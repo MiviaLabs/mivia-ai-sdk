@@ -1,22 +1,22 @@
 {
-  "comment": "Exported symbols with zero non-test reference in this module and in an external consumer checkout, when one is checked via --sibling or SDK_CONSUMER_PATH, declared on purpose. This repo is a public SDK and does not name a specific consumer here. check_symbol_wiring.py fails on any such symbol missing here, or on a stale entry: one whose symbol no longer appears in any api/*.txt lock, or one that has gained a real caller since the entry was written. permanent=false means an internal or external caller is expected later, named in target. permanent=true means the symbol is public SDK surface meant for external application code with no current consumer, matching the same convention as policy/pending_wiring.json's package-level entries.",
+  "comment": "Exported symbols with zero non-test reference in this module and in an external checkout, when one is checked via check_symbol_wiring.py's external-checkout flag or SDK_CONSUMER_PATH, declared on purpose. This repo is a public SDK and names no specific caller here. check_symbol_wiring.py fails on any such symbol missing here, or on a stale entry: one whose symbol no longer appears in any api/*.txt lock, or one that has gained a real caller since the entry was written. permanent=false means an internal or external caller is expected later, named in target. permanent=true means the symbol is public SDK surface meant for external application code with no current consumer, matching the same convention as policy/pending_wiring.json's package-level entries.",
   "symbols": {
-    "a2aclient.NewWithTLS": {
+    "a2a.NewWithTLS": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "a2aclient/a2atest.Cancel": {
+    "a2a/a2atest.Cancel": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "a2aclient/a2atest.Execute": {
+    "a2a/a2atest.Execute": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "a2aclient/a2atest.Loopback": {
+    "a2a/a2atest.Loopback": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
@@ -62,8 +62,8 @@
       "permanent": true
     },
     "agentloop.UnsettledBefore": {
-      "reason": "BatchOrder method re-exported alongside Dispatched/Settle/Settled/Changed when toolcallctx folded into agentloop (this package is the sole producer of BatchOrder values, attached to a tool's ctx during dispatch). mivia-agent's turn-shaping wrapper only reads Dispatched and Settled off the ledger it recovers from ctx; UnsettledBefore rounds out BatchOrder's exported surface for other external Tool wrappers with a coarser fast-path check, matching the pre-fold toolcallctx contract.",
-      "target": "no in-tree or sibling consumer today; kept as SDK surface completing BatchOrder's exported API",
+      "reason": "BatchOrder method re-exported alongside Dispatched/Settle/Settled/Changed when toolcallctx folded into agentloop (this package is the sole producer of BatchOrder values, attached to a tool's ctx during dispatch). A caller's turn-shaping wrapper only reads Dispatched and Settled off the ledger it recovers from ctx; UnsettledBefore rounds out BatchOrder's exported surface for other external Tool wrappers with a coarser fast-path check, matching the pre-fold toolcallctx contract.",
+      "target": "no in-tree caller today; kept as SDK surface completing BatchOrder's exported API",
       "permanent": true
     },
     "workflow/run.DecodeArtifacts": {

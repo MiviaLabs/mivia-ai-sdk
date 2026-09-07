@@ -1,8 +1,8 @@
 # Plan: a2aclient/a2atest
 
-Status: shipped. Relocates `a2aloopback` into `a2aclient/a2atest`.
-See `docs/plans/a2aloopback.md`, marked superseded, for the original
-design history.
+Status: superseded, see docs/history/a2a.md. The fixture moved to
+`a2a/a2atest` when `a2aclient` merged into `a2a`; see
+`docs/plans/a2a/a2atest.md`. This plan stays as history.
 
 ## Goal
 

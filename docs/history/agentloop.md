@@ -5738,11 +5738,10 @@ the bool, after the existing `!res.Compacted && notice` early return.
   after `TrimSpace`, zero `ToolCalls`, and zero `ReasoningBlocks`.
   The blank check matches the sibling predicate and `runIteration`'s
   own `StopEmptyResponse` check.
-- `isEmptyAssistantTurn` mirrors the sibling consumer's
-  `DropEmptyAssistantTurns` predicate at
-  `mivia-agent/internal/provider/api_message.go:198-201`, adapted to
-  this module's `provider.Message`: `ReasoningBlocks` here,
-  `ReasoningContent` there. The doc comment cites the sibling file.
+- `isEmptyAssistantTurn` mirrors a caller's provider adapter
+  `DropEmptyAssistantTurns` predicate, adapted to this module's
+  `provider.Message`: `ReasoningBlocks` here, `ReasoningContent`
+  there. The doc comment cites the caller's adapter.
 - `dropEmptyAssistantTurns` returns a filtered copy when any empty
   turn exists and the input unchanged otherwise, mirroring the
   sibling's `needsWork` fast path.

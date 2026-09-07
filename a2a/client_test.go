@@ -1,4 +1,4 @@
-package a2aclient
+package a2a
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -125,7 +124,7 @@ func TestSendRejectsInvalidMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newFromTransport: %v", err)
 	}
-	// Missing ThreadID fails envelope.Validate, which a2a.ToPart
+	// Missing ThreadID fails envelope.Validate, which ToPart
 	// reaches through m.Encode.
 	invalid := envelope.Message{Version: envelope.Version, ID: "msg-1"}
 	h, err := c.Send(context.Background(), invalid)
@@ -346,7 +345,7 @@ func TestResultRejectsUnmappableData(t *testing.T) {
 		resultState: StateCompleted,
 		// Data-only, with no Text: with the text carrier shipped this
 		// stub proves FromPart's Data fallback decode fails closed.
-		result: a2a.Mapped{Part: a2a.Part{Data: []byte("not json")}},
+		result: Mapped{Part: Part{Data: []byte("not json")}},
 	}
 	c, err := newFromTransport(testBaseURL, tr)
 	if err != nil {
@@ -357,7 +356,7 @@ func TestResultRejectsUnmappableData(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 	if _, err := c.Result(context.Background(), h); err == nil {
-		t.Fatal("Result accepted data a2a.FromPart cannot map")
+		t.Fatal("Result accepted data FromPart cannot map")
 	}
 }
 

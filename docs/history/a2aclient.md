@@ -1,6 +1,7 @@
 # Plan: a2aclient
 
-Status: shipped. Builds on the landed `a2a` package (`docs/plans/a2a.md`).
+Status: superseded, see docs/history/a2a.md. The `a2aclient`
+package merged into `a2a`. This plan stays as history.
 
 ## Goal
 

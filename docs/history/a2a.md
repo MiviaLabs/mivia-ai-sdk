@@ -1,8 +1,8 @@
 # Plan: a2a
 
-Status: shipped. The `a2aclient` package (`docs/plans/a2aclient.md`)
-builds on this package's mapping. Agent Card discovery through A2A
-stays future and out of scope until its own review.
+Status: shipped. The A2A v1.0 client, formerly its own package,
+now lives here; see the addendum below. Agent Card discovery through
+A2A stays future and out of scope until its own review.
 
 ## Goal
 
@@ -421,3 +421,67 @@ Predicted tampering findings: none from this package. The change
 deletes no test function and no vector, and it adds assertion sites.
 The slice's commit-level trailer inventory lives in
 `docs/plans/a2aclient.md`'s addendum.
+
+## Addendum: a2aclient merged into a2a
+
+Status: shipped.
+
+One protocol held two packages. `a2a` carried the envelope mapping.
+`a2aclient` carried the client and the folded remote step ack.
+`a2aclient/a2atest` carried the loopback fixture. A caller that maps a
+message also sends it, so the split cost an import and bought nothing.
+The three packages are now `a2a` and `a2a/a2atest`.
+
+### File moves
+
+`a2aclient`'s four non-test files (`a2aack.go`, `client.go`,
+`grpc.go`, `state.go`) moved into `a2a/`. Its internal test files
+moved into `a2a/` as `package a2a`. Its external test files moved into
+`a2a/` as `package a2a_test`. `a2aclient/a2atest` moved to
+`a2a/a2atest`.
+
+The `a2a/a2a_test/` directory is gone. Its files moved up into `a2a/`,
+keeping `package a2a_test`. The Tests section above, which says test
+files live in `a2a/a2a_test/`, is superseded by this line. One package
+cannot hold both in-directory test files and a nested `_test`
+directory: `make verify`'s coverage block measures the nested
+directory alone, so the in-directory tests would stop counting. The
+merged package needs in-directory tests, because the third-party
+import exception is scoped to `a2a` and an external test package
+cannot import a2a-go. The flat layout is the same one `a2aclient`
+used, for the same reason. `testdata/vectors` and the `FuzzFromPart`
+corpus moved up with the files.
+
+### Renames on the incoming side
+
+| Before | After | Why |
+| --- | --- | --- |
+| `package a2aclient` | `package a2a` | one package |
+| `package a2aclient_test` | `package a2a_test` | one external test package |
+| `a2a.Mapped`, `a2a.Part`, `a2a.ToPart`, `a2a.FromPart` | `Mapped`, `Part`, `ToPart`, `FromPart` | the self-import is gone |
+| error prefix `"a2aclient: "` | `"a2a: "` | `check_names.py` pins the prefix to the enclosing package |
+| `grpc_tls_internal_test.go` | `grpc_tls_test.go`, `package a2a_test` | it imports `a2a/a2atest`, which imports `a2a`; an internal test cannot |
+| `grpc_loopback_integration_test.go` | same name, `package a2a_test` | same import cycle |
+
+No identifier collided between the two packages. The two file moves in
+the table are the only changes the merge forced beyond the package
+clause and the error prefix.
+
+### Layer rows
+
+`policy/layers.json` held `"a2a": ["envelope"]` and `"a2aclient":
+["a2a", "envelope"]`. The union, minus the now-internal `a2a` edge, is
+`["envelope"]`. The merged row is `"a2a": ["envelope"]`.
+`"a2aclient/a2atest": ["a2a", "envelope"]` became `"a2a/a2atest":
+["a2a", "envelope"]`, unchanged. No other row listed `a2aclient`.
+
+### Other gates
+
+`policy/thirdparty.json`'s two rows moved to `a2a` and `a2a/a2atest`.
+`semgrep/sdk-standards.yml`'s `sdk.go.no-a2atest-import` now names
+`a2a/a2atest` and excludes `/a2atest/*.go` and `/a2a/*_test.go`.
+Its `sdk.go.marshal-via-encode` exclusion moved to
+`/a2a/grpc.go`. `api/a2aclient.txt` and `api/a2aclient/a2atest.txt`
+are gone; `api/a2a.txt` and `api/a2a/a2atest.txt` hold the surface.
+`policy/pending_wiring.json`'s `a2aclient` entry is gone, because
+`a2a` has in-repo callers. Its fixture entry is now `a2a/a2atest`.

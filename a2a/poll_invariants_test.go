@@ -1,4 +1,4 @@
-package a2aclient_test
+package a2a_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -18,15 +18,15 @@ func TestPollInvariants(t *testing.T) {
 	timeout := 50 * time.Millisecond
 
 	t.Run("non-terminal continues, terminal stops", func(t *testing.T) {
-		fake := &fakeRemote{statusStates: []a2aclient.State{
-			a2aclient.StateUnspecified, // first Status call
-			a2aclient.StateWorking,     // second Status call
-			a2aclient.StateSubmitted,   // third Status call
-			a2aclient.StateCompleted,   // fourth: terminal, stops the loop
+		fake := &fakeRemote{statusStates: []a2a.State{
+			a2a.StateUnspecified, // first Status call
+			a2a.StateWorking,     // second Status call
+			a2a.StateSubmitted,   // third Status call
+			a2a.StateCompleted,   // fourth: terminal, stops the loop
 		}}
 		msg := signedMessage(t)
-		opts := a2aclient.Options{Poll: poll, Timeout: timeout}
-		ackFn, err := a2aclient.Wait(fake, opts)
+		opts := a2a.Options{Poll: poll, Timeout: timeout}
+		ackFn, err := a2a.Wait(fake, opts)
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -49,8 +49,8 @@ func TestPollInvariants(t *testing.T) {
 		msg := signedMessage(t)
 		poll := 10 * time.Millisecond
 		timeout := time.Second
-		opts := a2aclient.Options{Poll: poll, Timeout: timeout}
-		ackFn, err := a2aclient.Wait(fake, opts)
+		opts := a2a.Options{Poll: poll, Timeout: timeout}
+		ackFn, err := a2a.Wait(fake, opts)
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -63,7 +63,7 @@ func TestPollInvariants(t *testing.T) {
 		if elapsed > 5*poll {
 			t.Fatalf("ackFn took %v after cancel, want return near the first poll tick", elapsed)
 		}
-		if !errors.Is(ackErr, a2aclient.ErrTimeout) {
+		if !errors.Is(ackErr, a2a.ErrTimeout) {
 			t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout) after ctx cancellation", ackErr)
 		}
 	})
@@ -73,25 +73,25 @@ func TestPollInvariants(t *testing.T) {
 // no verdict keeps the loop polling until the deadline, so the wait
 // ends in ErrTimeout, not ErrRemoteFailed.
 func TestPollContinuesOnUnresolvedStates(t *testing.T) {
-	opts := a2aclient.Options{Poll: time.Millisecond, Timeout: 20 * time.Millisecond}
-	cases := []a2aclient.State{
-		a2aclient.StateSubmitted,
-		a2aclient.StateWorking,
-		a2aclient.StateUnspecified,
-		a2aclient.StateUnknown,
+	opts := a2a.Options{Poll: time.Millisecond, Timeout: 20 * time.Millisecond}
+	cases := []a2a.State{
+		a2a.StateSubmitted,
+		a2a.StateWorking,
+		a2a.StateUnspecified,
+		a2a.StateUnknown,
 	}
 	for _, state := range cases {
 		t.Run(state.String(), func(t *testing.T) {
-			fake := &fakeRemote{statusStates: []a2aclient.State{state}}
-			ackFn, err := a2aclient.Wait(fake, opts)
+			fake := &fakeRemote{statusStates: []a2a.State{state}}
+			ackFn, err := a2a.Wait(fake, opts)
 			if err != nil {
 				t.Fatalf("Wait returned validation error %v", err)
 			}
 			_, err = ackFn(context.Background(), signedMessage(t))
-			if !errors.Is(err, a2aclient.ErrTimeout) {
+			if !errors.Is(err, a2a.ErrTimeout) {
 				t.Fatalf("error = %v, want errors.Is(ErrTimeout): %s must keep polling", err, state)
 			}
-			if errors.Is(err, a2aclient.ErrRemoteFailed) {
+			if errors.Is(err, a2a.ErrRemoteFailed) {
 				t.Fatalf("error = %v, want no ErrRemoteFailed for %s", err, state)
 			}
 			if calls := fake.statusCalls.Load(); calls < 2 {

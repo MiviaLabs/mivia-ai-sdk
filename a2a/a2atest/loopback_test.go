@@ -12,7 +12,7 @@ import (
 	"github.com/a2aproject/a2a-go/a2asrv"
 	"github.com/a2aproject/a2a-go/a2asrv/eventqueue"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -48,7 +48,7 @@ func signedMessage(t *testing.T) envelope.Message {
 }
 
 // TestLoopbackRoundTrip starts Loopback, sends one signed message
-// through a real a2aclient.Client, and asserts the reply verifies and
+// through a real a2a.Client, and asserts the reply verifies and
 // carries the same payload. This exercises Loopback,
 // loopbackExecutor.Execute, and loopbackRequest's success path.
 func TestLoopbackRoundTrip(t *testing.T) {
@@ -62,9 +62,9 @@ func TestLoopbackRoundTrip(t *testing.T) {
 		}
 	})
 
-	c, err := a2aclient.New(addr)
+	c, err := a2a.New(addr)
 	if err != nil {
-		t.Fatalf("a2aclient.New: %v", err)
+		t.Fatalf("a2a.New: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := c.Close(); err != nil {
@@ -81,8 +81,8 @@ func TestLoopbackRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if state != a2aclient.StateCompleted {
-		t.Fatalf("Status = %s immediately after Send, want %s", state, a2aclient.StateCompleted)
+	if state != a2a.StateCompleted {
+		t.Fatalf("Status = %s immediately after Send, want %s", state, a2a.StateCompleted)
 	}
 
 	got, err := c.Result(context.Background(), h)
@@ -102,8 +102,8 @@ func TestLoopbackRoundTrip(t *testing.T) {
 // and calls Result. The executor restates MaxHops in the response
 // envelope, so VerifySignature passes only when the text carrier kept
 // the integer byte-exact across the gRPC hop in both directions. This
-// is the replacement fidelity proof for the deleted a2aclient
-// proto-hop tests.
+// is the replacement fidelity proof for the deleted proto-hop
+// tests.
 func TestLoopbackRoundTripKeepsLargeIntegers(t *testing.T) {
 	addr, stop, err := Loopback()
 	if err != nil {
@@ -115,9 +115,9 @@ func TestLoopbackRoundTripKeepsLargeIntegers(t *testing.T) {
 		}
 	})
 
-	c, err := a2aclient.New(addr)
+	c, err := a2a.New(addr)
 	if err != nil {
-		t.Fatalf("a2aclient.New: %v", err)
+		t.Fatalf("a2a.New: %v", err)
 	}
 	t.Cleanup(func() {
 		if err := c.Close(); err != nil {
@@ -152,8 +152,8 @@ func TestLoopbackRoundTripKeepsLargeIntegers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if state != a2aclient.StateCompleted {
-		t.Fatalf("Status = %s immediately after Send, want %s", state, a2aclient.StateCompleted)
+	if state != a2a.StateCompleted {
+		t.Fatalf("Status = %s immediately after Send, want %s", state, a2a.StateCompleted)
 	}
 
 	got, err := c.Result(context.Background(), h)
@@ -291,7 +291,7 @@ func TestLoopbackRejectsKeyGenerationFailure(t *testing.T) {
 }
 
 // TestLoopbackStopIsIdempotent calls stop twice and asserts both calls
-// return nil, mirroring a2aclient.Client.Close's idempotency contract
+// return nil, mirroring a2a.Client.Close's idempotency contract
 // this fixture's caller relies on.
 func TestLoopbackStopIsIdempotent(t *testing.T) {
 	_, stop, err := Loopback()

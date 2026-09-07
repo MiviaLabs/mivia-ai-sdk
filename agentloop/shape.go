@@ -8,11 +8,9 @@ import (
 
 // isEmptyAssistantTurn reports whether m is the shape-empty assistant
 // turn: RoleAssistant, Content blank after TrimSpace, zero ToolCalls,
-// and zero ReasoningBlocks. It mirrors the sibling consumer's
-// DropEmptyAssistantTurns predicate in
-// mivia-agent/internal/provider/api_message.go, adapted to this
-// module's provider.Message: ReasoningBlocks here, ReasoningContent
-// there.
+// and zero ReasoningBlocks. It mirrors a caller's provider adapter
+// DropEmptyAssistantTurns predicate, adapted to this module's
+// provider.Message: ReasoningBlocks here, ReasoningContent there.
 func isEmptyAssistantTurn(m provider.Message) bool {
 	return m.Role == provider.RoleAssistant && strings.TrimSpace(m.Content) == "" &&
 		len(m.ToolCalls) == 0 && len(m.ReasoningBlocks) == 0

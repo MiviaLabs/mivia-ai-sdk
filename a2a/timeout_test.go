@@ -1,4 +1,4 @@
-package a2aclient_test
+package a2a_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 )
 
 // TestWaitTimeout proves a fake that never reaches a terminal state
@@ -17,14 +17,14 @@ func TestWaitTimeout(t *testing.T) {
 	poll := 5 * time.Millisecond
 	timeout := 25 * time.Millisecond
 
-	fake := &fakeRemote{statusStates: []a2aclient.State{
-		a2aclient.StateUnspecified,
-		a2aclient.StateWorking,
+	fake := &fakeRemote{statusStates: []a2a.State{
+		a2a.StateUnspecified,
+		a2a.StateWorking,
 	}}
 	msg := signedMessage(t)
 
-	opts := a2aclient.Options{Poll: poll, Timeout: timeout}
-	ackFn, err := a2aclient.Wait(fake, opts)
+	opts := a2a.Options{Poll: poll, Timeout: timeout}
+	ackFn, err := a2a.Wait(fake, opts)
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}
@@ -40,10 +40,10 @@ func TestWaitTimeout(t *testing.T) {
 	if elapsed > timeout+time.Second {
 		t.Fatalf("wait took %v, want return near the %v deadline", elapsed, timeout)
 	}
-	if !errors.Is(ackErr, a2aclient.ErrTimeout) {
+	if !errors.Is(ackErr, a2a.ErrTimeout) {
 		t.Fatalf("error = %v, want errors.Is(ErrTimeout)", ackErr)
 	}
-	if !strings.Contains(ackErr.Error(), a2aclient.StateWorking.String()) {
+	if !strings.Contains(ackErr.Error(), a2a.StateWorking.String()) {
 		t.Fatalf("timeout error %q should contain the last seen state", ackErr)
 	}
 }

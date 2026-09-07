@@ -31,7 +31,9 @@ var (
 	ErrNoPrincipal = errors.New("memory: no principal in context")
 	// ErrInvalidOptions is the sentinel for a caller-supplied
 	// constructor argument that fails a sanity check, such as a
-	// non-positive maxGrantBytes or ttl.
+	// non-positive maxGrantBytes. It also covers a call-time
+	// argument that fails its rule, such as Spool.SpoolExpiring's
+	// non-positive ttl.
 	ErrInvalidOptions = errors.New("memory: invalid options")
 	// ErrGrantTooLarge is Spool's error when data alone exceeds
 	// maxGrantBytes: no eviction can ever make room for it.

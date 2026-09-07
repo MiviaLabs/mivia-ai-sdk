@@ -36,8 +36,9 @@ type ClientOptions struct {
 // error when the Client's Close already ran. Test with errors.Is.
 var ErrClosed = errors.New("mcp: client is closed")
 
-// ErrInvalidOptions is CallToolWithProgress's error for a nil
-// onProgress argument. Test with errors.Is.
+// ErrInvalidOptions is the sentinel for a caller-supplied argument
+// that fails its rule, including the call-time nil onProgress
+// argument of Client.CallToolWithProgress. Test with errors.Is.
 var ErrInvalidOptions = errors.New("mcp: invalid options")
 
 // Client is one connection to one MCP server, wrapping the official

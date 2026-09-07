@@ -11,8 +11,11 @@ import (
 var (
 	// ErrInvalidOptions is Register's error for a caller-supplied
 	// argument that fails a construction-time sanity check: a nil
-	// Completer, a blank name, or a name already registered.
+	// Completer or a blank name.
 	ErrInvalidOptions = errors.New("provider: invalid options")
+	// ErrDuplicateName is Register's error for a name already
+	// registered. A register-if-absent caller branches on it.
+	ErrDuplicateName = errors.New("provider: name already registered")
 	// ErrUnknownName is Route's error for a name in order that Get
 	// cannot resolve. The error's text names the missing entry.
 	ErrUnknownName = errors.New("provider: unknown name")
@@ -44,7 +47,8 @@ func NewRegistry() *Registry {
 // pointer that implements Completer is caller error; ErrInvalidOptions
 // also covers it. Rejects a blank name (empty after strings.TrimSpace)
 // with ErrInvalidOptions. Rejects a name already registered with
-// ErrInvalidOptions. Register never replaces an existing entry.
+// ErrDuplicateName, unwrapped. Register never replaces an existing
+// entry.
 func (r *Registry) Register(name string, c Completer) error {
 	if c == nil {
 		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Completer: must not be nil")
@@ -55,7 +59,7 @@ func (r *Registry) Register(name string, c Completer) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.completers[name]; ok {
-		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Name: already registered")
+		return ErrDuplicateName
 	}
 	r.completers[name] = c
 	return nil

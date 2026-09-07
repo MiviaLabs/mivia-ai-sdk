@@ -23,7 +23,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `memory/` — content-addressed store plus the principal-scoped spool (Spool, SpoolTool, ReadOutputTool).
 - `workspace/` — filesystem confinement via `os.Root` and secret path denial (Matcher).
 - `mcp/` — Model Context Protocol client over stdio/HTTP.
-- `a2a/` / `a2aclient/` — A2A v1.0 protocol integration, the remote step ack (Wait), and the a2atest loopback fixture.
+- `a2a/` — A2A v1.0 protocol integration: the envelope mapping, the client, the remote step ack (Wait), and the a2atest loopback fixture.
 - `dispatch/` — NDJSON envelope HTTP endpoint.
 - `context/plan/` / `context/ref/` — context window management, compaction, the summarizer (Summarize), and content references.
 - `scheduler/` — due-job firing plus the trigger registry (Condition, Action, Registry).

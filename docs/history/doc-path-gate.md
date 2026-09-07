@@ -12,8 +12,8 @@ directory that no longer exists.
 ## Scope
 
 Inside: one rule in `scripts/check_docs.py` that fails on the retired
-plan directory prefix in any tracked file. Its probes. The mechanical
-repoint of every existing reference.
+plan directory prefix in any tracked file it can read as text. Its
+probes. The mechanical repoint of every existing reference.
 
 Outside: any other stale-path class. The rule names one retired prefix,
 not a general link checker. A general checker needs a link parser for
@@ -65,16 +65,56 @@ walk. The repository root holds several untracked working copies of
 itself under a tooling directory. A directory walk would report
 hundreds of hits inside those copies, which belong to no commit.
 
+The tracked set holds files the rule cannot read as text. One tracked
+image decodes to no string, and seven tracked symbolic links point at
+directories, so reading them raises rather than returning content. The
+existing rules never meet either class, because they read only Go files
+and the package reference pages.
+
+Four more tracked symbolic links point at files, not directories. They
+decode normally and must be scanned: they carry five hits of the
+retired prefix between them. The skip is a content test, never a test
+on the link mode, so those four stay in scope.
+
+The rule therefore skips any path it cannot read as UTF-8 text. This is
+not an exemption. A file that holds no decodable text cannot hold the
+retired prefix as text, so skipping it removes no coverage. Without the
+skip the gate ends in a stack trace on its first real run.
+
 The enumerator needs one fallback, and the pre-commit hook is why. The
 hook runs the gate on a tar extraction of the staged tree, with every
 git environment variable cleared, so the stage is not a repository and
-`git ls-files` fails there.
+the tracked listing fails there.
 
-The fallback is a plain directory walk, and it is exact rather than
-approximate. The archive the hook extracts holds tracked files only, so
-a walk of the stage enumerates the same set the tracked listing would.
-The two enumerators agree wherever both are valid, so the fallback
-weakens nothing.
+The fallback is a plain directory walk, and it is exact in that one
+place. The archive the hook extracts holds tracked files only, so a
+walk of the stage enumerates the same set the tracked listing would.
+Both enumerators return 1056 paths on the present tree.
+
+The fallback's trigger must be the missing repository, not any listing
+failure. Walk only when no git directory is discoverable at or above
+the root, the same test the test-tampering gate already applies. Any
+other listing failure is a hard error.
+
+A broader trigger would undo the reason for the tracked listing. The
+repository root holds untracked working copies carrying 847 files with
+the retired prefix. A walk of the root reports every one of them.
+
+### An older rule has the same enumeration weakness
+
+The doc-comment rule in the same file walks the root for Go files. It
+reads 1667 files, and 1437 of them sit inside those untracked working
+copies. The rule passes today only because those copies happen to hold
+no violation.
+
+The consequence is a false positive waiting to happen. A stale copy
+with one undocumented exported symbol fails the gate for a tree that
+does not contain the file.
+
+This change does not fix that rule. The fix is a one-line enumerator
+swap, but it changes which files an existing gate judges, so it needs
+its own before-and-after evidence rather than a ride on this change.
+It is recorded here so the next reader finds it.
 
 The rule carries no exemption list. An exemption is a hole, and this
 gate exists because a previous repoint left holes.

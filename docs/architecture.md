@@ -29,8 +29,8 @@ package in this module. `envelope` imports `contextref` alone.
 `contextplan` imports `contextref` and `provider`.
 `contextsession` imports `contextplan`, `contextstate`,
 `provider`, and `spool`. The spool half of `memory` imports `tools` alone.
-`a2aloopback` imports `a2a` and `envelope`, the same two internal
-packages `a2aclient` imports. `workspace` imports no other package in this module.
+The `a2aclient/a2atest` fixture imports `a2a` and `envelope`, the
+same two internal packages `a2aclient` imports. `workspace` imports no other package in this module.
 `runconfig` imports `agentrun`, `contextbudget`, `flow`,
 `ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
 
@@ -58,8 +58,6 @@ flowchart LR
     a2a --> envelope
     a2aclient --> a2a
     a2aclient --> envelope
-    a2aloopback --> a2a
-    a2aloopback --> envelope
     mcp --> tools
     agentloop --> provider
     agentloop --> tools
@@ -276,13 +274,13 @@ flowchart LR
   importing `agent` for the `AckWait` name, and carries no a2a-go
   import of its own.
   See [packages/a2aclient.md](packages/a2aclient.md).
-- `a2aloopback/` — a gRPC A2A loopback test fixture. It provides
-  `Loopback`, which starts a real A2A server on a 127.0.0.1 port and
-  returns the address and a stop function. `a2aloopback` imports `a2a`
-  and `envelope`, plus the same third-party `a2a-go`/`grpc` exception
-  `a2aclient` carries, scoped to the server-side packages a production
-  client never needs. It follows the fixture convention: no
-  production package may import it; only `a2aclient`'s own tests do.
+  The package also holds the `a2aclient/a2atest` fixture: `Loopback`
+  starts a real A2A server on a 127.0.0.1 port and returns the
+  address and a stop function. The fixture carries the same
+  third-party `a2a-go`/`grpc` exception scoped to the server-side
+  packages a production client never needs. It follows the fixture
+  convention: no production package may import it; only
+  `a2aclient`'s own tests do.
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
   `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST

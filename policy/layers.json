@@ -8,10 +8,6 @@
       "a2a",
       "envelope"
     ],
-    "a2aloopback": [
-      "a2a",
-      "envelope"
-    ],
     "agent": [
       "contextbudget",
       "envelope",
@@ -140,6 +136,10 @@
     "tools": [],
     "trace": [],
     "workspace": [],
-    "ledger/ledgertest": []
+    "ledger/ledgertest": [],
+    "a2aclient/a2atest": [
+      "a2a",
+      "envelope"
+    ]
   }
 }

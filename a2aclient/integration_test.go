@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -21,7 +21,7 @@ import (
 // It returns the AckWait, the agent, and the machine model.
 func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Definition) {
 	t.Helper()
-	addr, stop, err := a2aloopback.Loopback()
+	addr, stop, err := a2atest.Loopback()
 	if err != nil {
 		t.Fatalf("Loopback() error: %v", err)
 	}

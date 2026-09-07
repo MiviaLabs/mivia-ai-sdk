@@ -1,6 +1,7 @@
 package contextplan
 
 import (
+	"math"
 	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -37,7 +38,7 @@ type Calibrated struct {
 // nil est is a caller error caught at the first EstimateTokens call,
 // not at construction, matching the wrapped interface's own contract.
 func Calibrate(est provider.TokenEstimator, alpha float64) *Calibrated {
-	if alpha <= 0 || alpha > 1 {
+	if alpha <= 0 || alpha > 1 || math.IsNaN(alpha) {
 		alpha = DefaultSmoothingFactor
 	}
 	return &Calibrated{est: est, alpha: alpha, factor: 1.0}

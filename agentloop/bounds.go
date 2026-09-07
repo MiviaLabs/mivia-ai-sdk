@@ -20,14 +20,18 @@ type Bounds struct {
 }
 
 // Validate checks the caps in a fixed order and returns the first
-// failure: MaxIterations, MaxTotalTokens, MaxConcurrentTools, then
-// MaxConsecutiveToolFailures, each not negative.
+// failure: MaxIterations, MaxTotalTokens, MaxCallsPerTurn,
+// MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
+// negative.
 func (b Bounds) Validate() error {
 	if b.MaxIterations < 0 {
 		return ErrMaxIterations
 	}
 	if b.MaxTotalTokens < 0 {
 		return ErrMaxTotalTokens
+	}
+	if b.MaxCallsPerTurn < 0 {
+		return ErrMaxCallsPerTurn
 	}
 	if b.MaxConcurrentTools < 0 {
 		return ErrMaxConcurrentTools

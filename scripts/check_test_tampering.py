@@ -115,10 +115,10 @@ def _has_worktree_changes(root: Path) -> bool:
 
 def _merge_head_revs(root: Path) -> list:
     try:
-        out = _git(root, "rev-parse", "--no-quotes", "MERGE_HEAD").decode()
+        out = _git(root, "rev-parse", "MERGE_HEAD").decode()
     except RuntimeError:
         return []
-    return [rev for rev in out.split() if rev]
+    return [rev for rev in out.split() if rev and not rev.startswith("-")]
 
 
 def _has_unmerged_paths(root: Path) -> bool:
@@ -139,6 +139,20 @@ def _head_parents(root: Path) -> list:
 
 def _tip_commit(root: Path, rev_range: str) -> str:
     return _git(root, "rev-list", "-1", rev_range).decode().strip()
+
+
+def _range_tip(root: Path, rev_range: str) -> str:
+    """_range_tip returns the range's target-side tip: the commit whose
+    message would carry this range's Allow-Test-Change trailers. A
+    three-dot A...B symmetric range lists commits from both sides, so
+    `rev-list -1` may return a left-side commit; the right side is
+    always the side under review."""
+    if ".." in rev_range:
+        left, sep, right = rev_range.partition("...")
+        if not sep:
+            left, _, right = rev_range.partition("..")
+        return right or "HEAD"
+    return _tip_commit(root, rev_range)
 
 
 def commit_message(root: Path, rev: str) -> str:
@@ -219,7 +233,11 @@ def build_diff(root: Path, cmp_args: list) -> list:
             new_text = _staged_text(root, new_path)
         else:
             new_text = _read_rev_text(root, target, new_path)
-        hunks = _parse_hunks(_git(root, "diff", "-U0", *cmp_args, "--", new_path).decode())
+        pathspec = f"{old_path} {new_path}" if status.startswith("R") else new_path
+        # -M pairs a rename's delete+add into real edit hunks; without
+        # it, a renamed _test.go's pre-existing lines read as brand-new
+        # additions and TT02 fires on them.
+        hunks = _parse_hunks(_git(root, "diff", "-U0", "-M", *cmp_args, "--", *pathspec.split()).decode())
         diffs.append(Diff(old_path, new_path, status, old_text, new_text, hunks))
     return diffs
 
@@ -409,7 +427,7 @@ def resolve_diff_source(range_arg: str, message_file: str, root: Path):
     stand-down, the working tree, the first staged commit, a merge
     commit, then the HEAD~1 HEAD fallback."""
     if range_arg:
-        return [[range_arg]], commit_message(root, _tip_commit(root, range_arg)), None
+        return [[range_arg]], commit_message(root, _range_tip(root, range_arg)), None
     if message_file and _has_staged_changes(root):
         comparisons = [["--cached"]] + [["--cached", rev] for rev in _merge_head_revs(root)]
         return comparisons, Path(message_file).read_text(), None

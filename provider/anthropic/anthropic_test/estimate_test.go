@@ -188,3 +188,24 @@ func TestEstimateTokensCountsReplayedReasoningBlocks(t *testing.T) {
 		t.Fatal("count body did not replay the reasoning block the next Chat would send")
 	}
 }
+
+// TestEstimateTokensFallsBackOnNonconforming200 proves a 200 reply
+// whose body is not a count_tokens envelope degrades to the ratio
+// estimate instead of a confident zero.
+func TestEstimateTokensFallsBackOnNonconforming200(t *testing.T) {
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"error": map[string]string{"type": "overloaded_error"}})
+	})
+	est := provider.TokenEstimator(fix.client)
+	n, err := est.EstimateTokens(provider.Request{
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: strings.Repeat("a", 400)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if want := 400/4 + 1; n != want {
+		t.Fatalf("EstimateTokens = %d, want the ratio estimate %d", n, want)
+	}
+}

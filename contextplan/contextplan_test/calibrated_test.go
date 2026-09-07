@@ -395,3 +395,21 @@ func permute(idx []int, k int, fn func([]int)) {
 		idx[k], idx[i] = idx[i], idx[k]
 	}
 }
+
+// TestCalibrateNaNAlphaFallsBack pins the doc contract: a NaN alpha
+// is outside (0, 1] and must fall back to DefaultSmoothingFactor, not
+// poison the correction factor.
+func TestCalibrateNaNAlphaFallsBack(t *testing.T) {
+	nan := math.Float64frombits(0x7ff8000000000001)
+	c := contextplan.Calibrate(fixedEstimator{tokens: 10}, nan)
+	// A NaN alpha survives both clamp comparisons and poisons the
+	// factor at the first Observe; the fallback default must not.
+	c.Observe(10, 20)
+	got, err := c.EstimateTokens(provider.Request{})
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if got <= 0 || got > 1<<20 {
+		t.Fatalf("EstimateTokens = %d after a NaN alpha; the default fallback was not applied", got)
+	}
+}

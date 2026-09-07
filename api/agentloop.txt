@@ -137,6 +137,7 @@ package agentloop
   var ErrIncompleteToolBudget
   var ErrIncompleteWorkBudget
   var ErrInvalidSchema
+  var ErrMaxCallsPerTurn
   var ErrMaxConcurrentTools
   var ErrMaxConsecutiveToolFailures
   var ErrMaxIterations

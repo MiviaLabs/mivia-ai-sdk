@@ -122,6 +122,9 @@ var (
 	// ErrMaxTotalTokens is Options.Validate's error when MaxTotalTokens
 	// is negative. Test with errors.Is.
 	ErrMaxTotalTokens = errors.New("agentloop: MaxTotalTokens must not be negative")
+	// ErrMaxCallsPerTurn is Validate's error when MaxCallsPerTurn is
+	// negative. Zero means unbounded. Test with errors.Is.
+	ErrMaxCallsPerTurn = errors.New("agentloop: MaxCallsPerTurn must not be negative")
 	// ErrConcludeDeadline is Options.Validate's error when
 	// Conclude.Deadline is negative. Test with errors.Is.
 	ErrConcludeDeadline = errors.New("agentloop: ConcludeDeadline must be non-negative")

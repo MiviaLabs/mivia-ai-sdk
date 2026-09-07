@@ -26,8 +26,11 @@ const fallbackCharsPerToken = 4
 var _ provider.TokenEstimator = (*Client)(nil)
 
 // countTokensResponse is the count_tokens endpoint's reply.
+// InputTokens is a pointer so a 200 reply whose body is not a
+// count_tokens envelope (a gateway error page in JSON, say) reads as
+// absent, not as a confident zero.
 type countTokensResponse struct {
-	InputTokens int `json:"input_tokens"`
+	InputTokens *int `json:"input_tokens"`
 }
 
 // EstimateTokens implements provider.TokenEstimator. It asks the
@@ -103,7 +106,10 @@ func (c *Client) countTokens(req provider.Request) (int, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return 0, fmt.Errorf("anthropic: decode count_tokens response: %w", err)
 	}
-	return parsed.InputTokens, nil
+	if parsed.InputTokens == nil || *parsed.InputTokens <= 0 {
+		return 0, fmt.Errorf("anthropic: count_tokens reply carries no positive input_tokens")
+	}
+	return *parsed.InputTokens, nil
 }
 
 func (c *Client) countTokensEndpoint() string {

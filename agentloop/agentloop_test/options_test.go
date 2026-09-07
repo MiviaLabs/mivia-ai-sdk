@@ -96,6 +96,14 @@ func testOptionsValidateBasics(t *testing.T) {
 			o.Bounds = agentloop.Bounds{MaxTotalTokens: -1}
 			return o
 		}, agentloop.ErrMaxTotalTokens, false},
+		{"negative MaxCallsPerTurn fails", func(o agentloop.Options) agentloop.Options {
+			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: -1}
+			return o
+		}, agentloop.ErrMaxCallsPerTurn, false},
+		{"zero MaxCallsPerTurn passes", func(o agentloop.Options) agentloop.Options {
+			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: 0}
+			return o
+		}, nil, true},
 		{"negative Budget field fails", func(o agentloop.Options) agentloop.Options {
 			o.Budget = &contextbudget.Limits{MaxBytes: -1}
 			return o

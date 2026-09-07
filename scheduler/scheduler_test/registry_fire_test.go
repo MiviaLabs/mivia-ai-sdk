@@ -1,4 +1,4 @@
-package trigger_test
+package scheduler_test
 
 import (
 	"context"
@@ -6,19 +6,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 func TestFireUnknownName(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	err := r.Fire(context.Background(), "missing")
-	if !errors.Is(err, trigger.ErrUnknownName) {
+	if !errors.Is(err, scheduler.ErrUnknownName) {
 		t.Fatalf("Fire(unknown) = %v, want ErrUnknownName", err)
 	}
 }
 
 func TestFireNilConditionAlwaysCallsAction(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	sentinel := errors.New("action failed")
 	calls := 0
 	action := func(context.Context) error { calls++; return sentinel }
@@ -35,7 +35,7 @@ func TestFireNilConditionAlwaysCallsAction(t *testing.T) {
 }
 
 func TestFireConditionFalse(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	calls := 0
 	cond := func(context.Context) (bool, error) { return false, nil }
 	action := func(context.Context) error { calls++; return nil }
@@ -43,7 +43,7 @@ func TestFireConditionFalse(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 	err := r.Fire(context.Background(), "not-ready")
-	if !errors.Is(err, trigger.ErrConditionNotMet) {
+	if !errors.Is(err, scheduler.ErrConditionNotMet) {
 		t.Fatalf("Fire = %v, want ErrConditionNotMet", err)
 	}
 	if calls != 0 {
@@ -52,7 +52,7 @@ func TestFireConditionFalse(t *testing.T) {
 }
 
 func TestFireConditionError(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	sentinel := errors.New("condition broke")
 	calls := 0
 	cond := func(context.Context) (bool, error) { return false, sentinel }
@@ -73,7 +73,7 @@ func TestFireConditionError(t *testing.T) {
 }
 
 func TestFireConditionTrueCallsActionOnce(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	sentinel := errors.New("action result")
 	calls := 0
 	cond := func(context.Context) (bool, error) { return true, nil }
@@ -91,7 +91,7 @@ func TestFireConditionTrueCallsActionOnce(t *testing.T) {
 }
 
 func TestFireConditionTrueActionSuccess(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	calls := 0
 	cond := func(context.Context) (bool, error) { return true, nil }
 	action := func(context.Context) error { calls++; return nil }

@@ -18,12 +18,12 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-one packages and the import edges
+The diagram shows the forty packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
 `longtermmemory`, `provider`, `schema`, `skills`,
-`tools`, `trace`, and `trigger` are leaves: they import no other
+`tools`, and `trace` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
 `contextstate` imports `contextref` alone.
 `contextplan` imports `contextref` and `provider`.
@@ -108,7 +108,6 @@ flowchart LR
     subagent --> scheduler
     subagent --> tools
     subagent --> trace
-    subagent --> trigger
     runconfig --> agentrun
     runconfig --> contextbudget
     runconfig --> flow
@@ -139,7 +138,6 @@ flowchart LR
     provider[provider]
     skills[skills]
     tools[tools]
-    trigger[trigger]
     envfile[envfile]
     longtermmemory[longtermmemory]
     contextref[contextref]
@@ -603,15 +601,6 @@ flowchart LR
   type that asks a question and returns a typed `Answer`; `channel`
   ships no concrete transport. `channel` imports no other package in
   this module. See [packages/channel.md](packages/channel.md).
-- `trigger/` — a leaf primitive. It provides `Condition`, `Action`,
-  `Registry`, `New`, `Add`, `Remove`, `Fire`, and the sentinels
-  `ErrBlankName`, `ErrNilAction`, `ErrDuplicateName`, `ErrUnknownName`,
-  and `ErrConditionNotMet`. A `Registry` maps a name to one `Condition`
-  and one `Action`; `Fire` evaluates the named `Condition` and, when
-  true, calls the `Action`. `Condition` matches `machine.Guard`'s
-  signature; `Action` is shaped to match `scheduler.Job`'s signature.
-  `trigger` imports no other package in this module. See
-  [packages/trigger.md](packages/trigger.md).
 - `skills/` — a leaf primitive. It provides `Skill`, `Skill.Validate`,
   `Registry`, `New`, `Add`, `Get`, `Remove`, `Names`, `Match`, and the
   sentinels `ErrBlankName`, `ErrBlankInstructions`, `ErrBlankTrigger`,
@@ -627,7 +616,14 @@ flowchart LR
   `ErrNilSchedule`, `ErrNilJob`, and `ErrDuplicateID`. `Run` fires each
   due `Job` in its own goroutine on a wake-channel sleep loop and
   emits `JobFailedEvent` on a caller-supplied `*events.Bus` when a
-  `Job` fails. `scheduler` imports `events`. See
+  `Job` fails. The package also holds the trigger registry:
+  `Condition`, `Action`, `Registry`, `NewRegistry`, `Add`, `Remove`,
+  `Fire`, and the sentinels `ErrBlankName`, `ErrNilAction`,
+  `ErrDuplicateName`, `ErrUnknownName`, and `ErrConditionNotMet`. A
+  `Registry` maps a name to one `Condition` and one `Action`; `Fire`
+  evaluates the named `Condition` and, when true, calls the `Action`.
+  `Condition` matches `machine.Guard`'s signature; `Action` is shaped
+  to match `Job`'s signature. `scheduler` imports `events`. See
   [packages/scheduler.md](packages/scheduler.md).
 
 The machine and flow packages compose. Flow imports machine for each

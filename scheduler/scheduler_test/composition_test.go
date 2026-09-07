@@ -4,14 +4,14 @@
 // events.Handler, and channel.Notifier's signatures instead of
 // importing those packages, so trigger stays a leaf package with no
 // import edge to any of them.
-package trigger_test
+package scheduler_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 // job stands in for scheduler.Job: func(ctx context.Context) error.
@@ -32,7 +32,7 @@ type stubAnswer struct {
 }
 
 func TestCompositionScheduledPolling(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	ready := false
 	sentinel := errors.New("action failed")
 	calls := 0
@@ -44,7 +44,7 @@ func TestCompositionScheduledPolling(t *testing.T) {
 
 	var pollJob job = func(ctx context.Context) error {
 		err := r.Fire(ctx, "poll")
-		if errors.Is(err, trigger.ErrConditionNotMet) {
+		if errors.Is(err, scheduler.ErrConditionNotMet) {
 			return nil
 		}
 		return err
@@ -68,7 +68,7 @@ func TestCompositionScheduledPolling(t *testing.T) {
 }
 
 func TestCompositionEventDriven(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	var ranPayload string
 	action := func(context.Context) error { return nil }
 	if err := r.Add("order-created", nil, action); err != nil {
@@ -92,7 +92,7 @@ func TestCompositionEventDriven(t *testing.T) {
 }
 
 func TestCompositionAnswerGated(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	calls := 0
 	action := func(context.Context) error { calls++; return nil }
 	if err := r.Add("approved-action", nil, action); err != nil {

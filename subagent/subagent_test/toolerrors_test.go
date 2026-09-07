@@ -19,7 +19,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // errorCompleter fails every chat turn.
@@ -114,7 +113,7 @@ func TestFlowToolFailurePropagates(t *testing.T) {
 // TestTriggerToolUnknownNameFails proves firing an unregistered
 // trigger surfaces the registry's error.
 func TestTriggerToolUnknownNameFails(t *testing.T) {
-	_, err := subagent.TriggerTool("triggers", trigger.New()).
+	_, err := subagent.TriggerTool("triggers", scheduler.NewRegistry()).
 		Run(context.Background(), inString("ghost"))
 	if err == nil {
 		t.Fatal("Run succeeded, want an unknown-trigger failure")

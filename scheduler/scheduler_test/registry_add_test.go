@@ -1,25 +1,25 @@
-package trigger_test
+package scheduler_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 func TestAddBlankName(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	err := r.Add("   ", nil, func(context.Context) error { return nil })
-	if !errors.Is(err, trigger.ErrBlankName) {
+	if !errors.Is(err, scheduler.ErrBlankName) {
 		t.Fatalf("Add(blank) = %v, want ErrBlankName", err)
 	}
 }
 
 func TestAddNilAction(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	err := r.Add("name", nil, nil)
-	if !errors.Is(err, trigger.ErrNilAction) {
+	if !errors.Is(err, scheduler.ErrNilAction) {
 		t.Fatalf("Add(nil action) = %v, want ErrNilAction", err)
 	}
 }
@@ -29,27 +29,27 @@ func TestAddNilAction(t *testing.T) {
 // a nil action when both are invalid at once. This distinguishes Add
 // from an implementation that checks the fields in the other order.
 func TestAddBlankNameTakesPrecedenceOverNilAction(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	err := r.Add("   ", nil, nil)
-	if !errors.Is(err, trigger.ErrBlankName) {
+	if !errors.Is(err, scheduler.ErrBlankName) {
 		t.Fatalf("Add(blank name, nil action) = %v, want ErrBlankName", err)
 	}
 }
 
 func TestAddDuplicateName(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	action := func(context.Context) error { return nil }
 	if err := r.Add("dup", nil, action); err != nil {
 		t.Fatalf("first Add: %v", err)
 	}
 	err := r.Add("dup", nil, action)
-	if !errors.Is(err, trigger.ErrDuplicateName) {
+	if !errors.Is(err, scheduler.ErrDuplicateName) {
 		t.Fatalf("Add(dup) = %v, want ErrDuplicateName", err)
 	}
 }
 
 func TestAddNilConditionSucceeds(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	called := false
 	action := func(context.Context) error { called = true; return nil }
 	if err := r.Add("always", nil, action); err != nil {
@@ -64,7 +64,7 @@ func TestAddNilConditionSucceeds(t *testing.T) {
 }
 
 func TestAddFullyPopulated(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	cond := func(context.Context) (bool, error) { return true, nil }
 	action := func(context.Context) error { return nil }
 	if err := r.Add("full", cond, action); err != nil {
@@ -75,7 +75,7 @@ func TestAddFullyPopulated(t *testing.T) {
 // TestZeroValueRegistryIsReady pins that a zero-value Registry, built
 // without New, accepts Add and Fire the same way New's result does.
 func TestZeroValueRegistryIsReady(t *testing.T) {
-	var r trigger.Registry
+	var r scheduler.Registry
 	called := false
 	action := func(context.Context) error { called = true; return nil }
 	if err := r.Add("zero", nil, action); err != nil {
@@ -89,8 +89,8 @@ func TestZeroValueRegistryIsReady(t *testing.T) {
 	}
 }
 
-func TestRemove(t *testing.T) {
-	r := trigger.New()
+func TestTriggerRemove(t *testing.T) {
+	r := scheduler.NewRegistry()
 	action := func(context.Context) error { return nil }
 	if err := r.Add("present", nil, action); err != nil {
 		t.Fatalf("Add: %v", err)

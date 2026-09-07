@@ -24,7 +24,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // concurrentRuns is the number of goroutines that share every block.
@@ -268,7 +267,7 @@ func TestConcurrentAdmitContentionElectsOneWinner(t *testing.T) {
 }
 
 // TestConcurrentWrappersShareOneBus proves a scheduler.Job and a
-// trigger.Action wrapping agent.Run run correctly side by side over
+// scheduler.Action wrapping agent.Run run correctly side by side over
 // one shared bus and one shared ledger.
 func TestConcurrentWrappersShareOneBus(t *testing.T) {
 	fx := newInvokedFixture(t)
@@ -277,9 +276,9 @@ func TestConcurrentWrappersShareOneBus(t *testing.T) {
 
 	scheduled := fx.runTask(t, "wrapped-scheduled", "wrapped-scheduled-thread")
 	triggered := fx.runTask(t, "wrapped-triggered", "wrapped-triggered-thread")
-	reg := trigger.New()
+	reg := scheduler.NewRegistry()
 	if err := reg.Add("wrapped", func(ctx context.Context) (bool, error) { return true, nil }, triggered); err != nil {
-		t.Fatalf("trigger.Add() unexpected error: %v", err)
+		t.Fatalf("scheduler.Add() unexpected error: %v", err)
 	}
 
 	wg.Add(2)

@@ -1,4 +1,4 @@
-package trigger_test
+package scheduler_test
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 // TestConcurrentAddDistinctNamesAllLand runs N goroutines each Add-ing
 // a distinct name concurrently, then Fires every one, proving
 // concurrent Add calls all land with no data race.
 func TestConcurrentAddDistinctNamesAllLand(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	const n = 100
 	var wg sync.WaitGroup
 	wg.Add(n)
@@ -46,7 +46,7 @@ func TestConcurrentAddDistinctNamesAllLand(t *testing.T) {
 // Every Fire call must return nil (it ran before removal) or
 // ErrUnknownName (it ran after removal); no other outcome is valid.
 func TestConcurrentRemoveRacesFire(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	const n = 100
 	action := func(context.Context) error { return nil }
 	if err := r.Add("shared", nil, action); err != nil {
@@ -65,7 +65,7 @@ func TestConcurrentRemoveRacesFire(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := r.Fire(context.Background(), "shared")
-			if err != nil && !errors.Is(err, trigger.ErrUnknownName) {
+			if err != nil && !errors.Is(err, scheduler.ErrUnknownName) {
 				t.Errorf("Fire(shared) error = %v, want nil or ErrUnknownName", err)
 			}
 		}()
@@ -79,7 +79,7 @@ func TestConcurrentRemoveRacesFire(t *testing.T) {
 // finishes. This proves Fire releases the mutex before it calls the
 // resolved Action.
 func TestSlowActionDoesNotBlockAddOrRemove(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	release := make(chan struct{})
 	started := make(chan struct{})
 	action := func(context.Context) error {
@@ -137,7 +137,7 @@ func TestSlowActionDoesNotBlockAddOrRemove(t *testing.T) {
 // calling Add with the identical name. Exactly one call must succeed
 // (nil); every other call must return ErrDuplicateName.
 func TestConcurrentAddSameNameExactlyOneWins(t *testing.T) {
-	r := trigger.New()
+	r := scheduler.NewRegistry()
 	const n = 50
 	var successes int32
 	var duplicates int32
@@ -151,7 +151,7 @@ func TestConcurrentAddSameNameExactlyOneWins(t *testing.T) {
 			switch {
 			case err == nil:
 				atomic.AddInt32(&successes, 1)
-			case errors.Is(err, trigger.ErrDuplicateName):
+			case errors.Is(err, scheduler.ErrDuplicateName):
 				atomic.AddInt32(&duplicates, 1)
 			default:
 				t.Errorf("Add(contested) error = %v, want nil or ErrDuplicateName", err)

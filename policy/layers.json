@@ -150,15 +150,13 @@
       "room",
       "scheduler",
       "tools",
-      "trace",
-      "trigger"
+      "trace"
     ],
     "toolcallctx": [
       "provider"
     ],
     "tools": [],
     "trace": [],
-    "trigger": [],
     "workspace": []
   }
 }

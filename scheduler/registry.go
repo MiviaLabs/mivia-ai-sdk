@@ -1,8 +1,8 @@
-// Package trigger gives every part of this SDK one shared vocabulary
+// Trigger gives every part of this SDK one shared vocabulary
 // for "a condition fired, so run this": Condition, Action, and a
-// Registry mapping a name to one of each. A leaf package: no I/O, no
-// goroutine, no persistence, no polling loop of its own.
-package trigger
+// Registry mapping a name to one of each.
+
+package scheduler
 
 import (
 	"context"
@@ -24,7 +24,7 @@ var (
 	ErrDuplicateName = errors.New("trigger: name already registered")
 	// ErrUnknownName is Fire's error when name is not registered.
 	ErrUnknownName = errors.New("trigger: unknown name")
-	// ErrConditionNotMet is Fire's error when the named entry's
+	// ErrConditionNotMet is Fire's error when the named triggerEntry's
 	// Condition evaluates false. Fire does not call Action in this
 	// case.
 	ErrConditionNotMet = errors.New("trigger: condition not met")
@@ -39,8 +39,8 @@ type Condition func(ctx context.Context) (bool, error)
 // satisfied. Add rejects a nil Action.
 type Action func(ctx context.Context) error
 
-// entry pairs one Condition and one Action under a registered name.
-type entry struct {
+// triggerEntry pairs one Condition and one Action under a registered name.
+type triggerEntry struct {
 	condition Condition
 	action    Action
 }
@@ -50,12 +50,12 @@ type entry struct {
 // sync.Mutex guards the map.
 type Registry struct {
 	mu      sync.Mutex
-	entries map[string]entry
+	entries map[string]triggerEntry
 }
 
-// New creates an empty Registry.
-func New() *Registry {
-	return &Registry{entries: make(map[string]entry)}
+// NewRegistry creates an empty Registry.
+func NewRegistry() *Registry {
+	return &Registry{entries: make(map[string]triggerEntry)}
 }
 
 // Add registers c and a under name. Rejects a blank name (empty
@@ -75,9 +75,9 @@ func (r *Registry) Add(name string, c Condition, a Action) error {
 		return ErrDuplicateName
 	}
 	if r.entries == nil {
-		r.entries = make(map[string]entry)
+		r.entries = make(map[string]triggerEntry)
 	}
-	r.entries[name] = entry{condition: c, action: a}
+	r.entries[name] = triggerEntry{condition: c, action: a}
 	return nil
 }
 
@@ -101,7 +101,7 @@ func (r *Registry) Remove(name string) bool {
 // calling Action. Returns a Condition evaluation error wrapped
 // `trigger: %q: %w`, without calling Action. An Action already
 // resolved by Fire runs to completion even if a concurrent Remove
-// deletes the entry mid-call.
+// deletes the triggerEntry mid-call.
 func (r *Registry) Fire(ctx context.Context, name string) error {
 	r.mu.Lock()
 	e, ok := r.entries[name]

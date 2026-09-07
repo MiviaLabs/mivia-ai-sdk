@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -91,47 +92,43 @@ const minReplayLease = time.Second
 
 // Sentinel errors for New and Endpoint.Handler; test with errors.Is.
 var (
-	ErrNoID       = errors.New("dispatch: endpoint id is required")
-	ErrNoRoom     = errors.New("dispatch: room is required")
-	ErrNoResolve  = errors.New("dispatch: resolve func is required")
-	ErrBadMethod  = errors.New("dispatch: POST required")
-	ErrBadRequest = errors.New("dispatch: request body read failed")
-	ErrBadMaxBody = errors.New("dispatch: max body bytes must not be negative")
-	// ErrBadReplayLease reports a negative Options.ReplayLease, a
-	// ReplayLease under one second, or a negative
-	// Options.ReplayCapacity. Options.Validate returns this sentinel
-	// for any of the three.
-	ErrBadReplayLease = errors.New("dispatch: replay lease and capacity must not be negative")
+	// ErrInvalidOptions reports an Options field that fails Validate:
+	// a blank ID, a nil Room, a nil Resolve, a negative MaxBodyBytes,
+	// or a negative or sub-one-second ReplayLease or ReplayCapacity.
+	// The wrapped message names the field and the rule it broke.
+	ErrInvalidOptions = errors.New("dispatch: invalid options")
+	ErrBadMethod      = errors.New("dispatch: POST required")
+	ErrBadRequest     = errors.New("dispatch: request body read failed")
 	// ErrReplay reports a message the ledger already admitted: a
 	// completed, failed, or blocked key, or a key still claimed by an
 	// in-flight duplicate. Endpoint.Handler answers this with a
-	// "replay:" error line instead of running resolve or handle again.
-	ErrReplay = errors.New("dispatch: message already processed")
+	// "dispatch: replay:" error line instead of running resolve or handle again.
+	ErrReplay = errors.New("dispatch: replay: message already processed")
 )
 
 // Validate checks ID, Room, Resolve, MaxBodyBytes, ReplayLease, and
-// ReplayCapacity, in that order, and returns the first sentinel that
-// fails. A nonzero ReplayLease under one second fails Validate: this
-// is a sanity floor against a unit-confusion bug, not a floor tied to
-// any handler's real latency.
+// ReplayCapacity, in that order, and returns the first violation
+// wrapped in ErrInvalidOptions. A nonzero ReplayLease under one
+// second fails Validate: this is a sanity floor against a
+// unit-confusion bug, not a floor tied to any handler's real latency.
 func (o Options) Validate() error {
 	if strings.TrimSpace(o.ID) == "" {
-		return ErrNoID
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ID: endpoint id is required")
 	}
 	if o.Room == nil {
-		return ErrNoRoom
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Room: room is required")
 	}
 	if o.Resolve == nil {
-		return ErrNoResolve
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Resolve: resolve func is required")
 	}
 	if o.MaxBodyBytes < 0 {
-		return ErrBadMaxBody
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxBodyBytes: must not be negative")
 	}
 	if o.ReplayLease < 0 || (o.ReplayLease > 0 && o.ReplayLease < minReplayLease) {
-		return ErrBadReplayLease
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ReplayLease: must not be negative and, if set, must be at least one second")
 	}
 	if o.ReplayCapacity < 0 {
-		return ErrBadReplayLease
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ReplayCapacity: must not be negative")
 	}
 	return nil
 }

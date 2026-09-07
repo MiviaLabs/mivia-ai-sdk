@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+// ErrInvalidOptions is the sentinel for a Validate or constructor
+// failure on caller-supplied input. Test with errors.Is; the
+// wrapped message names the field and the violated rule.
+var ErrInvalidOptions = errors.New("flow: invalid options")
+
 // Card holds a parsed capability card: an agent's name, an optional
 // description, and its capability list. Capabilities is an exported
 // slice; Parse does not defensively copy it. This matches
@@ -26,7 +31,7 @@ type Card struct {
 func Parse(data []byte) (Card, error) {
 	var c Card
 	if err := json.Unmarshal(data, &c); err != nil {
-		return Card{}, fmt.Errorf("discovery: decode card: %w", err)
+		return Card{}, fmt.Errorf("flow: decode card: %w", err)
 	}
 	if err := c.Validate(); err != nil {
 		return Card{}, err
@@ -45,24 +50,24 @@ func Parse(data []byte) (Card, error) {
 // Match compares the stored string and never hits a padded entry.
 func (c Card) Validate() error {
 	if strings.TrimSpace(c.Name) == "" {
-		return errors.New("discovery: name is required")
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Name: is required")
 	}
 	if len(c.Capabilities) == 0 {
-		return errors.New("discovery: capabilities must not be empty")
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: must not be empty")
 	}
 	seen := make([]string, 0, len(c.Capabilities))
 	for _, capability := range c.Capabilities {
 		trimmed := strings.TrimSpace(capability)
 		if trimmed == "" {
-			return errors.New("discovery: capability entry must not be blank")
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not be blank")
 		}
 		for _, prior := range seen {
 			if strings.EqualFold(trimmed, prior) {
-				return fmt.Errorf("discovery: duplicate capability %q", trimmed)
+				return fmt.Errorf("%w: %s", ErrInvalidOptions, fmt.Sprintf("Capabilities: duplicate entry %q", trimmed))
 			}
 		}
 		if trimmed != capability {
-			return errors.New("discovery: capability entry must not carry padding")
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not carry padding")
 		}
 		seen = append(seen, trimmed)
 	}

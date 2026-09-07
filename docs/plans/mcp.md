@@ -671,3 +671,28 @@ Status: shipped.
   `Close`-bounded lifetime. No `api/` diff; comments are not locked.
 - `python3 scripts/check_docs.py`, `scripts/check_prose.py`, and
   `scripts/check_labels.py` pass.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+This addendum classifies every error sentinel in `mcp` as CONFIG or
+RUNTIME, and merges the CONFIG case into one shared sentinel.
+
+CONFIG means a caller-supplied argument fails a one-shot sanity check,
+with no other caller decision besides fixing the call. RUNTIME means
+the error reacts to live client state.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrClosed` | RUNTIME | Reports that `Close` already ran on this `Client`. Depends on live client state. Kept unchanged. |
+| `ErrNilProgressHandler` | CONFIG | `CallToolWithProgress`'s nil check on its `onProgress` argument. The only fix is to pass a non-nil handler. Merged into new `ErrInvalidOptions`. |
+
+`ErrInvalidOptions = errors.New("mcp: invalid options")` replaces
+`ErrClosed`'s neighbor sentinel var in `mcp/client.go`.
+`CallToolWithProgress` now returns
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "onProgress: must not be nil")`.
+
+`mcp/connect_test.go`'s `TestCallToolWithProgressRejectsNilHandler` now
+asserts `errors.Is(err, ErrInvalidOptions)` and a substring check for
+`onProgress` in the error text.

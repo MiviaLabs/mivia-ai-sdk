@@ -2,6 +2,7 @@ package provider_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -12,8 +13,12 @@ import (
 func TestRegister(t *testing.T) {
 	t.Run("nil completer leaves the registry unchanged", func(t *testing.T) {
 		r := provider.NewRegistry()
-		if err := r.Register("alpha", nil); !errors.Is(err, provider.ErrNilCompleter) {
-			t.Fatalf("Register(nil) error = %v, want ErrNilCompleter", err)
+		err := r.Register("alpha", nil)
+		if !errors.Is(err, provider.ErrInvalidOptions) {
+			t.Fatalf("Register(nil) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Completer") {
+			t.Fatalf("Register(nil) error = %v, want it to name Completer", err)
 		}
 		if names := r.Names(); len(names) != 0 {
 			t.Fatalf("Names() = %v, want empty after a rejected Register", names)
@@ -29,8 +34,12 @@ func TestRegister(t *testing.T) {
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				r := provider.NewRegistry()
-				if err := r.Register(tc.arg, &fakeCompleter{name: "alpha"}); !errors.Is(err, provider.ErrBlankName) {
-					t.Fatalf("Register(%q) error = %v, want ErrBlankName", tc.arg, err)
+				err := r.Register(tc.arg, &fakeCompleter{name: "alpha"})
+				if !errors.Is(err, provider.ErrInvalidOptions) {
+					t.Fatalf("Register(%q) error = %v, want ErrInvalidOptions", tc.arg, err)
+				}
+				if !strings.Contains(err.Error(), "Name") {
+					t.Fatalf("Register(%q) error = %v, want it to name Name", tc.arg, err)
 				}
 			})
 		}
@@ -55,8 +64,12 @@ func TestRegister(t *testing.T) {
 		if err := r.Register("alpha", first); err != nil {
 			t.Fatalf("first Register(alpha) error = %v, want nil", err)
 		}
-		if err := r.Register("alpha", &fakeCompleter{name: "replacement"}); !errors.Is(err, provider.ErrDuplicateName) {
-			t.Fatalf("second Register(alpha) error = %v, want ErrDuplicateName", err)
+		err := r.Register("alpha", &fakeCompleter{name: "replacement"})
+		if !errors.Is(err, provider.ErrInvalidOptions) {
+			t.Fatalf("second Register(alpha) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Name") {
+			t.Fatalf("second Register(alpha) error = %v, want it to name Name", err)
 		}
 		got, ok := r.Get("alpha")
 		if !ok || got != first {

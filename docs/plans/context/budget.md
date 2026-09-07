@@ -71,3 +71,22 @@ Importer set, verified on this tip:
   `contextplan` only.
 - `internal/e2e`'s compaction test imports `contextplan` only, not
   this package.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+`context/budget` had no named `Err*` sentinel before this pass. Both
+checks in `Limits.Validate` returned a plain `errors.New` literal.
+This pass introduced one sentinel, `ErrInvalidOptions`, and rewrote
+both checks to wrap it with `fmt.Errorf("%w: %s", ErrInvalidOptions,
+"<field>: <rule>")`. Both checks are construction-time argument
+checks, so both classify as CONFIG.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| MaxBytes negative check (no prior name) | CONFIG | Now wraps `ErrInvalidOptions` with substring `MaxBytes`. |
+| MaxEvents negative check (no prior name) | CONFIG | Now wraps `ErrInvalidOptions` with substring `MaxEvents`. |
+
+No sentinel in this package classifies as RUNTIME. `Limits.Fits`
+returns a bool, not an error, and carries no sentinel of its own.

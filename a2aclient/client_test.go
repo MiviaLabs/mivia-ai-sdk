@@ -34,8 +34,11 @@ func TestNewRejectsEmptyBaseURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("New(\"\") returned nil error")
 	}
-	if !errors.Is(err, ErrNoBaseURL) {
-		t.Fatalf("New(\"\") error = %v, want errors.Is ErrNoBaseURL", err)
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("New(\"\") error = %v, want errors.Is ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "baseURL") {
+		t.Fatalf("New(\"\") error = %v, want mention of baseURL", err)
 	}
 	if c != nil {
 		t.Fatal("New(\"\") returned a non-nil Client on error")
@@ -74,8 +77,11 @@ func TestNewFromTransportRejectsEmptyBaseURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("newFromTransport(\"\", ...) returned nil error")
 	}
-	if !errors.Is(err, ErrNoBaseURL) {
-		t.Fatalf("newFromTransport(\"\", ...) error = %v, want errors.Is ErrNoBaseURL", err)
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("newFromTransport(\"\", ...) error = %v, want errors.Is ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "baseURL") {
+		t.Fatalf("newFromTransport(\"\", ...) error = %v, want mention of baseURL", err)
 	}
 	if c != nil {
 		t.Fatal("newFromTransport(\"\", ...) returned a non-nil Client on error")
@@ -87,8 +93,11 @@ func TestNewFromTransportRejectsNilTransport(t *testing.T) {
 	if err == nil {
 		t.Fatal("newFromTransport(..., nil) returned nil error")
 	}
-	if !errors.Is(err, ErrNoTransport) {
-		t.Fatalf("newFromTransport(..., nil) error = %v, want errors.Is ErrNoTransport", err)
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("newFromTransport(..., nil) error = %v, want errors.Is ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "transport") {
+		t.Fatalf("newFromTransport(..., nil) error = %v, want mention of transport", err)
 	}
 	if c != nil {
 		t.Fatal("newFromTransport(..., nil) returned a non-nil Client on error")

@@ -28,7 +28,7 @@ func NewMatcher(patterns []string) (*Matcher, error) {
 	for i, p := range patterns {
 		cp, err := compilePattern(p)
 		if err != nil {
-			return nil, fmt.Errorf("secretpath: pattern %d: %w", i, err)
+			return nil, fmt.Errorf("workspace: pattern %d: %w", i, err)
 		}
 		compiled = append(compiled, cp)
 	}

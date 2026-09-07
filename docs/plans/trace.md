@@ -218,3 +218,10 @@ symbol changes; `api/trace.txt` and `policy/layers.json`'s `trace`
 row (`[]`) stay as they are. A future phase may add an `Exporter`
 interface if a second internal caller (for example, a `dispatch` or
 `workspace` sink) needs one; until then it stays out of scope.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+`trace` declares no `var Err...` sentinel anywhere in its `.go`
+files. This addendum confirms the package has no sentinel to
+classify, and adds no `ErrInvalidOptions`.

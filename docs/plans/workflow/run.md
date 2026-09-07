@@ -510,3 +510,34 @@ section is the plan of record for the whole rename. This package's
 own steps are the directory moves, the `run` package clause, the
 `workflow/run` import paths, the `run.` qualifiers, the
 `api/workflow/run.txt` lock, and the pending-symbols key rename.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+This addendum classifies each `workflow/run` sentinel as CONFIG
+(an `Options.Validate` or `New` construction-time fault) or RUNTIME (a
+live tool-call or run-state fault), and merges the CONFIG sentinels
+into one `ErrInvalidOptions`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNoAgent` | CONFIG | Merged into `ErrInvalidOptions` ("Agent: ..."). |
+| `ErrNoMachine` | CONFIG | Merged into `ErrInvalidOptions` ("Machine: ..."). |
+| `ErrAmbiguousWait` | CONFIG | Merged into `ErrInvalidOptions` ("Wait: Wait and Tools both set..."). |
+| `ErrNoResolver` | CONFIG | Merged into `ErrInvalidOptions` ("Wait: Wait or Tools is required"). |
+| `ErrNoTools` | CONFIG | Merged into `ErrInvalidOptions` ("Tools: ..."). |
+| `ErrNoRecipient` | CONFIG | Merged into `ErrInvalidOptions` ("AskTo: ..."). |
+| `ErrReceiverEmpty` | CONFIG | Merged into `ErrInvalidOptions` ("Receiver: ..."). |
+| `ErrResultNotText` | RUNTIME | Kept. Reacts to a live tool-call result's type. |
+| `ErrArgumentDecode` | RUNTIME | Kept. Reacts to a live step's payload bytes decode. |
+| `ErrArtifactsInconsistent` | RUNTIME | Kept. Reacts to a live Artifacts value's run history. |
+
+`Options.Validate` and `New` now wrap every CONFIG fault as
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "<Field>: <rule>")`. Callers
+test with `errors.Is(err, run.ErrInvalidOptions)` and a substring
+check on the field name.
+`workflow/run/run_test/options_test.go` asserts the new shape.
+
+Outside this task's scope: `x/runconfig/runner.go`'s doc comment
+still names `run.ErrNoAgent`; `x/` is excluded from this sweep and was
+left unedited.

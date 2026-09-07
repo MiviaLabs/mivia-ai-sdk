@@ -957,3 +957,24 @@ Status: shipped.
   fix.
 - `make verify` passes; `subagent` holds the 85 coverage floor.
 - No `api/` diff; no `policy/layers.json` change.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+This addendum classifies each `subagent` sentinel as CONFIG (a
+construction-time input fault) or RUNTIME (a live-state fault), and
+merges the one CONFIG sentinel into `ErrInvalidOptions`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrInvalidCapacity` | CONFIG | Renamed to `ErrInvalidOptions` ("capacity: ..."), `subagent/mailbox.go`. |
+| `ErrMailboxFull` | RUNTIME | Kept. Reacts to a mailbox's live occupancy at `Deliver` time. |
+| `ErrUnverified` | RUNTIME | Kept. Reacts to a live message's signature at `Deliver` time. |
+| `ErrMaxDepth` | RUNTIME | Kept. Reacts to a live spawn's recursion depth at `Run` time. |
+| `ErrBadCommand` | RUNTIME | Kept. Reacts to a live, tool-supplied command payload. |
+
+`NewMailbox` now wraps its capacity fault as `fmt.Errorf("%w:
+capacity: must be positive, got %d", ErrInvalidOptions, capacity)`.
+`subagent/subagent_test/mailbox_test.go` asserts
+`errors.Is(err, subagent.ErrInvalidOptions)` and the "capacity"
+substring.

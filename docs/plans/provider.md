@@ -1255,3 +1255,56 @@ part.
 - `docs/packages/provider.md` and `docs/packages/provider/anthropic.md`
   are updated to the block-slice shape in the same change.
 - No `policy/layers.json` change.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum sorts every sentinel in `accumulator.go`, `registry.go`,
+`request.go`, `types.go`, and `wrap.go` into two groups. A CONFIG
+sentinel fires only from a constructor's check of a caller-supplied
+argument. A RUNTIME sentinel fires from a call that processes data
+seen during normal operation, such as a `Validate` method on a
+Message, Chunk, or Request, or a routing failure.
+
+Every CONFIG sentinel merges into one new sentinel,
+`ErrInvalidOptions`. A caller distinguishes the failed field with
+`errors.Is` plus a substring check on the error text, the same
+pattern `provider/anthropic` already uses for its own
+`ErrInvalidOptions`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNilCompleter` | CONFIG | merged into `ErrInvalidOptions`, field text "Completer" |
+| `ErrBlankName` | CONFIG | merged into `ErrInvalidOptions`, field text "Name" |
+| `ErrDuplicateName` | CONFIG | merged into `ErrInvalidOptions`, field text "Name" |
+| `ErrNilAccumulator` | CONFIG | merged into `ErrInvalidOptions`, field text "Accumulator" |
+| `ErrNilUsageCompleter` | CONFIG | merged into `ErrInvalidOptions`, field text "Completer" |
+| `ErrBlankSessionID` | RUNTIME | kept as-is; `Record` and `Reset` return it at call time, not only at construction |
+| `ErrToolChoiceInvalid` | RUNTIME | kept as-is; `Request.Validate` checks a per-turn value, not a one-time option |
+| `ErrToolCallIDUnexpected` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrToolCallIDRequired` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrUnknownRole` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrToolCallsUnexpected` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrChunkErrDoneConflict` | RUNTIME | kept as-is; `Chunk.Validate` checks a wire value |
+| `ErrStreamClosedEarly` | RUNTIME | kept as-is; `drainStream` returns it on a stream failure |
+| `ErrNameUnexpected` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrNameInvalid` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrPromptTooLong` | RUNTIME | kept as-is; a Completer implementation returns it, and `agentloop` matches it with `errors.Is` |
+| `ErrReasoningContentUnexpected` | RUNTIME | kept as-is; `Message.Validate` checks a wire value |
+| `ErrUnknownName` | RUNTIME | kept as-is; `Route` returns it on a resolve failure |
+| `ErrEmptyOrder` | RUNTIME | kept as-is; `Route` returns it on a routing failure |
+| `ErrAllFailed` | RUNTIME | kept as-is; `Route` returns it on a routing failure |
+
+`ErrInvalidOptions` lives in `registry.go`, next to `Register`, the
+function that returns it most often. `wrap.go`'s `WrapCompleter`
+returns the same sentinel for its own nil-argument checks, since both
+functions share one package.
+
+### Addendum tests
+
+`provider/provider_test/registry_test.go` and
+`provider/provider_test/wrap_test.go` assert `errors.Is(err,
+provider.ErrInvalidOptions)` plus a substring check naming the
+rejected field, in place of the five deleted sentinel checks. No test
+function was removed.

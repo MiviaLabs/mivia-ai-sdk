@@ -262,8 +262,11 @@ func TestNDJSONNotifierInvalidQuestionReleasesLock(t *testing.T) {
 
 	bad := channel.Question{ID: "", Recipient: "human", Payload: "proceed?"}
 	_, err := notify(context.Background(), bad)
-	if !errors.Is(err, channel.ErrEmptyID) {
-		t.Fatalf("notify() error = %v, want %v", err, channel.ErrEmptyID)
+	if !errors.Is(err, channel.ErrInvalidOptions) {
+		t.Fatalf("notify() error = %v, want %v", err, channel.ErrInvalidOptions)
+	}
+	if !strings.Contains(err.Error(), "ID") {
+		t.Fatalf("notify() error = %v, want it to name ID", err)
 	}
 
 	// Prove the invalid call touched neither r nor w: a following,

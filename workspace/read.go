@@ -16,7 +16,7 @@ func (w *Workspace) ReadFile(path string) ([]byte, error) {
 // root, under a per-call bound. A zero limit uses the Workspace's
 // MaxReadBytes, a positive limit replaces it, up or down, and
 // Unbounded removes it for this call only. Any other value returns
-// ErrInvalidLimit and opens no file. A file longer than the effective
+// ErrInvalidOptions and opens no file. A file longer than the effective
 // bound returns ErrTooLarge and no bytes. A read of a directory
 // returns the raw filesystem error.
 func (w *Workspace) ReadFileLimit(path string, limit int64) ([]byte, error) {

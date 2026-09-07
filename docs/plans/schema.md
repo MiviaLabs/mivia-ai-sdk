@@ -435,3 +435,23 @@ the code:
 - `schema` holds a mutation-kill floor of 83, in
   `scripts/mutation_denylist/schema.json`. Run `make mutation-gate`
   to check it.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+This addendum classifies each `schema` sentinel as CONFIG
+(construction-time input fault) or RUNTIME (a live-payload or
+live-document fault). `schema` needs no `ErrInvalidOptions`: it has no
+CONFIG sentinel. `Compile` and `Validate` both react to a caller-
+supplied document or payload at call time, not to fixed construction
+arguments.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrAdmission` | RUNTIME | Kept. Reacts to a live schema document or payload admission check. |
+| `ErrCompile` | RUNTIME | Kept. Reacts to a live schema document's compile step. |
+| `ErrMalformedPayload` | RUNTIME | Kept. Reacts to a live payload's JSON parse. |
+| `ErrValidation` | RUNTIME | Kept. Reacts to a live payload's schema match. |
+
+No code change in `schema/schema.go`: every return site already wraps
+its RUNTIME sentinel with the specific reason.

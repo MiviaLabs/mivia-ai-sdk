@@ -181,7 +181,7 @@ func TestFireHandlerErrorStopsChain(t *testing.T) {
 	if errors.Is(err, events.ErrVetoed) {
 		t.Fatalf("Fire = %v, a handler failure must not read as ErrVetoed", err)
 	}
-	wantPrefix := `hooks: post-tool: handler "failing": `
+	wantPrefix := `events: post-tool: handler "failing": `
 	if !strings.HasPrefix(err.Error(), wantPrefix) {
 		t.Fatalf("Fire = %q, want prefix %q", err.Error(), wantPrefix)
 	}

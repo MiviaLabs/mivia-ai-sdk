@@ -33,3 +33,18 @@ the negative paths, release on failure, and the reference scenario.
 `make verify` compiles and runs the kit through `ledger`'s test
 targets. The orphan gate carries a `pending_wiring.json` entry, since
 the kit's only callers are `_test` subdirectories.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+`Scenario.Validate` checks each function field before any check
+function runs real work against a `Scenario`. That check on a
+caller-supplied struct field, before any real work happens, is
+CONFIG, so `ErrIncompleteScenario` renames to `ErrInvalidOptions`,
+matching the `ErrInvalidOptions` shape used across this sweep.
+`Validate` still wraps the missing field's name into the message.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| ErrIncompleteScenario | CONFIG | renamed to ErrInvalidOptions |

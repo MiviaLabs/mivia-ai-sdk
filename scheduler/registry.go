@@ -13,21 +13,17 @@ import (
 )
 
 // Sentinel errors for Registry operations; test with errors.Is.
+// ErrInvalidOptions is defined in scheduler.go and shared with Add's
+// blank-name and nil-Action checks here.
 var (
-	// ErrBlankName is Add's error when name is empty after
-	// strings.TrimSpace.
-	ErrBlankName = errors.New("trigger: name must not be blank")
-	// ErrNilAction is Add's error for a nil Action; a trigger with
-	// nothing to run has no purpose.
-	ErrNilAction = errors.New("trigger: action must not be nil")
 	// ErrDuplicateName is Add's error for a name already registered.
-	ErrDuplicateName = errors.New("trigger: name already registered")
+	ErrDuplicateName = errors.New("scheduler: name already registered")
 	// ErrUnknownName is Fire's error when name is not registered.
-	ErrUnknownName = errors.New("trigger: unknown name")
+	ErrUnknownName = errors.New("scheduler: unknown name")
 	// ErrConditionNotMet is Fire's error when the named triggerEntry's
 	// Condition evaluates false. Fire does not call Action in this
 	// case.
-	ErrConditionNotMet = errors.New("trigger: condition not met")
+	ErrConditionNotMet = errors.New("scheduler: condition not met")
 )
 
 // Condition reports whether a named trigger's Action should run. A
@@ -59,15 +55,15 @@ func NewRegistry() *Registry {
 }
 
 // Add registers c and a under name. Rejects a blank name (empty
-// after strings.TrimSpace) with ErrBlankName, a nil a with
-// ErrNilAction, and a duplicate name with ErrDuplicateName. A nil c
-// is accepted; see Condition.
+// after strings.TrimSpace) or a nil a with ErrInvalidOptions, and a
+// duplicate name with ErrDuplicateName. A nil c is accepted; see
+// Condition.
 func (r *Registry) Add(name string, c Condition, a Action) error {
 	if strings.TrimSpace(name) == "" {
-		return ErrBlankName
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Name: must not be blank")
 	}
 	if a == nil {
-		return ErrNilAction
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Action: must not be nil")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -112,7 +108,7 @@ func (r *Registry) Fire(ctx context.Context, name string) error {
 	if e.condition != nil {
 		ready, err := e.condition(ctx)
 		if err != nil {
-			return fmt.Errorf("trigger: %q: %w", name, err)
+			return fmt.Errorf("scheduler: %q: %w", name, err)
 		}
 		if !ready {
 			return ErrConditionNotMet

@@ -2,6 +2,7 @@ package flow_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,19 +12,23 @@ import (
 // TestNew covers the timeout validation: positive, zero, and negative.
 func TestNew(t *testing.T) {
 	tests := []struct {
-		name    string
-		timeout time.Duration
-		wantErr error
+		name       string
+		timeout    time.Duration
+		wantErr    error
+		wantSubstr string
 	}{
-		{"positive timeout", time.Second, nil},
-		{"zero timeout", 0, flow.ErrNoTimeout},
-		{"negative timeout", -time.Second, flow.ErrNoTimeout},
+		{"positive timeout", time.Second, nil, ""},
+		{"zero timeout", 0, flow.ErrInvalidOptions, "Timeout"},
+		{"negative timeout", -time.Second, flow.ErrInvalidOptions, "Timeout"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			m, err := flow.NewMonitor(tc.timeout)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("NewMonitor(%v) error = %v, want %v", tc.timeout, err, tc.wantErr)
+			}
+			if tc.wantSubstr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantSubstr)) {
+				t.Fatalf("NewMonitor(%v) error = %v, want substring %q", tc.timeout, err, tc.wantSubstr)
 			}
 			if tc.wantErr == nil && m == nil {
 				t.Fatalf("NewMonitor(%v) returned nil Monitor with nil error", tc.timeout)
@@ -40,14 +45,16 @@ func TestBeat(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t.Run("blank id", func(t *testing.T) {
 		m, _ := flow.NewMonitor(time.Minute)
-		if err := m.Beat("", base); !errors.Is(err, flow.ErrNoID) {
-			t.Fatalf("Beat(\"\") error = %v, want ErrNoID", err)
+		err := m.Beat("", base)
+		if !errors.Is(err, flow.ErrInvalidOptions) || !strings.Contains(err.Error(), "ID") {
+			t.Fatalf("Beat(\"\") error = %v, want ErrInvalidOptions with ID substring", err)
 		}
 	})
 	t.Run("whitespace-only id", func(t *testing.T) {
 		m, _ := flow.NewMonitor(time.Minute)
-		if err := m.Beat("   ", base); !errors.Is(err, flow.ErrNoID) {
-			t.Fatalf("Beat(whitespace) error = %v, want ErrNoID", err)
+		err := m.Beat("   ", base)
+		if !errors.Is(err, flow.ErrInvalidOptions) || !strings.Contains(err.Error(), "ID") {
+			t.Fatalf("Beat(whitespace) error = %v, want ErrInvalidOptions with ID substring", err)
 		}
 	})
 	t.Run("fresh id", func(t *testing.T) {

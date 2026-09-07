@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -15,13 +16,10 @@ type Job func(ctx context.Context) error
 
 // Sentinel errors for Scheduler operations; test with errors.Is.
 var (
-	// ErrBlankID is Add's error for a blank id (empty after
-	// strings.TrimSpace).
-	ErrBlankID = errors.New("scheduler: id must not be blank")
-	// ErrNilSchedule is Add's error for a nil Schedule.
-	ErrNilSchedule = errors.New("scheduler: schedule must not be nil")
-	// ErrNilJob is Add's error for a nil Job.
-	ErrNilJob = errors.New("scheduler: job must not be nil")
+	// ErrInvalidOptions is Add's error for caller-supplied input that
+	// fails a constructor check: a blank id, a nil Schedule, or a nil
+	// Job. The wrapped message names the field and the violated rule.
+	ErrInvalidOptions = errors.New("scheduler: invalid options")
 	// ErrDuplicateID is Add's error for an id already registered.
 	ErrDuplicateID = errors.New("scheduler: id already registered")
 )
@@ -60,20 +58,20 @@ func New() *Scheduler {
 // the next time that loop wakes, so every Next call on sched funnels
 // through Run's single goroutine, even when a caller shares one
 // stateful Schedule value across multiple Add calls. Rejects a blank
-// id (empty after strings.TrimSpace) with ErrBlankID, a nil sched
-// with ErrNilSchedule, a nil job with ErrNilJob, and a duplicate id
-// with ErrDuplicateID. Add called while Run is blocked in its sleep
-// wakes the loop early through a non-blocking send on the wake
-// channel, outside the mutex-held critical section.
+// id (empty after strings.TrimSpace), a nil sched, or a nil job with
+// ErrInvalidOptions, and a duplicate id with ErrDuplicateID. Add
+// called while Run is blocked in its sleep wakes the loop early
+// through a non-blocking send on the wake channel, outside the
+// mutex-held critical section.
 func (s *Scheduler) Add(id string, sched Schedule, job Job) error {
 	if strings.TrimSpace(id) == "" {
-		return ErrBlankID
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ID: must not be blank")
 	}
 	if sched == nil {
-		return ErrNilSchedule
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Schedule: must not be nil")
 	}
 	if job == nil {
-		return ErrNilJob
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Job: must not be nil")
 	}
 
 	s.mu.Lock()

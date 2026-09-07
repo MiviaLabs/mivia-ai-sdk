@@ -12,16 +12,19 @@ import (
 var (
 	// ErrBlankName is Add's error when name is empty after
 	// strings.TrimSpace.
-	ErrBlankName = errors.New("hooks: name must not be blank")
+	ErrBlankName = errors.New("events: name must not be blank")
 	// ErrNilHandler is Add's error for a nil HookHandler; a hook with
 	// nothing to run has no purpose.
-	ErrNilHandler = errors.New("hooks: handler must not be nil")
+	ErrNilHandler = errors.New("events: handler must not be nil")
 	// ErrDuplicateName is Add's error for a name already registered
 	// at the same point. The same name may register at another point.
-	ErrDuplicateName = errors.New("hooks: name already registered at point")
+	ErrDuplicateName = errors.New("events: name already registered at point")
 	// ErrVetoed is Fire's wrapped error when a handler returns false
 	// with a nil error; test with errors.Is.
-	ErrVetoed = errors.New("hooks: handler vetoed")
+	ErrVetoed = errors.New("events: handler vetoed")
+	// ErrInvalidOptions is Point.Validate's error for a Point value
+	// outside the named constants. Test with errors.Is.
+	ErrInvalidOptions = errors.New("events: invalid options")
 )
 
 // HookHandler observes or vetoes one lifecycle point's action. payload is
@@ -126,10 +129,10 @@ func (r *Registry) Fire(ctx context.Context, point Point, payload any) error {
 	for _, e := range entries {
 		allow, err := e.h(ctx, payload)
 		if err != nil {
-			return fmt.Errorf("hooks: %s: handler %q: %w", point, e.name, err)
+			return fmt.Errorf("events: %s: handler %q: %w", point, e.name, err)
 		}
 		if !allow {
-			return fmt.Errorf("hooks: %s: handler %q: %w", point, e.name, ErrVetoed)
+			return fmt.Errorf("events: %s: handler %q: %w", point, e.name, ErrVetoed)
 		}
 	}
 	return nil

@@ -2,6 +2,7 @@ package flow
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -10,16 +11,10 @@ import (
 
 // Sentinel errors for Monitor operations; test with errors.Is.
 var (
-	// ErrNoTimeout is the sentinel for a non-positive timeout passed to New.
-	ErrNoTimeout = errors.New("heartbeat: timeout must be positive")
-	// ErrNoID is the sentinel for a blank id (empty after TrimSpace)
-	// passed to Beat. A caller that gets ErrNoID has a bug: it built a
-	// Beat call with a blank id and must stop, not retry.
-	ErrNoID = errors.New("heartbeat: id must not be blank")
 	// ErrStaleBeat is the sentinel for a Beat whose at is before the
 	// id's previously recorded time. A caller that gets ErrStaleBeat
 	// hit a benign race and may retry past it or ignore it.
-	ErrStaleBeat = errors.New("heartbeat: beat is older than last recorded time")
+	ErrStaleBeat = errors.New("flow: beat is older than last recorded time")
 )
 
 // Monitor tracks last-seen time per id against a fixed timeout.
@@ -33,22 +28,22 @@ type Monitor struct {
 }
 
 // NewMonitor creates a Monitor with a fixed timeout. A non-positive timeout
-// wraps ErrNoTimeout.
+// wraps ErrInvalidOptions.
 func NewMonitor(timeout time.Duration) (*Monitor, error) {
 	if timeout <= 0 {
-		return nil, ErrNoTimeout
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "Timeout: must be positive")
 	}
 	return &Monitor{timeout: timeout, last: make(map[string]time.Time)}, nil
 }
 
 // Beat records at as the last-seen time for id. A blank id after
-// TrimSpace wraps ErrNoID. An at strictly before the id's previously
-// recorded time wraps ErrStaleBeat and leaves the stored time
-// unchanged. An at equal to or after the previously recorded time
+// TrimSpace wraps ErrInvalidOptions. An at strictly before the id's
+// previously recorded time wraps ErrStaleBeat and leaves the stored
+// time unchanged. An at equal to or after the previously recorded time
 // overwrites it.
 func (m *Monitor) Beat(id string, at time.Time) error {
 	if strings.TrimSpace(id) == "" {
-		return ErrNoID
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ID: must not be blank")
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

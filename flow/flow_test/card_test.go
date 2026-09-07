@@ -4,6 +4,7 @@
 package flow_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,9 @@ func readFixture(t *testing.T, name string) []byte {
 }
 
 // assertErrSubstr fails t unless err is non-nil and contains substr.
-// A substr unique to one error path pins the test to that path.
+// A substr unique to one error path pins the test to that path. This
+// covers both Parse's decode errors and Validate's ErrInvalidOptions
+// errors, so it does not itself check errors.Is.
 func assertErrSubstr(t *testing.T, err error, substr string) {
 	t.Helper()
 	if err == nil {
@@ -34,23 +37,40 @@ func assertErrSubstr(t *testing.T, err error, substr string) {
 	}
 }
 
+// assertValidateErr fails t unless err wraps flow.ErrInvalidOptions
+// and its message contains substr. Use for Validate-path failures,
+// which always classify as CONFIG.
+func assertValidateErr(t *testing.T, err error, substr string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("got nil error, want error")
+	}
+	if !errors.Is(err, flow.ErrInvalidOptions) {
+		t.Fatalf("error %q does not wrap ErrInvalidOptions", err.Error())
+	}
+	if !strings.Contains(err.Error(), substr) {
+		t.Fatalf("error %q does not contain %q", err.Error(), substr)
+	}
+}
+
 // TestParse covers Parse's decode and validation paths against the
 // card fixtures.
 func TestParse(t *testing.T) {
 	tests := []struct {
-		name      string
-		fixture   string
-		wantErr   bool
-		errSubstr string
-		wantName  string
-		wantCaps  int
+		name         string
+		fixture      string
+		wantErr      bool
+		wantValidate bool
+		errSubstr    string
+		wantName     string
+		wantCaps     int
 	}{
 		{name: "valid card parses", fixture: "valid.json", wantName: "Agent A", wantCaps: 3},
-		{name: "blank name after trim is rejected", fixture: "blank_name.json", wantErr: true, errSubstr: "name is required"},
-		{name: "empty capability list is rejected", fixture: "empty_capabilities.json", wantErr: true, errSubstr: "capabilities must not be empty"},
-		{name: "whitespace-only capability entry is rejected after trim", fixture: "whitespace_capability.json", wantErr: true, errSubstr: "capability entry must not be blank"},
-		{name: "duplicate capability entry is rejected", fixture: "duplicate_capability.json", wantErr: true, errSubstr: "duplicate capability"},
-		{name: "padded capability entry is rejected", fixture: "padded_capability.json", wantErr: true, errSubstr: "capability entry must not carry padding"},
+		{name: "blank name after trim is rejected", fixture: "blank_name.json", wantErr: true, wantValidate: true, errSubstr: "Name: is required"},
+		{name: "empty capability list is rejected", fixture: "empty_capabilities.json", wantErr: true, wantValidate: true, errSubstr: "Capabilities: must not be empty"},
+		{name: "whitespace-only capability entry is rejected after trim", fixture: "whitespace_capability.json", wantErr: true, wantValidate: true, errSubstr: "Capabilities: entry must not be blank"},
+		{name: "duplicate capability entry is rejected", fixture: "duplicate_capability.json", wantErr: true, wantValidate: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "padded capability entry is rejected", fixture: "padded_capability.json", wantErr: true, wantValidate: true, errSubstr: "Capabilities: entry must not carry padding"},
 		{name: "malformed JSON is a syntax decode error", fixture: "malformed.json", wantErr: true, errSubstr: "unexpected end of JSON input"},
 		{name: "type-mismatch JSON is a decode error", fixture: "type_mismatch.json", wantErr: true, errSubstr: "cannot unmarshal string"},
 		{name: "unknown extra JSON field is ignored", fixture: "extra_field.json", wantName: "Agent A", wantCaps: 3},
@@ -59,6 +79,10 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := flow.Parse(readFixture(t, tt.fixture))
 			if tt.wantErr {
+				if tt.wantValidate {
+					assertValidateErr(t, err, tt.errSubstr)
+					return
+				}
 				assertErrSubstr(t, err, tt.errSubstr)
 				return
 			}
@@ -90,21 +114,21 @@ func TestCardValidate(t *testing.T) {
 		errSubstr string
 	}{
 		{name: "valid card", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}},
-		{name: "whitespace-only name is rejected", card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, wantErr: true, errSubstr: "name is required"},
-		{name: "empty capabilities is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{}}, wantErr: true, errSubstr: "capabilities must not be empty"},
-		{name: "nil capabilities is rejected", card: flow.Card{Name: "Agent A"}, wantErr: true, errSubstr: "capabilities must not be empty"},
-		{name: "blank capability entry after trim is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", ""}}, wantErr: true, errSubstr: "capability entry must not be blank"},
-		{name: "whitespace-only capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, wantErr: true, errSubstr: "capability entry must not be blank"},
-		{name: "duplicate capability differing only in case is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "duplicate capability differing only in padding is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "padded capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "capability entry must not carry padding"},
+		{name: "whitespace-only name is rejected", card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, wantErr: true, errSubstr: "Name: is required"},
+		{name: "empty capabilities is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{}}, wantErr: true, errSubstr: "Capabilities: must not be empty"},
+		{name: "nil capabilities is rejected", card: flow.Card{Name: "Agent A"}, wantErr: true, errSubstr: "Capabilities: must not be empty"},
+		{name: "blank capability entry after trim is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", ""}}, wantErr: true, errSubstr: "Capabilities: entry must not be blank"},
+		{name: "whitespace-only capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, wantErr: true, errSubstr: "Capabilities: entry must not be blank"},
+		{name: "duplicate capability differing only in case is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "duplicate capability differing only in padding is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "padded capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "Capabilities: entry must not carry padding"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.card.Validate()
 			if tt.wantErr {
-				assertErrSubstr(t, err, tt.errSubstr)
+				assertValidateErr(t, err, tt.errSubstr)
 				return
 			}
 			if err != nil {

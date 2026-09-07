@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -80,8 +81,9 @@ func correctingWait(ctx context.Context, msg envelope.Message) (envelope.Ack, er
 }
 
 // TestRunZeroValueAgentReturnsErrNoIdentity proves a nil *Agent and an
-// Agent with a nil identity both return ErrNoIdentity before any other
-// work, leaving the input record unchanged.
+// Agent with a nil identity both return ErrInvalidOptions, naming the
+// identity field, before any other work, leaving the input record
+// unchanged.
 func TestRunZeroValueAgentReturnsErrNoIdentity(t *testing.T) {
 	cases := []struct {
 		name string
@@ -95,8 +97,8 @@ func TestRunZeroValueAgentReturnsErrNoIdentity(t *testing.T) {
 			bus := events.New()
 			in := machine.InOut{Input: "keep me"}
 			status, rec, err := tc.a.Run(context.Background(), "thread-1", nil, in, confirmingWait, bus, nil, "", nil)
-			if !errors.Is(err, workflow.ErrNoIdentity) {
-				t.Fatalf("Run() error = %v, want errors.Is match for ErrNoIdentity", err)
+			if !errors.Is(err, workflow.ErrInvalidOptions) || !strings.Contains(err.Error(), "identity") {
+				t.Fatalf("Run() error = %v, want ErrInvalidOptions naming identity", err)
 			}
 			if status != machine.Status("") {
 				t.Fatalf("Run() status = %q, want empty", status)
@@ -109,25 +111,27 @@ func TestRunZeroValueAgentReturnsErrNoIdentity(t *testing.T) {
 }
 
 // TestRunEntryChecks proves the nil-wait, nil-bus, and empty-threadID
-// sentinels and their check order after the identity guard: wait
-// first, then bus, then threadID. Each case returns machine.Status(""),
-// in unchanged.
+// checks and their order after the identity guard: wait first, then
+// bus, then threadID. A nil bus reports ErrInvalidOptions naming
+// "bus"; the other two keep their own RUNTIME sentinels. Each case
+// returns machine.Status(""), in unchanged.
 func TestRunEntryChecks(t *testing.T) {
 	a := newRunAgent(t, &flow.Definition{})
 	bus := events.New()
 
 	cases := []struct {
-		name     string
-		wait     workflow.AckWait
-		bus      *events.Bus
-		threadID string
-		wantErr  error
+		name      string
+		wait      workflow.AckWait
+		bus       *events.Bus
+		threadID  string
+		wantErr   error
+		wantField string
 	}{
-		{"nil wait", nil, bus, "thread-1", workflow.ErrNoWait},
-		{"nil bus", confirmingWait, nil, "thread-1", workflow.ErrNoBus},
-		{"empty thread id", confirmingWait, bus, "", workflow.ErrNoThread},
-		{"nil wait and nil bus reports ErrNoWait", nil, nil, "thread-1", workflow.ErrNoWait},
-		{"nil bus and empty thread id reports ErrNoBus", confirmingWait, nil, "", workflow.ErrNoBus},
+		{name: "nil wait", wait: nil, bus: bus, threadID: "thread-1", wantErr: workflow.ErrNoWait},
+		{name: "nil bus", wait: confirmingWait, bus: nil, threadID: "thread-1", wantErr: workflow.ErrInvalidOptions, wantField: "bus"},
+		{name: "empty thread id", wait: confirmingWait, bus: bus, threadID: "", wantErr: workflow.ErrNoThread},
+		{name: "nil wait and nil bus reports ErrNoWait", wait: nil, bus: nil, threadID: "thread-1", wantErr: workflow.ErrNoWait},
+		{name: "nil bus and empty thread id reports ErrInvalidOptions", wait: confirmingWait, bus: nil, threadID: "", wantErr: workflow.ErrInvalidOptions, wantField: "bus"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,6 +139,9 @@ func TestRunEntryChecks(t *testing.T) {
 			status, rec, err := a.Run(context.Background(), tt.threadID, nil, in, tt.wait, tt.bus, nil, "", nil)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Run() error = %v, want errors.Is match for %v", err, tt.wantErr)
+			}
+			if tt.wantField != "" && !strings.Contains(err.Error(), tt.wantField) {
+				t.Fatalf("Run() error = %v, want it to name %q", err, tt.wantField)
 			}
 			if status != machine.Status("") {
 				t.Fatalf("Run() status = %q, want empty", status)

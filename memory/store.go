@@ -9,10 +9,9 @@ import (
 )
 
 // Sentinel errors for Store operations; test with errors.Is.
+// ErrInvalidOptions is declared in spool.go and shared across the
+// package.
 var (
-	// ErrNoBudget is the sentinel for a non-positive maxBytes passed
-	// to New.
-	ErrNoBudget = errors.New("memory: maxBytes must be positive")
 	// ErrBudgetExceeded is the sentinel for a blob that Put rejects
 	// because it is larger than the store's budget.
 	ErrBudgetExceeded = errors.New("memory: content exceeds store budget")
@@ -34,10 +33,10 @@ type Store struct {
 }
 
 // New creates a Store with a fixed byte budget. A non-positive
-// maxBytes wraps ErrNoBudget.
+// maxBytes wraps ErrInvalidOptions.
 func New(maxBytes int) (*Store, error) {
 	if maxBytes <= 0 {
-		return nil, fmt.Errorf("%w: %d", ErrNoBudget, maxBytes)
+		return nil, fmt.Errorf("%w: maxBytes: must be positive, got %d", ErrInvalidOptions, maxBytes)
 	}
 	return &Store{
 		maxBytes: maxBytes,

@@ -2,6 +2,7 @@ package tools_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -9,8 +10,8 @@ import (
 
 // TestScopeOptionsValidate pins the approval-threshold invariant: the
 // four declared classes pass, anything else fails with
-// ErrUnknownApprovalThreshold, because RunScoped would silently treat
-// an unknown class as "never approve".
+// ErrInvalidOptions, because RunScoped would silently treat an
+// unknown class as "never approve".
 func TestScopeOptionsValidate(t *testing.T) {
 	for _, class := range []tools.ExecutionClass{
 		tools.ExecutionClassUnclassified,
@@ -23,8 +24,11 @@ func TestScopeOptionsValidate(t *testing.T) {
 		}
 	}
 	err := (tools.ScopeOptions{ApprovalThreshold: tools.ExecutionClass("admin")}).Validate()
-	if !errors.Is(err, tools.ErrUnknownApprovalThreshold) {
-		t.Fatalf("Validate(admin) = %v, want ErrUnknownApprovalThreshold", err)
+	if !errors.Is(err, tools.ErrInvalidOptions) {
+		t.Fatalf("Validate(admin) = %v, want ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "ApprovalThreshold") {
+		t.Fatalf("Validate(admin) = %v, want it to name the ApprovalThreshold field", err)
 	}
 }
 
@@ -35,8 +39,8 @@ func TestScopeOptionsValidate(t *testing.T) {
 func TestNewScopeCheckedGatesOnValidate(t *testing.T) {
 	opts := tools.ScopeOptions{ApprovalThreshold: tools.ExecutionClass("admin")}
 	scope, err := tools.NewScopeChecked(opts)
-	if !errors.Is(err, tools.ErrUnknownApprovalThreshold) {
-		t.Fatalf("NewScopeChecked(admin) error = %v, want ErrUnknownApprovalThreshold", err)
+	if !errors.Is(err, tools.ErrInvalidOptions) {
+		t.Fatalf("NewScopeChecked(admin) error = %v, want ErrInvalidOptions", err)
 	}
 	if scope != nil {
 		t.Fatalf("NewScopeChecked(admin) scope = %+v, want nil on Validate failure", scope)

@@ -108,7 +108,7 @@ func (c *Client) CallTool(ctx context.Context, name string, args any) (tools.Out
 // same RunScoped composition applies.
 func (c *Client) CallToolWithProgress(ctx context.Context, name string, args any, onProgress ProgressHandler) (tools.Out, error) {
 	if onProgress == nil {
-		return tools.Out{}, ErrNilProgressHandler
+		return tools.Out{}, fmt.Errorf("%w: %s", ErrInvalidOptions, "onProgress: must not be nil")
 	}
 	return c.callTool(ctx, name, args, onProgress)
 }

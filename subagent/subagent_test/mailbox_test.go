@@ -103,8 +103,8 @@ func TestNewMailboxRejectsBadCapacity(t *testing.T) {
 			if err == nil {
 				t.Fatalf("NewMailbox(%d) error = nil, want error", tt.capacity)
 			}
-			if !errors.Is(err, subagent.ErrInvalidCapacity) {
-				t.Fatalf("NewMailbox(%d) error = %v, want errors.Is ErrInvalidCapacity", tt.capacity, err)
+			if !errors.Is(err, subagent.ErrInvalidOptions) {
+				t.Fatalf("NewMailbox(%d) error = %v, want errors.Is ErrInvalidOptions", tt.capacity, err)
 			}
 			if !strings.Contains(err.Error(), "capacity") {
 				t.Fatalf("err = %v, want the capacity fault", err)

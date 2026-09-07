@@ -275,7 +275,8 @@ func TestEmitThreadVerifiedBrokenChain(t *testing.T) {
 }
 
 // TestEmitNilBusReturnsErrNoBus proves every EmitX function returns
-// ErrNoBus when its bus argument is nil, and none panics.
+// ErrInvalidOptions, naming the bus field, when its bus argument is
+// nil, and none panics.
 func TestEmitNilBusReturnsErrNoBus(t *testing.T) {
 	cases := []struct {
 		name string
@@ -302,8 +303,9 @@ func TestEmitNilBusReturnsErrNoBus(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.run(); !errors.Is(err, workflow.ErrNoBus) {
-				t.Fatalf("%s() error = %v, want errors.Is match for ErrNoBus", tt.name, err)
+			err := tt.run()
+			if !errors.Is(err, workflow.ErrInvalidOptions) || !strings.Contains(err.Error(), "bus") {
+				t.Fatalf("%s() error = %v, want ErrInvalidOptions naming bus", tt.name, err)
 			}
 		})
 	}

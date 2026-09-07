@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
@@ -130,8 +131,11 @@ func TestOpenWithRejectsWhitespaceOnlyRoot(t *testing.T) {
 	if err == nil {
 		t.Fatal("Validate() = nil error, want the blank-root rejection")
 	}
-	if err.Error() != "workspace: Root is blank" {
-		t.Fatalf("Validate() = %q, want %q", err.Error(), "workspace: Root is blank")
+	if !errors.Is(err, workspace.ErrInvalidOptions) {
+		t.Fatalf("Validate() = %q, want errors.Is ErrInvalidOptions", err.Error())
+	}
+	if !strings.Contains(err.Error(), "Root") {
+		t.Fatalf("Validate() = %q, want it to name Root", err.Error())
 	}
 }
 

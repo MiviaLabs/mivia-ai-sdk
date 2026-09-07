@@ -335,3 +335,23 @@ embeds machine's rendered text, which is unchanged.
   change.
 - No `policy/layers.json` diff. No conformance vector: this is not
   wire semantics.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum classifies every `machine` sentinel error as CONFIG or
+RUNTIME. `errors.go` declares two: `ErrNoTransition` and
+`ErrGuardRejected`.
+
+Both react to the live status and trigger evaluated by `Fire`, not to
+a constructor argument. `ErrNoTransition` fires when no transition row
+matches the current status and trigger pair. `ErrGuardRejected` fires
+when a matched row's guard function returns false at run time. Both
+classify RUNTIME: all sentinels stay unchanged, and no
+`ErrInvalidOptions` was added.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNoTransition` | RUNTIME | Unchanged. `Fire` reacts to a live status and trigger with no matching row. |
+| `ErrGuardRejected` | RUNTIME | Unchanged. `Fire` reacts to a live guard function returning false. |

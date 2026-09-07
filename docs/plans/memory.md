@@ -235,3 +235,41 @@ computed the hash.
   that still explain memory does not know about `envelope.Message`.
 - `go list -deps ./memory` no longer includes `envelope`.
 - `make verify` passes.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum classifies each `memory` sentinel error as CONFIG (a
+caller-supplied argument fails a sanity check, before any state
+mutation) or RUNTIME (the error reacts to stored or looked-up state
+at call time). Every CONFIG sentinel merges into one shared
+`ErrInvalidOptions`. Every RUNTIME sentinel stays in place.
+
+`spool.go` and `store.go` are one package, so both files share one
+`ErrInvalidOptions`, declared in `spool.go` next to its two CONFIG
+call sites.
+
+| Sentinel | Classification | Disposition |
+|---|---|---|
+| `ErrNoBudget` | CONFIG | Deleted. `store.New` now wraps `ErrInvalidOptions` with a `maxBytes` field name. |
+| `ErrNoGrantBudget` | CONFIG | Deleted. `NewSpool` now wraps `ErrInvalidOptions` with a `maxGrantBytes` field name. |
+| `ErrInvalidExpiry` | CONFIG | Deleted. `SpoolExpiring` now wraps `ErrInvalidOptions` with a `ttl` field name. |
+| `ErrInvalidOptions` | CONFIG | Added. Shared sentinel for the three deleted CONFIG sentinels above. |
+| `ErrBudgetExceeded` | RUNTIME | Unchanged. `Put` rejects content whose actual size exceeds the store's budget. |
+| `ErrUnknownRef` | RUNTIME | Unchanged. `Get` rejects a ref absent from stored state. |
+| `ErrUnknownGrantRef` | RUNTIME | Unchanged. `Load` and `Expire` reject a ref with no live grant. |
+| `ErrWrongPrincipal` | RUNTIME | Unchanged. `Load` rejects a principal that does not match the grant's recorded principal. |
+| `ErrGrantTooLarge` | RUNTIME | Unchanged. `Spool` and `SpoolExpiring` reject content whose actual size exceeds the grant budget. |
+| `ErrPrincipalConflict` | RUNTIME | Unchanged. `recordGrant` rejects a ref already granted to a different principal. |
+| `ErrExpired` | RUNTIME | Unchanged. `Load` rejects a grant whose expiry already passed. |
+| `ErrNoPrincipal` | RUNTIME | Unchanged. Reacts to a call-time context missing a principal, not a caller-supplied constant. |
+| `ErrNilSpool` | Not reclassified | Unchanged. `tool.go` and `readtool.go`, outside this sweep's owned files, return it; deleting it would break those files. |
+| `ErrInvalidLimit` | Not reclassified | Unchanged. `readtool.go`, outside this sweep's owned files, returns it; deleting it would break that file. |
+| `ErrBadArguments` | RUNTIME | Unchanged. `readtool.go` returns it for a malformed request payload at call time. |
+
+The tests in `memory/memory_test/store_test.go`,
+`memory/memory_test/spool_test.go`, and
+`memory/memory_test/expiry_test.go` now assert `errors.Is(err,
+memory.ErrInvalidOptions)` plus a substring check on the field name,
+in place of the deleted sentinels.

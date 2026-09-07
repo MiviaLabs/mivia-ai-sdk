@@ -20,14 +20,13 @@ import (
 // and budget checks wrap their own errors instead, naming the invalid
 // value.
 var (
-	ErrNoAgent       = errors.New("run: agent is required")
-	ErrNoMachine     = errors.New("run: machine is required")
-	ErrNoResolver    = errors.New("run: Wait or Tools is required")
-	ErrAmbiguousWait = errors.New("run: Wait and Tools both set; set one")
-	ErrNoTools       = errors.New("run: Scope, Store, Ask, or Artifacts needs Tools")
-	ErrNoRecipient   = errors.New("run: Ask needs AskTo")
-	ErrResultNotText = errors.New("run: tool result is not a string")
-	ErrReceiverEmpty = errors.New("run: Receiver signer is empty")
+	// ErrInvalidOptions reports an Options field that fails Validate
+	// or a New check: a nil Agent or Machine, an ambiguous or missing
+	// Wait/Tools resolver, an optional field set without its required
+	// Tools, a missing Ask recipient, or an empty Receiver signer. The
+	// wrapped message names the field and the rule it broke.
+	ErrInvalidOptions = errors.New("run: invalid options")
+	ErrResultNotText  = errors.New("run: tool result is not a string")
 	// ErrArgumentDecode is chain's error when the resolved tool's
 	// DecodeArguments rejects the step's payload bytes. Test with
 	// errors.Is.
@@ -96,22 +95,22 @@ type Options struct {
 // signer, not the options alone.
 func (o Options) Validate() error {
 	if o.Agent == nil {
-		return ErrNoAgent
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Agent: agent is required")
 	}
 	if o.Machine == nil {
-		return ErrNoMachine
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Machine: machine is required")
 	}
 	if o.Wait != nil && o.Tools != nil {
-		return ErrAmbiguousWait
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Wait: Wait and Tools both set; set one")
 	}
 	if o.Wait == nil && o.Tools == nil {
-		return ErrNoResolver
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Wait: Wait or Tools is required")
 	}
 	if o.Tools == nil && (o.Scope != nil || o.Store != nil || o.Ask != nil || o.Artifacts != nil) {
-		return ErrNoTools
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Tools: Scope, Store, Ask, or Artifacts needs Tools")
 	}
 	if o.Ask != nil && o.AskTo == "" {
-		return ErrNoRecipient
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "AskTo: Ask needs AskTo")
 	}
 	if o.Budget != nil {
 		if err := o.Budget.Validate(); err != nil {
@@ -146,12 +145,12 @@ func New(opts Options) (*Runner, error) {
 	if opts.Receiver != nil {
 		s := opts.Receiver.Signer()
 		if s == "" {
-			return nil, ErrReceiverEmpty
+			return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "Receiver: signer is empty")
 		}
 		receiver = s
 	}
 	if receiver == "" {
-		return nil, ErrReceiverEmpty
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "Receiver: signer is empty")
 	}
 	bus := opts.Bus
 	if bus == nil {

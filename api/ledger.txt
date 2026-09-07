@@ -93,13 +93,10 @@ package ledger
   var ErrFenced
   var ErrInvalidLease
   var ErrInvalidMaxEntries
+  var ErrInvalidOptions
   var ErrLeaseActive
-  var ErrNoActor
   var ErrNoKey
-  var ErrNoLease
   var ErrNoLedger
-  var ErrNoOwner
-  var ErrNoTaskKey
   var ErrNotClaimed
   var ErrNotStale
   var ErrTaskBlocked

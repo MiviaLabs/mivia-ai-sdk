@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -37,7 +38,10 @@ func TestCallToolWithProgressRejectsNilHandler(t *testing.T) {
 	if err == nil {
 		t.Fatal("CallToolWithProgress with a nil onProgress returned a nil error")
 	}
-	if !errors.Is(err, ErrNilProgressHandler) {
-		t.Fatalf("CallToolWithProgress error = %v, want errors.Is ErrNilProgressHandler", err)
+	if !errors.Is(err, ErrInvalidOptions) {
+		t.Fatalf("CallToolWithProgress error = %v, want errors.Is ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "onProgress") {
+		t.Fatalf("CallToolWithProgress error = %v, want it to name onProgress", err)
 	}
 }

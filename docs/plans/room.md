@@ -391,3 +391,25 @@ Doc sites, all found by grep and all landing in the same commit:
 
 `docs/README.md` and `AGENTS.md` name no `room` to `heartbeat` edge;
 grep confirms this. Leave both unchanged.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum classifies every `room` sentinel error as CONFIG or
+RUNTIME. `room.go` declares six: `ErrNotMember`, `ErrNotModerator`,
+`ErrAlreadyMember`, `ErrLastModerator`, `ErrWrongRoom`, and
+`ErrUnsigned`.
+
+Every one reacts to live roster or message state at call time, not to
+a constructor argument. All six classify RUNTIME: all sentinels stay
+unchanged, and no `ErrInvalidOptions` was added.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNotMember` | RUNTIME | Unchanged. `Remove`, `Leave`, `Promote`, and `Accepts` react to an id absent from the live roster. |
+| `ErrNotModerator` | RUNTIME | Unchanged. `moderatorLocked` reacts to a live caller role check. |
+| `ErrAlreadyMember` | RUNTIME | Unchanged. `Admit` reacts to an id already on the live roster. |
+| `ErrLastModerator` | RUNTIME | Unchanged. `Remove` and `Leave` react to the live moderator count. |
+| `ErrWrongRoom` | RUNTIME | Unchanged. `Accepts` reacts to a message's live `Room` field. |
+| `ErrUnsigned` | RUNTIME | Unchanged. `Accepts` reacts to a live missing or invalid signature. |

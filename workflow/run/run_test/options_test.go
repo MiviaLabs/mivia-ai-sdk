@@ -37,6 +37,9 @@ func runNewRejections(t *testing.T, valid run.Options, cases []newRejectCase) {
 				if !errors.Is(err, c.wantSent) {
 					t.Fatalf("New error = %v, want %v", err, c.wantSent)
 				}
+				if c.wantText != "" && !strings.Contains(err.Error(), c.wantText) {
+					t.Fatalf("New error %q lacks %q", err, c.wantText)
+				}
 				return
 			}
 			if err == nil {
@@ -67,10 +70,10 @@ func newRejectSetup(t *testing.T) (ca *captureAsk, scope *tools.Scope, valid run
 func TestNewRejectionsBackends(t *testing.T) {
 	_, _, valid := newRejectSetup(t)
 	runNewRejections(t, valid, []newRejectCase{
-		{name: "nil agent", mutate: func(o *run.Options) { o.Agent = nil }, wantSent: run.ErrNoAgent},
-		{name: "nil machine", mutate: func(o *run.Options) { o.Machine = nil }, wantSent: run.ErrNoMachine},
-		{name: "ambiguous wait", mutate: func(o *run.Options) { o.Wait = waitFn() }, wantSent: run.ErrAmbiguousWait},
-		{name: "no resolver", mutate: func(o *run.Options) { o.Tools = nil }, wantSent: run.ErrNoResolver},
+		{name: "nil agent", mutate: func(o *run.Options) { o.Agent = nil }, wantSent: run.ErrInvalidOptions, wantText: "Agent"},
+		{name: "nil machine", mutate: func(o *run.Options) { o.Machine = nil }, wantSent: run.ErrInvalidOptions, wantText: "Machine"},
+		{name: "ambiguous wait", mutate: func(o *run.Options) { o.Wait = waitFn() }, wantSent: run.ErrInvalidOptions, wantText: "Wait and Tools"},
+		{name: "no resolver", mutate: func(o *run.Options) { o.Tools = nil }, wantSent: run.ErrInvalidOptions, wantText: "Wait or Tools"},
 	})
 }
 
@@ -86,7 +89,8 @@ func TestNewRejectionsToolDependencies(t *testing.T) {
 				o.Wait = waitFn()
 				o.Scope = scope
 			},
-			wantSent: run.ErrNoTools,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "Tools",
 		},
 		{
 			name: "wait with store needs tools",
@@ -95,7 +99,8 @@ func TestNewRejectionsToolDependencies(t *testing.T) {
 				o.Wait = waitFn()
 				o.Store = mustStore(t)
 			},
-			wantSent: run.ErrNoTools,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "Tools",
 		},
 		{
 			name: "wait with ask needs tools",
@@ -105,7 +110,8 @@ func TestNewRejectionsToolDependencies(t *testing.T) {
 				o.Ask = ca.Answer
 				o.AskTo = "human"
 			},
-			wantSent: run.ErrNoTools,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "Tools",
 		},
 		{
 			name: "wait with artifacts needs tools",
@@ -114,7 +120,8 @@ func TestNewRejectionsToolDependencies(t *testing.T) {
 				o.Wait = waitFn()
 				o.Artifacts = &run.Artifacts{}
 			},
-			wantSent: run.ErrNoTools,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "Tools",
 		},
 		{
 			name: "ask needs askto",
@@ -122,7 +129,8 @@ func TestNewRejectionsToolDependencies(t *testing.T) {
 				o.Ask = ca.Answer
 				o.AskTo = ""
 			},
-			wantSent: run.ErrNoRecipient,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "AskTo",
 		},
 	})
 }
@@ -154,9 +162,10 @@ func TestNewRejectionsContent(t *testing.T) {
 			wantSent: tools.ErrUnknownName,
 		},
 		{
-			name:     "zero-value receiver rejects with ErrReceiverEmpty",
+			name:     "zero-value receiver rejects with ErrInvalidOptions",
 			mutate:   func(o *run.Options) { o.Receiver = &envelope.Identity{} },
-			wantSent: run.ErrReceiverEmpty,
+			wantSent: run.ErrInvalidOptions,
+			wantText: "Receiver",
 		},
 	})
 }

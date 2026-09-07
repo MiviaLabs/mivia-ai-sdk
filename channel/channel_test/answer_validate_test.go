@@ -2,6 +2,7 @@ package channel_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
@@ -13,19 +14,22 @@ import (
 // Payload, and a fully populated value.
 func TestAnswerValidate(t *testing.T) {
 	cases := []struct {
-		name    string
-		a       channel.Answer
-		wantErr error
+		name      string
+		a         channel.Answer
+		wantErr   error
+		wantField string
 	}{
 		{
-			name:    "empty question id",
-			a:       channel.Answer{QuestionID: "", Approved: true, Payload: "ok"},
-			wantErr: channel.ErrEmptyQuestionID,
+			name:      "empty question id",
+			a:         channel.Answer{QuestionID: "", Approved: true, Payload: "ok"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "QuestionID",
 		},
 		{
-			name:    "whitespace only question id",
-			a:       channel.Answer{QuestionID: "   ", Approved: true, Payload: "ok"},
-			wantErr: channel.ErrEmptyQuestionID,
+			name:      "whitespace only question id",
+			a:         channel.Answer{QuestionID: "   ", Approved: true, Payload: "ok"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "QuestionID",
 		},
 		{
 			name:    "approved true empty payload passes",
@@ -55,6 +59,9 @@ func TestAnswerValidate(t *testing.T) {
 			}
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("Validate() = %v, want %v", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantField) {
+				t.Fatalf("Validate() = %v, want it to name field %q", err, tc.wantField)
 			}
 		})
 	}

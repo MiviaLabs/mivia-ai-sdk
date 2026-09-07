@@ -2,6 +2,7 @@ package ledgertest_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
@@ -22,8 +23,8 @@ func TestScenarioValidateComplete(t *testing.T) {
 }
 
 // TestScenarioValidateMissingField proves Validate reports
-// ErrIncompleteScenario when exactly one field is nil, one case per
-// field.
+// ErrInvalidOptions naming the missing field, when exactly one field
+// is nil, one case per field.
 func TestScenarioValidateMissingField(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -41,8 +42,11 @@ func TestScenarioValidateMissingField(t *testing.T) {
 			s := fullScenario()
 			c.clear(&s)
 			err := s.Validate()
-			if !errors.Is(err, ledgertest.ErrIncompleteScenario) {
-				t.Fatalf("Validate: got %v, want ErrIncompleteScenario", err)
+			if !errors.Is(err, ledgertest.ErrInvalidOptions) {
+				t.Fatalf("Validate: got %v, want ErrInvalidOptions", err)
+			}
+			if !strings.Contains(err.Error(), c.name) {
+				t.Fatalf("Validate: got %v, want field %q in message", err, c.name)
 			}
 		})
 	}

@@ -1277,3 +1277,37 @@ and none in `policy/`.
 the rename moves code, it deletes none. `scripts/check_plan.py`
 passes once the directories move; at planning time it reports the two
 expected no-plan findings for `agent` and `agentrun`.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+This addendum classifies each `workflow` sentinel as CONFIG
+(construction-time input fault) or RUNTIME (a live-run-state fault),
+and merges the CONFIG sentinels into one `ErrInvalidOptions`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNoIdentity` | CONFIG | Merged into `ErrInvalidOptions` ("identity: ..."), `agent.go` and `run.go`. |
+| `ErrNoPlan` | CONFIG | Merged into `ErrInvalidOptions` ("plan: ..."), `agent.go`. |
+| `ErrNoBus` | CONFIG | Merged into `ErrInvalidOptions` ("bus: ..."), `translator.go` and `run.go`. Every `EmitX` function and `Agent.Run` validate a caller-fixed argument, not live run state. |
+| `ErrEscalated` | RUNTIME | Kept. Reports a live step's escalation outcome. |
+| `ErrNoWait` | RUNTIME | Kept. Reacts to a live `Run` call's resolver argument. |
+| `ErrNoThread` | RUNTIME | Kept. Reacts to a live `Run` call's thread id argument. |
+| `ErrOverBudget` | RUNTIME | Kept. Reacts to a live step's cumulative byte and count total against `Budget.Fits`. |
+
+`workflow.New` and `Agent.Run` now wrap each CONFIG fault as
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "<field>: <rule>")`. Callers
+test with `errors.Is(err, workflow.ErrInvalidOptions)` and a substring
+check on the field name. `workflow/workflow_test/definition_test.go`,
+`definition_integration_test.go`, `run_test.go`, and
+`translator_test.go` assert the new shape.
+
+Unrelated to this sweep: a concurrent, uncommitted change to
+`flow/discovery_card.go` (outside this task's scope) changed
+`Card.Validate`'s error text from lowercase sentence fragments (for
+example "name is required") to a `flow.ErrInvalidOptions`-wrapped,
+field-named form (for example "Name: is required"). This sweep
+updates the affected `workflow_test` substring assertions to match,
+since `workflow.New` wraps `Card.Validate`'s error unchanged.
+`workflow/doc.go`'s symbol map still names `ErrNoBus`; that file is
+outside this task's owned-file list and was left unedited.

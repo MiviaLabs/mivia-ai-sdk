@@ -43,7 +43,7 @@ func tamperSignature(t testing.TB, m envelope.Message) envelope.Message {
 }
 
 // TestReplayHandlerRunsOnce posts the same signed message twice: the
-// first reply is a confirmed ack, the second is a "replay:" error
+// first reply is a confirmed ack, the second is a "dispatch: replay:" error
 // line, and the handler's side effect runs exactly once.
 func TestReplayHandlerRunsOnce(t *testing.T) {
 	founder, key := newMember(t)
@@ -88,8 +88,8 @@ func TestReplayHandlerRunsOnce(t *testing.T) {
 	if !ok {
 		t.Fatalf("second reply = %q, want an error line", lines2[0])
 	}
-	if !strings.HasPrefix(msgTxt, "replay:") {
-		t.Fatalf("second reply error = %q, want a replay: prefix", msgTxt)
+	if !strings.HasPrefix(msgTxt, "dispatch: replay:") {
+		t.Fatalf("second reply error = %q, want a dispatch: replay: prefix", msgTxt)
 	}
 
 	if got := atomic.LoadInt64(&count); got != 1 {
@@ -100,8 +100,8 @@ func TestReplayHandlerRunsOnce(t *testing.T) {
 // TestReplayOrderPrecedesVerify proves VerifySignature runs before
 // the replay check: a first valid submission completes normally, and
 // a second submission at the same ThreadID/ID with a tampered
-// signature fails at "verify:", not "replay:". If the replay check
-// ran first, the second reply would be "replay:" instead, since the
+// signature fails at "dispatch: verify:", not "dispatch: replay:". If the replay check
+// ran first, the second reply would be "dispatch: replay:" instead, since the
 // key is already terminal in the ledger.
 func TestReplayOrderPrecedesVerify(t *testing.T) {
 	founder, key := newMember(t)
@@ -138,8 +138,8 @@ func TestReplayOrderPrecedesVerify(t *testing.T) {
 	if !ok {
 		t.Fatalf("second reply = %q, want an error line", lines2[0])
 	}
-	if !strings.HasPrefix(msgTxt, "verify:") {
-		t.Fatalf("second reply error = %q, want a verify: prefix, proving verify precedes replay", msgTxt)
+	if !strings.HasPrefix(msgTxt, "dispatch: verify:") {
+		t.Fatalf("second reply error = %q, want a dispatch: verify: prefix, proving verify precedes replay", msgTxt)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestReplayDifferentMessagesBothProcess(t *testing.T) {
 
 // TestReplayConcurrentDuplicates posts the same signed message from N
 // concurrent goroutines and asserts the handler ran exactly once,
-// with every reply either a confirmed ack or a "replay:" ErrReplay
+// with every reply either a confirmed ack or a "dispatch: replay:" ErrReplay
 // line. A concurrent duplicate may observe ledger.ErrLeaseActive
 // (still in flight) or ledger.ErrTaskDone (already completed); both
 // map to the same wire-visible ErrReplay line, so this test asserts
@@ -222,7 +222,7 @@ func TestReplayConcurrentDuplicates(t *testing.T) {
 				oks[i] = true
 				return
 			}
-			if msgTxt, ok := decodeAsError(t, lines[0]); ok && strings.HasPrefix(msgTxt, "replay:") {
+			if msgTxt, ok := decodeAsError(t, lines[0]); ok && strings.HasPrefix(msgTxt, "dispatch: replay:") {
 				oks[i] = true
 			}
 		}(i)
@@ -232,7 +232,7 @@ func TestReplayConcurrentDuplicates(t *testing.T) {
 	confirmed := 0
 	for i := 0; i < n; i++ {
 		if !oks[i] {
-			t.Fatalf("goroutine %d produced neither a confirmed ack nor a replay: line", i)
+			t.Fatalf("goroutine %d produced neither a confirmed ack nor a dispatch: replay: line", i)
 		}
 		if results[i] {
 			confirmed++
@@ -248,7 +248,7 @@ func TestReplayConcurrentDuplicates(t *testing.T) {
 
 // TestNewBuildsDefaultLedger proves New's zero-config path (no
 // Options.Ledger set) still gets replay protection: the first post
-// confirms, the second answers a "replay:" line, and the handler ran
+// confirms, the second answers a "dispatch: replay:" line, and the handler ran
 // exactly once.
 func TestNewBuildsDefaultLedger(t *testing.T) {
 	founder, key := newMember(t)
@@ -290,8 +290,8 @@ func TestNewBuildsDefaultLedger(t *testing.T) {
 	if !ok {
 		t.Fatalf("second reply = %q, want an error line", lines2[0])
 	}
-	if !strings.HasPrefix(msgTxt, "replay:") {
-		t.Fatalf("second reply error = %q, want a replay: prefix", msgTxt)
+	if !strings.HasPrefix(msgTxt, "dispatch: replay:") {
+		t.Fatalf("second reply error = %q, want a dispatch: replay: prefix", msgTxt)
 	}
 	if got := atomic.LoadInt64(&count); got != 1 {
 		t.Fatalf("handler ran %d times, want 1", got)

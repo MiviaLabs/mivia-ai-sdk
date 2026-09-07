@@ -3,10 +3,14 @@
 keywords. File basenames and function declarations must not contain:
 phase, tdd, perf, wip, draft, scratch, tmp, old, backup, or a version
 suffix like _v2, _v3 (versioning belongs in git, not in file names).
-Exits non-zero on violations."""
+Also gates error-string prefixes: an errors.New or fmt.Errorf literal
+that starts with "word: " must name the enclosing package, not a
+package that folded away. Exits non-zero on violations."""
+import argparse
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 BAD_BASENAME = re.compile(
@@ -17,6 +21,8 @@ BAD_WORDS = {"phase", "tdd", "perf", "wip", "draft", "scratch", "tmp", "old", "b
 VERSION_SUFFIX = re.compile(r"_v\d+", re.IGNORECASE)
 FUNC_DECL = re.compile(r"\bfunc\s+(?:\([^)]*\)\s+)?(\w+)\s*\(")
 CAMEL_WORD = re.compile(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+")
+PACKAGE_DECL = re.compile(r"^package\s+(\w+)")
+ERROR_LITERAL = re.compile(r'(?:errors\.New|fmt\.Errorf)\(\s*"([A-Za-z0-9_]+):\s')
 
 
 def _has_bad_word(name: str) -> bool:
@@ -32,13 +38,45 @@ def check_file(path: Path, rel: Path) -> list[str]:
     violations = []
     if BAD_BASENAME.search(path.name):
         violations.append(f"{rel}: filename contains a prohibited keyword")
-    for n, line in enumerate(path.read_text().splitlines(), 1):
+    lines = path.read_text().splitlines()
+    for n, line in enumerate(lines, 1):
         for m in FUNC_DECL.finditer(line):
             if _has_bad_word(m.group(1)):
                 violations.append(
                     f"{rel}:{n}: function name contains a prohibited keyword"
                 )
                 break
+    if not any(part.startswith("_") for part in rel.parts):
+        violations.extend(check_error_prefixes(lines, rel))
+    return violations
+
+
+def check_error_prefixes(lines: list[str], rel: Path) -> list[str]:
+    """check_error_prefixes rejects an errors.New/fmt.Errorf literal
+    whose leading "word: " does not name the enclosing package. This
+    catches a stale prefix left behind when a package folds into
+    another one. Test files are exempt: they may construct arbitrary
+    strings on purpose. A directory starting with "_" is exempt too:
+    the go tool itself ignores it (docs/examples/_agentloop and
+    similar), so it carries no production error taxonomy to protect."""
+    if rel.name.endswith("_test.go"):
+        return []
+    package = None
+    for line in lines:
+        m = PACKAGE_DECL.match(line)
+        if m:
+            package = m.group(1)
+            break
+    if package is None:
+        return []
+    violations = []
+    for n, line in enumerate(lines, 1):
+        m = ERROR_LITERAL.search(line)
+        if m and m.group(1) != package:
+            violations.append(
+                f"{rel}:{n}: error string prefix {m.group(1)!r} does not "
+                f"match enclosing package {package!r}"
+            )
     return violations
 
 
@@ -64,13 +102,109 @@ def _go_files(root: Path) -> list[Path]:
         )
 
 
-def main() -> int:
-    root = Path(__file__).resolve().parent.parent
+def run(root: Path) -> list[str]:
     violations = []
     for path in _go_files(root):
         if not path.is_file():
             continue
         violations.extend(check_file(path, path.relative_to(root)))
+    return violations
+
+
+# --- probes ---------------------------------------------------------
+
+
+def _probe_wrong_prefix_fails(tmp: Path) -> list[str]:
+    pkg = tmp / "spool"
+    pkg.mkdir()
+    (pkg / "spool.go").write_text(
+        'package spool\n\nimport "errors"\n\n'
+        'var ErrNoPrincipal = errors.New("memory: no principal in context")\n'
+    )
+    problems = run(tmp)
+    if not any("does not match enclosing package" in p for p in problems):
+        return [f"probe_wrong_prefix_fails: expected a prefix mismatch, got {problems}"]
+    return []
+
+
+def _probe_right_prefix_passes(tmp: Path) -> list[str]:
+    pkg = tmp / "spool"
+    pkg.mkdir()
+    (pkg / "spool.go").write_text(
+        'package spool\n\nimport "errors"\n\n'
+        'var ErrNoPrincipal = errors.New("spool: no principal in context")\n'
+    )
+    problems = run(tmp)
+    if problems:
+        return [f"probe_right_prefix_passes: expected pass, got {problems}"]
+    return []
+
+
+def _probe_test_file_exempt(tmp: Path) -> list[str]:
+    pkg = tmp / "spool"
+    pkg.mkdir()
+    (pkg / "spool_test.go").write_text(
+        'package spool\n\nimport "errors"\n\n'
+        'var errBoom = errors.New("memory: boom")\n'
+    )
+    problems = run(tmp)
+    if problems:
+        return [f"probe_test_file_exempt: expected pass, got {problems}"]
+    return []
+
+
+def _probe_underscore_dir_exempt(tmp: Path) -> list[str]:
+    pkg = tmp / "_agentloop"
+    pkg.mkdir()
+    (pkg / "main.go").write_text(
+        'package main\n\nimport "errors"\n\n'
+        'var errBoom = errors.New("cannedCompleter: boom")\n'
+    )
+    problems = run(tmp)
+    if problems:
+        return [f"probe_underscore_dir_exempt: expected pass, got {problems}"]
+    return []
+
+
+def _probe_real_tree_passes() -> list[str]:
+    root = Path(__file__).resolve().parent.parent
+    problems = run(root)
+    if problems:
+        return [f"probe_real_tree_passes: expected pass, got {problems}"]
+    return []
+
+
+def run_probe() -> bool:
+    """run_probe exercises check_error_prefixes against fixture files,
+    following check_deps.py's --probe convention. Fixtures are plain
+    directories (no go.mod, no git repo) since _go_files falls back to
+    a filesystem walk when git ls-files finds no repository there."""
+    problems = []
+    for fn in (
+        _probe_wrong_prefix_fails,
+        _probe_right_prefix_passes,
+        _probe_test_file_exempt,
+        _probe_underscore_dir_exempt,
+    ):
+        with tempfile.TemporaryDirectory(prefix="names-probe-") as tmp:
+            problems.extend(fn(Path(tmp)))
+    problems.extend(_probe_real_tree_passes())
+    if problems:
+        print("\n".join(problems))
+        return False
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="file/function/error-prefix naming gate")
+    parser.add_argument("--probe", action="store_true", help="run the gate's own probe suite")
+    args = parser.parse_args()
+
+    if args.probe:
+        return 0 if run_probe() else 1
+
+    root = Path(__file__).resolve().parent.parent
+    violations = run(root)
     if violations:
         print("\n".join(violations))
         return 1

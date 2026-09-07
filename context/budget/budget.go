@@ -1,6 +1,15 @@
 package budget
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrInvalidOptions is Validate's error when MaxBytes or MaxEvents is
+// negative. Wrapped with fmt.Errorf("%w: %s", ErrInvalidOptions,
+// "<field>: <rule>"); test with errors.Is plus a substring check on
+// the field name.
+var ErrInvalidOptions = errors.New("budget: invalid options")
 
 // Limits caps one model call's context by byte count and event
 // count. A zero MaxBytes means no byte cap; a zero MaxEvents means no
@@ -16,10 +25,10 @@ type Limits struct {
 // MaxBytes error.
 func (l Limits) Validate() error {
 	if l.MaxBytes < 0 {
-		return errors.New("contextbudget: MaxBytes must not be negative")
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxBytes: must not be negative")
 	}
 	if l.MaxEvents < 0 {
-		return errors.New("contextbudget: MaxEvents must not be negative")
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxEvents: must not be negative")
 	}
 	return nil
 }

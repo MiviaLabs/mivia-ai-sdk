@@ -3,6 +3,7 @@ package ledger
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -27,21 +28,13 @@ type Task struct {
 // Sentinel errors returned by Run during validation and replay.
 var (
 	// ErrNoLedger reports a nil Options.Ledger.
-	ErrNoLedger = errors.New("taskrun: ledger is required")
-	// ErrNoOwner reports an empty Options.Owner.
-	ErrNoOwner = errors.New("taskrun: owner is required")
-	// ErrNoActor reports an empty Options.Actor.
-	ErrNoActor = errors.New("taskrun: actor is required")
-	// ErrNoLease reports a non-positive Options.Lease.
-	ErrNoLease = errors.New("taskrun: lease must be positive")
-	// ErrNoTaskKey reports an empty Task.Key.
-	ErrNoTaskKey = errors.New("taskrun: task key is required")
+	ErrNoLedger = errors.New("ledger: ledger is required")
 	// ErrTaskDone reports a key already completed in the ledger.
-	ErrTaskDone = errors.New("taskrun: task already completed")
+	ErrTaskDone = errors.New("ledger: task already completed")
 	// ErrTaskFailed reports a key already failed in the ledger.
-	ErrTaskFailed = errors.New("taskrun: task already failed")
+	ErrTaskFailed = errors.New("ledger: task already failed")
 	// ErrTaskBlocked reports a key already blocked in the ledger.
-	ErrTaskBlocked = errors.New("taskrun: task blocked on a failed dependency")
+	ErrTaskBlocked = errors.New("ledger: task blocked on a failed dependency")
 )
 
 // Run admits, claims, and completes one task around work. The returned
@@ -54,23 +47,24 @@ var (
 // A bounded Store adds one more outcome: it can delete the record
 // between Admit and Claim, or after the lease expired while work
 // still runs, so Run returns an error satisfying errors.Is(err,
-// ErrNoTaskKey). Do not merge that sentinel with ledger.ErrNoTaskKey,
-// which means an empty Task.Key and is a caller error.
+// ErrNoKey). Do not confuse that sentinel with the ErrInvalidOptions
+// error for an empty Task.Key, a caller error caught before any Store
+// call.
 func Run(ctx context.Context, opts Options, t Task, work func(context.Context) error) error {
 	if opts.Ledger == nil {
 		return ErrNoLedger
 	}
 	if opts.Owner == "" {
-		return ErrNoOwner
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Owner: is required")
 	}
 	if opts.Actor == "" {
-		return ErrNoActor
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Actor: is required")
 	}
 	if opts.Lease <= 0 {
-		return ErrNoLease
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Lease: must be positive")
 	}
 	if t.Key == "" {
-		return ErrNoTaskKey
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Key: task key is required")
 	}
 	nowFn := opts.Now
 	if nowFn == nil {

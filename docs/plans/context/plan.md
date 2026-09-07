@@ -247,3 +247,42 @@ cross-module path updates through the existing `replace` directive.
     - Hits inside `docs/plans/` are historical records and stay;
       each old plan carries a superseded marker naming its
       successor.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+This pass classified every sentinel in `context/plan` as CONFIG
+(construction-time argument check) or RUNTIME (reacts to live
+message content or a completer call). It merged the CONFIG
+sentinels behind one new `ErrInvalidOptions`, in `window.go`. Each
+merged site now wraps `ErrInvalidOptions` with
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "<field>: <rule>")`.
+
+`ErrMaxTokensNotPositive` stayed a named sentinel instead of
+merging. `agentloop/agentloop_test/compaction_test.go` asserts on it
+by name, and this pass does not own or edit `agentloop`. Treat this
+as a deliberate, recorded exception, not an oversight.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrMaxTokensNotPositive` | CONFIG | Kept as its own sentinel. Exception: `agentloop/agentloop_test` asserts on it by name. |
+| `ErrReserveNegative` | CONFIG | Deleted. Merged into `ErrInvalidOptions` with substring `Reserve`. |
+| `ErrReserveTooLarge` | CONFIG | Deleted. Merged into `ErrInvalidOptions` with substring `Reserve`. |
+| Compaction target-tokens-at-budget check (`window.go`, no prior name) | CONFIG | Now wraps `ErrInvalidOptions` with substring `TargetTokens`. |
+| Compaction percent and target-tokens bounds (`compaction.go`, no prior name) | CONFIG | Now wraps `ErrInvalidOptions` with substring `TriggerPercent`, `TargetPercent`, `TargetTokens`, or `RecentTail`. |
+| PreserveNames blank/duplicate checks (`compaction.go`, no prior name) | CONFIG | Now wrap `ErrInvalidOptions` with substring `PreserveNames`. |
+| `ErrNilCompleter` | CONFIG | Deleted. Merged into `ErrInvalidOptions` with substring `Completer`. |
+| `ErrNoMessages` | RUNTIME | Unchanged. Reacts to the message slice `Compact` receives. |
+| `ErrEstimateFailed` | RUNTIME | Unchanged. Reacts to a live token-estimator call. |
+| `ErrRetentionOverflow` | RUNTIME | Unchanged. Reacts to the retention set computed from the message slice. |
+| `ErrNoObjective` | RUNTIME | Unchanged. Reacts to the message slice `Compact` receives. |
+| `ErrNoMessagesToSummarize` | RUNTIME | Unchanged. Reacts to the message slice `Summarize` receives. |
+| `ErrInvalidReply` | RUNTIME | Unchanged. Reacts to a live completer reply. |
+| `ErrCallFailed` | RUNTIME | Unchanged. Reacts to a live completer call. |
+| `ErrSummarySkipped` | RUNTIME | Unchanged. An adapter returns it at call time to decline summary injection. |
+
+`summary.go` carries no named sentinels. Its field-validation errors
+are plain, unwrapped `fmt.Errorf` calls, already funneled into the
+RUNTIME `ErrInvalidReply` by `summarizer.go`'s `decodeReply`. This
+pass left them as they were.

@@ -32,12 +32,10 @@ var ErrEscape = errors.New("workspace: path escapes root")
 // own policy refusal.
 var ErrTooLarge = errors.New("workspace: file exceeds read limit")
 
-// ErrInvalidLimit reports a read bound that is neither Unbounded, nor
-// zero, nor a positive value at or under maxReadLimit.
-var ErrInvalidLimit = errors.New("workspace: invalid read limit")
-
-// ErrBlankRoot reports that Options.Root is blank after TrimSpace.
-var ErrBlankRoot = errors.New("workspace: Root is blank")
+// ErrInvalidOptions reports an Options field that fails Validate: a
+// blank Root, or a MaxReadBytes that is neither Unbounded, nor zero,
+// nor a positive value at or under maxReadLimit.
+var ErrInvalidOptions = errors.New("workspace: invalid options")
 
 // ErrSecretPath reports that Options.Deny refuses a path. Two rules
 // return it. The name check matches the cleaned root-relative path
@@ -78,25 +76,26 @@ type Options struct {
 }
 
 // Validate reports whether o names a usable Workspace. Root must not
-// be blank; a blank Root returns ErrBlankRoot. MaxReadBytes must be
-// Unbounded, zero, or a positive value at or under maxReadLimit. Deny
-// may be nil, which denies nothing.
+// be blank; a blank Root returns ErrInvalidOptions naming Root.
+// MaxReadBytes must be Unbounded, zero, or a positive value at or
+// under maxReadLimit; any other value returns ErrInvalidOptions
+// naming MaxReadBytes. Deny may be nil, which denies nothing.
 func (o Options) Validate() error {
 	if strings.TrimSpace(o.Root) == "" {
-		return ErrBlankRoot
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Root: must not be blank")
 	}
 	return validateLimit(o.MaxReadBytes)
 }
 
 // validateLimit enforces the one read-bound rule: Unbounded, zero, or
 // a positive value at or under maxReadLimit passes; any other value
-// returns ErrInvalidLimit. Options.Validate and effectiveLimit both
+// returns ErrInvalidOptions. Options.Validate and effectiveLimit both
 // call it, so the rule has one enforcer.
 func validateLimit(v int64) error {
 	if v == Unbounded || (v >= 0 && v <= maxReadLimit) {
 		return nil
 	}
-	return fmt.Errorf("%w: %d", ErrInvalidLimit, v)
+	return fmt.Errorf("%w: %s", ErrInvalidOptions, fmt.Sprintf("MaxReadBytes: %d is not Unbounded, zero, or a positive value at or under the limit", v))
 }
 
 // Open resolves root to an absolute, symlink-free real path, opens it

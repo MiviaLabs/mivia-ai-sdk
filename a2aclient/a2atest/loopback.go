@@ -85,18 +85,18 @@ func (e *loopbackExecutor) Cancel(ctx context.Context, reqCtx *a2asrv.RequestCon
 // MaxHops in its response envelope.
 func loopbackRequest(reqCtx *a2asrv.RequestContext) (envelope.Message, error) {
 	if reqCtx.Message == nil {
-		return envelope.Message{}, errors.New("loopback: request carries no message")
+		return envelope.Message{}, errors.New("a2atest: request carries no message")
 	}
 	for _, p := range reqCtx.Message.Parts {
 		if tp, ok := p.(a2acore.TextPart); ok {
 			var m envelope.Message
 			if err := json.Unmarshal([]byte(tp.Text), &m); err != nil {
-				return envelope.Message{}, fmt.Errorf("loopback: decode request: %w", err)
+				return envelope.Message{}, fmt.Errorf("a2atest: decode request: %w", err)
 			}
 			return m, nil
 		}
 	}
-	return envelope.Message{}, errors.New("loopback: request carries no text part")
+	return envelope.Message{}, errors.New("a2atest: request carries no text part")
 }
 
 // Loopback starts a gRPC A2A server on a 127.0.0.1 loopback port. It

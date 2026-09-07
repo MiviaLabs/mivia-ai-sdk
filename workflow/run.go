@@ -20,8 +20,9 @@ import (
 // human instead of resolving an ack.
 type AckWait func(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
 
-// Sentinel errors for Run; test with errors.Is. ErrNoBus, already
-// exported by the phase 20 translator, is reused for a nil bus.
+// Sentinel errors for Run; test with errors.Is. A nil a, a nil
+// a.id, or a nil bus fails with ErrInvalidOptions instead: see
+// agent.go and translator.go.
 var (
 	ErrEscalated  = errors.New("workflow: step escalated")
 	ErrNoWait     = errors.New("workflow: wait is required")
@@ -96,13 +97,13 @@ func (a *Agent) Run(
 	room string, budget *budget.Limits,
 ) (machine.Status, machine.InOut, error) {
 	if a == nil || a.id == nil {
-		return machine.Status(""), in, ErrNoIdentity
+		return machine.Status(""), in, fmt.Errorf("%w: %s", ErrInvalidOptions, "identity: identity is required")
 	}
 	if wait == nil {
 		return machine.Status(""), in, ErrNoWait
 	}
 	if bus == nil {
-		return machine.Status(""), in, ErrNoBus
+		return machine.Status(""), in, fmt.Errorf("%w: %s", ErrInvalidOptions, "bus: bus is required")
 	}
 	if threadID == "" {
 		return machine.Status(""), in, ErrNoThread

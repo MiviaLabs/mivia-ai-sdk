@@ -3,6 +3,7 @@ package scheduler_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,17 +16,18 @@ func TestAdd(t *testing.T) {
 	noop := func(ctx context.Context) error { return nil }
 
 	tests := []struct {
-		name    string
-		id      string
-		sched   scheduler.Schedule
-		job     scheduler.Job
-		wantErr error
+		name       string
+		id         string
+		sched      scheduler.Schedule
+		job        scheduler.Job
+		wantErr    error
+		wantSubstr string
 	}{
-		{"blank id", "", scheduler.Every(time.Second), noop, scheduler.ErrBlankID},
-		{"whitespace-only id", "   ", scheduler.Every(time.Second), noop, scheduler.ErrBlankID},
-		{"nil schedule", "job-1", nil, noop, scheduler.ErrNilSchedule},
-		{"nil job", "job-1", scheduler.Every(time.Second), nil, scheduler.ErrNilJob},
-		{"valid call", "job-1", scheduler.Every(time.Second), noop, nil},
+		{"blank id", "", scheduler.Every(time.Second), noop, scheduler.ErrInvalidOptions, "ID"},
+		{"whitespace-only id", "   ", scheduler.Every(time.Second), noop, scheduler.ErrInvalidOptions, "ID"},
+		{"nil schedule", "job-1", nil, noop, scheduler.ErrInvalidOptions, "Schedule"},
+		{"nil job", "job-1", scheduler.Every(time.Second), nil, scheduler.ErrInvalidOptions, "Job"},
+		{"valid call", "job-1", scheduler.Every(time.Second), noop, nil, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -33,6 +35,9 @@ func TestAdd(t *testing.T) {
 			err := s.Add(tc.id, tc.sched, tc.job)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("Add(%q) error = %v, want %v", tc.id, err, tc.wantErr)
+			}
+			if tc.wantSubstr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantSubstr)) {
+				t.Fatalf("Add(%q) error = %v, want substring %q", tc.id, err, tc.wantSubstr)
 			}
 		})
 	}

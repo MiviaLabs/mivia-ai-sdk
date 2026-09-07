@@ -3,6 +3,7 @@ package tools_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -13,20 +14,32 @@ import (
 func TestAdd(t *testing.T) {
 	t.Run("nil tool", func(t *testing.T) {
 		r := tools.New()
-		if err := r.Add(nil); !errors.Is(err, tools.ErrNilTool) {
-			t.Fatalf("Add(nil) error = %v, want ErrNilTool", err)
+		err := r.Add(nil)
+		if !errors.Is(err, tools.ErrInvalidOptions) {
+			t.Fatalf("Add(nil) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Tool") {
+			t.Fatalf("Add(nil) error = %v, want it to name the Tool field", err)
 		}
 	})
 	t.Run("empty name", func(t *testing.T) {
 		r := tools.New()
-		if err := r.Add(&stubTool{name: ""}); !errors.Is(err, tools.ErrBlankName) {
-			t.Fatalf("Add(empty name) error = %v, want ErrBlankName", err)
+		err := r.Add(&stubTool{name: ""})
+		if !errors.Is(err, tools.ErrInvalidOptions) {
+			t.Fatalf("Add(empty name) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Tool.Name") {
+			t.Fatalf("Add(empty name) error = %v, want it to name the Tool.Name field", err)
 		}
 	})
 	t.Run("whitespace-only name", func(t *testing.T) {
 		r := tools.New()
-		if err := r.Add(&stubTool{name: "   "}); !errors.Is(err, tools.ErrBlankName) {
-			t.Fatalf("Add(whitespace name) error = %v, want ErrBlankName", err)
+		err := r.Add(&stubTool{name: "   "})
+		if !errors.Is(err, tools.ErrInvalidOptions) {
+			t.Fatalf("Add(whitespace name) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Tool.Name") {
+			t.Fatalf("Add(whitespace name) error = %v, want it to name the Tool.Name field", err)
 		}
 	})
 	t.Run("new name accepted", func(t *testing.T) {

@@ -57,40 +57,40 @@ func isReplay(err error) bool {
 // diagnostics, called after their point in the ladder with their
 // error return ignored. Resolve, handle, and ack construction run
 // once per replay key, guarded by ledger.Run; a duplicate key
-// answers a "replay:" error line instead of running them again.
+// answers a "dispatch: replay:" error line instead of running them again.
 func (e *Endpoint) processLine(ctx context.Context, line []byte) []byte {
 	m, err := envelope.Decode(line)
 	if err != nil {
-		return encodeErrorLine(fmt.Errorf("decode: %w", err))
+		return encodeErrorLine(fmt.Errorf("dispatch: decode: %w", err))
 	}
 	if err := m.VerifySignature(); err != nil {
-		return encodeErrorLine(fmt.Errorf("verify: %w", err))
+		return encodeErrorLine(fmt.Errorf("dispatch: verify: %w", err))
 	}
 	_ = workflow.EmitMessageDelivered(ctx, e.bus, m)
 	if err := e.room.Accepts(m); err != nil {
-		return encodeErrorLine(fmt.Errorf("admit: %w", err))
+		return encodeErrorLine(fmt.Errorf("dispatch: admit: %w", err))
 	}
 
 	var ack envelope.Ack
 	work := func(ctx context.Context) error {
 		h, err := e.resolve(ctx, m)
 		if err != nil {
-			return fmt.Errorf("resolve: %w", err)
+			return fmt.Errorf("dispatch: resolve: %w", err)
 		}
 		restatement, err := h.Handle(ctx, m)
 		if err != nil {
-			return fmt.Errorf("handle: %w", err)
+			return fmt.Errorf("dispatch: handle: %w", err)
 		}
 		ack, err = envelope.NewAck(m, e.id, restatement)
 		if err != nil {
-			return fmt.Errorf("handle: %w", err)
+			return fmt.Errorf("dispatch: handle: %w", err)
 		}
 		return nil
 	}
 	task := ledger.Task{Key: replayKey(m), Seq: 1, Description: string(m.Intent)}
 	if err := ledger.Run(ctx, e.taskOpts, task, work); err != nil {
 		if isReplay(err) {
-			return encodeErrorLine(fmt.Errorf("replay: %w", ErrReplay))
+			return encodeErrorLine(ErrReplay)
 		}
 		return encodeErrorLine(err)
 	}

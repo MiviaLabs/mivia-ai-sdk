@@ -81,8 +81,8 @@ func TestRunnerResolves(t *testing.T) {
 	t.Run("nil agent", func(t *testing.T) {
 		d := loadForRunner(t, true)
 		_, err := d.Runner()
-		if !errors.Is(err, run.ErrNoAgent) {
-			t.Fatalf("err = %v, want run.ErrNoAgent", err)
+		if !errors.Is(err, run.ErrInvalidOptions) || !strings.Contains(err.Error(), "Agent") {
+			t.Fatalf("err = %v, want run.ErrInvalidOptions naming Agent", err)
 		}
 	})
 	t.Run("bad budget", func(t *testing.T) {

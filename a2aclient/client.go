@@ -29,18 +29,6 @@ import (
 // cannot import a2a-go directly. Both stay unexported: no caller
 // outside this package's own tests needs them. See
 // docs/plans/a2aclient.md's Verification section for the test seam.
-// ErrNoBaseURL reports a New or newFromTransport call whose baseURL
-// is empty. Test with errors.Is.
-var ErrNoBaseURL = errors.New("a2aclient: baseURL is required")
-
-// ErrNoTransport reports a newFromTransport call whose tr is nil.
-// Test with errors.Is.
-var ErrNoTransport = errors.New("a2aclient: transport is required")
-
-// ErrNoTLSConfig reports a NewWithTLS call whose cfg is nil. Test
-// with errors.Is.
-var ErrNoTLSConfig = errors.New("a2aclient: TLS config is required")
-
 // ErrUnsigned reports a Send call whose message carries no signer.
 // Test with errors.Is.
 var ErrUnsigned = errors.New("a2aclient: message must be signed")
@@ -96,7 +84,7 @@ type Client struct {
 // Client. Use NewWithTLS for a remote link that needs TLS.
 func New(baseURL string) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, ErrNoBaseURL
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "baseURL: is required")
 	}
 	tr, err := newGRPCTransport(baseURL, insecure.NewCredentials())
 	if err != nil {
@@ -107,16 +95,16 @@ func New(baseURL string) (*Client, error) {
 
 // NewWithTLS builds a Client that talks to the A2A agent at baseURL
 // over a gRPC channel secured by cfg. A nil cfg fails with
-// ErrNoTLSConfig, never an implicit dial mode. It returns an error,
+// ErrInvalidOptions, never an implicit dial mode. It returns an error,
 // not a partial Client, when baseURL is empty, cfg is nil, or the
 // transport fails to open. The caller must call Close when done with
 // the Client.
 func NewWithTLS(baseURL string, cfg *tls.Config) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, ErrNoBaseURL
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "baseURL: is required")
 	}
 	if cfg == nil {
-		return nil, ErrNoTLSConfig
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "cfg: TLS config is required")
 	}
 	tr, err := newGRPCTransport(baseURL, credentials.NewTLS(cfg))
 	if err != nil {
@@ -132,10 +120,10 @@ func NewWithTLS(baseURL string, cfg *tls.Config) (*Client, error) {
 // partial Client, when baseURL is empty or tr is nil.
 func newFromTransport(baseURL string, tr transport) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, ErrNoBaseURL
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "baseURL: is required")
 	}
 	if tr == nil {
-		return nil, ErrNoTransport
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "transport: is required")
 	}
 	return &Client{baseURL: baseURL, transport: tr}, nil
 }

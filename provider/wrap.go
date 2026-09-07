@@ -15,13 +15,13 @@ import (
 // passthrough.
 func WrapCompleter(sessionID string, a *Accumulator, c Completer) (Completer, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return nil, fmt.Errorf("usage: wrap: sessionID %q: %w", sessionID, ErrBlankSessionID)
+		return nil, fmt.Errorf("provider: wrap: sessionID %q: %w", sessionID, ErrBlankSessionID)
 	}
 	if a == nil {
-		return nil, fmt.Errorf("usage: wrap: %w", ErrNilAccumulator)
+		return nil, fmt.Errorf("provider: wrap: %w: %s", ErrInvalidOptions, "Accumulator: must not be nil")
 	}
 	if c == nil {
-		return nil, fmt.Errorf("usage: wrap: %w", ErrNilUsageCompleter)
+		return nil, fmt.Errorf("provider: wrap: %w: %s", ErrInvalidOptions, "Completer: must not be nil")
 	}
 	return &recordingCompleter{sessionID: sessionID, acc: a, inner: c}, nil
 }

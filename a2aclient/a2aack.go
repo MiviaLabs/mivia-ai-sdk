@@ -27,29 +27,27 @@ type Options struct {
 // Validate checks that Poll is positive and Timeout covers at least one Poll.
 func (o Options) Validate() error {
 	if o.Poll <= 0 {
-		return ErrNoPoll
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Poll: must be positive")
 	}
 	if o.Timeout < o.Poll {
-		return ErrShortTimeout
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Timeout: must cover at least one Poll interval")
 	}
 	return nil
 }
 
 var (
-	// ErrNoClient means Wait got a nil client.
-	ErrNoClient = errors.New("a2aack: client is required")
-	// ErrNoPoll means the poll interval is not positive.
-	ErrNoPoll = errors.New("a2aack: poll interval must be positive")
-	// ErrShortTimeout means the timeout does not cover one poll.
-	ErrShortTimeout = errors.New("a2aack: timeout must cover one poll")
+	// ErrInvalidOptions reports a Wait or Options.Validate call whose
+	// construction input fails a sanity check. Test with errors.Is
+	// and a substring check on the field name.
+	ErrInvalidOptions = errors.New("a2aclient: invalid options")
 	// ErrRemoteFailed means the remote task ended failed, canceled,
 	// rejected, or in a state a2aack cannot resolve.
-	ErrRemoteFailed = errors.New("a2aack: remote task failed")
+	ErrRemoteFailed = errors.New("a2aclient: remote task failed")
 	// ErrTimeout means the exchange outran its deadline or ctx.
-	ErrTimeout = errors.New("a2aack: remote task timed out")
+	ErrTimeout = errors.New("a2aclient: remote task timed out")
 	// ErrSignerMismatch means the result verified but its signer is
 	// not the pinned Options.ExpectSigner.
-	ErrSignerMismatch = errors.New("a2aack: result signer is not the expected remote")
+	ErrSignerMismatch = errors.New("a2aclient: result signer is not the expected remote")
 )
 
 // Remote is the remote-task round trip a2aack polls: send, status,
@@ -62,11 +60,11 @@ type Remote interface {
 
 // Wait returns the AckWait that resolves one step through c. Wait
 // validates c and opts before it returns the AckWait, never inside a
-// poll tick. It returns (nil, ErrNoClient) for a nil c and (nil,
-// opts.Validate()) for invalid options.
+// poll tick. It returns (nil, ErrInvalidOptions) wrapped for a nil c
+// and for invalid options.
 func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (envelope.Ack, error), error) {
 	if c == nil {
-		return nil, ErrNoClient
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "client: is required")
 	}
 	if err := opts.Validate(); err != nil {
 		return nil, err
@@ -127,7 +125,7 @@ func poll(ctx context.Context, c Remote, h TaskHandle, opts Options, msg envelop
 // msg.ID, the sent step's own id, not the server-minted result id.
 func ackFromResult(msg, result envelope.Message, expect string) (envelope.Ack, error) {
 	if err := result.VerifySignature(); err != nil {
-		return envelope.Ack{}, fmt.Errorf("a2aack: result signature check failed: %w", err)
+		return envelope.Ack{}, fmt.Errorf("a2aclient: result signature check failed: %w", err)
 	}
 	if expect != "" && result.Signer != expect {
 		return envelope.Ack{}, fmt.Errorf("%w: got signer %s", ErrSignerMismatch, result.Signer)

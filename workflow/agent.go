@@ -8,13 +8,12 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
-// Sentinel errors for New and Run; test with errors.Is. A card
-// validation failure wraps discovery's own error instead, because
-// discovery exports no sentinel.
-var (
-	ErrNoIdentity = errors.New("workflow: identity is required")
-	ErrNoPlan     = errors.New("workflow: plan is required")
-)
+// ErrInvalidOptions reports a New or Run argument that fails
+// construction-time validation: a nil identity, a nil plan, or a nil
+// bus. The wrapped message names the field and the rule it broke.
+// Test with errors.Is. A card validation failure wraps discovery's
+// own error instead, because discovery exports no sentinel.
+var ErrInvalidOptions = errors.New("workflow: invalid options")
 
 // Agent binds one identity, one capability card, and one step plan
 // into a single declarative value. Build it with New; the fields
@@ -33,13 +32,13 @@ type Agent struct {
 // for the check to reject.
 func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error) {
 	if id == nil {
-		return nil, ErrNoIdentity
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "identity: identity is required")
 	}
 	if err := card.Validate(); err != nil {
 		return nil, fmt.Errorf("workflow: invalid card: %w", err)
 	}
 	if plan == nil {
-		return nil, ErrNoPlan
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "plan: plan is required")
 	}
 	return &Agent{id: id, card: card, plan: plan}, nil
 }

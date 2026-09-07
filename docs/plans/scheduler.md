@@ -290,3 +290,39 @@ happens in caller code only.
 `Add`, and `Remove` paths. `AGENTS.md`'s package layout list gains a
 `scheduler/` bullet, matching the existing bullets' level of detail:
 package name, one-sentence purpose, and its import edges (`events`).
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This sweep classified every sentinel in `scheduler.go` and
+`registry.go` as CONFIG or RUNTIME. A CONFIG sentinel checks
+caller-supplied input inside a constructor's argument check. A
+RUNTIME sentinel reacts to live state at call time, such as the
+registry's map.
+
+Every CONFIG sentinel merged into one new sentinel, `ErrInvalidOptions`,
+defined in `scheduler.go`. Each merged return site now wraps
+`ErrInvalidOptions` with `fmt.Errorf("%w: %s", ...)` and a field name
+plus a one-line rule. A test checks the merged error with `errors.Is`
+and a substring on the field name.
+
+RUNTIME sentinels keep their own identity and message. `ErrDuplicateID`,
+`ErrDuplicateName`, `ErrUnknownName`, and `ErrConditionNotMet` all read
+live state: a registered id or name, or a `Condition`'s live result.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrBlankID` | CONFIG | Merged into `ErrInvalidOptions` (field: `ID`). |
+| `ErrNilSchedule` | CONFIG | Merged into `ErrInvalidOptions` (field: `Schedule`). |
+| `ErrNilJob` | CONFIG | Merged into `ErrInvalidOptions` (field: `Job`). |
+| `ErrDuplicateID` | RUNTIME | Kept unchanged. `Add` checks the registry's live map for the id. |
+| `ErrBlankName` | CONFIG | Merged into `ErrInvalidOptions` (field: `Name`). |
+| `ErrNilAction` | CONFIG | Merged into `ErrInvalidOptions` (field: `Action`). |
+| `ErrDuplicateName` | RUNTIME | Kept unchanged. `Add` checks the registry's live map for the name. |
+| `ErrUnknownName` | RUNTIME | Kept unchanged. `Fire` looks up a live registration by name. |
+| `ErrConditionNotMet` | RUNTIME | Kept unchanged. `Fire` evaluates the `Condition` against live state. |
+
+No caller in `agentloop`, `x`, or `internal` referenced any deleted
+sentinel. `go build ./scheduler/...` and `go test ./scheduler/...`
+pass.

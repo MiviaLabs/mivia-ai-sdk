@@ -21,13 +21,13 @@ const (
 )
 
 // Validate rejects pointUnset and any value outside the three named
-// constants.
+// constants. Wraps ErrInvalidOptions; test with errors.Is.
 func (p Point) Validate() error {
 	switch p {
 	case PointPreTool, PointPostTool, PointStop:
 		return nil
 	default:
-		return fmt.Errorf("hooks: invalid point %d", int(p))
+		return fmt.Errorf("%w: Point %d is not a valid point value", ErrInvalidOptions, int(p))
 	}
 }
 

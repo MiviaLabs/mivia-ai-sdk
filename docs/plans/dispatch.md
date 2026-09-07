@@ -904,3 +904,27 @@ Outside:
 - `docs/packages/dispatch.md`'s `ErrReplay` entry already names
   `ledger.ErrNotClaimed`; this addendum makes the plan agree with it.
 - `make verify` passes.
+
+## Addendum: Error sentinel sweep
+Status: shipped.
+
+This addendum classifies each `dispatch` sentinel as CONFIG (a
+construction-time input fault) or RUNTIME (a live-request fault), and
+merges the CONFIG sentinels into one `ErrInvalidOptions`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNoID` | CONFIG | Merged into `ErrInvalidOptions` ("ID: ..."). |
+| `ErrNoRoom` | CONFIG | Merged into `ErrInvalidOptions` ("Room: ..."). |
+| `ErrNoResolve` | CONFIG | Merged into `ErrInvalidOptions` ("Resolve: ..."). |
+| `ErrBadMaxBody` | CONFIG | Merged into `ErrInvalidOptions` ("MaxBodyBytes: ..."). |
+| `ErrBadReplayLease` | CONFIG | Merged into `ErrInvalidOptions` ("ReplayLease: ..." or "ReplayCapacity: ..."). |
+| `ErrBadMethod` | RUNTIME | Kept. Reacts to a live request's HTTP method. |
+| `ErrBadRequest` | RUNTIME | Kept. Reacts to a live request body read. |
+| `ErrReplay` | RUNTIME | Kept. Reacts to the ledger's live admission state. |
+
+`Options.Validate` now wraps every CONFIG fault as
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "<Field>: <rule>")`. Callers
+test with `errors.Is(err, dispatch.ErrInvalidOptions)` and a substring
+check on the field name. `dispatch/dispatch_test/options_test.go` and
+`bodylimit_test.go` assert the new shape.

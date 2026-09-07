@@ -7,20 +7,10 @@ import (
 	"sync"
 )
 
-// The sentinels below cover Record's, Reset's, and WrapCompleter's
-// rejection causes, checked with errors.Is.
-var (
-	// ErrBlankSessionID is Record's and Reset's error when sessionID is
-	// blank after trimming, and WrapCompleter's construction error for
-	// the same cause.
-	ErrBlankSessionID = errors.New("usage: sessionID must not be blank")
-	// ErrNilAccumulator is WrapCompleter's construction error for a
-	// nil Accumulator.
-	ErrNilAccumulator = errors.New("usage: accumulator must not be nil")
-	// ErrNilUsageCompleter is WrapCompleter's construction error for a nil
-	// Completer.
-	ErrNilUsageCompleter = errors.New("usage: completer must not be nil")
-)
+// ErrBlankSessionID is Record's and Reset's error when sessionID is
+// blank after trimming, and WrapCompleter's construction error for
+// the same cause; test with errors.Is.
+var ErrBlankSessionID = errors.New("provider: sessionID must not be blank")
 
 // Accumulator holds one running Usage total per session
 // identifier, guarded for concurrent access. Its fields stay
@@ -45,7 +35,7 @@ func NewAccumulator() *Accumulator {
 // than one goroutine for the same or different sessionID values.
 func (a *Accumulator) Record(sessionID string, u Usage) error {
 	if strings.TrimSpace(sessionID) == "" {
-		return fmt.Errorf("usage: sessionID %q: %w", sessionID, ErrBlankSessionID)
+		return fmt.Errorf("provider: sessionID %q: %w", sessionID, ErrBlankSessionID)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -78,7 +68,7 @@ func (a *Accumulator) Total(sessionID string) (Usage, bool) {
 // not an error.
 func (a *Accumulator) Reset(sessionID string) error {
 	if strings.TrimSpace(sessionID) == "" {
-		return fmt.Errorf("usage: sessionID %q: %w", sessionID, ErrBlankSessionID)
+		return fmt.Errorf("provider: sessionID %q: %w", sessionID, ErrBlankSessionID)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()

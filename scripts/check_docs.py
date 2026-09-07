@@ -5,9 +5,21 @@ for AI and human consumers. Exits non-zero on violations."""
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import go_packages  # noqa: E402
+
 DECL = re.compile(r"^(?:func\s+(?:\([^)]*\)\s+)?|type\s+)([A-Z]\w*)")
+
+# A docs/packages/<path>.md reference page must name a live package,
+# unless its first "Status:" line marks it superseded or relocated.
+# This keeps a fold or a removal from leaving a stale reference page
+# behind: check_orphan_packages.py catches the missing wiring, this
+# gate catches the missing doc cleanup.
+_PACKAGE_DOC_STATUS = re.compile(r"^\s*(?:>\s*)?Status:\s*(\S+)", re.MULTILINE)
+_PACKAGE_DOC_ALLOWED_STATUS = {"superseded", "relocated", "moved"}
 
 # The package-count rule pins docs/architecture.md's opening paragraph
 # to the tree: the spelled-out count in "the <words> packages" must
@@ -94,6 +106,85 @@ def check_package_count(root: Path) -> list[str]:
     return problems
 
 
+def package_doc_status(text: str) -> str | None:
+    """package_doc_status returns the first "Status:" line's first word,
+    lowercased. None means the page states no status line."""
+    m = _PACKAGE_DOC_STATUS.search(text)
+    if not m:
+        return None
+    return m.group(1).strip(",.").lower()
+
+
+def check_package_doc_paths(root: Path) -> list[str]:
+    """check_package_doc_paths flags a docs/packages/<path>.md page whose
+    <path> names no live package. A page for a moved or deleted package
+    must say so with a leading "Status: superseded" or "Status:
+    relocated" line; an ordinary reference page must name a real
+    package."""
+    problems = []
+    live = set(go_packages.package_paths(root))
+    # A page may use a package's last path segment as its flat basename
+    # instead of nesting the full path, e.g. docs/packages/ref.md for
+    # the context/ref package (see docs/README.md's existing links).
+    live_basenames = {pkg.rsplit("/", 1)[-1] for pkg in live}
+    pkg_docs_root = root / "docs" / "packages"
+    if not pkg_docs_root.exists():
+        return problems
+    for path in sorted(pkg_docs_root.rglob("*.md")):
+        rel_pkg = path.relative_to(pkg_docs_root).with_suffix("").as_posix()
+        if rel_pkg in live or rel_pkg in live_basenames:
+            continue
+        status = package_doc_status(path.read_text())
+        if status not in _PACKAGE_DOC_ALLOWED_STATUS:
+            problems.append(
+                f"{path.relative_to(root)}: names no live package "
+                f"({rel_pkg!r}); add a 'Status: superseded' or "
+                "'Status: relocated' line, or delete the page"
+            )
+    return problems
+
+
+def _write_package_doc_fixture(root: Path) -> None:
+    """_write_package_doc_fixture writes a module with one live package
+    and a docs/packages tree for the check_package_doc_paths probes."""
+    go_packages.write_file(root, "go.mod", f"module {go_packages.MODULE}\n\ngo 1.25.0\n")
+    go_packages.write_file(root, "leaf/leaf.go", "package leaf\n\nvar Leaf = 1\n")
+
+
+def _probe_live_package_doc_passes(root: Path) -> list[str]:
+    _write_package_doc_fixture(root)
+    go_packages.write_file(root, "docs/packages/leaf.md", "# leaf\n\nLive package.\n")
+    problems = check_package_doc_paths(root)
+    if problems:
+        return [f"probe_live_package_doc_passes: expected pass, got {problems}"]
+    return []
+
+
+def _probe_stale_package_doc_without_status_fails(root: Path) -> list[str]:
+    _write_package_doc_fixture(root)
+    go_packages.write_file(root, "docs/packages/gone.md", "# gone\n\nNo status line.\n")
+    problems = check_package_doc_paths(root)
+    if not any("gone.md" in p for p in problems):
+        return [
+            "probe_stale_package_doc_without_status_fails: expected a "
+            f"gone.md problem, got {problems}"
+        ]
+    return []
+
+
+def _probe_stale_package_doc_superseded_passes(root: Path) -> list[str]:
+    _write_package_doc_fixture(root)
+    go_packages.write_file(
+        root, "docs/packages/gone.md", "# gone\n\nStatus: superseded, see leaf.md\n"
+    )
+    problems = check_package_doc_paths(root)
+    if problems:
+        return [
+            f"probe_stale_package_doc_superseded_passes: expected pass, got {problems}"
+        ]
+    return []
+
+
 def run_probe() -> bool:
     """run_probe exercises the count parser against fixed strings,
     following check_plan.py's --probe convention. The go-list
@@ -122,6 +213,19 @@ def run_probe() -> bool:
     if doc_package_count("no phrase here\n") is not None:
         print("doc_package_count invented a count from prose")
         return False
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="docs-probe-") as tmp:
+        for fn in (
+            _probe_live_package_doc_passes,
+            _probe_stale_package_doc_without_status_fails,
+            _probe_stale_package_doc_superseded_passes,
+        ):
+            sub = Path(tmp) / fn.__name__
+            sub.mkdir()
+            problems.extend(fn(sub))
+    if problems:
+        print("\n".join(problems))
+        return False
     return True
 
 
@@ -148,6 +252,7 @@ def main() -> int:
             if not re.match(rf"^//\s*{re.escape(name)}\b", first):
                 violations.append(f"{path.relative_to(root)}:{i + 1}: {name} lacks doc comment")
     violations.extend(check_package_count(root))
+    violations.extend(check_package_doc_paths(root))
     if violations:
         print("\n".join(violations))
         return 1

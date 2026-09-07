@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -227,14 +227,14 @@ func TestSteerTriggeredButErrNotCanceled(t *testing.T) {
 func TestSteerFiresPointStopWithSteeredPayload(t *testing.T) {
 	entered := make(chan struct{})
 	c := &blockingCompleter{entered: entered}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var got agentloop.Result
 	var gotOK bool
-	if err := hreg.Add(hooks.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
 		got, gotOK = payload.(agentloop.Result)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: c, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,

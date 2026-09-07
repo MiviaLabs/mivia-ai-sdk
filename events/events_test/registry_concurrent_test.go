@@ -1,4 +1,4 @@
-package hooks_test
+package events_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 )
 
 // TestConcurrentAddDistinctNamesAllLand runs N goroutines each
@@ -16,7 +16,7 @@ import (
 // point once. Every Add must land with no data race, and the Fire
 // must run all N handlers.
 func TestConcurrentAddDistinctNamesAllLand(t *testing.T) {
-	r := hooks.New()
+	r := events.NewRegistry()
 	const n = 100
 	var calls int32
 	counter := func(context.Context, any) (bool, error) {
@@ -30,14 +30,14 @@ func TestConcurrentAddDistinctNamesAllLand(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			name := fmt.Sprintf("hook-%03d", i)
-			if err := r.Add(hooks.PointStop, name, counter); err != nil {
+			if err := r.Add(events.PointStop, name, counter); err != nil {
 				t.Errorf("Add(%s) error = %v, want nil", name, err)
 			}
 		}()
 	}
 	wg.Wait()
 
-	if err := r.Fire(context.Background(), hooks.PointStop, nil); err != nil {
+	if err := r.Fire(context.Background(), events.PointStop, nil); err != nil {
 		t.Fatalf("Fire(stop) = %v, want nil", err)
 	}
 	if got := atomic.LoadInt32(&calls); got != n {
@@ -53,14 +53,14 @@ func TestConcurrentAddDistinctNamesAllLand(t *testing.T) {
 // zero or more churned handlers plus the bystander; every call
 // returns nil, and the bystander runs exactly once per Fire.
 func TestConcurrentRemoveRacesFire(t *testing.T) {
-	r := hooks.New()
+	r := events.NewRegistry()
 	var bystander int32
 	churnH := func(context.Context, any) (bool, error) { return true, nil }
 	bystanderH := func(context.Context, any) (bool, error) {
 		atomic.AddInt32(&bystander, 1)
 		return true, nil
 	}
-	if err := r.Add(hooks.PointPostTool, "bystander", bystanderH); err != nil {
+	if err := r.Add(events.PointPostTool, "bystander", bystanderH); err != nil {
 		t.Fatalf("Add(bystander): %v", err)
 	}
 
@@ -74,11 +74,11 @@ func TestConcurrentRemoveRacesFire(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < rounds; j++ {
-				if err := r.Add(hooks.PointPostTool, name, churnH); err != nil {
+				if err := r.Add(events.PointPostTool, name, churnH); err != nil {
 					t.Errorf("Add(%s) = %v, want nil", name, err)
 					return
 				}
-				if !r.Remove(hooks.PointPostTool, name) {
+				if !r.Remove(events.PointPostTool, name) {
 					t.Errorf("Remove(%s) = false after its own Add, want true", name)
 					return
 				}
@@ -87,7 +87,7 @@ func TestConcurrentRemoveRacesFire(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < rounds; j++ {
-				if err := r.Fire(context.Background(), hooks.PointPostTool, nil); err != nil {
+				if err := r.Fire(context.Background(), events.PointPostTool, nil); err != nil {
 					t.Errorf("Fire = %v, want nil", err)
 				}
 			}
@@ -105,7 +105,7 @@ func TestConcurrentRemoveRacesFire(t *testing.T) {
 // finish before the handler releases. Fire releases the mutex before
 // it calls any handler.
 func TestSlowHandlerDoesNotBlockAddOrRemove(t *testing.T) {
-	r := hooks.New()
+	r := events.NewRegistry()
 	release := make(chan struct{})
 	started := make(chan struct{})
 	slow := func(context.Context, any) (bool, error) {
@@ -113,20 +113,20 @@ func TestSlowHandlerDoesNotBlockAddOrRemove(t *testing.T) {
 		<-release
 		return true, nil
 	}
-	if err := r.Add(hooks.PointPreTool, "slow", slow); err != nil {
+	if err := r.Add(events.PointPreTool, "slow", slow); err != nil {
 		t.Fatalf("Add(slow): %v", err)
 	}
 
 	fireDone := make(chan error, 1)
 	go func() {
-		fireDone <- r.Fire(context.Background(), hooks.PointPreTool, nil)
+		fireDone <- r.Fire(context.Background(), events.PointPreTool, nil)
 	}()
 
 	<-started // the slow handler runs now, holding no lock
 
 	addErr := make(chan error, 1)
 	go func() {
-		addErr <- r.Add(hooks.PointPreTool, "other", allowHandler())
+		addErr <- r.Add(events.PointPreTool, "other", allowHandler())
 	}()
 	select {
 	case err := <-addErr:
@@ -139,7 +139,7 @@ func TestSlowHandlerDoesNotBlockAddOrRemove(t *testing.T) {
 
 	removed := make(chan bool, 1)
 	go func() {
-		removed <- r.Remove(hooks.PointPreTool, "other")
+		removed <- r.Remove(events.PointPreTool, "other")
 	}()
 	select {
 	case ok := <-removed:

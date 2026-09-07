@@ -11,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -50,7 +49,7 @@ type Loop struct {
 	bounds          Bounds
 	onToolError     ErrorPolicy
 	onToolCallError ErrorFunc
-	hooksReg        *hooks.Registry
+	hooksReg        *events.Registry
 	tracer          *trace.Tracer
 	usageAcc        *usage.Accumulator
 	sessionID       string

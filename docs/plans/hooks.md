@@ -1,6 +1,8 @@
 # Plan: hooks
 
-Status: shipped. One new package, `hooks`, with zero internal import
+Status: superseded. Phase 86 folded this package into events;
+the symbols live in events now. See
+docs/plans/agents/phase86_package_consolidation.md.
 edges. It depends on no unshipped phase and ships with no caller, the
 same way `tools` shipped in phase 14. This plan folded in from
 `docs/plans/agents/phase57_hooks.md` on shipping; no standalone phase

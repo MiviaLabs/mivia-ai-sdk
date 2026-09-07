@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -22,20 +22,20 @@ func TestRunPreAndPostToolHookPayloadIdentity(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	want := provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte(`{"k":"v"}`)}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var pre, post provider.ToolCall
 	var preOK, postOK bool
-	if err := hreg.Add(hooks.PointPreTool, "capture", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPreTool, "capture", func(ctx context.Context, payload any) (bool, error) {
 		pre, preOK = payload.(provider.ToolCall)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
-	if err := hreg.Add(hooks.PointPostTool, "capture", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPostTool, "capture", func(ctx context.Context, payload any) (bool, error) {
 		post, postOK = payload.(provider.ToolCall)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(want),
@@ -102,21 +102,21 @@ func TestRunPreAndPostToolHookOrderingMultiCallBatchMidVeto(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, tool)
 	order := &[]string{}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	vetoNext := false
-	if err := hreg.Add(hooks.PointPreTool, "record", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPreTool, "record", func(ctx context.Context, payload any) (bool, error) {
 		*order = append(*order, "pre")
 		allow := !vetoNext
 		vetoNext = true
 		return allow, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
-	if err := hreg.Add(hooks.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
 		*order = append(*order, "post")
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(

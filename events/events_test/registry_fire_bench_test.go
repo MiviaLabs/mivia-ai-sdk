@@ -1,23 +1,23 @@
-package hooks_test
+package events_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 )
 
 // benchRegistry builds a Registry holding n always-allowing handlers
 // at PointPreTool. It takes testing.TB so the benchmarks and the
 // allocation budget test share one setup.
-func benchRegistry(tb testing.TB, n int) *hooks.Registry {
+func benchRegistry(tb testing.TB, n int) *events.Registry {
 	tb.Helper()
 	allow := func(context.Context, any) (bool, error) { return true, nil }
-	r := hooks.New()
+	r := events.NewRegistry()
 	for i := 0; i < n; i++ {
 		name := fmt.Sprintf("hook-%02d", i)
-		if err := r.Add(hooks.PointPreTool, name, allow); err != nil {
+		if err := r.Add(events.PointPreTool, name, allow); err != nil {
 			tb.Fatal(err)
 		}
 	}
@@ -33,7 +33,7 @@ func BenchmarkFireTenHandlers(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := r.Fire(ctx, hooks.PointPreTool, nil); err != nil {
+		if err := r.Fire(ctx, events.PointPreTool, nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -47,7 +47,7 @@ func BenchmarkFireOneHandler(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		if err := r.Fire(ctx, hooks.PointPreTool, nil); err != nil {
+		if err := r.Fire(ctx, events.PointPreTool, nil); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -62,7 +62,7 @@ func TestFireAllocBudget(t *testing.T) {
 	r := benchRegistry(t, 10)
 	ctx := context.Background()
 	alloc := testing.AllocsPerRun(100, func() {
-		if err := r.Fire(ctx, hooks.PointPreTool, nil); err != nil {
+		if err := r.Fire(ctx, events.PointPreTool, nil); err != nil {
 			t.Fatal(err)
 		}
 	})

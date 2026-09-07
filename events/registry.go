@@ -1,4 +1,4 @@
-package hooks
+package events
 
 import (
 	"context"
@@ -13,7 +13,7 @@ var (
 	// ErrBlankName is Add's error when name is empty after
 	// strings.TrimSpace.
 	ErrBlankName = errors.New("hooks: name must not be blank")
-	// ErrNilHandler is Add's error for a nil Handler; a hook with
+	// ErrNilHandler is Add's error for a nil HookHandler; a hook with
 	// nothing to run has no purpose.
 	ErrNilHandler = errors.New("hooks: handler must not be nil")
 	// ErrDuplicateName is Add's error for a name already registered
@@ -24,30 +24,30 @@ var (
 	ErrVetoed = errors.New("hooks: handler vetoed")
 )
 
-// Handler observes or vetoes one lifecycle point's action. payload is
+// HookHandler observes or vetoes one lifecycle point's action. payload is
 // opaque to hooks: the caller that fires a point supplies whatever
-// value that point's real action carries. Handler returns true, nil
+// value that point's real action carries. HookHandler returns true, nil
 // to allow the action to continue, false, nil to veto it, or a
 // non-nil error when the handler itself failed to decide.
-type Handler func(ctx context.Context, payload any) (bool, error)
+type HookHandler func(ctx context.Context, payload any) (bool, error)
 
-// entry pairs one registered Handler with its name, in registration
+// entry pairs one registered HookHandler with its name, in registration
 // order.
 type entry struct {
 	name string
-	h    Handler
+	h    HookHandler
 }
 
 // Registry holds named handlers grouped by Point, in registration
 // order. Safe for concurrent Add, Remove, and Fire; a sync.Mutex
-// guards the map. Build one with New.
+// guards the map. Build one with NewRegistry.
 type Registry struct {
 	mu       sync.Mutex
 	handlers map[Point][]entry
 }
 
-// New creates an empty Registry.
-func New() *Registry {
+// NewRegistry creates an empty Registry.
+func NewRegistry() *Registry {
 	return &Registry{handlers: make(map[Point][]entry)}
 }
 
@@ -56,7 +56,7 @@ func New() *Registry {
 // with ErrBlankName, a nil h with ErrNilHandler, and a name already
 // registered at that same point with ErrDuplicateName. The same name
 // may register at two different points; name scopes to one Point.
-func (r *Registry) Add(point Point, name string, h Handler) error {
+func (r *Registry) Add(point Point, name string, h HookHandler) error {
 	if err := point.Validate(); err != nil {
 		return err
 	}

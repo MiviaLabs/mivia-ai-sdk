@@ -21,7 +21,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
@@ -147,9 +146,9 @@ func buildRegistry() *tools.Registry {
 // buildHooks returns a hooks registry with one handler at
 // PointPostTool. The handler prints the call's ID and name and returns
 // true, nil, so Fire continues.
-func buildHooks() *hooks.Registry {
-	hr := hooks.New()
-	_ = hr.Add(hooks.PointPostTool, "print-post-tool", func(ctx context.Context, payload any) (bool, error) {
+func buildHooks() *events.Registry {
+	hr := events.NewRegistry()
+	_ = hr.Add(events.PointPostTool, "print-post-tool", func(ctx context.Context, payload any) (bool, error) {
 		if call, ok := payload.(provider.ToolCall); ok {
 			fmt.Printf("post-tool hook: id=%s name=%s\n", call.ID, call.Name)
 		}

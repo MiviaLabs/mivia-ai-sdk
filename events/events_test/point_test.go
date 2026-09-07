@@ -1,9 +1,9 @@
-package hooks_test
+package events_test
 
 import (
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 )
 
 // TestPointValidate pins which Point values Validate accepts: the
@@ -12,15 +12,15 @@ import (
 func TestPointValidate(t *testing.T) {
 	cases := []struct {
 		name  string
-		p     hooks.Point
+		p     events.Point
 		valid bool
 	}{
-		{"pre-tool", hooks.PointPreTool, true},
-		{"post-tool", hooks.PointPostTool, true},
-		{"stop", hooks.PointStop, true},
-		{"zero value", hooks.Point(0), false},
-		{"out of range", hooks.Point(99), false},
-		{"negative", hooks.Point(-1), false},
+		{"pre-tool", events.PointPreTool, true},
+		{"post-tool", events.PointPostTool, true},
+		{"stop", events.PointStop, true},
+		{"zero value", events.Point(0), false},
+		{"out of range", events.Point(99), false},
+		{"negative", events.Point(-1), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -40,15 +40,15 @@ func TestPointValidate(t *testing.T) {
 func TestPointString(t *testing.T) {
 	cases := []struct {
 		name string
-		p    hooks.Point
+		p    events.Point
 		want string
 	}{
-		{"pre-tool", hooks.PointPreTool, "pre-tool"},
-		{"post-tool", hooks.PointPostTool, "post-tool"},
-		{"stop", hooks.PointStop, "stop"},
-		{"zero value", hooks.Point(0), "unknown"},
-		{"out of range", hooks.Point(99), "unknown"},
-		{"negative", hooks.Point(-1), "unknown"},
+		{"pre-tool", events.PointPreTool, "pre-tool"},
+		{"post-tool", events.PointPostTool, "post-tool"},
+		{"stop", events.PointStop, "stop"},
+		{"zero value", events.Point(0), "unknown"},
+		{"out of range", events.Point(99), "unknown"},
+		{"negative", events.Point(-1), "unknown"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

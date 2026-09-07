@@ -62,7 +62,7 @@ const (
 // that wires a Bus, without also arming a heartbeat cadence;
 // HeartbeatInterval gates only the ticking names, through
 // startHeartbeat. Bus.Emit errors are swallowed, matching the
-// fireStop/hooks.Registry.Fire-swallow precedent in run.go.
+// fireStop/events.Registry.Fire-swallow precedent in run.go.
 func (l *Loop) emitEvent(ctx context.Context, name events.Name, data string) {
 	if l.bus == nil {
 		return

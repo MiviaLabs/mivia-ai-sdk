@@ -12,7 +12,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
@@ -203,7 +202,7 @@ type Options struct {
 	OnToolCallError ErrorFunc
 	// Hooks fires PointPreTool and PointPostTool per tool call, and
 	// PointStop once at the end. Optional.
-	Hooks *hooks.Registry
+	Hooks *events.Registry
 	// Tracer opens one span per iteration and one per tool call.
 	// Optional.
 	Tracer *trace.Tracer

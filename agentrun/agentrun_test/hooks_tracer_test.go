@@ -7,8 +7,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
@@ -34,7 +34,7 @@ func oneStepPlanMachine(t *testing.T) (*flow.Definition, *machine.Definition) {
 
 // hookRun wires one runner over the shared plan with the given hooks
 // registry, a counting tool, and an order log the tool appends to.
-func hookRun(t *testing.T, reg *hooks.Registry, order *[]string) (*agentrun.Runner, *int) {
+func hookRun(t *testing.T, reg *events.Registry, order *[]string) (*agentrun.Runner, *int) {
 	t.Helper()
 	plan, m := oneStepPlanMachine(t)
 	calls := 0
@@ -69,11 +69,11 @@ func (m markerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) 
 // TestHooksVetoFailsStep proves a PointPreTool veto fails the step
 // before the tool runs, and the error names the step and the hook.
 func TestHooksVetoFailsStep(t *testing.T) {
-	reg := hooks.New()
-	if err := reg.Add(hooks.PointPreTool, "policy", func(ctx context.Context, payload any) (bool, error) {
+	reg := events.NewRegistry()
+	if err := reg.Add(events.PointPreTool, "policy", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	runner, calls := hookRun(t, reg, &[]string{})
 	_, _, err := runner.Run(context.Background(), "thread-veto", machine.InOut{})
@@ -92,31 +92,31 @@ func TestHooksVetoFailsStep(t *testing.T) {
 // in order — pre-tool, tool, post-tool, stop — that the stop payload
 // is the final status, and the post payload is the confirmed ack.
 func TestHooksFireInOrder(t *testing.T) {
-	reg := hooks.New()
+	reg := events.NewRegistry()
 	order := []string{}
 	var stopPayload any
 	var postPayload any
 	handlers := []struct {
-		point hooks.Point
+		point events.Point
 		name  string
 	}{
-		{hooks.PointPreTool, "pre"},
-		{hooks.PointPostTool, "post"},
-		{hooks.PointStop, "stop"},
+		{events.PointPreTool, "pre"},
+		{events.PointPostTool, "post"},
+		{events.PointStop, "stop"},
 	}
 	for _, h := range handlers {
 		h := h
 		if err := reg.Add(h.point, h.name, func(ctx context.Context, payload any) (bool, error) {
 			order = append(order, h.name)
 			switch h.point {
-			case hooks.PointStop:
+			case events.PointStop:
 				stopPayload = payload
-			case hooks.PointPostTool:
+			case events.PointPostTool:
 				postPayload = payload
 			}
 			return true, nil
 		}); err != nil {
-			t.Fatalf("hooks.Add(%s): %v", h.name, err)
+			t.Fatalf("events.Add(%s): %v", h.name, err)
 		}
 	}
 	runner, calls := hookRun(t, reg, &order)
@@ -144,11 +144,11 @@ func TestHooksFireInOrder(t *testing.T) {
 // the step after the tool ran, with the error naming the step and the
 // hook.
 func TestHooksPostVetoFailsAfterTool(t *testing.T) {
-	reg := hooks.New()
-	if err := reg.Add(hooks.PointPostTool, "auditor", func(ctx context.Context, payload any) (bool, error) {
+	reg := events.NewRegistry()
+	if err := reg.Add(events.PointPostTool, "auditor", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	order := []string{}
 	runner, calls := hookRun(t, reg, &order)
@@ -223,21 +223,21 @@ func TestHooksAndTracerTogether(t *testing.T) {
 	order := []string{}
 	addTools(t, toolReg, markerTool{calls: &calls, order: &order})
 	tr := trace.New()
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	var postSpanOpen bool
 	handlers := []struct {
-		point hooks.Point
+		point events.Point
 		name  string
 	}{
-		{hooks.PointPreTool, "pre"},
-		{hooks.PointPostTool, "post"},
-		{hooks.PointStop, "stop"},
+		{events.PointPreTool, "pre"},
+		{events.PointPostTool, "post"},
+		{events.PointStop, "stop"},
 	}
 	for _, h := range handlers {
 		h := h
 		if err := hookReg.Add(h.point, h.name, func(ctx context.Context, payload any) (bool, error) {
 			order = append(order, h.name)
-			if h.point == hooks.PointPostTool {
+			if h.point == events.PointPostTool {
 				for _, s := range tr.Spans() {
 					if s.Name == "agentrun.tool" {
 						postSpanOpen = s.EndTime().IsZero()
@@ -246,7 +246,7 @@ func TestHooksAndTracerTogether(t *testing.T) {
 			}
 			return true, nil
 		}); err != nil {
-			t.Fatalf("hooks.Add(%s): %v", h.name, err)
+			t.Fatalf("events.Add(%s): %v", h.name, err)
 		}
 	}
 	runner, err := agentrun.New(agentrun.Options{

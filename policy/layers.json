@@ -29,7 +29,6 @@
       "provider",
       "tools",
       "trace",
-      "hooks",
       "usage",
       "events",
       "contextbudget",
@@ -46,7 +45,6 @@
       "events",
       "flow",
       "heartbeat",
-      "hooks",
       "machine",
       "memory",
       "tools",
@@ -104,7 +102,6 @@
     "heartbeat": [
       "events"
     ],
-    "hooks": [],
     "ledger": [
       "machine",
       "events"

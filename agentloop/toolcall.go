@@ -10,7 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/toolcallctx"
@@ -321,7 +321,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}
 
 	if l.hooksReg != nil {
-		allowed, hookErr := l.fireHook(callCtx, hooks.PointPreTool, call)
+		allowed, hookErr := l.fireHook(callCtx, events.PointPreTool, call)
 		if hookErr != nil {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, hookErr)
 		}
@@ -337,7 +337,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}()
 
 	if l.hooksReg != nil {
-		_, _ = l.fireHook(callCtx, hooks.PointPostTool, call)
+		_, _ = l.fireHook(callCtx, events.PointPostTool, call)
 	}
 
 	if runErr != nil {
@@ -402,14 +402,14 @@ func errorReportContent(err error) string {
 }
 
 // fireHook fires point through l.hooksReg and turns a veto,
-// distinguished by errors.Is against hooks.ErrVetoed, into (false,
+// distinguished by errors.Is against events.ErrVetoed, into (false,
 // nil). Any other handler error passes through unchanged.
-func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.ToolCall) (bool, error) {
+func (l *Loop) fireHook(ctx context.Context, point events.Point, call provider.ToolCall) (bool, error) {
 	err := l.hooksReg.Fire(ctx, point, call)
 	if err == nil {
 		return true, nil
 	}
-	if errors.Is(err, hooks.ErrVetoed) {
+	if errors.Is(err, events.ErrVetoed) {
 		return false, nil
 	}
 	return false, err

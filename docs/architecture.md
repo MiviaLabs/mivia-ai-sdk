@@ -18,10 +18,10 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-eight packages and the import edges
+The diagram shows the forty-seven packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
-`discovery`, `durablefence`, `envfile`, `events`, `hooks`,
+`discovery`, `durablefence`, `envfile`, `events`,
 `longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
 `tools`, `trace`, and `trigger` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
@@ -69,7 +69,6 @@ flowchart LR
     agentloop --> provider
     agentloop --> tools
     agentloop --> trace
-    agentloop --> hooks
     agentloop --> usage
     agentloop --> events
     agentloop --> contextbudget
@@ -97,7 +96,6 @@ flowchart LR
     agentrun --> events
     agentrun --> flow
     agentrun --> heartbeat
-    agentrun --> hooks
     agentrun --> machine
     agentrun --> memory
     agentrun --> tools
@@ -213,10 +211,18 @@ flowchart LR
   `Failed` field preserves an already-caught failure's outcome across
   the pause, but a still-pending fallback's handler bookkeeping does
   not survive the round trip. See [packages/flow.md](packages/flow.md).
-- `events/` — the in-process reaction bus. It provides `Name`,
-  `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
-  caller owns the bus; the module has no shared bus. Event names are
-  typed `Name` constants owned by each domain. See
+- `events/` — the in-process reaction bus and the hook registry. It
+  provides `Name`, `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and
+  `Emit`. It also provides the hook surface: `Point`, `PointPreTool`,
+  `PointPostTool`, `PointStop`, `HookHandler`, `Registry`,
+  `NewRegistry`, `Add`, `Remove`, `Fire`, and the sentinels
+  `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and
+  `ErrVetoed`. The caller owns the bus; the module has no shared bus.
+  Event names are typed `Name` constants owned by each domain. A
+  `Registry` groups named hook handlers by `Point`; `Fire` runs them
+  in registration order and stops at the first veto. Unlike
+  `Bus`, `Fire` propagates the decision: a veto or a handler error
+  short-circuits the chain and returns to the caller. See
   [packages/events.md](packages/events.md).
 - `discovery/` — the capability card. It provides `Card`, `Parse`,
   `Validate`, and `Match`. `Parse` reads a card from JSON and validates
@@ -376,7 +382,7 @@ flowchart LR
   on whether a `Completer.Chat` is currently in flight, closing the
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
-  `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
+  `trace`, `usage`, `events`, `contextbudget`, `schema`,
   `contextplan`, `contextsummary`, and `toolcallctx`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
@@ -624,16 +630,6 @@ flowchart LR
   signature; `Action` is shaped to match `scheduler.Job`'s signature.
   `trigger` imports no other package in this module. See
   [packages/trigger.md](packages/trigger.md).
-- `hooks/` — a leaf primitive. It provides `Point`, `PointPreTool`,
-  `PointPostTool`, `PointStop`, `Point.Validate`, `Point.String`,
-  `Handler`, `Registry`, `New`, `Add`, `Remove`, `Fire`, and the
-  sentinels `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and
-  `ErrVetoed`. A `Registry` groups named handlers by `Point`;
-  `Fire` runs them in registration order and stops at the first
-  veto. Unlike `events.Bus`, `Fire` propagates the decision: a veto
-  or a handler error short-circuits the chain and returns to the
-  caller. `hooks` imports no other package in this module. See
-  [packages/hooks.md](packages/hooks.md).
 - `skills/` — a leaf primitive. It provides `Skill`, `Skill.Validate`,
   `Registry`, `New`, `Add`, `Get`, `Remove`, `Names`, `Match`, and the
   sentinels `ErrBlankName`, `ErrBlankInstructions`, `ErrBlankTrigger`,

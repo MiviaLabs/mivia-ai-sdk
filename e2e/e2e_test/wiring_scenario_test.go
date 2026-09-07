@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
@@ -99,16 +99,16 @@ func TestWiredStackComposesAllFour(t *testing.T) {
 	acc := usage.New()
 	primaryCalls := 0
 
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	var order []string
-	for point, name := range map[hooks.Point]string{
-		hooks.PointPreTool: "pre", hooks.PointPostTool: "post", hooks.PointStop: "stop",
+	for point, name := range map[events.Point]string{
+		events.PointPreTool: "pre", events.PointPostTool: "post", events.PointStop: "stop",
 	} {
 		if err := hookReg.Add(point, name, func(ctx context.Context, payload any) (bool, error) {
 			order = append(order, name)
 			return true, nil
 		}); err != nil {
-			t.Fatalf("hooks.Add(%s): %v", name, err)
+			t.Fatalf("events.Add(%s): %v", name, err)
 		}
 	}
 

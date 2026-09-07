@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -78,7 +77,7 @@ type Options struct {
 	// fire only with Tools: the Wait resolver runs no tool chain.
 	// PointStop fires with the final status once the walk ends, with
 	// either resolver. Optional.
-	Hooks *hooks.Registry
+	Hooks *events.Registry
 	// Tracer opens one root span per run and one child span per
 	// gated step's tool call. Optional.
 	Tracer *trace.Tracer

@@ -8,7 +8,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -72,11 +71,11 @@ func TestRunOneToolCallVetoEventOrder(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "veto", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "veto", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	bus := events.New()
 	rec := &eventRecorder{}
@@ -117,11 +116,11 @@ func TestRunOneToolCallHookErrorEventOrder(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	bus := events.New()
 	rec := &eventRecorder{}
@@ -388,12 +387,12 @@ func TestRunToolCallHeartbeatStopsWhenToolReturns(t *testing.T) {
 	tool := &slowTool{name: "slow", delay: heartbeatTestBlock, result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPostTool, "slow-post", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPostTool, "slow-post", func(ctx context.Context, payload any) (bool, error) {
 		<-time.After(4 * heartbeatTestBlock)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	bus := events.New()
 	ch, handler := eventChan()

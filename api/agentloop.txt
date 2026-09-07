@@ -78,7 +78,7 @@ package agentloop
   Bounds Bounds
   OnToolError ErrorPolicy
   OnToolCallError ErrorFunc
-  Hooks *hooks.Registry
+  Hooks *events.Registry
   Tracer *trace.Tracer
   Usage *usage.Accumulator
   SessionID string

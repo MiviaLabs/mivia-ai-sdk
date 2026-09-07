@@ -8,8 +8,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -46,11 +46,11 @@ func TestWiredHookVetoFailsRun(t *testing.T) {
 	addTools(t, reg, subagent.AsTool("dispatch",
 		wiredSubRunner(t, nil, acc, "session-veto", &primaryCalls),
 		subagent.ToolOptions{}))
-	hookReg := hooks.New()
-	if err := hookReg.Add(hooks.PointPreTool, "gatekeeper", func(ctx context.Context, payload any) (bool, error) {
+	hookReg := events.NewRegistry()
+	if err := hookReg.Add(events.PointPreTool, "gatekeeper", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	runner, err := agentrun.New(agentrun.Options{
 		Agent: e2eAgent(t, "veto-orchestrator", plan), Machine: m,
@@ -162,11 +162,11 @@ func TestWiredStopHookVetoFailsAfterWalk(t *testing.T) {
 	plan, m := wiredEdgePlan(t)
 	reg := tools.New()
 	addTools(t, reg, e2e.PrefixTool{ToolName: "dispatch", Prefix: "done:"})
-	hookReg := hooks.New()
-	if err := hookReg.Add(hooks.PointStop, "auditor", func(ctx context.Context, payload any) (bool, error) {
+	hookReg := events.NewRegistry()
+	if err := hookReg.Add(events.PointStop, "auditor", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	runner, err := agentrun.New(agentrun.Options{
 		Agent: e2eAgent(t, "stop-orchestrator", plan), Machine: m,

@@ -8,7 +8,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/toolcallctx"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -47,15 +46,15 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	var preHookFound bool
 	var postHookCall provider.ToolCall
 	var postHookFound bool
-	hookReg := hooks.New()
-	_ = hookReg.Add(hooks.PointPreTool, "test", func(ctx context.Context, _ any) (bool, error) {
+	hookReg := events.NewRegistry()
+	_ = hookReg.Add(events.PointPreTool, "test", func(ctx context.Context, _ any) (bool, error) {
 		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
 			preHookCall = call
 			preHookFound = true
 		}
 		return true, nil
 	})
-	_ = hookReg.Add(hooks.PointPostTool, "test", func(ctx context.Context, _ any) (bool, error) {
+	_ = hookReg.Add(events.PointPostTool, "test", func(ctx context.Context, _ any) (bool, error) {
 		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
 			postHookCall = call
 			postHookFound = true
@@ -218,8 +217,8 @@ func TestToolCallContext_PreToolVeto(t *testing.T) {
 
 	var vetoedCall provider.ToolCall
 	var vetoedFound bool
-	hookReg := hooks.New()
-	_ = hookReg.Add(hooks.PointPreTool, "veto-test", func(ctx context.Context, _ any) (bool, error) {
+	hookReg := events.NewRegistry()
+	_ = hookReg.Add(events.PointPreTool, "veto-test", func(ctx context.Context, _ any) (bool, error) {
 		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
 			vetoedCall = call
 			vetoedFound = true

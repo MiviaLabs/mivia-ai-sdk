@@ -13,7 +13,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -235,11 +234,11 @@ func buildHardFailToolCallError(t *testing.T, bus *events.Bus) (*agentloop.Loop,
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),

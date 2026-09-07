@@ -1,15 +1,15 @@
-package hooks_test
+package events_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 )
 
-// allowHandler returns a Handler that allows and records nothing.
-func allowHandler() hooks.Handler {
+// allowHandler returns a HookHandler that allows and records nothing.
+func allowHandler() events.HookHandler {
 	return func(context.Context, any) (bool, error) { return true, nil }
 }
 
@@ -18,13 +18,13 @@ func allowHandler() hooks.Handler {
 // and the out-of-range value both stay invalid; an external test
 // package cannot name pointUnset, so Point(0) stands in for it.
 func TestAddInvalidPoint(t *testing.T) {
-	for _, p := range []hooks.Point{0, 99} {
-		r := hooks.New()
+	for _, p := range []events.Point{0, 99} {
+		r := events.NewRegistry()
 		err := r.Add(p, "name", allowHandler())
 		if err == nil {
 			t.Fatalf("Add(Point(%d)) = nil, want the Validate error", int(p))
 		}
-		if ok := r.Remove(hooks.PointPreTool, "name"); ok {
+		if ok := r.Remove(events.PointPreTool, "name"); ok {
 			t.Fatal("Add registered a handler despite an invalid Point")
 		}
 	}
@@ -33,10 +33,10 @@ func TestAddInvalidPoint(t *testing.T) {
 // TestAddBlankName pins ErrBlankName for a name that is empty after
 // strings.TrimSpace.
 func TestAddBlankName(t *testing.T) {
-	r := hooks.New()
+	r := events.NewRegistry()
 	for _, name := range []string{"", "   ", "\t"} {
-		err := r.Add(hooks.PointPreTool, name, allowHandler())
-		if !errors.Is(err, hooks.ErrBlankName) {
+		err := r.Add(events.PointPreTool, name, allowHandler())
+		if !errors.Is(err, events.ErrBlankName) {
 			t.Fatalf("Add(%q) = %v, want ErrBlankName", name, err)
 		}
 	}
@@ -44,9 +44,9 @@ func TestAddBlankName(t *testing.T) {
 
 // TestAddNilHandler pins ErrNilHandler.
 func TestAddNilHandler(t *testing.T) {
-	r := hooks.New()
-	err := r.Add(hooks.PointPreTool, "name", nil)
-	if !errors.Is(err, hooks.ErrNilHandler) {
+	r := events.NewRegistry()
+	err := r.Add(events.PointPreTool, "name", nil)
+	if !errors.Is(err, events.ErrNilHandler) {
 		t.Fatalf("Add(nil) = %v, want ErrNilHandler", err)
 	}
 }
@@ -58,16 +58,16 @@ func TestAddNilHandler(t *testing.T) {
 func TestAddRejectionOrder(t *testing.T) {
 	cases := []struct {
 		name string
-		p    hooks.Point
-		h    hooks.Handler
+		p    events.Point
+		h    events.HookHandler
 		want error
 	}{
 		{"point before name", 0, nil, nil},
-		{"name before handler", hooks.PointPreTool, nil, hooks.ErrBlankName},
+		{"name before handler", events.PointPreTool, nil, events.ErrBlankName},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			r := hooks.New()
+			r := events.NewRegistry()
 			err := r.Add(tc.p, "   ", tc.h)
 			if tc.want == nil {
 				if err == nil {
@@ -85,12 +85,12 @@ func TestAddRejectionOrder(t *testing.T) {
 // TestAddDuplicateNameAtSamePoint pins ErrDuplicateName. The first
 // registration stays the live one; Add never replaces an entry.
 func TestAddDuplicateNameAtSamePoint(t *testing.T) {
-	r := hooks.New()
-	if err := r.Add(hooks.PointStop, "audit-log", allowHandler()); err != nil {
+	r := events.NewRegistry()
+	if err := r.Add(events.PointStop, "audit-log", allowHandler()); err != nil {
 		t.Fatalf("first Add: %v", err)
 	}
-	err := r.Add(hooks.PointStop, "audit-log", allowHandler())
-	if !errors.Is(err, hooks.ErrDuplicateName) {
+	err := r.Add(events.PointStop, "audit-log", allowHandler())
+	if !errors.Is(err, events.ErrDuplicateName) {
 		t.Fatalf("second Add = %v, want ErrDuplicateName", err)
 	}
 }
@@ -99,17 +99,17 @@ func TestAddDuplicateNameAtSamePoint(t *testing.T) {
 // to the whole Registry: one label registers at two different points
 // and both Fire.
 func TestAddSameNameAtTwoPoints(t *testing.T) {
-	r := hooks.New()
-	if err := r.Add(hooks.PointPreTool, "audit-log", allowHandler()); err != nil {
+	r := events.NewRegistry()
+	if err := r.Add(events.PointPreTool, "audit-log", allowHandler()); err != nil {
 		t.Fatalf("Add(pre-tool): %v", err)
 	}
-	if err := r.Add(hooks.PointPostTool, "audit-log", allowHandler()); err != nil {
+	if err := r.Add(events.PointPostTool, "audit-log", allowHandler()); err != nil {
 		t.Fatalf("Add(post-tool): %v", err)
 	}
-	if err := r.Fire(context.Background(), hooks.PointPreTool, nil); err != nil {
+	if err := r.Fire(context.Background(), events.PointPreTool, nil); err != nil {
 		t.Fatalf("Fire(pre-tool): %v", err)
 	}
-	if err := r.Fire(context.Background(), hooks.PointPostTool, nil); err != nil {
+	if err := r.Fire(context.Background(), events.PointPostTool, nil); err != nil {
 		t.Fatalf("Fire(post-tool): %v", err)
 	}
 }
@@ -117,20 +117,20 @@ func TestAddSameNameAtTwoPoints(t *testing.T) {
 // TestRemove pins Remove's contract: true for a present (point, name)
 // pair, false for an absent one, and false again on a second call.
 func TestRemove(t *testing.T) {
-	r := hooks.New()
-	if err := r.Add(hooks.PointStop, "present", allowHandler()); err != nil {
+	r := events.NewRegistry()
+	if err := r.Add(events.PointStop, "present", allowHandler()); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if ok := r.Remove(hooks.PointStop, "present"); !ok {
+	if ok := r.Remove(events.PointStop, "present"); !ok {
 		t.Fatal("Remove(present) = false, want true")
 	}
-	if ok := r.Remove(hooks.PointStop, "present"); ok {
+	if ok := r.Remove(events.PointStop, "present"); ok {
 		t.Fatal("second Remove(present) = true, want false")
 	}
-	if ok := r.Remove(hooks.PointStop, "never-added"); ok {
+	if ok := r.Remove(events.PointStop, "never-added"); ok {
 		t.Fatal("Remove(absent) = true, want false")
 	}
-	if ok := r.Remove(hooks.PointPreTool, "present"); ok {
+	if ok := r.Remove(events.PointPreTool, "present"); ok {
 		t.Fatal("Remove(wrong point) = true, want false")
 	}
 }

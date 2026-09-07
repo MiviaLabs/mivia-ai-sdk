@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
@@ -216,19 +216,19 @@ func TestDedupWithinTurnHooksFireOnceForPair(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var preCount, postCount int
-	if err := hreg.Add(hooks.PointPreTool, "count", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPreTool, "count", func(ctx context.Context, payload any) (bool, error) {
 		preCount++
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
-	if err := hreg.Add(hooks.PointPostTool, "count", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPostTool, "count", func(ctx context.Context, payload any) (bool, error) {
 		postCount++
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(
@@ -260,11 +260,11 @@ func TestDedupWithinTurnPreToolVetoStopsBeforeSecondCall(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "veto", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "veto", func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(

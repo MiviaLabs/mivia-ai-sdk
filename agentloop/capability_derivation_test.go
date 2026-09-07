@@ -66,6 +66,48 @@ func TestDeriveWindowFromContextAccountant(t *testing.T) {
 	}
 }
 
+// TestDeriveWindowEffectiveThresholds pins the percent math
+// deriveWindow's Reserve and hysteresis constants produce: Reserve is
+// MaxTokens/5, so Budget is 4/5 of MaxTokens, and the 80/50 Compaction
+// percents price against Budget, not MaxTokens. The derived Window
+// therefore triggers at an effective 64% of MaxTokens and targets an
+// effective 40%, floored. Checked at MaxTokens 1000 (a multiple of
+// five, no floor rounding) and 1003 (not a multiple, so Reserve and
+// both thresholds floor). See docs/plans/agentloop.md, "Effective
+// thresholds for host-style configs".
+func TestDeriveWindowEffectiveThresholds(t *testing.T) {
+	cases := []struct {
+		name        string
+		maxTokens   int
+		wantReserve int
+		wantTrigger int
+		wantTarget  int
+	}{
+		{name: "multiple of five", maxTokens: 1000, wantReserve: 200, wantTrigger: 640, wantTarget: 400},
+		{name: "not a multiple of five", maxTokens: 1003, wantReserve: 200, wantTrigger: 642, wantTarget: 401},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := deriveWindow(&capabilityCompleter{window: tc.maxTokens})
+			if w == nil {
+				t.Fatal("deriveWindow = nil")
+			}
+			if w.Reserve != tc.wantReserve {
+				t.Fatalf("Reserve = %d, want %d", w.Reserve, tc.wantReserve)
+			}
+			budget := tc.maxTokens - tc.wantReserve
+			if got := w.CompactTrigger(); got != tc.wantTrigger {
+				t.Fatalf("CompactTrigger() = %d, want %d (floor(%d*80/100), an effective 64%% of MaxTokens %d)",
+					got, tc.wantTrigger, budget, tc.maxTokens)
+			}
+			if got := w.CompactTarget(); got != tc.wantTarget {
+				t.Fatalf("CompactTarget() = %d, want %d (floor(%d*50/100), an effective 40%% of MaxTokens %d)",
+					got, tc.wantTarget, budget, tc.maxTokens)
+			}
+		})
+	}
+}
+
 // TestDeriveReasoningEffort pins the effort default: the capability's
 // value passes through, its absence yields empty.
 func TestDeriveReasoningEffort(t *testing.T) {
@@ -123,8 +165,8 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	}
 
 	// Trim set: derivation must stand down, since a derived Window
-	// would otherwise reach ErrTrimExcluded's forbidden combination
-	// without ever going through Validate.
+	// would otherwise reach the Trim/Window forbidden combination
+	// (ErrInvalidOptions) without ever going through Validate.
 	trimmed := Options{
 		Completer: completer,
 		Tools:     reg,
@@ -143,6 +185,36 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	}
 	if trimmedLoop.window != nil {
 		t.Fatal("window derived with Trim set; Validate would reject Window and Trim together")
+	}
+}
+
+// TestNewRejectsTypedNilSummarizerBeforeDerivation proves the typed-nil
+// Summarizer check fires even when the caller never sets Window
+// directly. Before this test's fix, the check lived inside Validate's
+// "if o.Compaction.Window != nil" branch, so a caller who left Window
+// nil and relied on New's ContextAccountant derivation slipped a typed
+// nil (*plan.Summarizer)(nil) past Validate. New then derived a
+// non-nil window from the completer's capability, and the first
+// compaction would call Summarize on the nil receiver and panic. New
+// must fail closed instead.
+func TestNewRejectsTypedNilSummarizerBeforeDerivation(t *testing.T) {
+	completer := &capabilityCompleter{window: 10000}
+	reg := tools.New()
+	if err := reg.Add(&capabilityTool{}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var typedNil *plan.Summarizer
+	opts := Options{
+		Completer: completer,
+		Tools:     reg,
+		SessionID: "cap",
+
+		Compaction: Compaction{
+			Summarizer: typedNil,
+			Calibrated: plan.Calibrate(completer, 0.25),
+		}}
+	if _, err := New(opts); err == nil {
+		t.Fatal("New = nil error, want a validation failure for a typed-nil Summarizer before derivation can adopt a window")
 	}
 }
 

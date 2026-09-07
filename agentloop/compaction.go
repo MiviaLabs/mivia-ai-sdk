@@ -274,7 +274,8 @@ type Compaction struct {
 	Window *plan.Window
 	// Summarizer runs the LLM summary every compaction requires.
 	// Required when Window is set. See the Summarizer interface for
-	// the sanctioned constructors and the typed-nil warning.
+	// the sanctioned constructors and the typed-nil check Validate
+	// runs against them.
 	Summarizer Summarizer
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.

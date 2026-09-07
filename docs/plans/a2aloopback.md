@@ -1,8 +1,10 @@
 # Plan: a2aloopback
 
-Status: shipped. Commit cc4d060. Extracts `a2aclient/loopback.go` into
-its own package. See `docs/plans/a2aclient.md`'s "Loopback extraction"
-addendum for the reasoning.
+Status: superseded, see docs/plans/a2aclient/a2atest.md. The
+`a2aloopback` package folded into `a2aclient/a2atest`. This plan
+stays as history. Commit cc4d060 extracted `a2aclient/loopback.go`
+into its own package. See `docs/plans/a2aclient.md`'s "Loopback
+extraction" addendum for the reasoning.
 
 ## Goal
 

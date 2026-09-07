@@ -1,16 +1,16 @@
 # Documentation
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
-agent-to-agent messaging: envelope, room, machine, flow, events, a2a,
-a2aclient, dispatch, tools, context/budget, schema, mcp, ledger, memory,
-provider, provider/anthropic, context/plan, context/ref, channel, trace,
-scheduler, workflow, workflow/run, agentloop, subagent, workspace, and
-longtermmemory. Each package covers one concern and composes through its
-exported API. Phase 86 folded single-consumer peers into their
-targets, moved test fixtures beside the packages they exercise, and
-quarantined six orphaned packages into the `x/` sub-module.
-This doc tree covers the module map, the wire-protocol rationale,
-every package's exported surface, and runnable-style walkthroughs.
+tool-calling agents. `agentloop` drives the tool-calling loop over a
+model provider and a tool registry. The remaining blocks compose
+around it: envelope, room, machine, flow, events, a2a, a2aclient,
+dispatch, tools, context/budget, schema, mcp, ledger, memory,
+provider, provider/anthropic, context/plan, context/ref, channel,
+trace, scheduler, workflow, workflow/run, subagent, and workspace.
+Each package covers one concern and composes through its exported
+API. This doc tree covers the module map, the wire-protocol
+rationale, every package's exported surface, and runnable-style
+walkthroughs.
 
 ## Start here
 

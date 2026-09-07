@@ -136,20 +136,20 @@ def main() -> int:
         (tmp / "d5clean" / "clean.txt").write_text("nothing\n")
 
         # a2aclient_dir: the sole surviving path-scoped fixture
-        # directory. sdk.go.no-a2aloopback-import still depends on it
+        # directory. sdk.go.no-a2atest-import still depends on it
         # for its /a2aclient/*_test.go exclude; the five scoped
         # third-party rules that also used to write here are gone.
         a2aclient_dir = tmp / "a2aclient"
         a2aclient_dir.mkdir()
 
-        # no-a2aloopback-import rule pair: proves only the allowed
-        # caller paths may import a2aloopback.
-        no_a2aloopback_rid = "sdk.go.no-a2aloopback-import"
-        (tmp / "viol_a2aloopback_prod_import.go").write_text(
-            'package p\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"\n\nvar _ = a2aloopback.Loopback\n'
+        # no-a2atest-import rule pair: proves only the allowed
+        # caller paths may import a2aclient/a2atest.
+        no_a2atest_rid = "sdk.go.no-a2atest-import"
+        (tmp / "viol_a2atest_prod_import.go").write_text(
+            'package p\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"\n\nvar _ = a2atest.Loopback\n'
         )
-        (a2aclient_dir / "clean_a2aloopback_caller_import_test.go").write_text(
-            'package a2aclient\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"\n\nvar _ = a2aloopback.Loopback\n'
+        (a2aclient_dir / "clean_a2atest_caller_import_test.go").write_text(
+            'package a2aclient\n\nimport "github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"\n\nvar _ = a2atest.Loopback\n'
         )
 
         # Post-write basename-collision check. The block above holds no
@@ -174,8 +174,8 @@ def main() -> int:
         for rid, vfile, _v, cfile, _c in PROBES:
             expected[vfile] = rid
             expected[cfile] = rid
-        expected["viol_a2aloopback_prod_import.go"] = no_a2aloopback_rid
-        expected["clean_a2aloopback_caller_import_test.go"] = no_a2aloopback_rid
+        expected["viol_a2atest_prod_import.go"] = no_a2atest_rid
+        expected["clean_a2atest_caller_import_test.go"] = no_a2atest_rid
         hits = {}
         for r in data.get("results", []):
             name = Path(r["path"]).name
@@ -195,16 +195,16 @@ def main() -> int:
                 if extra:
                     problems.append(f"{name}: unexpected rules fired: {sorted(extra)}")
 
-        # Explicit no-a2aloopback-import assertions: the rule fires on
+        # Explicit no-a2atest-import assertions: the rule fires on
         # a production-looking import outside every exclude path, and
         # stays silent on a file matching the /a2aclient/*_test.go
         # exclude.
-        no_a2aloopback_viol_hits = hits.get("viol_a2aloopback_prod_import.go", set())
-        no_a2aloopback_clean_hits = hits.get("clean_a2aloopback_caller_import_test.go", set())
-        if no_a2aloopback_rid not in no_a2aloopback_viol_hits:
-            problems.append(f"{no_a2aloopback_rid}: violation file viol_a2aloopback_prod_import.go did not fire")
-        if no_a2aloopback_rid in no_a2aloopback_clean_hits:
-            problems.append(f"{no_a2aloopback_rid}: clean file clean_a2aloopback_caller_import_test.go fired")
+        no_a2atest_viol_hits = hits.get("viol_a2atest_prod_import.go", set())
+        no_a2atest_clean_hits = hits.get("clean_a2atest_caller_import_test.go", set())
+        if no_a2atest_rid not in no_a2atest_viol_hits:
+            problems.append(f"{no_a2atest_rid}: violation file viol_a2atest_prod_import.go did not fire")
+        if no_a2atest_rid in no_a2atest_clean_hits:
+            problems.append(f"{no_a2atest_rid}: clean file clean_a2atest_caller_import_test.go fired")
 
         for name in hits:
             if name not in expected and not name.startswith("d5"):

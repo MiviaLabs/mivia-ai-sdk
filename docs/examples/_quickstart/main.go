@@ -1,43 +1,3 @@
-<p align="center">
-  <img src="docs/mivia-logo.png" alt="mivia" width="120">
-</p>
-
-<h1 align="center">mivia-ai-sdk</h1>
-
-<p align="center">Go SDK for building reliable AI agents and multi-agent workflows. Composable blocks, not a monolith.</p>
-
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
-  <img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8.svg" alt="Go 1.25+">
-  <a href="docs/README.md"><img src="https://img.shields.io/badge/docs-reference-purple.svg" alt="Documentation"></a>
-</p>
-
----
-
-`mivia-ai-sdk` provides a set of independent, composable building blocks for building autonomous agents, multi-agent coordination pipelines, and verifiable message exchanges in Go.
-
-Most packages rely solely on the Go standard library, keeping dependencies minimal, auditable, and fast.
-
-## Highlights
-
-- 🔒 **Verifiable Agent Messaging** — Cryptographic envelopes signed with Ed25519, tamper-evident hash audit chains, and semantic acknowledgments (`envelope`, `room`).
-- 🔄 **Deterministic Workflows & State** — Declarative step graphs, parallel execution waves, guarded state machines, retries, loops, and pause/resume checkpoints (`flow`, `machine`).
-- 🧰 **Extensible Tools & MCP** — Named tool registries, permission scoping, approval gating, and MCP client support over stdio or streamable HTTP (`tools`, `mcp`).
-- 🤝 **Interoperability & Protocols** — Native A2A v1.0 mapping, gRPC client adapter, and NDJSON HTTP streaming endpoints (`a2a`, `a2aclient`, `dispatch`).
-- 🛡️ **Confinement & Long-Term Context** — Syscall-level filesystem confinement (`os.Root`), secret path denial, token-window compaction, and content-addressed memory (`workspace` and `context/plan`).
-
-## Install
-
-```bash
-go get github.com/MiviaLabs/mivia-ai-sdk
-```
-
-## Quick Start
-
-Run a model-driven agent loop: one schema tool, one `Run` call. With `ANTHROPIC_API_KEY` set, it calls the live model; unset, it runs the same loop offline against a canned completer.
-
-<!-- source: docs/examples/_quickstart/main.go -->
-```go
 // Command quickstart is the README Quick Start program: one schema
 // tool, one agentloop.Run call. It uses the live Anthropic completer
 // when ANTHROPIC_API_KEY is set, and a canned offline completer
@@ -172,31 +132,3 @@ func main() {
 	}
 	fmt.Println("final:", res.Final.Content)
 }
-```
-
-Use `agentloop` for model-driven agents; use `workflow` for fixed step graphs. See [docs/examples/workflow-run.md](docs/examples/workflow-run.md) for the flow-pipeline example. This Quick Start no longer shows the flow pipeline itself.
-
-## Documentation
-
-- **[Architecture & Design Reference](docs/architecture.md)** — Module map, wire-format rationale, gate system, and architectural invariants.
-- **[Doc Index & Package Reference](docs/README.md)** — Comprehensive index covering all packages and their exported surfaces.
-- **[Examples & Walkthroughs](docs/README.md#examples)** — Step-by-step guides for provider completion, dispatch endpoints, workflow loops, and durable tasks.
-
-## Development
-
-```bash
-make install-hooks   # once per clone; sets core.hooksPath to .githooks
-make verify-fast     # fast tier: fmt, vet, test, gates, semgrep scan
-make verify          # full tier: coverage floor, semgrep probes, SQLite tests
-```
-
-## Author & Contributors
-
-- **Maciej (Mac) Lisowski** — *Author* ([@mac-lisowski](https://github.com/mac-lisowski))
-
-Contributions are welcome!
-
-## License
-
-[Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
-

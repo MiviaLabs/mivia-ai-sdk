@@ -15,20 +15,15 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
-// Sentinel errors for Options.Validate, Definitions, and Run; test
-// with errors.Is.
+// ErrInvalidOptions is Options.Validate's, Bounds.Validate's, and
+// Conclude.Validate's error for every configuration-shape check: an
+// omitted required field, or a numeric field that fails its range
+// rule. The wrapped message names the field and the rule it failed.
+// Test with errors.Is; do not switch on message text.
+var ErrInvalidOptions = errors.New("agentloop: invalid options")
+
+// Sentinel errors for Definitions and Run; test with errors.Is.
 var (
-	// ErrNoCompleter is Validate's error when Completer is nil.
-	ErrNoCompleter = errors.New("agentloop: completer is required")
-	// ErrNoTools is Validate's error when Tools is nil.
-	ErrNoTools = errors.New("agentloop: tools registry is required")
-	// ErrMaxIterations is Validate's error when MaxIterations is
-	// negative. Reserved for construction-time validation; Run itself
-	// never returns it, since hitting MaxIterations at runtime is a
-	// graceful StopMaxIterations stop, not an error. A zero inside a
-	// fully zero Bounds receives DefaultBounds at New; a zero inside a
-	// partial Bounds stays unbounded; see New's defaulting.
-	ErrMaxIterations = errors.New("agentloop: MaxIterations must be non-negative")
 	// ErrUnrenderableResult is the render path's error when a tool
 	// result's Out.Value cannot be marshaled to JSON after failing the
 	// string and UTF-8-bytes cases.
@@ -43,8 +38,9 @@ var (
 	// ErrNoSchema, which fails a schema-less tool directly, that means
 	// the scope denied every tool.
 	ErrNoSchemas = errors.New("agentloop: registry offers no schema-bearing tool the scope allows")
-	// ErrNoSchema is Definitions's error when a registered tool
-	// publishes no parameter schema. Wrapped with the tool's registry
+	// ErrNoSchema is Definitions's error when a scope-allowed
+	// registered tool publishes no parameter schema. A scope-denied
+	// tool never reaches this check. Wrapped with the tool's registry
 	// name. Test with errors.Is.
 	ErrNoSchema = errors.New("agentloop: registered tool publishes no parameter schema")
 	// ErrOverBudget is Run's error when the message history, summed by
@@ -87,54 +83,13 @@ var (
 	// failed (wrapping the contextsummary sentinel), or the compacted
 	// history still exceeds the window. Test with errors.Is.
 	ErrCompactionFailed = errors.New("agentloop: compaction failed")
-	// ErrSummarizerRequired is Options.Validate's error when Window is
-	// set and Summarizer is nil. Test with errors.Is.
-	ErrSummarizerRequired = errors.New("agentloop: Window requires Summarizer")
-	// ErrEstimatorRequired is Options.Validate's error when Window is
-	// set and Calibrated is nil. Guards the direct-Options path: a
-	// caller set Window by hand without also setting Calibrated. See
-	// also ErrNoTokenEstimator for the EnableCompaction path, which
-	// checks the Completer's capability instead of the field. Test
-	// with errors.Is.
-	ErrEstimatorRequired = errors.New("agentloop: Window requires Calibrated")
 	// ErrNoTokenEstimator is EnableCompaction's error when the
 	// Completer lacks the provider.TokenEstimator capability, so
 	// EnableCompaction has no estimator to fill Calibrated with. See
-	// also ErrEstimatorRequired for the direct-Options path, which
+	// also ErrInvalidOptions for the direct-Options path, which
 	// Validate raises once Window is set without Calibrated. Test
 	// with errors.Is.
 	ErrNoTokenEstimator = errors.New("agentloop: Completer does not implement provider.TokenEstimator")
-	// ErrTrimExcluded is Options.Validate's error when both Window and
-	// Trim are set. Test with errors.Is.
-	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")
-	// ErrConcludeMargin is Validate's error when Conclude.Margin is
-	// negative. Test with errors.Is.
-	ErrConcludeMargin = errors.New("agentloop: ConcludeMargin must not be negative")
-	// ErrMaxConcurrentTools is Options.Validate's error when
-	// MaxConcurrentTools is negative. Zero means serial (today's
-	// behavior); a positive value runs that many calls in parallel
-	// through a worker pool. Test with errors.Is.
-	ErrMaxConcurrentTools = errors.New("agentloop: MaxConcurrentTools must not be negative")
-	// ErrMaxConsecutiveToolFailures is Validate's error when
-	// MaxConsecutiveToolFailures is negative. Test with errors.Is.
-	ErrMaxConsecutiveToolFailures = errors.New("agentloop: MaxConsecutiveToolFailures must not be negative")
-	// ErrHeartbeatRequiresBus is Options.Validate's error when
-	// HeartbeatInterval is positive and Bus is nil: a heartbeat with
-	// nowhere to emit is a caller mistake, not a silent no-op. Test
-	// with errors.Is.
-	ErrHeartbeatRequiresBus = errors.New("agentloop: HeartbeatInterval requires a non-nil Bus")
-	// ErrSessionIDRequired is Options.Validate's error when Usage is set
-	// and SessionID is blank. Test with errors.Is.
-	ErrSessionIDRequired = errors.New("agentloop: Usage requires a non-blank SessionID")
-	// ErrMaxTotalTokens is Options.Validate's error when MaxTotalTokens
-	// is negative. Test with errors.Is.
-	ErrMaxTotalTokens = errors.New("agentloop: MaxTotalTokens must not be negative")
-	// ErrMaxCallsPerTurn is Validate's error when MaxCallsPerTurn is
-	// negative. Zero means unbounded. Test with errors.Is.
-	ErrMaxCallsPerTurn = errors.New("agentloop: MaxCallsPerTurn must not be negative")
-	// ErrConcludeDeadline is Options.Validate's error when
-	// Conclude.Deadline is negative. Test with errors.Is.
-	ErrConcludeDeadline = errors.New("agentloop: ConcludeDeadline must be non-negative")
 )
 
 // RecoveryTargetTokens is the fixed compaction target of the
@@ -173,10 +128,17 @@ const (
 // implementation returns plan.ErrSummarySkipped to decline
 // summary generation; compactHistory then reuses the prior summary or
 // proceeds without one. Build the field's value only through
-// EnableCompaction or plan.NewSummarizer. Warning: a typed
-// nil (*plan.Summarizer)(nil) stored in the field is not
-// nil as an interface, so Validate's nil check passes and the first
-// Summarize call panics.
+// EnableCompaction or plan.NewSummarizer. A typed nil
+// (*plan.Summarizer)(nil) stored in the field is not nil as an
+// interface; Validate asserts the field against that one sanctioned
+// concrete type and returns ErrInvalidOptions when the assertion
+// finds a nil pointer, the same as an untyped nil. This check runs
+// unconditionally, whether or not Options.Compaction.Window is set,
+// because New can derive a Window from the Completer's
+// ContextAccountant capability even when Window is left nil. A custom
+// Summarizer of some other pointer type holding a nil receiver is
+// outside this check: only the sanctioned adapter's typed-nil shape
+// is guarded.
 type Summarizer interface {
 	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
 }
@@ -323,44 +285,61 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, Bounds.Validate (each
 // cap non-negative), Usage requires a non-blank SessionID, a non-nil
-// Budget passes budget.Limits.Validate, a non-nil Compaction.Window
-// passes Window.Validate, requires Compaction.Summarizer, requires
+// Budget passes budget.Limits.Validate, Compaction.Summarizer rejects
+// a nil *plan.Summarizer typed-nil through a direct type assertion
+// (unconditionally, since New's ContextAccountant-derived Window can
+// adopt a typed-nil Summarizer even when Compaction.Window is left
+// nil here; the module's reflection ban rules out a general nil-any
+// check), a non-nil Compaction.Window passes Window.Validate, requires
+// Compaction.Summarizer (rejecting an untyped nil), requires
 // Compaction.Calibrated, and excludes Trim, Conclude.Validate (Margin
 // not negative, then Deadline not negative), a positive
 // HeartbeatInterval requires a non-nil Bus, and finally WorkBudget and
 // ToolBudget each pass their own check. The three Extensions checks
 // read the pointer nil-safely; a nil Extensions means every knob at
-// its zero value.
+// its zero value. Every check in this fixed order returns
+// ErrInvalidOptions, wrapped with the failing field's name and rule;
+// test with errors.Is against ErrInvalidOptions, not message text.
 func (o Options) Validate() error {
 	if o.Completer == nil {
-		return ErrNoCompleter
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Completer: required")
 	}
 	if o.Tools == nil {
-		return ErrNoTools
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Tools: required")
 	}
 	if err := o.Bounds.Validate(); err != nil {
 		return err
 	}
 	if o.Usage != nil && strings.TrimSpace(o.SessionID) == "" {
-		return ErrSessionIDRequired
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "SessionID: required when Usage is set")
 	}
 	if o.Budget != nil {
 		if err := o.Budget.Validate(); err != nil {
 			return fmt.Errorf("agentloop: invalid Budget: %w", err)
 		}
 	}
+	// The typed-nil check runs unconditionally, not only when Window
+	// is already set: New derives a Window from the Completer's
+	// ContextAccountant capability whenever Summarizer and Calibrated
+	// are both non-nil interfaces, even with Window left nil here. A
+	// typed nil (*plan.Summarizer)(nil) reads as a non-nil interface,
+	// so gating this check on Window != nil let a hand-built Options
+	// slip past Validate and panic on the first compaction.
+	if p, ok := o.Compaction.Summarizer.(*plan.Summarizer); ok && p == nil {
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Summarizer: typed nil *plan.Summarizer is invalid")
+	}
 	if o.Compaction.Window != nil {
 		if err := o.Compaction.Window.Validate(); err != nil {
 			return fmt.Errorf("agentloop: invalid Window: %w", err)
 		}
 		if o.Compaction.Summarizer == nil {
-			return ErrSummarizerRequired
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Summarizer: required when Window is set")
 		}
 		if o.Compaction.Calibrated == nil {
-			return ErrEstimatorRequired
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Calibrated: required when Window is set")
 		}
 		if o.Trim != nil {
-			return ErrTrimExcluded
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Trim: mutually exclusive with Window")
 		}
 	}
 	if o.Extensions != nil {
@@ -369,7 +348,7 @@ func (o Options) Validate() error {
 		}
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
-		return ErrHeartbeatRequiresBus
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "HeartbeatInterval: requires a non-nil Bus")
 	}
 	if o.Extensions != nil {
 		if err := o.Extensions.WorkBudget.validate(); err != nil {

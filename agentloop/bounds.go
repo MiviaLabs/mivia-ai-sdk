@@ -1,5 +1,7 @@
 package agentloop
 
+import "fmt"
+
 // Bounds groups the loop's numeric caps. Zero means uncapped or
 // serial, per the member's own doc comment. The fully zero struct
 // receives DefaultBounds at New; a partially set Bounds stays as
@@ -28,22 +30,23 @@ type Bounds struct {
 // Validate checks the caps in a fixed order and returns the first
 // failure: MaxIterations, MaxTotalTokens, MaxCallsPerTurn,
 // MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
-// negative.
+// negative. Every failure returns ErrInvalidOptions, wrapped with the
+// failing field's name; test with errors.Is against ErrInvalidOptions.
 func (b Bounds) Validate() error {
 	if b.MaxIterations < 0 {
-		return ErrMaxIterations
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxIterations: must be non-negative")
 	}
 	if b.MaxTotalTokens < 0 {
-		return ErrMaxTotalTokens
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxTotalTokens: must not be negative")
 	}
 	if b.MaxCallsPerTurn < 0 {
-		return ErrMaxCallsPerTurn
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxCallsPerTurn: must not be negative")
 	}
 	if b.MaxConcurrentTools < 0 {
-		return ErrMaxConcurrentTools
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxConcurrentTools: must not be negative")
 	}
 	if b.MaxConsecutiveToolFailures < 0 {
-		return ErrMaxConsecutiveToolFailures
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "MaxConsecutiveToolFailures: must not be negative")
 	}
 	return nil
 }

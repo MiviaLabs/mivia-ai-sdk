@@ -135,6 +135,44 @@ func TestDefinitionsErrNoSchemasScopeDeniesEveryTool(t *testing.T) {
 	}
 }
 
+// TestDefinitionsSkipsScopeDeniedSchemaFreeTool proves a scope-denied
+// tool is skipped before its schema is ever read: a schema-free tool
+// the scope excludes does not fail Definitions, since denial removes
+// it from the walk before the ErrNoSchema check runs.
+func TestDefinitionsSkipsScopeDeniedSchemaFreeTool(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "allowed", schema: []byte(`{}`)})
+	mustAdd(t, reg, &noSchemaTool{name: "denied-no-schema"})
+	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"allowed"}})
+
+	defs, err := agentloop.Definitions(reg, scope)
+	if err != nil {
+		t.Fatalf("Definitions() error = %v, want nil", err)
+	}
+	if len(defs) != 1 || defs[0].Name != "allowed" {
+		t.Fatalf("Definitions() defs = %v, want one entry named allowed", defs)
+	}
+}
+
+// TestNewSucceedsWithScopeDeniedSchemaFreeTool proves New itself
+// agrees with Definitions: a schema-free tool the Scope excludes never
+// reaches the schema check, so New builds the Loop.
+func TestNewSucceedsWithScopeDeniedSchemaFreeTool(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "allowed", schema: []byte(`{}`)})
+	mustAdd(t, reg, &noSchemaTool{name: "denied-no-schema"})
+	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"allowed"}})
+
+	_, err := agentloop.New(agentloop.Options{
+		Completer: &scriptedCompleter{},
+		Tools:     reg,
+		Scope:     scope,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+}
+
 // mustAdd registers t onto reg, failing the test on error.
 func mustAdd(t *testing.T, reg *tools.Registry, tool tools.Tool) {
 	t.Helper()

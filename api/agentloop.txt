@@ -152,28 +152,15 @@ package agentloop
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded
   var ErrCompactionFailed
-  var ErrConcludeDeadline
-  var ErrConcludeMargin
-  var ErrEstimatorRequired
-  var ErrHeartbeatRequiresBus
   var ErrIncompleteToolBudget
   var ErrIncompleteWorkBudget
+  var ErrInvalidOptions
   var ErrInvalidSchema
-  var ErrMaxCallsPerTurn
-  var ErrMaxConcurrentTools
-  var ErrMaxConsecutiveToolFailures
-  var ErrMaxIterations
-  var ErrMaxTotalTokens
-  var ErrNoCompleter
   var ErrNoSchema
   var ErrNoSchemas
   var ErrNoTokenEstimator
-  var ErrNoTools
   var ErrOverBudget
   var ErrPlanFailed
-  var ErrSessionIDRequired
-  var ErrSummarizerRequired
   var ErrTokenBudgetExceeded
   var ErrToolNotOffered
-  var ErrTrimExcluded
   var ErrUnrenderableResult

@@ -120,6 +120,27 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	if plainLoop.window != nil {
 		t.Fatal("window derived without a summarizer; Validate would reject the triple")
 	}
+
+	// Trim set: derivation must stand down, since a derived Window
+	// would otherwise reach ErrTrimExcluded's forbidden combination
+	// without ever going through Validate.
+	trimmed := Options{
+		Completer:  completer,
+		Tools:      reg,
+		Summarizer: summarizer,
+		Calibrated: contextplan.Calibrate(completer, 0.25),
+		SessionID:  "cap",
+		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
+			return msgs, nil
+		},
+	}
+	trimmedLoop, err := New(trimmed)
+	if err != nil {
+		t.Fatalf("New with Trim set: %v", err)
+	}
+	if trimmedLoop.window != nil {
+		t.Fatal("window derived with Trim set; Validate would reject Window and Trim together")
+	}
 }
 
 // capabilityTool is a minimal schema tool for the registry the

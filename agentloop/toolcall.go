@@ -221,7 +221,7 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 			}
 			return history, true, false, nil
 		}
-		if errors.Is(out.reported, tools.ErrUnknownName) {
+		if out.reported != nil {
 			failed++
 		}
 		msg := out.msg

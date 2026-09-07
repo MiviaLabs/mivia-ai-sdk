@@ -122,7 +122,7 @@ func New(opts Options) (*Loop, error) {
 	// wired, because Validate requires all three together; see
 	// EnableCompaction, which wires the missing pair in one call.
 	window := opts.Window
-	if window == nil && opts.Summarizer != nil && opts.Calibrated != nil {
+	if window == nil && opts.Trim == nil && opts.Summarizer != nil && opts.Calibrated != nil {
 		window = deriveWindow(opts.Completer)
 	}
 	defaultEffort := deriveReasoningEffort(opts.Completer)

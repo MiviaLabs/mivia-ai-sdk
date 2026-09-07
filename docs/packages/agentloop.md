@@ -239,6 +239,33 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
+## Capability derivation from the Completer
+
+`New` derives two Options defaults from `opts.Completer`, without any
+per-request wiring from the caller.
+
+`Window`: when `opts.Window` and `opts.Trim` are both nil and
+`opts.Summarizer` and `opts.Calibrated` are both set, `New` checks
+whether `opts.Completer` implements `provider.ContextAccountant`. If
+it does, and `ContextAccountant.ContextWindow()` returns a positive
+value, `New` builds a default `contextplan.Window`: `MaxTokens` is the
+reported window, `Reserve` is one fifth of it, and `Compaction`
+triggers at 80% and targets 50%, matching the 80%-trigger reserve.
+Derivation stands down whenever `Trim` is set, because `Validate`
+rejects `Window` and `Trim` together (`ErrTrimExcluded`); a derived
+Window must not manufacture that rejection.
+
+Default reasoning effort: `New` checks whether `opts.Completer`
+implements `provider.ReasoningPolicy`. If it does, `New` reads
+`ReasoningPolicy.ReasoningEffort()` as the loop's default reasoning
+effort for requests that do not set their own. A Completer without
+the capability leaves the default empty.
+
+Both checks are adoption rows over Go interface assertions: a
+Completer that implements neither capability behaves exactly as
+before. See `agentloop/adoption.go` (`deriveWindow`,
+`deriveReasoningEffort`) and `agentloop/capability_derivation_test.go`.
+
 ## Graceful conclude near Bounds.MaxIterations
 
 A positive `Options.Conclude.Margin` nudges the model toward a final

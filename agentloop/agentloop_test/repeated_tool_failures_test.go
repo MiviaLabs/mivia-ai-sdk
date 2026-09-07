@@ -124,8 +124,13 @@ func TestRepeatedToolFailuresResetsOnMixedTurn(t *testing.T) {
 	}
 }
 
-// TestRepeatedToolFailuresExcludesArgValidationAndToolError proves argument validation
-// failures and tool execution errors do not count toward consecutive tool failures.
+// TestRepeatedToolFailuresExcludesArgValidationAndToolError now proves the
+// opposite of its original name: argument validation failures and reported
+// tool execution errors DO count toward consecutive tool failures under the
+// default ErrorPolicyReport, alongside unknown-tool-name errors, because
+// collectCalls now counts any reported tool error. Name kept for history;
+// see the addendum "widen the consecutive-tool-failure counter" in
+// docs/plans/agentloop.md.
 func TestRepeatedToolFailuresExcludesArgValidationAndToolError(t *testing.T) {
 	echo := &schemaEchoTool{name: "echo", schema: []byte(`{"type":"object","required":["req"]}`), result: "x"}
 	failing := &schemaEchoTool{name: "failing", schema: []byte(`{}`), runErr: errBoom}
@@ -133,9 +138,9 @@ func TestRepeatedToolFailuresExcludesArgValidationAndToolError(t *testing.T) {
 	mustAdd(t, reg, echo)
 	mustAdd(t, reg, failing)
 	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "nonexistent", Arguments: []byte("{}")}),
-		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")}),
-		toolCallResponse(provider.ToolCall{ID: "call-3", Name: "failing", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-2", Name: "failing", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "call-3", Name: "echo", Arguments: []byte("{}")}),
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
@@ -150,11 +155,11 @@ func TestRepeatedToolFailuresExcludesArgValidationAndToolError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v, want nil", err)
 	}
-	if res.Stop != agentloop.StopNoToolCalls {
-		t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+	if res.Stop != agentloop.StopRepeatedToolFailures {
+		t.Fatalf("Stop = %v, want StopRepeatedToolFailures", res.Stop)
 	}
-	if completer.callCount() != 4 {
-		t.Fatalf("completer calls = %d, want 4", completer.callCount())
+	if completer.callCount() != 2 {
+		t.Fatalf("completer calls = %d, want 2: a validation failure then a reported tool-run error must trip the counter", completer.callCount())
 	}
 }
 

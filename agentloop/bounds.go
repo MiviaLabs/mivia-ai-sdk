@@ -15,7 +15,10 @@ type Bounds struct {
 	// and one both mean serial.
 	MaxConcurrentTools int
 	// MaxConsecutiveToolFailures bounds consecutive all-failing turns.
-	// Zero means unbounded.
+	// A turn counts as failing when every dispatched (non-duplicate)
+	// call in it carries a reported tool error under
+	// ErrorPolicyReport — any reported error, not only
+	// tools.ErrUnknownName. Zero means unbounded.
 	MaxConsecutiveToolFailures int
 }
 

@@ -91,10 +91,17 @@ var (
 	// set and Summarizer is nil. Test with errors.Is.
 	ErrSummarizerRequired = errors.New("agentloop: Window requires Summarizer")
 	// ErrEstimatorRequired is Options.Validate's error when Window is
-	// set and Calibrated is nil. Test with errors.Is.
+	// set and Calibrated is nil. Guards the direct-Options path: a
+	// caller set Window by hand without also setting Calibrated. See
+	// also ErrNoTokenEstimator for the EnableCompaction path, which
+	// checks the Completer's capability instead of the field. Test
+	// with errors.Is.
 	ErrEstimatorRequired = errors.New("agentloop: Window requires Calibrated")
 	// ErrNoTokenEstimator is EnableCompaction's error when the
-	// Completer lacks the provider.TokenEstimator capability. Test
+	// Completer lacks the provider.TokenEstimator capability, so
+	// EnableCompaction has no estimator to fill Calibrated with. See
+	// also ErrEstimatorRequired for the direct-Options path, which
+	// Validate raises once Window is set without Calibrated. Test
 	// with errors.Is.
 	ErrNoTokenEstimator = errors.New("agentloop: Completer does not implement provider.TokenEstimator")
 	// ErrTrimExcluded is Options.Validate's error when both Window and

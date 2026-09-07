@@ -3692,13 +3692,12 @@ Inside:
 - `MaxConsecutiveToolFailures` option in `Options`.
 - `StopRepeatedToolFailures` graceful stop reason.
 - `ErrMaxConsecutiveToolFailures` validation error.
-- Failure counting across consecutive turns where all dispatched calls fail with unknown tool errors.
+- Failure counting across consecutive turns where all dispatched calls carry a reported tool error under `ErrorPolicyReport` (unknown tool name, argument validation failure, or tool execution error alike; see the addendum "widen the consecutive-tool-failure counter").
 - Counter reset on mixed turns or successful tool dispatches.
 
 Outside:
 
 - Any change to `flow`, `agent`, or `agentrun`.
-- Counting argument validation failures or tool execution errors toward the counter.
 
 ### Addendum API
 
@@ -3713,7 +3712,7 @@ Exported symbols added to `api/agentloop.txt`:
 - `TestRepeatedToolFailuresStopsEarly` proves consecutive unknown-tool turns stop at threshold.
 - `TestRepeatedToolFailuresResetsOnSuccess` proves successful calls reset the failure counter.
 - `TestRepeatedToolFailuresResetsOnMixedTurn` proves mixed turns reset the failure counter.
-- `TestRepeatedToolFailuresExcludesArgValidationAndToolError` proves other errors do not count.
+- `TestRepeatedToolFailuresExcludesArgValidationAndToolError` (name kept for history) now proves argument validation and reported tool-run errors also count, alongside unknown tool names; see the addendum "widen the consecutive-tool-failure counter".
 - `TestRepeatedToolFailuresDefaultZeroUnbounded` proves zero preserves unbounded behavior.
 - `TestRepeatedToolFailuresValidateNegative` proves negative bound fails validation.
 
@@ -5470,3 +5469,103 @@ TestDefaultBoundsPassesValidate pins `DefaultBounds` against
   regenerated `api/agentloop.txt`.
 - `verify-fast` runs `docs/examples/_agentloop_minimal` and asserts
   its final output.
+
+## Addendum: widen the consecutive-tool-failure counter
+
+Status: shipped.
+
+### Addendum goal
+
+`collectCalls` counted a failing dispatched call toward
+`consecutiveFailures` only when its reported error was
+`tools.ErrUnknownName`. An argument validation failure or a reported
+tool execution error, both routed through the same
+`ErrorPolicyReport` path, never counted. A model stuck retrying a
+malformed-argument or always-failing tool call bypassed
+`MaxConsecutiveToolFailures` entirely. Widen the counter to any
+reported tool error.
+
+### Addendum scope
+
+Inside:
+
+- `agentloop/toolcall.go`'s `collectCalls`: count `out.reported != nil`
+  instead of `errors.Is(out.reported, tools.ErrUnknownName)`.
+- `Bounds.MaxConsecutiveToolFailures`'s doc comment, updated to state
+  the counted condition precisely.
+
+Outside:
+
+- The `ErrorPolicyFail` path: a hard tool error there short-circuits
+  `Run` before reaching `collectCalls`'s failure count, unchanged.
+- Any change to `MaxConsecutiveToolFailures`'s reset rule: a turn with
+  at least one non-failing dispatched call still resets the counter.
+
+### Addendum tests
+
+`agentloop_test/repeated_tool_failures_test.go`:
+
+`TestRepeatedToolFailuresExcludesArgValidationAndToolError` (name kept
+for history; it now proves the opposite of what it once did) proves an
+argument validation failure and a reported tool execution error, in
+consecutive turns, trip `MaxConsecutiveToolFailures` and stop the run
+with `StopRepeatedToolFailures`, exercising the full `Run` loop
+through a scripted `Completer` and real tools rather than a synthetic
+`Result` fed to a helper.
+
+### Addendum verification
+
+- `go test -race ./agentloop/...` passes.
+
+## Addendum: capability derivation from the Completer
+
+Status: shipped.
+
+### Addendum goal
+
+`New` (commit 157a978) derives two `Options` defaults from
+`opts.Completer` capability interfaces, so a completer that reports
+its own context window and reasoning policy needs no per-request
+wiring for them. Document the derivation and its Trim exclusion,
+which had no coverage in `docs/packages/agentloop.md` or this plan.
+
+### Addendum scope
+
+Inside:
+
+- `deriveWindow` (`agentloop/adoption.go`): when `opts.Window` and
+  `opts.Trim` are both nil and `opts.Summarizer` and `opts.Calibrated`
+  are both set, `New` builds a default `contextplan.Window` from
+  `provider.ContextAccountant.ContextWindow()` when the Completer
+  implements that capability and reports a positive window.
+  `MaxTokens` is the reported window, `Reserve` is one fifth of it,
+  `Compaction` triggers at 80% and targets 50%.
+- `deriveReasoningEffort` (`agentloop/adoption.go`): `New` reads
+  `provider.ReasoningPolicy.ReasoningEffort()` as the loop's default
+  reasoning effort when the Completer implements that capability.
+- The Trim exclusion: derivation stands down whenever `opts.Trim` is
+  set, because `Options.Validate` rejects `Window` and `Trim`
+  together (`ErrTrimExcluded`); a derived Window must not manufacture
+  that rejection. This exclusion is already implemented in
+  `agentloop/loop.go`'s `New` (the `opts.Trim == nil` term) and
+  already covered by `agentloop/capability_derivation_test.go`; this
+  addendum documents it, it does not add it.
+- `docs/packages/agentloop.md`'s new "Capability derivation from the
+  Completer" section.
+
+Outside:
+
+- Any change to `deriveWindow`, `deriveReasoningEffort`, or the Trim
+  exclusion's behavior.
+- Any new exported symbol.
+
+### Addendum proof
+
+- `agentloop/capability_derivation_test.go` exercises: a Completer
+  implementing both capabilities derives `Window` and the default
+  effort; a Completer implementing neither leaves both untouched; a
+  Completer with `Trim` set does not derive `Window` even when
+  `ContextAccountant` is implemented, proving the exclusion.
+- `go test -race ./agentloop/...` passes.
+- `python3 scripts/check_docs.py` and `python3 scripts/check_plan.py`
+  pass with the new section and addendum in place.

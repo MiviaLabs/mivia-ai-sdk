@@ -6887,6 +6887,12 @@ input is what separates them.
 The gap between the two estimates is the prior summary's own length,
 which the shared fixture above sets to twenty bytes.
 
+The recording point needs care. The existing summarizer script records
+requests at the `Chat` boundary, one level below `Summarize`, so it
+captures rendered excerpt text rather than the raw message list. Assert
+on that excerpt text, or record at a wrapping Summarizer. Either
+choice is acceptable; guessing is not.
+
 TestCompactionPriorSummaryAtDefaultTriggerSucceeds runs the same
 history and window. It asserts `Run` returns no error and the sent
 history no longer holds the large message.

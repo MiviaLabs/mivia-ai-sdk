@@ -48,6 +48,7 @@ package context/plan
   PreserveNames []string
 }
   type Summarizer struct {
+  MaxTokens *int
 }
   type Summary struct {
   Objective string `json:"objective"`

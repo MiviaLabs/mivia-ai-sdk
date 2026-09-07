@@ -54,8 +54,20 @@ const systemPrompt = "Summarize the conversation excerpt for an agent. " +
 	"list item is non-blank and unique."
 
 // Summarizer adapts one provider.Completer to summary generation.
+// MaxTokens caps the summarize call's provider.Request.MaxTokens. Nil
+// means the Completer's own default, the same behavior as before this
+// field existed. Set it before the first Summarize call. Summarize
+// reads MaxTokens exactly once, on the first call, and freezes that
+// snapshot for every later call on this Summarizer; a write to
+// MaxTokens after the first Summarize call has no effect. Summarize
+// makes no promise about concurrent calls on the same Summarizer; use
+// one Summarizer from one goroutine at a time.
 type Summarizer struct {
-	completer provider.Completer
+	MaxTokens *int
+
+	completer         provider.Completer
+	maxTokensFrozen   bool
+	maxTokensSnapshot *int
 }
 
 // NewSummarizer binds one Completer. A nil Completer wraps
@@ -69,15 +81,33 @@ func NewSummarizer(c provider.Completer) (*Summarizer, error) {
 
 // Summarize makes one bounded Completer call over msgs and returns the
 // validated Summary. Never retries. Any failure is caller-visible.
+// Summarize reads s.MaxTokens exactly once, on the first call, and
+// freezes it for every later call; see the Summarizer doc comment.
 func (s *Summarizer) Summarize(ctx context.Context, msgs []provider.Message) (Summary, error) {
 	if len(msgs) == 0 {
 		return Summary{}, ErrNoMessagesToSummarize
+	}
+	if !s.maxTokensFrozen {
+		if s.MaxTokens != nil {
+			n := *s.MaxTokens
+			s.maxTokensSnapshot = &n
+		}
+		s.maxTokensFrozen = true
+	}
+	if s.maxTokensSnapshot != nil && *s.maxTokensSnapshot <= 0 {
+		// Window shares the sentinel: a zero token cap can never
+		// produce a usable reply, here or in a planned request.
+		return Summary{}, ErrMaxTokensNotPositive
 	}
 	req := provider.Request{
 		Messages: []provider.Message{
 			{Role: provider.RoleSystem, Content: systemPrompt},
 			{Role: provider.RoleUser, Content: buildExcerpts(msgs)},
 		},
+	}
+	if s.maxTokensSnapshot != nil {
+		n := *s.maxTokensSnapshot
+		req.MaxTokens = &n
 	}
 	tctx, cancel := context.WithTimeout(ctx, SummaryTimeout)
 	defer cancel()

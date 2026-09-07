@@ -45,9 +45,6 @@ Outside:
 - Any degrade-to-structural path. A summarizer failure fails the
   caller. This reverses the reference design, which fell back to
   structural-only compaction.
-- Output-token caps through `provider.Request`. `Request` carries no
-  `MaxTokens` field, and this plan adds none. The bound is the bounded
-  input, the timeout, and strict output validation.
 - Policy snapshots, binding revisions, endpoint allowlists, and
   redaction classifiers. Those reference mechanisms are out of scope.
 - Any durable storage of summaries. The caller keeps the injected
@@ -127,10 +124,13 @@ var (
 
 ### Decisions
 
-- The summary request carries no `MaxTokens`. `provider.Request` has
-  no such field today. Adding one for this single caller would change
-  every `Completer` implementation for a bound the SDK cannot enforce.
-  The call is bounded three ways instead: excerpts cap the input at
+- The summarize request's `MaxTokens` is `Summarizer.MaxTokens`,
+  caller-set and nil by default. See the "Cap the summarize output
+  with Summarizer.MaxTokens" fix below for the field and its
+  behavior. This bullet's earlier claim, that `provider.Request` had
+  no `MaxTokens` field, is stale: the field exists in
+  `provider/types.go`. The call stays bounded three further ways
+  regardless of the cap: excerpts cap the input at
   `MaxExcerptTotalBytes`, `SummaryTimeout` caps the duration, and
   strict parsing plus `Summary.Validate` cap the accepted output. An
   over-long or malformed reply fails with `ErrInvalidReply` and no
@@ -545,3 +545,70 @@ stays green with no trailer.
 - `policy/layers.json` carries no diff.
 - No envelope conformance vector: `contextsummary` defines no wire
   format, so the schema change adds none.
+
+## Fix: cap the summarize output with Summarizer.MaxTokens
+
+Status: shipped. The symbols live in `context/plan` after the phase 86
+fold. Every `contextsummary.` path reference below is a historical
+name.
+
+### Fix goal
+
+`Summarizer.Summarize` builds a `provider.Request` and never set
+`MaxTokens`. `provider.Request` carries a `MaxTokens *int` field; nil
+means "use the Completer's own default". Every summarize call ran with
+that field nil, so the call stayed uncapped by this package. The fix
+adds a caller-set cap that flows into that field. Nil keeps the old
+behavior.
+
+`Summarizer.MaxTokens` rejects a non-nil zero value. This differs from
+`provider.Request.MaxTokens`, which accepts a pointer to zero. A zero
+token cap can never produce a usable summary reply. This package
+treats zero as a caller error instead of passing it through.
+
+### Fix scope
+
+- A new exported field, `Summarizer.MaxTokens *int`. Nil by default. A
+  caller that never touches the field gets the prior behavior. Set the
+  field on the `*Summarizer` before the first `Summarize` call.
+- Two unexported fields on `Summarizer`: `maxTokensFrozen bool` and
+  `maxTokensSnapshot *int`. The first `Summarize` call sets the flag
+  and, when `MaxTokens` is non-nil, copies the value into a new `int`.
+  Later calls read the snapshot only. A write to the public field
+  after the first call has no effect.
+- `Summarize` copies the snapshot into each `provider.Request` by
+  value. No request and no caller pointer aliases the stored cap.
+- The zero and negative guard shares `ErrMaxTokensNotPositive` with
+  `Window.Validate`. The message text is identical. It runs before the
+  Completer call, so a bad cap costs no provider round trip.
+
+### Decisions
+
+- A plain bool freezes the snapshot, not `sync.Once`. No
+  concurrent-first-caller promise is intended. One `Summarizer` serves
+  one goroutine at a time.
+- The sentinel is shared with `Window`, not duplicated. Two exported
+  errors with one message text would fork the vocabulary.
+
+### Tests
+
+In `context/plan/plan_test/max_tokens_test.go`:
+
+- `TestSummarizeSetsRequestMaxTokens` pins the cap reaching the
+  request.
+- `TestSummarizeLeavesMaxTokensNilByDefault` pins the nil default.
+- `TestSummarizeRejectsNonPositiveMaxTokens` pins the guard: table
+  over zero, negative, and a positive control. Zero cases assert no
+  Completer call.
+- `TestSummarizeRequestMaxTokensNotAliased` pins the by-value copy.
+- `TestSummarizeFreezesMaxTokensAfterFirstCall` pins the freeze: a
+  second write to the field does not reach the second call.
+
+### Verification
+
+- `make verify` passes; `context/plan` holds the 85 coverage floor.
+- `make api-update` adds `MaxTokens *int` to the `Summarizer` lock
+  entry. The lock diff lands in the same commit as the code.
+- `ErrMaxTokensNotPositive` needs no pending-symbols entry: the
+  exported symbol already existed, and the new call site is a second
+  non-test reference.

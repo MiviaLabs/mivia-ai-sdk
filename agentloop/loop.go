@@ -64,7 +64,12 @@ type Loop struct {
 	window          *contextplan.Window
 	summarizer      *contextsummary.Summarizer
 	calibrated      *contextplan.Calibrated
-	conclude        Conclude
+	// defaultEffort is the completer's ReasoningPolicy default, read
+	// once at New; empty when the completer has no policy. Each
+	// iteration's request carries it when the request sets no effort
+	// of its own.
+	defaultEffort provider.ReasoningEffort
+	conclude      Conclude
 	// deadlineAt is StartTime.Add(Conclude.Deadline), computed once
 	// in New from opts.StartTime and opts.Conclude.Deadline. Zero
 	// when opts.Conclude.Deadline is zero, which makes the deadline
@@ -110,6 +115,17 @@ func New(opts Options) (*Loop, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Adoption rows: a completer that implements ContextAccountant
+	// and ReasoningPolicy hands the loop its window size and default
+	// reasoning effort without per-request wiring. The derived window
+	// only applies when the summarizer and estimator are already
+	// wired, because Validate requires all three together; see
+	// EnableCompaction, which wires the missing pair in one call.
+	window := opts.Window
+	if window == nil && opts.Summarizer != nil && opts.Calibrated != nil {
+		window = deriveWindow(opts.Completer)
+	}
+	defaultEffort := deriveReasoningEffort(opts.Completer)
 	schemas, err := compileSchemas(defs)
 	if err != nil {
 		return nil, err
@@ -139,7 +155,8 @@ func New(opts Options) (*Loop, error) {
 		defs:            defs,
 		schemas:         schemas,
 		audit:           opts.Audit,
-		window:          opts.Window,
+		window:          window,
+		defaultEffort:   defaultEffort,
 		summarizer:      opts.Summarizer,
 		calibrated:      opts.Calibrated,
 		conclude:        conclude,

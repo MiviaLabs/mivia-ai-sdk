@@ -53,6 +53,12 @@ func ReadOutputTool(sp *Spool, maxPageBytes int) (tools.Tool, error) {
 // Name returns the tool's registry name.
 func (t *readOutputTool) Name() string { return readOutputName }
 
+// MaxResultBytes bounds one read-back result to the page bound the
+// tool was built with: the paging contract already caps a result at
+// maxPageBytes, so the result budget declares that same bound to the
+// loop's per-call shaping.
+func (t *readOutputTool) MaxResultBytes() int { return t.maxPageBytes }
+
 // ParameterSchema publishes the ref, offset, and limit schema.
 func (t *readOutputTool) ParameterSchema() []byte { return []byte(readOutputSchema) }
 

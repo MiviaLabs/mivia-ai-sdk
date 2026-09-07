@@ -6,6 +6,7 @@ package spool
   func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view string, ref string, err error)
   func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte, ttl time.Duration) (view string, ref string, err error)
   func (t *readOutputTool) DecodeArguments(raw []byte) (tools.InOut, error)
+  func (t *readOutputTool) MaxResultBytes() (int)
   func (t *readOutputTool) Name() (string)
   func (t *readOutputTool) ParameterSchema() ([]byte)
   func (t *readOutputTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)

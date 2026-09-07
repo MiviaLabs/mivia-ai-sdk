@@ -48,6 +48,11 @@ type schedulerTool struct {
 // Name returns the registry name.
 func (t *schedulerTool) Name() string { return t.name }
 
+// Privileged marks schedule management as needing explicit
+// allowlisting: a scheduled job re-executes commands without a model
+// in the loop, so its effects outlive the turn that requested them.
+func (t *schedulerTool) Privileged() bool { return true }
+
 // Run executes one decoded command.
 func (t *schedulerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	var cmd SchedulerCommand

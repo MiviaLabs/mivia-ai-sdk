@@ -366,7 +366,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if l.tracer != nil {
 		ctx, span = l.tracer.Start(ctx, "agentloop.iteration")
 	}
-	req := provider.Request{Model: l.model, Messages: history, Tools: surface.defs}
+	req := provider.Request{Model: l.model, Messages: history, Tools: surface.defs, ReasoningEffort: l.defaultEffort}
 	// A rewritten history must not carry a reasoning block minted
 	// against turns the provider no longer sees.
 	req.DisableProviderReplay = replayUnsafe

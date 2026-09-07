@@ -52,6 +52,9 @@ func AsTool(name string, r *agentrun.Runner, opts ToolOptions) tools.Tool {
 	return &subTool{name: name, runner: r, opts: opts}
 }
 
+// subToolMaxResultBytes bounds one spawn result's rendered body.
+const subToolMaxResultBytes = 64 << 10
+
 // subTool adapts one runner to the tools.Tool interface.
 type subTool struct {
 	name   string
@@ -68,6 +71,15 @@ func (t *subTool) Name() string { return t.name }
 func (t *subTool) ExecutionProfile() tools.ExecutionProfile {
 	return tools.ExecutionProfile{Timeout: tools.TimeoutNone}
 }
+
+// Privileged marks spawn as needing explicit allowlisting: a model
+// that can spawn runners spends every tool the runner carries.
+func (t *subTool) Privileged() bool { return true }
+
+// MaxResultBytes bounds one spawn result. A sub-agent turn that runs
+// to its own stop conditions can return a large final artifact, and
+// without a bound the caller's history absorbs all of it.
+func (t *subTool) MaxResultBytes() int { return subToolMaxResultBytes }
 
 // Run spawns the wrapped runner once, guarding the depth bound.
 func (t *subTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {

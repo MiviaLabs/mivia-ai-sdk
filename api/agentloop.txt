@@ -36,7 +36,9 @@ package agentloop
   func (s *Steer) HasActiveCall() (bool)
   func (s *Steer) SetInjector(f func() []provider.Message)
   func (s *Steer) Trigger()
+  func DefaultBounds() (Bounds)
   func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, []string, error)
+  func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) (error)
   func New(opts Options) (*Loop, error)
   func NewSteer() (*Steer)
   type AuditFunc func(ctx context.Context, rec AuditRecord) error

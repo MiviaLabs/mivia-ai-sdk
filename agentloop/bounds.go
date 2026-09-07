@@ -2,8 +2,7 @@ package agentloop
 
 // Bounds groups the loop's numeric caps. Zero means uncapped or
 // serial, per the member's own doc comment.
-type Bounds struct {
-	// MaxIterations bounds the Completer-call count of one Run.
+type Bounds struct { // MaxIterations bounds the Completer-call count of one Run.
 	MaxIterations int
 	// MaxCallsPerTurn bounds one turn's model-requested tool calls.
 	// Zero means unbounded.
@@ -36,4 +35,30 @@ func (b Bounds) Validate() error {
 		return ErrMaxConsecutiveToolFailures
 	}
 	return nil
+}
+
+// Sensible production defaults for Bounds. They bound a runaway loop
+// without squeezing a healthy one: two dozen model turns, eight tool
+// calls per turn, a 200k-token billing cap, four-way tool parallelism,
+// and a three-turn failure tripwire. A caller overrides any member by
+// assigning the field after DefaultBounds.
+const (
+	defaultMaxIterations              = 24
+	defaultMaxCallsPerTurn            = 8
+	defaultMaxTotalTokens             = 200_000
+	defaultMaxConcurrentTools         = 4
+	defaultMaxConsecutiveToolFailures = 3
+)
+
+// DefaultBounds returns a Bounds with every cap set to a sensible
+// production default; see the per-member constants. The returned
+// value passes Validate. Callers copy and adjust single members.
+func DefaultBounds() Bounds {
+	return Bounds{
+		MaxIterations:              defaultMaxIterations,
+		MaxCallsPerTurn:            defaultMaxCallsPerTurn,
+		MaxTotalTokens:             defaultMaxTotalTokens,
+		MaxConcurrentTools:         defaultMaxConcurrentTools,
+		MaxConsecutiveToolFailures: defaultMaxConsecutiveToolFailures,
+	}
 }

@@ -9,6 +9,8 @@ verify-fast:
 	go vet ./...
 	go vet ./docs/examples/_agentloop/
 	go run ./docs/examples/_agentloop/ | grep -q '^final: HELLO$$'
+	go vet ./docs/examples/_agentloop_minimal/
+	go run ./docs/examples/_agentloop_minimal/ | grep -q '^final: HELLO$$'
 	go test ./...
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py

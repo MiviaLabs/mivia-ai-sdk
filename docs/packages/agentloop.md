@@ -70,6 +70,19 @@ or a bound trips. The exported surface below mirrors
 
 ## Functions and methods
 
+- `DefaultBounds()` — returns a `Bounds` with every cap set to a
+  sensible production default: 24 iterations, 8 calls per turn,
+  200k total tokens, 4-way tool parallelism, and a 3-turn failure
+  tripwire. Copy and adjust single members.
+- `EnableCompaction(o, completer, window, alpha)` — fills a
+  `Options`' `Window`, `Summarizer`, and `Calibrated` fields from one
+  `Completer`, in one call. The `Completer` must also implement
+  `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
+  call fails with `ErrEstimatorRequired` and leaves `Options`
+  untouched. A minimal entry path is therefore: `anthropic.New`,
+  `tools.New`, `Options{Completer, Tools, Bounds: DefaultBounds()}`,
+  `EnableCompaction`, `agentloop.New`, `Run`. See
+  `docs/examples/_agentloop_minimal`.
 - `New(opts)` — validates `opts`, calls
   `Definitions(opts.Tools, opts.Scope)` once, and binds the result
   onto a `Loop`. `Run` reuses that same `[]provider.ToolDefinition`

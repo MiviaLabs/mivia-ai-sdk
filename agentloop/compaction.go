@@ -230,3 +230,27 @@ func messagesEqual(a, b provider.Message) bool {
 	}
 	return true
 }
+
+// EnableCompaction fills a Options' Window, Summarizer, and
+// Calibrated fields from one Completer, in one call. The Completer
+// must also implement provider.TokenEstimator; anthropic.Client
+// does. window keeps the caller's configured trigger and target
+// percentages. alpha is the calibration factor passed to
+// contextplan.Calibrate. The Options must not already carry Trim;
+// Window and Trim are mutually exclusive, and Validate rejects the
+// pair.
+func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) error {
+	est, ok := completer.(provider.TokenEstimator)
+	if !ok {
+		return ErrEstimatorRequired
+	}
+	summarizer, err := contextsummary.NewSummarizer(completer)
+	if err != nil {
+		return err
+	}
+	w := window
+	o.Window = &w
+	o.Summarizer = summarizer
+	o.Calibrated = contextplan.Calibrate(est, alpha)
+	return nil
+}

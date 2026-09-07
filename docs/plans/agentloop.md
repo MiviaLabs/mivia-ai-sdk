@@ -5416,3 +5416,62 @@ aligned slices; the walk is order-preserving.
 flight until a second call's veto lands, then asserts the slow call's
 result reaches `history` and its audit record exists. `go test -race
 -count=1 ./agentloop/...` passes.
+
+## Addendum: minimal entry surface
+
+Status: shipped. The package gains `DefaultBounds` and
+`EnableCompaction`, the two functions the raw entry path was missing.
+The raw entry cost was already low, but no example showed it, and the
+compaction triple (`Window`, `Summarizer`, `Calibrated`) demanded
+three coupled fields from every caller.
+
+### Addendum goal
+
+Cut the smallest useful entry to five lines of wiring:
+`anthropic.New`, `tools.New`, `Options{Completer, Tools, Bounds:
+DefaultBounds()}`, `EnableCompaction`, `Run`.
+
+### Addendum scope
+
+Inside:
+
+- `DefaultBounds() Bounds`: every cap set to a sensible production
+  default (24 iterations, 8 calls per turn, 200k tokens, 4-way tool
+  parallelism, 3-turn failure tripwire).
+- `EnableCompaction(o *Options, completer provider.Completer, window
+  contextplan.Window, alpha float64) error`: builds the
+  `contextsummary.Summarizer` from the completer, the
+  `contextplan.Calibrated` from its `provider.TokenEstimator`
+  capability, and sets all three `Options` fields. A completer
+  without the estimator capability fails with `ErrEstimatorRequired`
+  and leaves `Options` untouched.
+- `docs/examples/_agentloop_minimal`, a runnable five-line-wiring
+  example; `verify-fast` runs it and asserts its output.
+
+Outside:
+
+- No new package. `contextplan` cannot host the helper: it imports
+  `provider` alone, and the summarizer type lives in
+  `contextsummary`. `agentloop` already imports both, so the helper
+  lives here.
+- No change to `Options.Validate` or any existing rule.
+
+### Addendum tests
+
+`agentloop_test/enable_compaction_test.go`:
+
+TestEnableCompactionRequiresEstimator proves the no-estimator
+failure and the untouched-Options guarantee.
+
+TestEnableCompactionSetsTriple proves all three fields land
+populated and the `Options` pass `Validate`.
+
+TestDefaultBoundsPassesValidate pins `DefaultBounds` against
+`Validate` and positive-cap drift.
+
+### Verification
+
+- `make verify` passes, including the API gate against the
+  regenerated `api/agentloop.txt`.
+- `verify-fast` runs `docs/examples/_agentloop_minimal` and asserts
+  its final output.

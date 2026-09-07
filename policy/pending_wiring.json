@@ -17,8 +17,8 @@
       "permanent": false
     },
     "mcp": {
-      "reason": "MCP client leaf. Docs/plans/mcp.md ships it ahead of a caller by design, matching the tools and ledger precedent.",
-      "target": "external application code",
+      "reason": "MCP client leaf. Its consumer is external application code: mivia-agent imports it at 22 call sites as of 2026-09-07.",
+      "target": "external application code (mivia-agent)",
       "permanent": true
     },
     "skills": {
@@ -27,13 +27,13 @@
       "permanent": true
     },
     "agentloop": {
-      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires one field from every Options group that fits a scripted offline example (Completer, Tools, Scope, Bounds, Conclude, Bus, HeartbeatInterval, DedupWithinTurn, StartTime, Budget, Window, Summarizer, Calibrated, Tracer, Hooks, Usage, SessionID, WorkBudget, ToolBudget, Audit), runs a scripted two-turn tool exchange through RunSteerable, and verify-fast runs it and asserts its final output, not just a vet. Unwired by design: Model, OnToolError, OnToolCallError, Trim, Surface, StreamingWriter, and ContinueOnStop, which need a live model, a real trim policy, a stream sink, or a stop-override policy no scripted example can exercise. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller.",
-      "target": "external application code (outside this module), e.g. mivia-agent's internal/agent package once it adapts to agentloop.Options",
+      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. The external consumer exists: mivia-agent's internal/agent agentloop_adapter.go (verified 2026-09-07) builds agentloop.Options and sets Model, OnToolCallError, Trim, Surface, StreamingWriter, and ContinueOnStop. Only OnToolError stays at its default there. The docs/examples/_agentloop composition example is the in-repo positive control: verify-fast runs it and asserts its final output. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks.",
+      "target": "external application code; the live consumer is mivia-agent's internal/agent agentloop_adapter.go",
       "permanent": true
     },
     "a2aack": {
-      "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. An external application wires it to a flow.Step, not another SDK package.",
-      "target": "external application code (outside this module)",
+      "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. No consumer today: mivia-agent has zero references to it as of 2026-09-07. Kept as SDK surface.",
+      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "a2aloopback": {
@@ -42,8 +42,8 @@
       "permanent": true
     },
     "dispatch": {
-      "reason": "NDJSON envelope HTTP endpoint. An external application's server wiring calls Endpoint.Handler, not another SDK package.",
-      "target": "external application code (outside this module)",
+      "reason": "NDJSON envelope HTTP endpoint. No consumer today: mivia-agent has zero references to it as of 2026-09-07; it ships its own HTTP wiring. Kept as SDK surface.",
+      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "durablefence": {
@@ -57,8 +57,8 @@
       "permanent": true
     },
     "runconfig": {
-      "reason": "JSON-config composition layer over agentrun. A deployment's own main package loads a runner definition; no SDK package composes runconfig further.",
-      "target": "external application code (outside this module)",
+      "reason": "JSON-config composition layer over agentrun. No consumer today: mivia-agent has zero references to it as of 2026-09-07; no deployment main package loads it yet. Kept as SDK surface.",
+      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "contextsession": {
@@ -67,8 +67,8 @@
       "permanent": false
     },
     "provider/anthropic": {
-      "reason": "Anthropic Messages API adapter leaf. Its first in-repo caller is the e2e wire test and the agentloop composition example.",
-      "target": "external application code; the in-repo caller is the e2e wire test and the agentloop composition example from part two",
+      "reason": "Anthropic Messages API adapter leaf. No external consumer today: mivia-agent has zero references to it as of 2026-09-07; it ships its own internal/provider/anthropic.go. In-repo callers are the e2e wire test and the agentloop composition example.",
+      "target": "no external consumer today; in-repo callers are the e2e wire test and the agentloop composition example",
       "permanent": true
     }
   }

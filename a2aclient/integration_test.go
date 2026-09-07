@@ -1,4 +1,4 @@
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
@@ -19,7 +18,7 @@ import (
 )
 
 // integrationFixture boots a live Loopback and a real client, then
-// builds a one-step agent whose AckWait resolves through a2aack.Wait.
+// builds a one-step agent whose AckWait resolves through a2aclient.Wait.
 // It returns the AckWait, the agent, and the machine model.
 func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Definition) {
 	t.Helper()
@@ -41,9 +40,9 @@ func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Def
 			t.Errorf("client.Close() error: %v", err)
 		}
 	})
-	ackFn, err := a2aack.Wait(client, a2aack.Options{Poll: 2 * time.Millisecond, Timeout: time.Second})
+	ackFn, err := a2aclient.Wait(client, a2aclient.Options{Poll: 2 * time.Millisecond, Timeout: time.Second})
 	if err != nil {
-		t.Fatalf("a2aack.Wait() error: %v", err)
+		t.Fatalf("a2aclient.Wait() error: %v", err)
 	}
 
 	plan, err := flow.New([]flow.Step{

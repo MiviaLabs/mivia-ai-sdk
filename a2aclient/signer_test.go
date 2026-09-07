@@ -1,4 +1,4 @@
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
@@ -59,7 +58,7 @@ func TestWaitPinsExpectedSigner(t *testing.T) {
 			name:    "mismatched signer fails",
 			pin:     pinned,
 			result:  forgedResult,
-			wantErr: a2aack.ErrSignerMismatch,
+			wantErr: a2aclient.ErrSignerMismatch,
 		},
 		{
 			name:   "empty pin keeps the unpinned contract",
@@ -73,7 +72,7 @@ func TestWaitPinsExpectedSigner(t *testing.T) {
 				statusStates: []a2aclient.State{a2aclient.StateCompleted},
 				result:       c.result,
 			}
-			ackFn, err := a2aack.Wait(fake, a2aack.Options{
+			ackFn, err := a2aclient.Wait(fake, a2aclient.Options{
 				Poll:         time.Millisecond,
 				Timeout:      time.Second,
 				ExpectSigner: c.pin,
@@ -91,7 +90,7 @@ func TestWaitPinsExpectedSigner(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, a2aack.ErrSignerMismatch) {
+			if !errors.Is(err, a2aclient.ErrSignerMismatch) {
 				t.Fatalf("ackFn error = %v, want ErrSignerMismatch", err)
 			}
 		})

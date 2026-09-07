@@ -1,4 +1,4 @@
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 )
 
@@ -24,8 +23,8 @@ func TestWaitTimeout(t *testing.T) {
 	}}
 	msg := signedMessage(t)
 
-	opts := a2aack.Options{Poll: poll, Timeout: timeout}
-	ackFn, err := a2aack.Wait(fake, opts)
+	opts := a2aclient.Options{Poll: poll, Timeout: timeout}
+	ackFn, err := a2aclient.Wait(fake, opts)
 	if err != nil {
 		t.Fatalf("Wait returned validation error %v", err)
 	}
@@ -41,7 +40,7 @@ func TestWaitTimeout(t *testing.T) {
 	if elapsed > timeout+time.Second {
 		t.Fatalf("wait took %v, want return near the %v deadline", elapsed, timeout)
 	}
-	if !errors.Is(ackErr, a2aack.ErrTimeout) {
+	if !errors.Is(ackErr, a2aclient.ErrTimeout) {
 		t.Fatalf("error = %v, want errors.Is(ErrTimeout)", ackErr)
 	}
 	if !strings.Contains(ackErr.Error(), a2aclient.StateWorking.String()) {

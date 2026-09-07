@@ -1,11 +1,10 @@
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
@@ -36,8 +35,8 @@ func TestWaitLiveLoopback(t *testing.T) {
 		}
 	})
 
-	opts := a2aack.Options{Poll: 2 * time.Millisecond, Timeout: time.Second}
-	ackFn, err := a2aack.Wait(client, opts)
+	opts := a2aclient.Options{Poll: 2 * time.Millisecond, Timeout: time.Second}
+	ackFn, err := a2aclient.Wait(client, opts)
 	if err != nil {
 		t.Fatalf("Wait() returned validation error %v", err)
 	}

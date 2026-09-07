@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-seven packages and the import edges
+The diagram shows the forty-six packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
@@ -81,8 +81,6 @@ flowchart LR
     usage --> provider
     providerregistry --> provider
     scheduler --> events
-    a2aack --> a2aclient
-    a2aack --> envelope
     dispatch --> agent
     dispatch --> envelope
     dispatch --> events
@@ -296,6 +294,17 @@ flowchart LR
   `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
   dial dependency `a2a-go`'s gRPC transport needs; this is the
   module's first external network call. `a2aloopback` is the other.
+  The package also holds the remote step ack: `Options`,
+  `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait`
+  returns a func matching `agent.AckWait`'s signature,
+  `func(context.Context, envelope.Message) (envelope.Ack, error)`,
+  that sends a gated step as a remote task, polls `Status`, fetches
+  `Result`, re-verifies its signature, and builds a confirmed ack
+  keyed off the sent message. A failed, canceled, or rejected task
+  ends the poll with `ErrRemoteFailed`, and so does a state the loop
+  cannot resolve. The ack returns an unnamed func rather than
+  importing `agent` for the `AckWait` name, and carries no a2a-go
+  import of its own.
   See [packages/a2aclient.md](packages/a2aclient.md).
 - `a2aloopback/` — a gRPC A2A loopback test fixture. It provides
   `Loopback`, which starts a real A2A server on a 127.0.0.1 port and
@@ -303,20 +312,7 @@ flowchart LR
   and `envelope`, plus the same third-party `a2a-go`/`grpc` exception
   `a2aclient` carries, scoped to the server-side packages a production
   client never needs. It follows `durablefence`'s convention: no
-  production package may import it; only `a2aclient`'s own tests and
-  `a2aack`'s tests do.
-- `a2aack/` — the remote step ack. It provides `Options`,
-  `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
-  a func matching `agent.AckWait`'s signature, `func(context.Context,
-  envelope.Message) (envelope.Ack, error)`, that sends a gated step as
-  a remote task, polls `Status`, fetches `Result`, re-verifies its
-  signature, and builds a confirmed ack keyed off the sent message. A
-  failed, canceled, or rejected task ends the poll with
-  `ErrRemoteFailed`, and so does a state the loop cannot resolve.
-  `a2aack` imports `a2aclient` and `envelope`; it returns an unnamed
-  func rather than importing `agent` for the `AckWait` name. It
-  carries no a2a-go import of its own. See
-  [packages/a2aack.md](packages/a2aack.md).
+  production package may import it; only `a2aclient`'s own tests do.
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
   `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST

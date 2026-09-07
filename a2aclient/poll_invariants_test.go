@@ -1,4 +1,4 @@
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aack"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
@@ -26,8 +25,8 @@ func TestPollInvariants(t *testing.T) {
 			a2aclient.StateCompleted,   // fourth: terminal, stops the loop
 		}}
 		msg := signedMessage(t)
-		opts := a2aack.Options{Poll: poll, Timeout: timeout}
-		ackFn, err := a2aack.Wait(fake, opts)
+		opts := a2aclient.Options{Poll: poll, Timeout: timeout}
+		ackFn, err := a2aclient.Wait(fake, opts)
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -50,8 +49,8 @@ func TestPollInvariants(t *testing.T) {
 		msg := signedMessage(t)
 		poll := 10 * time.Millisecond
 		timeout := time.Second
-		opts := a2aack.Options{Poll: poll, Timeout: timeout}
-		ackFn, err := a2aack.Wait(fake, opts)
+		opts := a2aclient.Options{Poll: poll, Timeout: timeout}
+		ackFn, err := a2aclient.Wait(fake, opts)
 		if err != nil {
 			t.Fatalf("Wait returned validation error %v", err)
 		}
@@ -64,7 +63,7 @@ func TestPollInvariants(t *testing.T) {
 		if elapsed > 5*poll {
 			t.Fatalf("ackFn took %v after cancel, want return near the first poll tick", elapsed)
 		}
-		if !errors.Is(ackErr, a2aack.ErrTimeout) {
+		if !errors.Is(ackErr, a2aclient.ErrTimeout) {
 			t.Fatalf("ackFn() error = %v, want errors.Is(ErrTimeout) after ctx cancellation", ackErr)
 		}
 	})
@@ -74,7 +73,7 @@ func TestPollInvariants(t *testing.T) {
 // no verdict keeps the loop polling until the deadline, so the wait
 // ends in ErrTimeout, not ErrRemoteFailed.
 func TestPollContinuesOnUnresolvedStates(t *testing.T) {
-	opts := a2aack.Options{Poll: time.Millisecond, Timeout: 20 * time.Millisecond}
+	opts := a2aclient.Options{Poll: time.Millisecond, Timeout: 20 * time.Millisecond}
 	cases := []a2aclient.State{
 		a2aclient.StateSubmitted,
 		a2aclient.StateWorking,
@@ -84,15 +83,15 @@ func TestPollContinuesOnUnresolvedStates(t *testing.T) {
 	for _, state := range cases {
 		t.Run(state.String(), func(t *testing.T) {
 			fake := &fakeRemote{statusStates: []a2aclient.State{state}}
-			ackFn, err := a2aack.Wait(fake, opts)
+			ackFn, err := a2aclient.Wait(fake, opts)
 			if err != nil {
 				t.Fatalf("Wait returned validation error %v", err)
 			}
 			_, err = ackFn(context.Background(), signedMessage(t))
-			if !errors.Is(err, a2aack.ErrTimeout) {
+			if !errors.Is(err, a2aclient.ErrTimeout) {
 				t.Fatalf("error = %v, want errors.Is(ErrTimeout): %s must keep polling", err, state)
 			}
-			if errors.Is(err, a2aack.ErrRemoteFailed) {
+			if errors.Is(err, a2aclient.ErrRemoteFailed) {
 				t.Fatalf("error = %v, want no ErrRemoteFailed for %s", err, state)
 			}
 			if calls := fake.statusCalls.Load(); calls < 2 {

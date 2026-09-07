@@ -1,9 +1,9 @@
-// Package a2aack_test holds the external tests for the a2aack package.
+// External tests for the a2aclient package's remote step ack.
 // A fake Remote drives every loop, timing, and error outcome; the live
 // a2aloopback.Loopback fixture appears only in the happy-path and
 // integration tests. No test file imports a2a-go, so the Semgrep
 // stdlib-only rule holds outside a2aclient and a2aloopback.
-package a2aack_test
+package a2aclient_test
 
 import (
 	"context"

@@ -76,7 +76,9 @@ errors, and one real `agent.Agent` resolving its step through `Wait`.
 and `envelope`. `make api-update` lands `api/a2aack.txt`. `make
 verify` passes and `a2aack` holds the 85 coverage floor.
 ## Addendum: states the poll loop cannot resolve
-Status: shipped.
+Status: superseded. Phase 86 folded this package into a2aclient;
+the symbols live in a2aclient now. See
+docs/plans/agents/phase86_package_consolidation.md.
 
 
 `a2aclient.State` gains four constants. See the addendum "Mirror the

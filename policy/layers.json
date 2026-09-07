@@ -4,10 +4,6 @@
     "a2a": [
       "envelope"
     ],
-    "a2aack": [
-      "a2aclient",
-      "envelope"
-    ],
     "a2aclient": [
       "a2a",
       "envelope"

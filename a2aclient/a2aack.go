@@ -1,8 +1,9 @@
-// Package a2aack turns a remote A2A task round trip into the agent
+// AckWait turns a remote A2A task round trip into the agent
 // composition layer's AckWait. Wait resolves one gated step through a
-// Remote: send, poll, result, verify, and ack. See docs/plans/a2aack.md
-// for the contract.
-package a2aack
+// Remote: send, poll, result, verify, and ack. See
+// docs/plans/a2aclient.md for the contract.
+
+package a2aclient
 
 import (
 	"context"
@@ -10,7 +11,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
@@ -53,11 +53,11 @@ var (
 )
 
 // Remote is the remote-task round trip a2aack polls: send, status,
-// result. *a2aclient.Client implements it.
+// result. *Client implements it.
 type Remote interface {
-	Send(ctx context.Context, msg envelope.Message) (a2aclient.TaskHandle, error)
-	Status(ctx context.Context, h a2aclient.TaskHandle) (a2aclient.State, error)
-	Result(ctx context.Context, h a2aclient.TaskHandle) (envelope.Message, error)
+	Send(ctx context.Context, msg envelope.Message) (TaskHandle, error)
+	Status(ctx context.Context, h TaskHandle) (State, error)
+	Result(ctx context.Context, h TaskHandle) (envelope.Message, error)
 }
 
 // Wait returns the AckWait that resolves one step through c. Wait
@@ -76,7 +76,7 @@ func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (enve
 		defer cancel()
 		h, err := c.Send(deadlineCtx, msg)
 		if err != nil {
-			return envelope.Ack{}, timeoutWrap(err, a2aclient.StateUnspecified)
+			return envelope.Ack{}, timeoutWrap(err, StateUnspecified)
 		}
 		return poll(deadlineCtx, c, h, opts, msg)
 	}, nil
@@ -88,10 +88,10 @@ func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (enve
 // the loop with ErrRemoteFailed, and so do auth-required and
 // input-required: both wait for client action a2aack never sends.
 // Unspecified and unknown keep the loop polling.
-func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, msg envelope.Message) (envelope.Ack, error) {
+func poll(ctx context.Context, c Remote, h TaskHandle, opts Options, msg envelope.Message) (envelope.Ack, error) {
 	ticker := time.NewTicker(opts.Poll)
 	defer ticker.Stop()
-	last := a2aclient.StateUnspecified
+	last := StateUnspecified
 	for {
 		select {
 		case <-ctx.Done():
@@ -102,15 +102,15 @@ func poll(ctx context.Context, c Remote, h a2aclient.TaskHandle, opts Options, m
 				return envelope.Ack{}, timeoutWrap(err, last)
 			}
 			switch state {
-			case a2aclient.StateCompleted:
+			case StateCompleted:
 				result, err := c.Result(ctx, h)
 				if err != nil {
 					return envelope.Ack{}, timeoutWrap(err, last)
 				}
 				return ackFromResult(msg, result, opts.ExpectSigner)
-			case a2aclient.StateFailed, a2aclient.StateCanceled, a2aclient.StateRejected:
+			case StateFailed, StateCanceled, StateRejected:
 				return envelope.Ack{}, fmt.Errorf("%w: %s", ErrRemoteFailed, state)
-			case a2aclient.StateAuthRequired, a2aclient.StateInputRequired:
+			case StateAuthRequired, StateInputRequired:
 				return envelope.Ack{}, fmt.Errorf("%w: %s", ErrRemoteFailed, state)
 			default:
 				last = state
@@ -143,7 +143,7 @@ func ackFromResult(msg, result envelope.Message, expect string) (envelope.Ack, e
 // A DeadlineExceeded or Canceled error from Send, Status, or Result
 // becomes an ErrTimeout wrap carrying the last seen state; any other
 // error propagates unwrapped, never as ErrTimeout or ErrRemoteFailed.
-func timeoutWrap(err error, last a2aclient.State) error {
+func timeoutWrap(err error, last State) error {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return fmt.Errorf("%w after %s", ErrTimeout, last)
 	}

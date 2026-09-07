@@ -541,3 +541,35 @@ check on the field name.
 Outside this task's scope: `x/runconfig/runner.go`'s doc comment
 still names `run.ErrNoAgent`; `x/` is excluded from this sweep and was
 left unedited.
+
+## Addendum: decoded artifacts must not panic on the first write
+
+Status: planned, not yet built.
+
+`DecodeArtifacts` builds an `Artifacts` from the two decoded maps.
+Either map can be absent from the JSON and so arrive nil. `SetRun` keys
+its lazy initialization on the values map alone, then appends to the
+runs map. A blob that carries a values object and no runs member
+therefore passes `Validate` and panics on the first `SetRun`.
+
+`Validate` accepts the state because both of its loops are empty. The
+runner reaches `SetRun` on the first gated step, so the panic lands in
+the runner goroutine rather than as a returned error.
+
+Fix: initialize the two maps independently in `SetRun`. That covers
+every entry point into the type, not only the decode path, and it keeps
+the nil-safe receiver contract the rest of the type already follows.
+Normalizing inside `DecodeArtifacts` alone would leave a hand-built
+`Artifacts` with one nil map exposed to the same panic.
+
+### Addendum tests
+
+TestDecodeArtifactsNilRunsThenSet decodes a blob holding an empty
+values object and no runs member, then calls `Set`. It asserts no
+panic, one history entry, and a `Validate` that passes afterwards.
+Before the fix the `Set` call panics with an assignment to a nil map.
+
+### Addendum verification
+
+- `go test -race ./workflow/...` passes.
+- No `api/workflow/run.txt` diff. `SetRun` keeps its signature.

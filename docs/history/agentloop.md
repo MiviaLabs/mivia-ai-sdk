@@ -6752,3 +6752,175 @@ fix, per this repo's TDD convention.
 - `go test -race ./agentloop/... ./internal/e2e/...` passes.
 - No `api/agentloop.txt` diff: `Validate`'s exported signature and
   the `ErrInvalidOptions` sentinel are unchanged.
+
+## Addendum: compaction trigger parity, recovery mirror, option sentinels
+
+Status: planned, not yet built.
+
+Three defects, found by a read-only audit of the last twenty commits.
+
+### Trigger parity between planHistory and Compact
+
+`planHistory` estimates the whole history against `Window.CompactTrigger`.
+`compactHistory` then calls `splitSummary` and passes only the rest to
+`plan.Compact`. The two calls measure different message sets.
+
+A prior summary sits in the gap. When the whole history reaches the
+trigger and the history without the summary does not, `plan.Compact`
+returns `Compacted` false and an empty `Dropped`. The old code still
+entered the summarize branch on `prior != nil` alone. The summarizer
+then ran with the prior summary as its only input.
+
+Two consequences follow. The rebuilt history keeps its original size,
+so `checkCompactedBudget` can return `ErrCompactionFailed`. The default
+`TriggerPercent` of 100 makes the trigger equal the budget, so the
+default window reaches that hard failure. Each crossing also spends one
+summarizer call and rewrites the summary with no new content.
+
+Fix: pass the whole history to `plan.Compact`. `preserveSummaryName`
+already adds the summary name to `PreserveNames`, so the summary stays
+in the mandatory retention set and lands in `Kept`, never in `Dropped`.
+Split the summary out of `res.Kept` after the call. Enter the
+summarize branch on `len(res.Dropped) > 0` alone. Re-inject an
+unchanged prior when nothing was dropped.
+
+The alternative, re-injecting the prior with no summarizer call when
+`Compacted` is false, removes the wasted call but leaves the
+default-trigger failure. It is rejected as incomplete.
+
+The fix does not make every default-trigger history succeed. A history
+whose units are all mandatory still fails closed, because
+`plan.Compact` returns `ErrRetentionOverflow` when the mandatory set
+alone exceeds the budget. The fix moves that failure to its correct
+cause and removes it for a history that holds a droppable unit.
+
+The recovery path keeps its present unrecoverable semantics. An
+uncompacted result under `notice` still returns a nil history.
+
+Two side effects follow from passing the whole history, and neither is
+reachable through the loop today. `hasUserMessage` can now be satisfied
+by the summary itself, which carries the user role, so a history whose
+only user-role message is the summary compacts instead of returning
+`ErrNoObjective`. `res.Key` now fingerprints a `Kept` that includes the
+summary. `compactHistory` ignores `res.Key`, and mandatory retention
+always keeps a real user unit, so both are recorded rather than fixed.
+
+### Recovery retry loses the streaming mirror
+
+`runChat` sets `StreamingWriter` from `streamMirror` on the primary
+request. It calls `recoverPromptTooLong` without the capture buffer,
+and the retry request in `recoverPromptTooLong` carries no writer.
+`Extensions.StreamingWriter` promises a mirror of what the Completer
+writes, for the whole `runChat` call.
+
+Fix: pass the capture buffer into `recoverPromptTooLong` and set
+`StreamingWriter` on the retry request. The retry must not reset the
+buffer a second time. `runChat` already reset it for this call, and the
+failed primary attempt's partial bytes belong to the same call.
+
+The retry must also leave `StreamingWriter` nil when the buffer is nil.
+`newStreamBuffer` returns nil exactly when the caller set no
+`Extensions.StreamingWriter`. A multi-writer over two nil values is
+still a non-nil writer, which would put the retry into streaming mode
+for a caller who asked for none. So the retry sets the writer only when
+the buffer is non-nil, and pairs it with the sink with no reset.
+
+### Options.Validate sentinel parity
+
+`Options.Validate` documents one sentinel for every check. Four checks
+return a different one: the `Budget` check wraps `budget.ErrInvalidOptions`,
+the `Window` check wraps `plan.ErrMaxTokensNotPositive`, and the two
+`Extensions` budget checks return their own incomplete-budget sentinels
+unwrapped.
+
+Fix: wrap all four with the package sentinel through a second `%w`
+verb. `errors.Is` then matches the inner sentinel and
+`ErrInvalidOptions` both. The module targets a Go release that supports
+a second `%w`.
+
+The constraint on the fix is the four existing assertions. They match
+the inner sentinels, and they must keep matching. No test compares an
+exact error string, so the message text is free to gain a prefix.
+
+### Addendum tests
+
+Each test below is written first and confirmed failing against the
+present code.
+
+Both compaction tests share one history shape, pinned here so the
+builder does not have to search for a working band.
+
+The history holds four messages with a one-byte-per-token estimator: a
+one-byte system message, a twenty-byte prior summary, a four-hundred
+byte user message, and a five-byte final user message. The window sets
+`MaxTokens` to 420, `Reserve` to zero, `TriggerPercent` to 100, and
+`TargetTokens` to 100.
+
+Those numbers put the fixture in the band. The whole history estimates
+426 and the history without the summary estimates 406, against a
+trigger of 420. The mandatory set is the system message, the preserved
+summary, and the last user message, which totals 26 and fits the
+budget. The four-hundred byte message is the droppable unit, and the
+target of 100 keeps it dropped.
+
+Both failures follow from one fixture. Before the fix, `plan.Compact`
+sees 406, passes through, and the summarizer runs on the prior alone.
+After the fix, `plan.Compact` sees 426, drops the large unit, and the
+summarizer runs on the prior plus that unit.
+
+The budget check separates the two by a wide margin. The test
+summarizer's reply renders to a 172 byte summary message. The
+uncompacted rebuild reaches 578 against a budget of 420 and fails. The
+compacted rebuild reaches 178 and passes. Neither outcome sits near the
+threshold, so the test does not turn on a byte.
+
+TestCompactionPriorSummaryKeepsTriggerParity builds a history whose
+whole-history estimate reaches the trigger while the estimate without
+the summary stays under it. The summarizer records the messages of
+every call. The test asserts no recorded call holds the prior summary
+as its only message.
+
+The assertion is on the recorded input, not on a call count. A call
+count cannot discriminate here: after the fix a droppable unit produces
+one legitimate call, and the defect also produces exactly one call. The
+input is what separates them.
+
+The gap between the two estimates is the prior summary's own length,
+which the shared fixture above sets to twenty bytes.
+
+TestCompactionPriorSummaryAtDefaultTriggerSucceeds runs the same
+history and window. It asserts `Run` returns no error and the sent
+history no longer holds the large message.
+
+The droppable unit is what makes the assertion meaningful. Without it
+the mandatory set alone exceeds the budget and `plan.Compact` fails
+closed both before and after the fix. Before the fix the run returns
+`ErrCompactionFailed` wrapping `ErrRetentionOverflow`.
+
+TestRecoveryRetryMirrorsStreaming scripts a Completer that writes to
+`req.StreamingWriter`, fails the first call with `ErrPromptTooLong`,
+and answers the second. It asserts the caller's sink holds the second
+call's bytes. Before the fix the sink holds only the first call's.
+
+The fixture must reach the retry. It sets a full `Compaction` group and
+a history the recovery window actually compacts. An uncompacted
+recovery returns the original error with no second call, so the
+assertion would pass vacuously against an unfixed loop.
+
+A second case asserts the nil-sink path. With no
+`Extensions.StreamingWriter`, the retry request's `StreamingWriter`
+stays nil, so a caller who asked for no streaming gets none.
+
+TestOptionsValidateWrapsNestedSentinels is a table over the four
+checks: a negative `Budget.MaxBytes`, a zero `Window.MaxTokens`, a
+half-wired `WorkBudget`, and a `ToolBudget` with no `Reserve`. Each
+case asserts `errors.Is` against `ErrInvalidOptions` and against the
+inner sentinel. All four cases fail before the fix.
+
+### Addendum verification
+
+- `go test -race ./agentloop/... ./context/...` passes.
+- `make verify` passes. `agentloop` holds the 85 coverage floor.
+- No `api/agentloop.txt` diff. `recoverPromptTooLong` is unexported and
+  the four wrapped errors keep their exported sentinel.
+- No `policy/layers.json` row changes. No new import edge.

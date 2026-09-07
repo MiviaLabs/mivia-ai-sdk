@@ -381,3 +381,20 @@ the error reacts to live registry state or a handler's own decision.
 
 No existing test asserted the old unwrapped literal's text, so no test
 assertion needed a rewrite for this change.
+
+## Addendum: the Fire doc comment names the wrong error prefix
+
+Status: planned, not yet built.
+
+`Registry.Fire`'s doc comment pins the wrap format as a `hooks:`
+prefix. The code emits an `events:` prefix on both the handler-error
+path and the veto path. The comment is a leftover from the fold of the
+`hooks` package into `events`.
+
+Fix: correct the prefix in the comment. The code and the existing test
+already agree, so no code changes and no new test.
+
+### Addendum verification
+
+- `go test ./events/...` passes unchanged.
+- `python3 scripts/check_docs.py` passes.

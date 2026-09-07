@@ -1,3 +1,0 @@
-package envfile
-  func Load(path string) (map[string]string, error)
-  func LoadBytes(data []byte) (map[string]string, error)

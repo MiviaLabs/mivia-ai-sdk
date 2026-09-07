@@ -1,6 +1,8 @@
 # Plan: longtermmemory
 
-Status: shipped. Ports the sibling consumer repo's `internal/memory`
+Status: superseded. Phase 86 quarantined this package into the
+x/ sub-module, which stops advertising it from the core module.
+See docs/plans/agents/phase86_package_consolidation.md.
 as a leaf package: tiered entries, consolidation, search, and a bounded
 core-context frame. In-memory only, standard library only.
 

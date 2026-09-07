@@ -43,15 +43,6 @@
       "provider"
     ],
     "contextref": [],
-    "contextsession": [
-      "contextplan",
-      "contextstate",
-      "memory",
-      "provider"
-    ],
-    "contextstate": [
-      "contextref"
-    ],
     "dispatch": [
       "agent",
       "envelope",
@@ -62,7 +53,6 @@
     "envelope": [
       "contextref"
     ],
-    "envfile": [],
     "events": [],
     "flow": [
       "events",
@@ -72,7 +62,6 @@
       "events",
       "machine"
     ],
-    "longtermmemory": [],
     "machine": [
       "events"
     ],
@@ -90,23 +79,10 @@
     "room": [
       "envelope"
     ],
-    "runconfig": [
-      "agentrun",
-      "contextbudget",
-      "flow",
-      "ledger",
-      "machine",
-      "memory",
-      "room",
-      "subagent",
-      "tools",
-      "trace"
-    ],
     "scheduler": [
       "events"
     ],
     "schema": [],
-    "skills": [],
     "subagent": [
       "agent",
       "agentrun",

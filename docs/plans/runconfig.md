@@ -1,6 +1,8 @@
 # Plan: runconfig
 
-Status: shipped in commit 9054704. The original contract lives in
+Status: superseded. Phase 86 quarantined this package into the
+x/ sub-module, which stops advertising it from the core module.
+See docs/plans/agents/phase86_package_consolidation.md.
 docs/plans/agents/phase69_options_loader.md. The open work is the
 correctness fix at the end of this file.
 

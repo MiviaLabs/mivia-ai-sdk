@@ -18,21 +18,20 @@ API references.
 
 ## Package map
 
-The diagram shows the thirty-six packages and the import edges
+The diagram shows the thirty packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
-`envfile`, `events`,
-`longtermmemory`, `provider`, `schema`, `skills`,
+`events`,
+`provider`, `schema`,
 `tools`, and `trace` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
-`contextstate` imports `contextref` alone.
 `contextplan` imports `contextref` and `provider`.
-`contextsession` imports `contextplan`, `contextstate`,
-`provider`, and `spool`. The spool half of `memory` imports `tools` alone.
+The spool half of `memory` imports `tools` alone.
 The `a2aclient/a2atest` fixture imports `a2a` and `envelope`, the
 same two internal packages `a2aclient` imports. `workspace` imports no other package in this module.
-`runconfig` imports `agentrun`, `contextbudget`, `flow`,
-`ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
+Six orphaned packages — `contextstate`, `contextsession`,
+`longtermmemory`, `skills`, `envfile`, and `runconfig` — live in the
+`x/` sub-module and are outside the package count and diagram above.
 
 ```mermaid
 flowchart LR
@@ -42,12 +41,8 @@ flowchart LR
     agent --> machine
     agent --> contextbudget
     envelope --> contextref
-    contextstate --> contextref
     contextplan --> contextref
     contextplan --> provider
-    contextsession --> contextplan
-    contextsession --> contextstate
-    contextsession --> provider
     flow --> events
     flow --> machine
     machine --> events
@@ -96,16 +91,6 @@ flowchart LR
     subagent --> scheduler
     subagent --> tools
     subagent --> trace
-    runconfig --> agentrun
-    runconfig --> contextbudget
-    runconfig --> flow
-    runconfig --> ledger
-    runconfig --> machine
-    runconfig --> memory
-    runconfig --> room
-    runconfig --> subagent
-    runconfig --> tools
-    runconfig --> trace
     internal_e2e["internal/e2e"] --> agent
     internal_e2e["internal/e2e"] --> channel
     internal_e2e["internal/e2e"] --> envelope
@@ -120,10 +105,7 @@ flowchart LR
     envelope[envelope]
     events[events]
     provider[provider]
-    skills[skills]
     tools[tools]
-    envfile[envfile]
-    longtermmemory[longtermmemory]
     contextref[contextref]
 ```
 
@@ -450,19 +432,9 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   at or under their caps; it keeps no running total of its own.
   `contextbudget` imports no other package in this module; `agent`
   imports it for `Run`'s optional budget check.
-- `contextstate/` — the durable context contract. It provides the contract
-  types (`ContentRef`, `NewContentRef`, `PayloadRecord`, `Reassemble`,
-  `SourceID`, `SourceRange`, `SourceEvent`, `Revision`, `BindingRevision`,
-  `CheckpointID`, `Checkpoint`, `Session`), `CommitRequest` with
-  `NewCommitRequest` and `Validate`, `Limits` with `Validate`, and
-  the `MemStore` with `New`, `Put`, `Get`, `Checkpoint`, and
-  `Session`. It uses `contextref` for content address minting and
-  validation. A reused `OperationID` with an equal request is a
-  no-op success, and with a different request it wraps
-  `ErrCheckpointConflict`. See [packages/contextstate.md](packages/contextstate.md).
 - `contextref/` — the canonical content-reference minter and parser.
   It provides `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
-  `envelope`, `contextstate`, and `contextplan` import it, so every ref in
+  `envelope` and `contextplan` import it, so every ref in
   this SDK has one form. See [packages/contextref.md](packages/contextref.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
@@ -493,7 +465,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `RunTurn` validates `Request` once, then validates every message,
   dispatches on `Request.Stream`, and aggregates a streamed `Chunk`
   sequence into one `Response`. `ReasoningEventKind` is the
-  `contextstate.SourceEvent.Kind` value a reasoning trace carries;
+  source-event kind value a reasoning trace carries;
   `RedactBlock` clears a `ReasoningBlock`'s content and marks it
   redacted. `provider` imports no other package in this module.
   The package also holds the per-session usage accounting:
@@ -544,38 +516,6 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `ReasoningPolicy`. It maps streaming events, tool calls, thinking
   blocks, cache usage, and model refusals. See
   [packages/provider/anthropic.md](packages/provider/anthropic.md).
-- `contextsession/` — fits one durable session into a bounded provider
-  request. It provides `Planner` with `NewPlanner` and `Plan`,
-  `PlanResult`, `Elision`, `ElisionReason` and its four constants,
-  `StubContent`, and the sentinels `ErrNilStore` and `ErrNilSession`.
-  `Plan` walks a `contextstate.Session`'s source events newest to
-  oldest, keeping each one until `Window.Budget` fills, then stubs or
-  drops the rest. A reasoning event, per `contextplan.IsReasoningEvent`,
-  never enters the built `provider.Request`. A wired `Spool` receives
-  the full payload behind every window-overflow and retention-expired
-  `Elision`, keyed to the payload's own `SubjectID`. `contextsession`
-  imports `contextplan`, `contextstate`, `provider`, and
-  `spool`. See [packages/contextsession.md](packages/contextsession.md).
-- `longtermmemory/` — the tiered long-term memory store. It
-  provides `Entry` with `Validate`, the `Verdict` set, `Result`,
-  `Query`, `Store` with `New`, `Save`, `Search`, `Count`,
-  `PromoteToCore`, `CoreEntries`, `Delete`, and `CoreFrame`, the
-  bounds `CoreTierCap` (24), `DefaultMaxEntries` (500),
-  `DefaultMaxSearchResults` (8), `DefaultFrameBytes` (4 KiB), and
-  `ConsolidateLoadFactor` (0.8), the frame constants `FrameAdvisory`,
-  `FrameOpenTag`, and `FrameCloseTag`, and the sentinels
-  `ErrEntryNotFound`, `ErrCoreTierFull`, `ErrStoreFull`,
-  `ErrQueryRequired`, and `ErrScopeRequired`. Entry ids are
-  content-addressed over every field, so a merge survivor takes a new
-  id; consolidation at the load factor runs one near-duplicate merge
-  pass (Jaccard at or above 0.82), which caps the merged tag union at
-  eight tags, and then oldest-archive eviction, never evicting a core
-  row;
-  `CoreFrame` renders the core tier as a bounded block whose entry
-  text is HTML-escaped against the frame tags, so agent-writable text
-  cannot close the block early. A leaf: no internal imports, standard
-  library only. See
-  [packages/longtermmemory.md](packages/longtermmemory.md).
 - `channel/` — a leaf primitive. It provides `Question`,
   `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
   the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,
@@ -583,15 +523,6 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   type that asks a question and returns a typed `Answer`; `channel`
   ships no concrete transport. `channel` imports no other package in
   this module. See [packages/channel.md](packages/channel.md).
-- `skills/` — a leaf primitive. It provides `Skill`, `Skill.Validate`,
-  `Registry`, `New`, `Add`, `Get`, `Remove`, `Names`, `Match`, and the
-  sentinels `ErrBlankName`, `ErrBlankInstructions`, `ErrBlankTrigger`,
-  `ErrDuplicateTrigger`, and `ErrDuplicateName`. A `Skill` is read, not
-  called: it carries instructions text, a trigger-phrase list, and the
-  tool names it expects available. `Match` compares a query against
-  every registered skill's `Triggers`, case-insensitively. `skills`
-  imports no other package in this module. See
-  [packages/skills.md](packages/skills.md).
 - `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
   `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
   `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,

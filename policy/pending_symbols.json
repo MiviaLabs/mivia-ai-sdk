@@ -51,36 +51,6 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "contextsession.NewPlanner": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "contextstate.NewCommitRequest": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.NewContentRef": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.Reassemble": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "contextstate.RetentionSession": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.Revoke": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
     "envelope.ContextRef": {
       "reason": "Delegates to contextref.Mint (message.go:83). memory.Store.Put calls contextref.Mint directly rather than through this wrapper (see docs/plans/spool.md's 2026-09-07 correction), so this symbol has no current caller in this module or the external consumer checked at gate-writing time.",
       "target": "no consumer today; kept as SDK surface",
@@ -157,36 +127,6 @@
       "permanent": true
     },
     "ledger.Restore": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.CoreEntries": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.CoreFrame": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "longtermmemory.Delete": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.PromoteToCore": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.Save": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.Search": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true

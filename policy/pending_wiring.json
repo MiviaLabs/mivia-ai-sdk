@@ -16,19 +16,9 @@
       "target": "external application code; the live consumer is the sibling consumer repo's internal/agent agentloop_adapter.go",
       "permanent": true
     },
-    "contextsession": {
-      "reason": "Durable session planner carved out of contextplan. Intended caller is external application code adapting Plan to agentloop.Options.Trim.",
-      "target": "agentloop or an external session-backed runner; see docs/plans/spool.md's read-back section",
-      "permanent": false
-    },
     "dispatch": {
       "reason": "NDJSON envelope HTTP endpoint. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; it ships its own HTTP wiring. Kept as SDK surface.",
       "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "envfile": {
-      "reason": "Dotenv parser leaf. Its consumer is external application code: the sibling consumer repo imports it in internal/miviaauth/serverurl.go, internal/config/bootstrap.go, and internal/config/load.go.",
-      "target": "external application code (the sibling consumer repo)",
       "permanent": true
     },
     "internal/e2e": {
@@ -41,11 +31,6 @@
       "target": "ledger/ledger_test and other packages' _test subdirectories only",
       "permanent": true
     },
-    "longtermmemory": {
-      "reason": "Ported from the sibling consumer repo as a leaf package. The intended SDK hook is an agentloop system-prompt hook rendering CoreFrame plus a subagent save/search tool; until then no package wires it into a running agent.",
-      "target": "an agentloop system-prompt hook rendering CoreFrame, plus a subagent save/search tool",
-      "permanent": false
-    },
     "mcp": {
       "reason": "MCP client leaf. Its consumer is external application code: the sibling consumer repo imports it through internal/sdkadapter as of 2026-09-07.",
       "target": "external application code (the sibling consumer repo)",
@@ -56,14 +41,9 @@
       "target": "no external consumer today; in-repo callers are the e2e wire test and the agentloop composition example",
       "permanent": true
     },
-    "runconfig": {
-      "reason": "JSON-config composition layer over agentrun. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; no deployment main package loads it yet. Kept as SDK surface.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "skills": {
-      "reason": "Skill registry leaf; the sibling consumer repo's B.0.5 internal/sdkadapter/skill.go bridges it as the first consumer, but no SDK-internal package imports it yet.",
-      "target": "external application code (the sibling consumer repo)",
+    "subagent": {
+      "reason": "Blocks-as-tools composition: spawnable subagents, concurrent RunAll, and mailboxes. Its last internal caller was runconfig, which Phase 86 quarantined into the x/ sub-module; x/runconfig still imports it across the module boundary, and the sibling consumer repo composes it directly. Declared so the orphan gate reflects that.",
+      "target": "the x/runconfig quarantine package and external application code",
       "permanent": true
     },
     "workspace": {

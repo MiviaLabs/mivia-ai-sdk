@@ -3,17 +3,17 @@
   "symbols": {
     "a2a/a2atest.Cancel": {
       "permanent": false,
-      "reason": "Methods on the unexported loopbackExecutor: the gate's text search cannot see a caller of an unexported receiver's method, and no exported path returns the executor. Served through the a2asrv.AgentExecutor interface every time Loopback runs a task.",
+      "reason": "test fixture, called only from tests",
       "target": "the symbol gate learning interface-dispatch reachability; the methods stay served via Loopback"
     },
     "a2a/a2atest.Execute": {
       "permanent": false,
-      "reason": "Methods on the unexported loopbackExecutor: the gate's text search cannot see a caller of an unexported receiver's method, and no exported path returns the executor. Served through the a2asrv.AgentExecutor interface every time Loopback runs a task.",
+      "reason": "test fixture, called only from tests",
       "target": "the symbol gate learning interface-dispatch reachability; the methods stay served via Loopback"
     },
     "a2a/a2atest.Loopback": {
       "permanent": false,
-      "reason": "The a2atest package is a test fixture: the deps policy forbids every production file from importing it, so the fixture's constructors can never gain a non-test caller by design. Its symbols stay served through the package's own tests and any external consumer's test suite.",
+      "reason": "test fixture, called only from tests",
       "target": "no production caller is possible under the fixture import policy; revisit only if the policy itself changes"
     },
     "mcp.CallToolWithProgress": {

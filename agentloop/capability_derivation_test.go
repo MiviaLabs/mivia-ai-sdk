@@ -188,6 +188,36 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	}
 }
 
+// TestNewRejectsTypedNilSummarizerBeforeDerivation proves the typed-nil
+// Summarizer check fires even when the caller never sets Window
+// directly. Before this test's fix, the check lived inside Validate's
+// "if o.Compaction.Window != nil" branch, so a caller who left Window
+// nil and relied on New's ContextAccountant derivation slipped a typed
+// nil (*plan.Summarizer)(nil) past Validate. New then derived a
+// non-nil window from the completer's capability, and the first
+// compaction would call Summarize on the nil receiver and panic. New
+// must fail closed instead.
+func TestNewRejectsTypedNilSummarizerBeforeDerivation(t *testing.T) {
+	completer := &capabilityCompleter{window: 10000}
+	reg := tools.New()
+	if err := reg.Add(&capabilityTool{}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	var typedNil *plan.Summarizer
+	opts := Options{
+		Completer: completer,
+		Tools:     reg,
+		SessionID: "cap",
+
+		Compaction: Compaction{
+			Summarizer: typedNil,
+			Calibrated: plan.Calibrate(completer, 0.25),
+		}}
+	if _, err := New(opts); err == nil {
+		t.Fatal("New = nil error, want a validation failure for a typed-nil Summarizer before derivation can adopt a window")
+	}
+}
+
 // capabilityTool is a minimal schema tool for the registry the
 // derivation tests build.
 type capabilityTool struct{}

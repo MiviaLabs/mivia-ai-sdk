@@ -61,7 +61,10 @@ or a bound trips. The exported surface below mirrors
   `(*context/plan.Summarizer)(nil)` stored by hand is not nil as an
   interface, but `Validate` asserts the field against that one
   sanctioned concrete type and rejects a nil pointer with
-  `ErrSummarizerRequired`, the same as an untyped nil. A custom
+  `ErrInvalidOptions`, the same as an untyped nil. This check runs
+  unconditionally, whether or not `Options.Compaction.Window` is set,
+  because `New` can derive a `Window` from the Completer's
+  `ContextAccountant` capability even with `Window` left nil. A custom
   `Summarizer` of some other pointer type holding a nil receiver is
   outside this check.
 - `StopDecision` — the evidence the loop hands `Options.Extensions.ContinueOnStop`
@@ -126,23 +129,21 @@ or a bound trips. The exported surface below mirrors
 - `Options.Validate()` — checks, in order: `Completer` and `Tools` are
   set, `Bounds.Validate` passes (each cap non-negative), `Usage`
   requires a non-blank `SessionID`, a non-nil `Budget` passes
-  `context/budget.Limits.
-  Validate`, a non-nil `Window`
-  passes `Window.Validate` and requires `Summarizer`, requires
-  `Calibrated`, and excludes `Trim`, `Conclude.Validate` passes
-  (`Margin` not negative, then `Deadline` not negative),
-  `HeartbeatInterval` requires `Bus`, and finally a non-nil
-  `WorkBudget` and a non-nil `ToolBudget` each pass their own
-  `validate` check. Every one of these checks returns
+  `context/budget.Limits.Validate`, `Summarizer` rejects a typed nil
+  `(*context/plan.Summarizer)(nil)` through a direct type assertion
+  against that one sanctioned concrete type (unconditionally, not only
+  when `Window` is set, since `New` can derive a `Window` from the
+  Completer's `ContextAccountant` capability even with `Window` left
+  nil), a non-nil `Window` passes `Window.Validate` and requires
+  `Summarizer` (rejecting an untyped nil), requires `Calibrated`, and
+  excludes `Trim`, `Conclude.Validate` passes (`Margin` not negative,
+  then `Deadline` not negative), `HeartbeatInterval` requires `Bus`,
+  and finally a non-nil `WorkBudget` and a non-nil `ToolBudget` each
+  pass their own `validate` check. Every one of these checks returns
   `ErrInvalidOptions`, wrapped with the failing field's name and the
   rule it failed; test with `errors.Is` against `ErrInvalidOptions`,
-  not message text. The `Summarizer` requirement is an interface nil
-  check: an untyped nil fails, and so does a typed nil
-  `(*context/plan.Summarizer)(nil)`, which `Validate` rejects through
-  a direct type assertion against that one sanctioned concrete type,
-  since a typed nil stored in an interface field is not nil by plain
-  comparison and this module bans reflection outside tests; see the
-  `Summarizer` type above.
+  not message text; see the `Summarizer` type above for the typed-nil
+  rationale.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool `scope` denies before its schema is ever
   read, then failing on a scope-allowed tool with no published

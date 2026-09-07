@@ -6704,3 +6704,51 @@ schema-less tool a scope excludes.
   sentinel lines and adds `ErrInvalidOptions`.
 - `python3 scripts/check_symbol_wiring.py` passes with no new entry
   needed in `policy/pending_symbols.json`.
+
+## Addendum: typed-nil Summarizer check runs unconditionally
+
+Status: shipped
+
+### Goal
+
+Close a gap the typed-nil-Summarizer addendum above left open: its
+check ran only inside `Validate`'s `Compaction.Window != nil` branch,
+so a caller who left `Window` nil could still panic.
+
+### Bug
+
+`New` derives a `Window` from the Completer's `ContextAccountant`
+capability whenever `Window` is nil, `Trim` is nil, and `Summarizer`
+and `Calibrated` are both non-nil interfaces. A typed nil
+`(*plan.Summarizer)(nil)` reads as a non-nil interface, so this
+derivation condition holds even though the underlying pointer is nil.
+`Validate` passed such an `Options` through, since its typed-nil
+assertion lived inside the `Window != nil` branch and `Window` was
+still nil at that point. `New` then derived a working `Window`, and
+the first compaction called `Summarize` on the nil `*plan.Summarizer`
+receiver, panicking inside `(*plan.Summarizer).Summarize`'s unguarded
+`s.completer.Chat` call.
+
+### Fix
+
+Moved the type assertion `p, ok := o.Compaction.Summarizer.(*plan.Summarizer); ok
+&& p == nil` out of the `Window != nil` branch in `Options.Validate`,
+so it runs whenever `Summarizer` is set, before New's derivation can
+ever see it. Reworded the returned message to `"Summarizer: typed nil
+*plan.Summarizer is invalid"`, since the check no longer depends on
+`Window`.
+
+### Tests
+
+`TestNewRejectsTypedNilSummarizerBeforeDerivation`
+(`agentloop/capability_derivation_test.go`) builds an `Options` with a
+`ContextAccountant`-capable Completer, `Window` left nil, and a typed
+nil `Summarizer`; `New` must fail instead of building a `Loop` that
+panics on first compaction. Written and confirmed failing before the
+fix, per this repo's TDD convention.
+
+### Verification
+
+- `go test -race ./agentloop/... ./internal/e2e/...` passes.
+- No `api/agentloop.txt` diff: `Validate`'s exported signature and
+  the `ErrInvalidOptions` sentinel are unchanged.

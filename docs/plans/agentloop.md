@@ -717,9 +717,15 @@ Changed in `agentloop`:
   the exact point in the `run` → `runToolCalls` → `runOneToolCall`
   chain where the audit call for a tool result fires: inside
   `runToolCalls`'s per-call loop, not in `run` after the whole turn's
-  calls finish. A `PointPreTool` veto produces no history entry and
-  is not audited: `StopHookVeto` ends the run immediately, so there
-  is no tool result to attest to. An `ErrorPolicyFail` tool error is
+  calls finish. A `PointPreTool` veto produces no history entry or
+  audit record for the vetoed call itself: `StopHookVeto` ends the run
+  immediately, so there is no tool result to attest to for that call.
+  Under `MaxConcurrentTools > 1`, a call the worker pool already ran
+  to completion before the veto landed is a different case: it did
+  produce a tool result, and `recordRanOutcomes` appends its history
+  entry and audit record before the veto's own short-circuit returns.
+  See "Addendum: audit an in-flight call the worker pool already ran
+  when a veto lands" below. An `ErrorPolicyFail` tool error is
   not audited either, since `runOneToolCall` returns a non-nil own
   `err` and no `msg` on that path, and `runToolCalls` propagates that
   `err` straight to `run` as a hard failure without appending
@@ -5379,3 +5385,34 @@ main.go design:
   `scripts/check_labels.py`, and `scripts/check_names.py` pass.
 - The coverage floor of 85 holds for every package. The moved checks
   keep their tests.
+
+## Addendum: audit an in-flight call the worker pool already ran when a veto lands
+Status: shipped. This addendum fixes a defect commit e5e99e9 found and
+closed: under `MaxConcurrentTools > 1`, a call claimed before another
+call's veto was stored ran to completion, but the collect pass dropped
+its result from history and its record from the audit trail.
+
+### Addendum goal
+
+Make `collectCalls` record every call the worker pool actually ran,
+not only the calls before the index that short-circuits the batch. An
+executed side effect must stay traceable even when a later index vetoes
+or hard-fails first.
+
+### Addendum scope
+
+`collectCalls` (`agentloop/toolcall.go`) now calls the new
+`recordRanOutcomes` helper on both short-circuit paths, `out.err !=
+nil` and `out.veto`, before returning. `recordRanOutcomes` walks the
+remaining plans and outcomes past the short-circuit index, skips a
+duplicate plan and a zero-value outcome (a call the abort stopped
+before it ran), and appends history and an `AuditKindToolCall` record
+for every call that produced a real `msg`. `plans` and `outcomes` stay
+aligned slices; the walk is order-preserving.
+
+### Addendum proof
+
+`agentloop/agentloop_test/veto_concurrent_test.go` holds a slow call in
+flight until a second call's veto lands, then asserts the slow call's
+result reaches `history` and its audit record exists. `go test -race
+-count=1 ./agentloop/...` passes.

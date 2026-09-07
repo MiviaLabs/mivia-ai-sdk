@@ -14,9 +14,9 @@ the reference names where the full result lives.
 
 The ref's format is a `ContentStore` implementation's own choice.
 `spool` does not guarantee a `contextstate.ContentRef`-shaped string;
-`memory.Store`'s refs happen to be `envelope.ContextRef` values today,
-but a caller using a different `ContentStore` may mint refs some other
-way. `contextsession` consumes `spool` today: `Planner` writes a
+`memory.Store`'s refs happen to match `contextref.Mint`'s output
+today, since `Put` calls it directly, but a caller using a different
+`ContentStore` may mint refs some other way. `contextsession` consumes `spool` today: `Planner` writes a
 budget-driven elision's full payload to a wired `*spool.Spool`, keyed
 to the payload's `SubjectID`. See `docs/plans/contextsession.md`.
 `e2e/e2e_test/spool_test.go` proves a caller-driven
@@ -160,8 +160,8 @@ var (
 - `spool` imports neither `memory` nor `contextstate`. `ContentStore`
   is a two-method interface; `memory.Store`'s `Put`/`Get` pair already
   matches it structurally, and `memory.Store`'s refs are already
-  `envelope.ContextRef` values, which delegate to
-  `contextstate.Mint`. Declaring the interface locally keeps `spool` a
+  `contextref.Mint` output, since `Put` calls it directly. Declaring
+  the interface locally keeps `spool` a
   true leaf and lets a caller substitute any conforming store, not
   only `memory.Store`. `WithPrincipal`/`PrincipalFrom` replace a
   principal argument threaded through `tools.Tool.Run`, since that

@@ -1,5 +1,5 @@
 > Status: relocated. Phase 86 moved this package to `internal/e2e`;
-> see `docs/plans/internal/e2e.md`. This page stays as reference, with
+> see `docs/history/internal/e2e.md`. This page stays as reference, with
 > paths below pointing at the new `internal/e2e` location.
 
 # Package reference: e2e

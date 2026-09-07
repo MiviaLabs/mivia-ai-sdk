@@ -1,6 +1,6 @@
 # Plan template
 
-Copy this file to `docs/plans/<package>.md` when adding a package.
+Copy this file to `docs/history/<package>.md` when adding a package.
 `scripts/check_plan.py` requires every section below. Fill each with
 short declarative sentences. The plan is the design contract an agent
 writes before or with the code; the gates enforce its consequences

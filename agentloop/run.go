@@ -13,7 +13,7 @@ import (
 )
 
 // Run calls Registry.RunScoped, never Registry.Run, so a model-chosen
-// call always passes through l.scope. See docs/plans/agentloop.md for
+// call always passes through l.scope. See docs/history/agentloop.md for
 // the full termination and Result-shape contract. A wired Hooks
 // registry fires PointStop exactly once, on every return path, with
 // the returned Result as payload; a wired handler's veto or error
@@ -408,7 +408,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
 		return chatAttempt{err: err, iterCtx: ctx}
 	}
-	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations, surface)
+	recovered, rebuilt, retryReq, rerr := l.recoverPromptTooLong(ctx, err, history, iterations, stream, surface)
 	if rerr != nil {
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}

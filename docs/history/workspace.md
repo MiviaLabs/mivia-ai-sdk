@@ -393,7 +393,7 @@ edit it.
   call, and deletes the now-unused `workspaceWriteFileMode` constant.
   The doc comments on `WorkspaceWriteTool` and on `Run` name the
   `0o600` mode; both must then name `workspace` as the source of the
-  mode. `docs/plans/subagent.md` already anticipates this edit in its
+  mode. `docs/history/subagent.md` already anticipates this edit in its
   "Tracking the in-flight workspace migration" bullet.
 - Commit B changes `subagent.WorkspaceReadTool`'s behavior. `Open`
   now yields `DefaultMaxReadBytes`, so a read over 10 MiB starts
@@ -967,7 +967,7 @@ for change two. The change-two-only items follow the shared list.
 - `AGENTS.md` describes each package's surface. Commit A names
   `Close` and the `os.Root` confinement in the `workspace` entry.
   Commit B names the read bound.
-- `docs/plans/subagent.md`'s "Tracking the in-flight workspace
+- `docs/history/subagent.md`'s "Tracking the in-flight workspace
   migration" bullet describes commit B's edit as a follow-up. Commit B
   updates that bullet to state the edit is done.
 - `Options.Validate` and `ReadFileLimit` both call the unexported
@@ -1092,9 +1092,9 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 6c.
+docs/history/agents/maintenance-addenda-batch.md, item 6c.
 
-`docs/plans/workspace.md:63` states the blank-root rule. The rule does
+`docs/history/workspace.md:63` states the blank-root rule. The rule does
 not change. Only its error does: `Options.Validate` at
 `workspace/workspace.go:83` returned an inline `errors.New`, so a
 caller could not match it with `errors.Is`. Add
@@ -1103,7 +1103,7 @@ other sentinels and return it there. The rendered text is unchanged.
 
 ### Reconciling the earlier fix-verification sentence
 
-The earlier addendum at `docs/plans/workspace.md:1082` says
+The earlier addendum at `docs/history/workspace.md:1082` says
 `docs/packages/workspace.md` line 35 "needs no wording change". That
 judgment covered the blank-root rule, which still reads "Root must not
 be blank" and is still correct.

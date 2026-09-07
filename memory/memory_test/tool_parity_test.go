@@ -8,7 +8,7 @@
 // subset of the known interfaces, so a wrapper that dropped a
 // capability, or that forwarded a wrong value, fails here, not in a
 // live run. When tools gains a new optional interface, add it to
-// probes and to SpoolTool in the same change. See docs/plans/spool.md.
+// probes and to SpoolTool in the same change. See docs/history/spool.md.
 package memory_test
 
 import (

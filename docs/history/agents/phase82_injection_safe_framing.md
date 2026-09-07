@@ -40,13 +40,13 @@ Outside, flagged:
   `func(ctx context.Context, payload any) (bool, error)`; it carries
   no text channel back to the caller. Giving a hook a way to inject
   text needs a `hooks.Handler` signature change, which needs its own
-  plan review against `docs/plans/hooks.md`, since `hooks` is a shared
+  plan review against `docs/history/hooks.md`, since `hooks` is a shared
   package other callers depend on today. This phase does not propose
   that change; it only defines the framing primitive a future
   `hooks`-side change would use.
 - Rewriting the already-shipped `ToolErrorPrefix` or `CompactionNotice`
   markers to use `WrapInjected`. Both ship today with their own
-  documented, accepted-risk rationale in `docs/plans/agentloop.md`'s
+  documented, accepted-risk rationale in `docs/history/agentloop.md`'s
   earlier addenda. Migrating them is a separate decision, not a side
   effect of adding a second marker scheme.
 - Applying `WrapInjected` to phase 81's `DuplicateCallNotice`, once
@@ -100,5 +100,5 @@ code.
 `api/agentloop.txt`. `go test -race ./agentloop/...` passes. No
 `policy/layers.json` change for the `agentloop`-only part. The
 `hooks`-side injection channel, if pursued later, needs its own
-`docs/plans/hooks.md` review and its own `policy/layers.json` check;
+`docs/history/hooks.md` review and its own `policy/layers.json` check;
 it is not part of this phase.

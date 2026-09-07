@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 quarantined this package into the
 x/ sub-module, which stops advertising it from the core module.
-See docs/plans/agents/phase86_package_consolidation.md.
+See docs/history/agents/phase86_package_consolidation.md.
 
 ## Goal
 
@@ -224,7 +224,7 @@ Test files live in `skills/skills_test/`, an external test package.
   sentence "No caller yet; the agent/subagent wiring is a later
   phase," matching the honesty marker `tools`, `hooks`, and `trace`
   each carry for their own no-caller state.
-- `docs/plans/agents/PHASES.md` gains a phase 63 paragraph recording
+- `docs/history/agents/PHASES.md` gains a phase 63 paragraph recording
   the shipped shape, in the same change that ships the code, matching
   how phase 57 through phase 61 each closed out.
 - This phase adds no conformance vectors. `skills` carries no wire

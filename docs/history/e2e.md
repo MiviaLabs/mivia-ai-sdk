@@ -1,8 +1,8 @@
 # Plan: e2e
 
 Status: superseded. Phase 86 moved this package to
-internal/e2e; see docs/plans/internal/e2e.md and
-docs/plans/agents/phase86_package_consolidation.md.
+internal/e2e; see docs/history/internal/e2e.md and
+docs/history/agents/phase86_package_consolidation.md.
 
 ## Goal
 

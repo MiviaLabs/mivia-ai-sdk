@@ -298,7 +298,7 @@ triggers at 80% and targets 50% of `Budget`. `Budget` is `MaxTokens`
 minus `Reserve`, four fifths of `MaxTokens` here, so the derived
 Window compacts at an effective 64% of `MaxTokens` and rebuilds down
 to an effective 40%. See "Effective thresholds for host-style
-configs" in docs/plans/agentloop.md for the full percent math.
+configs" in docs/history/agentloop.md for the full percent math.
 The `opts.Summarizer != nil` gate reads an interface, since the
 `Summarizer` field holds the `Summarizer` interface type; the gate's
 behavior is unchanged.

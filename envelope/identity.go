@@ -1,6 +1,6 @@
 // Identity owns one agent key: an ed25519 pair, the key-file load,
 // the invariant check, and the hex signer string. Identity.Sign wraps
-// Sign. See docs/plans/envelope.md for the contract.
+// Sign. See docs/history/envelope.md for the contract.
 
 package envelope
 

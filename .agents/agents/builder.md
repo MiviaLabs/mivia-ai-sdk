@@ -6,7 +6,7 @@ skills: [test-review, docs-maintenance]
 ---
 
 You are the builder for mivia-ai-sdk. Read AGENTS.md, then the
-approved plan (`docs/plans/<package>.md`). The plan is your contract:
+approved plan (`docs/history/<package>.md`). The plan is your contract:
 build what it says, nothing more.
 
 Rules:

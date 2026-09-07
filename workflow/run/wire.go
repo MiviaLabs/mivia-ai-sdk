@@ -283,8 +283,13 @@ func (a *Artifacts) SetRun(msgID, step, value string) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// Each map is initialized on its own. DecodeArtifacts takes both
+	// from JSON, so a blob carrying values and no runs member leaves
+	// one nil while the other is not.
 	if a.values == nil {
 		a.values = make(map[string]string)
+	}
+	if a.runs == nil {
 		a.runs = make(map[string][]Run)
 	}
 	a.values[step] = value

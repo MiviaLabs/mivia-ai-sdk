@@ -226,7 +226,7 @@ silently stale:
   `api/diff.txt`.
 - Remove `diff/`'s row and `subagent`'s `diff` entry from
   `policy/layers.json`.
-- Delete `docs/packages/diff.md` and `docs/plans/diff.md`.
+- Delete `docs/packages/diff.md` and `docs/history/diff.md`.
 - Remove `docs/packages/diff.md`'s entry from `docs/README.md`'s
   package list.
 - Remove `diff` from `docs/architecture.md`'s module list and its

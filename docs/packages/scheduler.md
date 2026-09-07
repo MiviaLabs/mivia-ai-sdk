@@ -51,13 +51,13 @@ something is. The exported surface below mirrors `api/scheduler.txt`.
 
 Use `errors.Is` to test these.
 
-- `ErrBlankID` ("scheduler: id must not be blank") — `Add` returns it
+- `ErrInvalidOptions` ("scheduler: invalid options: ID: must not be blank") — `Add` returns it
   when `id` is empty after `strings.TrimSpace`. Pinned by
   `scheduler/scheduler_test/scheduler_add_test.go`.
-- `ErrNilSchedule` ("scheduler: schedule must not be nil") — `Add`
+- `ErrInvalidOptions` ("scheduler: invalid options: Schedule: must not be nil") — `Add`
   returns it when `sched` is nil. Pinned by
   `scheduler/scheduler_test/scheduler_add_test.go`.
-- `ErrNilJob` ("scheduler: job must not be nil") — `Add` returns it
+- `ErrInvalidOptions` ("scheduler: invalid options: Job: must not be nil") — `Add` returns it
   when `job` is nil. Pinned by
   `scheduler/scheduler_test/scheduler_add_test.go`.
 - `ErrDuplicateID` ("scheduler: id already registered") — `Add` returns

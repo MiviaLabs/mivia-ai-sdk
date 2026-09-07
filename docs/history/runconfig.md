@@ -2,8 +2,8 @@
 
 Status: superseded. Phase 86 quarantined this package into the
 x/ sub-module, which stops advertising it from the core module.
-See docs/plans/agents/phase86_package_consolidation.md.
-docs/plans/agents/phase69_options_loader.md. The open work is the
+See docs/history/agents/phase86_package_consolidation.md.
+docs/history/agents/phase69_options_loader.md. The open work is the
 correctness fix at the end of this file.
 
 ## Goal
@@ -315,7 +315,7 @@ Verification:
 - `go test -race ./runconfig/...` passes.
 - `python3 scripts/check_docs.py` passes over the reworded `Load`
   comment.
-- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+- `docs/history/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
 
@@ -576,7 +576,7 @@ phase 77 plan file remains for this contract.
 
 ## Addendum: five file-toolbox Kinds removed
 
-Status: shipped. See `docs/plans/agents/convergence.md`'s "Boundary
+Status: shipped. See `docs/history/agents/convergence.md`'s "Boundary
 correction" section. `subagent`'s file-editing toolbox (`FileTools`,
 `WorkspaceReadTool`, `WorkspaceWriteTool`, `WorkspaceListTool`,
 `WorkspaceStatTool`, `DiffTool`) and the `diff` package left the SDK as
@@ -1031,7 +1031,7 @@ Status: shipped.
 
 Status: shipped. Second commit of the slice. It does not depend on
 commit 1, the `tools` `SchemaOf` fail-closed rule plus the `spool`
-wrapper collapse. See `docs/plans/spool.md`'s "Landing order".
+wrapper collapse. See `docs/history/spool.md`'s "Landing order".
 
 ### Fix goal
 
@@ -1149,7 +1149,7 @@ orchestrator authorizes the trailers.
 
 ## Addendum: a sub step must build a Runner
 
-Status: planned, not yet built.
+Status: shipped.
 
 `buildPlan` recurses into a step's child plan and emits no `Binding`
 for the parent step. `Runner` registers one step tool per binding, so

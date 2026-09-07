@@ -12,24 +12,24 @@ to `Status: shipped.` followed by the commit hash when
 `git log -S<symbol>` finds the symbol in one call. Otherwise write
 `Status: shipped.` alone. Do not rewrite the section body.
 
-- `docs/plans/a2aclient.md:205` — ten exported sentinels, symbol
+- `docs/history/a2aclient.md:205` — ten exported sentinels, symbol
   `ErrNoBaseURL`.
-- `docs/plans/a2aclient.md:640` — loopback extraction; the
+- `docs/history/a2aclient.md:640` — loopback extraction; the
   `a2aloopback` package exists.
-- `docs/plans/a2aloopback.md:3` — the package itself.
-- `docs/plans/dispatch.md:180` — client sentinels, symbol
+- `docs/history/a2aloopback.md:3` — the package itself.
+- `docs/history/dispatch.md:180` — client sentinels, symbol
   `ErrBadMethod`.
-- `docs/plans/dispatch.md:274` — replay ladder, symbol
+- `docs/history/dispatch.md:274` — replay ladder, symbol
   `replaySentinels`.
-- `docs/plans/longtermmemory.md:47` and `:791` — scope normalization,
+- `docs/history/longtermmemory.md:47` and `:791` — scope normalization,
   commit `201cec5`.
-- `docs/plans/longtermmemory.md:624` — both-core merge guard, commit
+- `docs/history/longtermmemory.md:624` — both-core merge guard, commit
   `9e02930`.
-- `docs/plans/mcp.md:587` — `ErrNilProgressHandler`.
-- `docs/plans/contextplan.md:872` and `docs/plans/agentloop.md:3128`
+- `docs/history/mcp.md:587` — `ErrNilProgressHandler`.
+- `docs/history/contextplan.md:872` and `docs/history/agentloop.md:3128`
   — `Calibrated.Observe` pairing.
-- `docs/plans/tools.md:469` — `ErrInvalidExecutionClass`.
-- `docs/plans/tools.md:496` — `SchemaTool`.
+- `docs/history/tools.md:469` — `ErrInvalidExecutionClass`.
+- `docs/history/tools.md:496` — `SchemaTool`.
 
 ### Stale no-op subscription sentences
 
@@ -39,13 +39,13 @@ to: `Built when nil; no handler is subscribed. Callers add handlers
 through Bus().Subscribe.` Sites:
 
 - `agentrun/options.go:53`, `agentrun/wire.go:83-85`,
-  `docs/plans/agentrun.md:16`, `docs/packages/agentrun.md:42`.
-- `dispatch/options.go:33-34`, `docs/plans/dispatch.md:20-22` and
+  `docs/history/agentrun.md:16`, `docs/packages/agentrun.md:42`.
+- `dispatch/options.go:33-34`, `docs/history/dispatch.md:20-22` and
   `:71` and `:113-116`, `docs/packages/dispatch.md:18` and `:33-37`.
 - `docs/examples/agentrun.md:12` and `:30-31`,
   `docs/examples/_agentrun/main.go:5-6`.
-- The two addenda at `docs/plans/agentrun.md:364` and
-  `docs/plans/dispatch.md:800` keep their meaning but rename the
+- The two addenda at `docs/history/agentrun.md:364` and
+  `docs/history/dispatch.md:800` keep their meaning but rename the
   removed handlers `placeholder bus handlers`, so the exit grep
   below returns zero.
 
@@ -53,12 +53,12 @@ through Bus().Subscribe.` Sites:
 
 - `docs/architecture.md:22`: say forty-five packages. Add the missing
   mermaid edge `contextsummary --> provider`.
-- `docs/plans/workspace.md:378-391` and
+- `docs/history/workspace.md:378-391` and
   `docs/packages/workspace.md:143`: name a removed caller. Add a
   status note under the plan Goal; rewrite the package-doc sentence.
   The toolbox removal is recorded in
   `policy/pending_wiring.json`.
-- `docs/plans/subagent.md`: add the command vocabulary (the `Op`
+- `docs/history/subagent.md`: add the command vocabulary (the `Op`
   constants and the `*Command` types from `api/subagent.txt`) to the
   API section.
 - `subagent/doc.go:3`: name the three constructor groups (spawn and
@@ -70,25 +70,25 @@ through Bus().Subscribe.` Sites:
 - `docs/packages/dispatch.md:145-150`: add `ledger.ErrNotClaimed`
   with the race-window reason from `dispatch/ladder.go:24-35`.
 - `flow/doc.go:4-9`: name every file. Drop the phase sentence.
-- `docs/plans/a2aloopback.md:37-40`: reword. The import policy has no
+- `docs/history/a2aloopback.md:37-40`: reword. The import policy has no
   `a2aloopback` row in any importer, so the deps gate rejects a
   production import.
-- `docs/plans/mcp.md:606-704`: rewrite the section to name
+- `docs/history/mcp.md:606-704`: rewrite the section to name
   `policy/thirdparty.json`, `scripts/check_thirdparty.py`, and the
   closure lock.
-- `docs/plans/secretpath.md:9` and `:242`: add `Status: shipped.` and
+- `docs/history/secretpath.md:9` and `:242`: add `Status: shipped.` and
   update the Blast radius section. `workspace` imports `secretpath`.
-- `docs/plans/memory.md:11-12`: rewrite the Goal sentence to `A Put
+- `docs/history/memory.md:11-12`: rewrite the Goal sentence to `A Put
   larger than the whole budget fails; a Put that fits evicts the
   oldest blobs first.`
-- `docs/plans/toolcallctx.md:7-10`: add the settle-exactly-once
+- `docs/history/toolcallctx.md:7-10`: add the settle-exactly-once
   contract from `batch.go:9-21` and the wake-once contract from
   `batch.go:72-73` to Scope.
 - `durablefence/checks.go:17-22` and `:156-158`: reword to `a slow
   backend's busy-retry budget`; drop the private paths.
 - `policy/pending_wiring.json`, `agentloop` reason: name the one open
   gap, injection-safe framing, plan
-  `docs/plans/agents/phase82_injection_safe_framing.md`. The other
+  `docs/history/agents/phase82_injection_safe_framing.md`. The other
   four gaps are closed in code.
 - `policy/pending_wiring.json`: set `workspace`, `envfile`,
   `longtermmemory`, and `mcp` to `permanent=true` with target
@@ -108,7 +108,7 @@ Gates after commit one: `check_prose.py` and `check_labels.py` pass;
 
 Extend `scripts/check_plan.py` with one check. Keep one plan gate.
 
-Rule: for each `docs/plans/<pkg>.md`, find every line matching
+Rule: for each `docs/history/<pkg>.md`, find every line matching
 `^Status: planned, not yet built`. Take the section from its heading
 to the next heading of the same or higher level. Collect every
 backticked identifier in the section that looks like an exported Go
@@ -123,7 +123,7 @@ line, and the symbol. A section with no such identifier passes.
   scratch worktree. Fewer than thirteen means the rule is too narrow.
 - AGENTS.md gets one new enforcement-ladder prohibition naming the
   gate.
-- `docs/plans/check_plan.md` gains the rule, the probe, and the
+- `docs/history/check_plan.md` gains the rule, the probe, and the
   escape: a section that must stay planned renames the status to
   `Status: planned, extends <symbol>`; the gate ignores that form.
   The script docstring documents the escape.
@@ -142,7 +142,7 @@ untouched. Add probe cases, not Go tests.
 
 ## Verification
 
-- `grep -rn "planned, not yet built" docs/plans/` returns zero after
+- `grep -rn "planned, not yet built" docs/history/` returns zero after
   commit one.
 - A case-insensitive grep over `agentrun`, `dispatch`, and `docs` for
   the three stale claim phrases (the removed-handler phrase, and the
@@ -187,13 +187,13 @@ from the body scan, but the rule now also rejects the line outright
 when that named symbol is itself locked: a locked anchor means the
 addition it names has shipped, so the status must say `shipped`.
 
-Sites corrected in the same change: `docs/plans/contextstate.md:718`,
-`docs/plans/dispatch.md:668`, `docs/plans/envelope.md:393`,
-`docs/plans/runconfig.md:436` and `:594`, `docs/plans/spool.md:788`,
-`docs/plans/subagent.md:898` (the seven `extends` misuses), plus
-`docs/plans/agentloop.md:439`, `:881`, `:1078`,
-`docs/plans/agentrun.md:163`, `docs/plans/machine.md:185`, and
-`docs/plans/flow.md:3` (locked symbols under a status wording the old
+Sites corrected in the same change: `docs/history/contextstate.md:718`,
+`docs/history/dispatch.md:668`, `docs/history/envelope.md:393`,
+`docs/history/runconfig.md:436` and `:594`, `docs/history/spool.md:788`,
+`docs/history/subagent.md:898` (the seven `extends` misuses), plus
+`docs/history/agentloop.md:439`, `:881`, `:1078`,
+`docs/history/agentrun.md:163`, `docs/history/machine.md:185`, and
+`docs/history/flow.md:3` (locked symbols under a status wording the old
 regex never matched).
 
 ### Addendum tests

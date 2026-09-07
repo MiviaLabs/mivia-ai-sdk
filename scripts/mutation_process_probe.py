@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Process-group probe checks for scripts/check_mutation.py.
 The checks live here because check_mutation.py must stay under 500
-lines. See docs/plans/agents/phase75_mutation_kit_hardening.md."""
+lines. See docs/history/agents/phase75_mutation_kit_hardening.md."""
 import os
 import subprocess
 import time

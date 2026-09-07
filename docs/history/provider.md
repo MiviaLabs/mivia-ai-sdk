@@ -10,7 +10,7 @@ Define one interface a caller uses to complete a chat turn against a
 language model, plus the request and response shapes the interface
 carries. `provider` itself defines the contract only; `provider/anthropic`
 is this SDK's one implementation, the Anthropic Messages API adapter
-(see `docs/plans/provider/anthropic.md`). A caller may also supply its
+(see `docs/history/provider/anthropic.md`). A caller may also supply its
 own concrete type.
 
 ## Scope
@@ -176,7 +176,7 @@ via `make api-update`.
   `Message.ReasoningBlocks`.
   `func RedactBlock(b ReasoningBlock) ReasoningBlock` clears `Content`
   and sets `Redacted`, idempotently. This fold ships as the companion
-  change `docs/plans/contextplan.md` names: `contextplan` compares
+  change `docs/history/contextplan.md` names: `contextplan` compares
   `contextstate.SourceEvent.Kind` against `ReasoningEventKind` instead
   of a literal.
 
@@ -296,7 +296,7 @@ Outside:
 
 - Any `Request` change. `Request` gains no `MaxTokens`, no
   temperature, and no session field. The summarizer bound decision in
-  `docs/plans/contextsummary.md` relies on this.
+  `docs/history/contextsummary.md` relies on this.
 - Any cross-message pairing check. `Message.Validate` still checks one
   message alone; a tool result's name matching its call stays the
   caller's concern, as the shipped plan already states for pairing.

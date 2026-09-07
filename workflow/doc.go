@@ -13,6 +13,6 @@
 // check, and confirmStep's room-stamping of Message.Room before
 // a.id.Sign. The definition is data; it states who the agent is,
 // what it can do, and what it runs. Run drives the bound plan
-// in-process, through flow.Run. Rationale: ../docs/plans/workflow.md.
+// in-process, through flow.Run. Rationale: ../docs/history/workflow.md.
 // Contribution rules: ../AGENTS.md.
 package workflow

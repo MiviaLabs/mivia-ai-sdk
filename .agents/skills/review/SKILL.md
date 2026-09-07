@@ -64,7 +64,7 @@ Cover all of these in the report. Each is a finding source.
   `.go` both. A claim you did not grep for is unverified, not
   confirmed clean.
 - **Plan drift** — does the change match its plan
-  (`docs/plans/<pkg>.md`)? Scope creep is a finding. A dropped Scope
+  (`docs/history/<pkg>.md`)? Scope creep is a finding. A dropped Scope
   item is a finding. Every exported symbol must match `api/<pkg>.txt`.
 - **Test adequacy** — do the tests fail when the code is broken? Pick
   an invariant, apply the mutation in a throwaway copy of the package,

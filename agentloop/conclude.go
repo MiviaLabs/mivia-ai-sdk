@@ -41,7 +41,7 @@ func (c Conclude) Validate() error {
 // sticky "was the notice ever appended" flag is not enough:
 // Options.Trim (or Compaction.Window) may strip the notice out of a
 // later iteration's history before that iteration's Completer call
-// runs. See docs/plans/agentloop.md's Trim limit.
+// runs. See docs/history/agentloop.md's Trim limit.
 // Callers must also gate this on noticeSent: noticePresent alone
 // cannot tell this run's own nudge apart from matching text a caller
 // fed in through the starting History for an unrelated reason.

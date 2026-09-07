@@ -1,5 +1,5 @@
 // composition_test.go proves the three composition patterns
-// documented in docs/plans/trigger.md compile and behave as
+// documented in docs/history/trigger.md compile and behave as
 // described. It declares local stand-ins for scheduler.Job,
 // events.Handler, and channel.Notifier's signatures instead of
 // importing those packages, so trigger stays a leaf package with no

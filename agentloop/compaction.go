@@ -1,9 +1,11 @@
 package agentloop
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -37,17 +39,20 @@ func (l *Loop) planHistory(ctx context.Context, history []provider.Message, iter
 // history; history itself never changes on failure.
 func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w plan.Window, iteration int, notice bool) ([]provider.Message, bool, error) {
 	adjusted := preserveSummaryName(w)
-	prior, rest := splitSummary(history)
-	res, err := plan.Compact(rest, adjusted, l.calibrated)
+	// Compact measures the whole history, so its trigger test matches
+	// the one planHistory already applied. PreserveNames holds the
+	// summary in the mandatory set, so it lands in Kept, never Dropped.
+	res, err := plan.Compact(history, adjusted, l.calibrated)
 	if err != nil {
 		return nil, false, fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, err)
 	}
 	if !res.Compacted && notice {
 		return nil, false, nil
 	}
-	rebuilt := append([]provider.Message(nil), res.Kept...)
+	prior, kept := splitSummary(res.Kept)
+	rebuilt := append([]provider.Message(nil), kept...)
 	injected := false
-	if len(res.Dropped) > 0 || prior != nil {
+	if len(res.Dropped) > 0 {
 		summary, skipped, err := l.summarizeDropped(ctx, prior, res.Dropped)
 		if err != nil {
 			return nil, false, err
@@ -71,6 +76,12 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 		// Skip with no prior, planning path: inject nothing. The
 		// dropped messages stay dropped and the run proceeds with
 		// the kept history.
+	} else if prior != nil {
+		// Nothing was dropped, so there is nothing new to summarize.
+		// Re-inject the prior unchanged rather than spending a
+		// summarizer call that would rewrite it with no new content.
+		rebuilt = injectAfterSystem(rebuilt, *prior)
+		injected = true
 	}
 	if notice {
 		rebuilt = injectNotice(rebuilt, injected)
@@ -198,7 +209,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 // compactHistory's own plan.Compact call, wrapping the same
 // window error recoverPromptTooLong would have; no separate check is
 // needed here.
-func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int, surface runSurface) (provider.Response, []provider.Message, provider.Request, error) {
+func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int, stream *bytes.Buffer, surface runSurface) (provider.Response, []provider.Message, provider.Request, error) {
 	rw := recoveryWindow(*l.window)
 	rebuilt, compacted, err := l.compactHistory(ctx, history, rw, iteration, true)
 	if err != nil {
@@ -210,6 +221,13 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: surface.defs, ReasoningEffort: l.defaultEffort}
 	// The rebuilt history lost the dropped turns' blocks.
 	req.DisableProviderReplay = true
+	// The retry belongs to the same runChat call, so it keeps that
+	// call's mirror. It never resets the buffer: runChat already did,
+	// and the failed attempt's partial bytes belong to this call. A nil
+	// buffer means the caller set no sink, so the writer stays nil.
+	if stream != nil {
+		req.StreamingWriter = io.MultiWriter(l.streamSink, stream)
+	}
 	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {
 		return provider.Response{}, nil, provider.Request{}, rerr
 	}

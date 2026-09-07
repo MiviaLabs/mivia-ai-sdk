@@ -9,6 +9,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -313,5 +314,50 @@ func TestExtensionsNilBehavesAsZero(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Margin") {
 		t.Fatalf("Validate() error = %v, want it to name Margin", err)
+	}
+}
+
+// TestOptionsValidateWrapsNestedSentinels proves the four checks that
+// delegate to another package's Validate still answer to the package
+// sentinel. Options.Validate documents one sentinel for every check,
+// and these four returned only the inner one.
+func TestOptionsValidateWrapsNestedSentinels(t *testing.T) {
+	cases := []struct {
+		name  string
+		build func(agentloop.Options) agentloop.Options
+		inner error
+	}{
+		{"negative Budget.MaxBytes", func(o agentloop.Options) agentloop.Options {
+			o.Budget = &budget.Limits{MaxBytes: -1}
+			return o
+		}, budget.ErrInvalidOptions},
+		{"zero Window.MaxTokens", func(o agentloop.Options) agentloop.Options {
+			o.Compaction = agentloop.Compaction{Window: &plan.Window{MaxTokens: 0}}
+			return o
+		}, plan.ErrMaxTokensNotPositive},
+		{"WorkBudget without Refund", func(o agentloop.Options) agentloop.Options {
+			o.Extensions = &agentloop.Extensions{WorkBudget: &agentloop.WorkBudget{
+				Reserve: func(ctx context.Context, req provider.Request) error { return nil },
+			}}
+			return o
+		}, agentloop.ErrIncompleteWorkBudget},
+		{"ToolBudget without Reserve", func(o agentloop.Options) agentloop.Options {
+			o.Extensions = &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{}}
+			return o
+		}, agentloop.ErrIncompleteToolBudget},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := c.build(validOptions()).Validate()
+			if err == nil {
+				t.Fatalf("Validate() = nil, want an error")
+			}
+			if !errors.Is(err, agentloop.ErrInvalidOptions) {
+				t.Fatalf("Validate() = %v, want errors.Is ErrInvalidOptions", err)
+			}
+			if !errors.Is(err, c.inner) {
+				t.Fatalf("Validate() = %v, want errors.Is the inner sentinel too", err)
+			}
+		})
 	}
 }

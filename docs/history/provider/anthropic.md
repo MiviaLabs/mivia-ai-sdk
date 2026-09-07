@@ -1,6 +1,6 @@
 # Plan: provider/anthropic
 
-Status: shipped. Builds on the shipped `provider` package (`docs/plans/provider.md`).
+Status: shipped. Builds on the shipped `provider` package (`docs/history/provider.md`).
 
 ## Goal
 
@@ -220,7 +220,7 @@ Reasoning capture rule above and `Message.ReasoningBlocks`.
 
 Record the replay mapping rules for thinking blocks and their
 signatures. The carrier field lives on `provider.Message`; see the
-reasoning-signature change section in `docs/plans/provider.md`.
+reasoning-signature change section in `docs/history/provider.md`.
 
 ### Scope
 
@@ -273,7 +273,7 @@ The five adapter tests land in `provider/anthropic/anthropic_test/`,
 on the `newTestServer` plus `writeJSON` fixture. Requests are
 captured through `json.Unmarshal` of the body. A request counter
 serves different content per call, the `TestChatRateLimitRetry`
-pattern. `docs/plans/provider.md`, the reasoning-signature change
+pattern. `docs/history/provider.md`, the reasoning-signature change
 section, carries the same names as backticked references.
 
 TestChatReplaysThinkingSignatureBeforeToolUse covers the full

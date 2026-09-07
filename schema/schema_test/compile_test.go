@@ -288,7 +288,7 @@ func TestCompileIllegalSchemaRejectsAsCompile(t *testing.T) {
 }
 
 // TestCompileShallowRefChainAdmits proves the documented limit from
-// docs/plans/schema.md: MaxSchemaDepth counts literal nesting only, so
+// docs/history/schema.md: MaxSchemaDepth counts literal nesting only, so
 // a schema built from many shallow, in-document $ref entries chained
 // together compiles even though the chain amplifies resolution cost.
 // This is by design, not by omission.

@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 quarantined this package into the
 x/ sub-module, which stops advertising it from the core module.
-See docs/plans/agents/phase86_package_consolidation.md.
+See docs/history/agents/phase86_package_consolidation.md.
 `envelope`, ported from the sibling consumer repo's `internal/contextstate` and
 `internal/contentref` under the phase 65 contract. `contextplan`
 plans a session's context fit on these types; `spool` spools
@@ -546,7 +546,7 @@ red run, then writes the code.
 `PayloadRecord.Revoked` exists on the wire and in `Validate`'s equality
 checks, but nothing sets it through the store and nothing enforces it.
 `MemStore.Get` returns a revoked record's `Data` exactly like a live
-one. `contextplan.Plan` (see `docs/plans/contextplan.md`) resolves a
+one. `contextplan.Plan` (see `docs/history/contextplan.md`) resolves a
 payload through the same `Get` call and has no way to learn a record
 is revoked, so a revoked record's content can still reach a built
 provider request. This closes the gap: a way to revoke a stored
@@ -557,7 +557,7 @@ caller other than `contextplan` may call `MemStore.Get` directly in a
 later phase; the layer nearest the data is the one place a fail-closed
 check protects every reader at once. `contextplan.Plan` keeps its own
 decision on top: whether a denied payload becomes an `Elision` or a
-hard `Plan` failure. See `docs/plans/contextplan.md` for that half.
+hard `Plan` failure. See `docs/history/contextplan.md` for that half.
 
 ### Scope addition
 
@@ -710,7 +710,7 @@ In `contextstate/contextstate_test/store_test.go`:
   `ErrPayloadRevoked` in the same commit, and states `Get`'s
   zero-value-on-error contract and `Put`'s tamper guard explicitly.
 - This change lands before or with the matching `contextplan` change
-  in `docs/plans/contextplan.md`, since `contextplan.Plan` calls
+  in `docs/history/contextplan.md`, since `contextplan.Plan` calls
   `MemStore.Get` and `MemStore.Status` and must handle the new error
   case in the same change, or `Plan` starts failing on every revoked
   payload it meets.

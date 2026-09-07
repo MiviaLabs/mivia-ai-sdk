@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 quarantined this package into the
 x/ sub-module, which stops advertising it from the core module.
-See docs/plans/agents/phase86_package_consolidation.md.
+See docs/history/agents/phase86_package_consolidation.md.
 as a leaf package: tiered entries, consolidation, search, and a bounded
 core-context frame. In-memory only, standard library only.
 
@@ -392,7 +392,7 @@ Status: shipped.
 
 
 This addendum is commit one of two. Commit two fixes `a2aclient` and
-`a2aack`; see `docs/plans/a2aclient.md`. The two commits do not share
+`a2aack`; see `docs/history/a2aclient.md`. The two commits do not share
 a file.
 
 ### Problem
@@ -586,7 +586,7 @@ and "content address".
   the cap. `mergePassLocked` must state the re-key.
 - `docs/packages/longtermmemory.md` — the union invariant near line
   103, and the `Save` id paragraph near line 47.
-- `docs/plans/longtermmemory.md` — the union decision near line 295,
+- `docs/history/longtermmemory.md` — the union decision near line 295,
   the id decision near line 284, and the merge test bullet near line
   331.
 - `docs/architecture.md` — the `longtermmemory` module-map bullet near

@@ -3,7 +3,7 @@ package agentloop_test
 // Loop-level regression rows for the steer ack generation counter.
 // The window between the downgrade ack and the next arm is reachable
 // at the iteration-top injector drain, so the fixtures use channel
-// barriers there. No sleeps. See docs/plans/agentloop.md, the steer
+// barriers there. No sleeps. See docs/history/agentloop.md, the steer
 // ack generation counter addendum.
 
 import (

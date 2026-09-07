@@ -6,7 +6,7 @@ import "testing"
 // downgrade acks the trigger the loop observed. An ack must never
 // clear a newer Trigger that fired after that observation. The
 // pairing lives inside Steer, so these tests drive the methods
-// sequentially with no goroutines. See docs/plans/agentloop.md,
+// sequentially with no goroutines. See docs/history/agentloop.md,
 // the steer ack generation counter addendum.
 
 // TestSteerAckSparesUnobservedTrigger is the killing test. A

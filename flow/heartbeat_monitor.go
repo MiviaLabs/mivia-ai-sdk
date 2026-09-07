@@ -58,7 +58,7 @@ func (m *Monitor) Beat(id string, at time.Time) error {
 // now.Sub(last) <= timeout. An id with no recorded beat is never
 // alive. A beat timestamped after now (clock skew) makes
 // now.Sub(last) negative, which is always <= timeout, so the id
-// reads as alive; this is deliberate. See docs/plans/heartbeat.md.
+// reads as alive; this is deliberate. See docs/history/heartbeat.md.
 func (m *Monitor) Alive(id string, now time.Time) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()

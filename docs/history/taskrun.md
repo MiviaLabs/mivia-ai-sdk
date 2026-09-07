@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 folded this package into ledger;
 the symbols live in ledger now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 
 ## Goal
 

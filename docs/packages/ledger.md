@@ -222,7 +222,7 @@ surface below mirrors `api/ledger.txt`.
   `Store` passes and blocks every transitive dependent. An ordinary
   tree-shaped `Needs` graph never blocks the failed key itself; a
   genuine cycle in `Needs` routes back to it, so the failed key joins
-  the blocked set too. See docs/plans/ledger.md for the worked
+  the blocked set too. See docs/history/ledger.md for the worked
   example.
 - Pass two's per-dependent `CompareAndSwap` follows the same
   retry-and-reclassify contract as every other mutating method. On a

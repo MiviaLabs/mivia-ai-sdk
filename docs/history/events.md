@@ -3,7 +3,7 @@
 Status: shipped through phases 17 and 18. This plan fixes
 the boundary before any builder starts. It is the bus design contract.
 See AGENTS.md's Building blocks section for the block composition
-rule. The build phases live in docs/plans/agents/. Phase 17 ships the
+rule. The build phases live in docs/history/agents/. Phase 17 ships the
 leaf core.
 Phase 18 proves the machine wiring on a caller-owned bus.
 
@@ -268,8 +268,8 @@ Each states the old contract. Update in the same change:
   the default wiring avoids.
 - `docs/packages/agentloop.md:446` — states `Run` swallows the
   "no subscriber" error.
-- `docs/plans/agentloop.md:2163`, `docs/plans/agent.md:600`,
-  `docs/plans/hooks.md:69` — same claim in plan prose.
+- `docs/history/agentloop.md:2163`, `docs/history/agent.md:600`,
+  `docs/history/hooks.md:69` — same claim in plan prose.
 - `docs/examples/agent-composition.md:161,342` and
   `docs/examples/_agentcomposition/main.go:138-146` — the example's
   `subscribeAll` helper exists only for the old error. Delete the
@@ -278,7 +278,7 @@ Each states the old contract. Update in the same change:
   no-subscriber rule. No change required. The package map prose at
   line 223 lists the surface only.
 
-Addenda in `docs/plans/agentrun.md` and `docs/plans/dispatch.md`
+Addenda in `docs/history/agentrun.md` and `docs/history/dispatch.md`
 record the deleted loops in those packages' plans.
 
 ### Verification
@@ -299,8 +299,8 @@ record the deleted loops in those packages' plans.
 Status: shipped.
 
 
-Each rewriting commit in `docs/plans/agentrun.md` and
-`docs/plans/dispatch.md` scope carries the same `Allow-Test-Change`
+Each rewriting commit in `docs/history/agentrun.md` and
+`docs/history/dispatch.md` scope carries the same `Allow-Test-Change`
 trailer. It names the rewrites those addenda mandate.
 
 ## Addendum: the zero-value Bus is usable
@@ -308,7 +308,7 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 6d.
+docs/history/agents/maintenance-addenda-batch.md, item 6d.
 
 `Subscribe` assigns into `b.subs` at `events/bus.go:64`. On a zero
 `Bus` that map is nil, so the call panics. Add the same two-line
@@ -384,7 +384,7 @@ assertion needed a rewrite for this change.
 
 ## Addendum: the Fire doc comment names the wrong error prefix
 
-Status: planned, not yet built.
+Status: shipped.
 
 `Registry.Fire`'s doc comment pins the wrap format as a `hooks:`
 prefix. The code emits an `events:` prefix on both the handler-error

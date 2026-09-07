@@ -22,7 +22,7 @@ import (
 // third-party-import exception to a2a and an external test package
 // cannot import a2a-go directly. Both stay unexported: no caller
 // outside this package's own tests needs them. See
-// docs/plans/a2a.md's Verification section for the test seam.
+// docs/history/a2a.md's Verification section for the test seam.
 // ErrUnsigned reports a Send call whose message carries no signer.
 // Test with errors.Is.
 var ErrUnsigned = errors.New("a2a: message must be signed")

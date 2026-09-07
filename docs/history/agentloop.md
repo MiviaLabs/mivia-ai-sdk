@@ -56,7 +56,7 @@ Outside:
   That is phase 70's scope. One exception: `spool`'s `SpoolTool`
   wrapper gains schema forwarding in this change, because a wrapper
   that strips a capability silently is a defect, not a deferral. See
-  `docs/plans/spool.md`.
+  `docs/history/spool.md`.
 
 ## API
 
@@ -993,13 +993,13 @@ Outside:
   a vendor invoice. Only the cap-enforcement running total changes.
 - `provider.Usage` and `provider/types.go`. This addendum adds no
   `Validate` method there; see the addendum decision above. No
-  `docs/plans/provider.md` change.
+  `docs/history/provider.md` change.
 - `provider.Accumulator.Record` in `usage/accumulator.go`. It sums
   `TotalTokens` the same trust-assuming way `run.go` did, so
   `Accumulator.Total` under-reports for the same
   `TotalTokens`-left-zero `Completer` shape. This is a real, smaller
   gap in a different package, not fixed in this change. It needs its
-  own plan review against `docs/plans/usage.md`, since `provider.Record`
+  own plan review against `docs/history/usage.md`, since `provider.Record`
   is a reporting primitive, not a safety cap, and the correct fix
   there — reporting the caller's raw numbers, or reporting a corrected
   `max()` total, or adding a `PartialUsage`-style flag — is its own
@@ -1594,7 +1594,7 @@ scripted `Completer` and one scripted `Summarizer` per case:
 - Concurrency: goroutines call `Run` on one shared `*Loop` with
   `Window`, `Summarizer`, and `Calibrated` set, under
   `go test -race`. No race and no panic; the `Calibrated` mutex this
-  change window adds in `docs/plans/contextplan.md` carries the
+  change window adds in `docs/history/contextplan.md` carries the
   shared estimator.
 - Nil `Window`: the full existing suite passes unchanged, proving the
   planning path adds no behavior when disabled.
@@ -2044,7 +2044,7 @@ dedup within a turn" section in the same change as the code.
 ## Addendum: heartbeat and progress events
 
 Status: shipped. This addendum was phase 83
-(`docs/plans/agents/PHASES.md`); no standalone phase 83 plan file
+(`docs/history/agents/PHASES.md`); no standalone phase 83 plan file
 remains. It adds `Options.HeartbeatInterval` and six `events.Name`
 progress events to `Run`. It changes `heartbeat.go` (new),
 `options.go`, `run.go`, `loop.go`, and `toolcall.go`. It adds no new
@@ -2182,7 +2182,7 @@ for the full field list, the failure mode, and the gating rule.
 ## Addendum: per-batch tool-result size shaping
 
 Status: superseded. Shipped as phase 80
-(`docs/plans/agents/PHASES.md`), then removed: the only intended
+(`docs/history/agents/PHASES.md`), then removed: the only intended
 consumer, the sibling consumer repo's CLI adapter, rejected the omit-over-budget
 semantics and ships its own degrade-with-notice shaping wrapper. The
 field, the notice constant, and the sentinel are gone. See
@@ -2554,7 +2554,7 @@ and the module total.
 
 Status: shipped. This addendum
 ports phase 78,
-`docs/plans/agents/phase78_steering_and_interruption.md`, into this
+`docs/history/agents/phase78_steering_and_interruption.md`, into this
 file. It adds one new file, `agentloop/steer.go`, and changes
 `run.go` and `options.go`. It adds no new package and no
 `policy/layers.json` row.
@@ -2746,7 +2746,7 @@ func (s *Steer) Trigger()
 // the zero value: the run stops before a new response arrives, the
 // same rule every other pre-response graceful stop already follows
 // (see Result-shape rule above). This is a deliberate correction of
-// the origin brief, docs/plans/agents/phase78_steering_and_interruption.md,
+// the origin brief, docs/history/agents/phase78_steering_and_interruption.md,
 // which stated Final would carry the last message appended before the
 // steer fired; that statement conflicted with the base Result-shape
 // rule and this addendum overrides it. History, Iterations, and Usage
@@ -2921,9 +2921,9 @@ literal by hand. `hardFail`, at `run.go:252-257`, degrades to
 none has [completed], no partial state exists yet, and the rule
 degrades to the zero-value `Result` on its own, with no special case."
 The plan's base Result-shape paragraph states the same rule at
-`docs/plans/agentloop.md:145-149`, and the window-compaction addendum
+`docs/history/agentloop.md:145-149`, and the window-compaction addendum
 folds `ErrPlanFailed` and `ErrCompactionFailed` failures into the same
-closed hard-fail list at `docs/plans/agentloop.md:1512-1516`, "per the
+closed hard-fail list at `docs/history/agentloop.md:1512-1516`, "per the
 existing Result-shape rule."
 
 The bespoke literal at `run.go:79` does not call `hardFail`, so at
@@ -3132,7 +3132,7 @@ helper and adds no import. The coverage floor stays at 85 percent for
 ## Addendum: pair Observe's estimate to its own request
 
 Status: shipped. Companion to
-`docs/plans/contextplan.md`'s "Correctness fix: Calibrated.Observe
+`docs/history/contextplan.md`'s "Correctness fix: Calibrated.Observe
 drops the shared-lastEst pairing". That fix changes
 `contextplan.Calibrated.Observe`'s signature from `Observe(actual
 int)` to `Observe(estimated, actual int)`, a breaking change with
@@ -3174,7 +3174,7 @@ Inside:
   `l.calibrated.EstimateTokens(retryReq)` and stores the result on
   the recovered `chatAttempt.estimatedTokens`, the same non-fatal
   rule as the primary path. This corrects a gap in
-  `docs/plans/contextplan.md`'s companion-change note, which names
+  `docs/history/contextplan.md`'s companion-change note, which names
   only "the point `req` is built" without separating `runChat`'s two
   branches. `recoverPromptTooLong` (`agentloop/compaction.go`) calls
   `Completer.Chat` on its own `retryReq` before `runChat` regains
@@ -3277,7 +3277,7 @@ pairing error: `estimated` and `actual` still describe the same
 request. `Calibrated`'s own contract already tolerates this: any
 concurrent `Observe` call reads whatever `factor` is live at that
 instant, by design, per the Fix scope bullet on shared-`factor`
-correctness in `docs/plans/contextplan.md`.
+correctness in `docs/history/contextplan.md`.
 
 `estimateTokens` is a new unexported helper on `*Loop`, factoring the
 shared non-fatal-error rule out of both call sites:
@@ -3322,7 +3322,7 @@ In `agentloop/agentloop_test/`:
   recovered iteration pairs with the recovery path's own estimate,
   not the pre-recovery estimate, by asserting the resulting `factor`
   matches `contextplan`'s reference formula (see
-  `docs/plans/contextplan.md`'s Fix tests section) applied to the
+  `docs/history/contextplan.md`'s Fix tests section) applied to the
   known `(estimated, actual)` pairs. This fails against today's code,
   which has no `estimatedTokens` field and cannot compile against the
   new `Observe` signature; once `agentloop` is updated to compile,
@@ -3453,7 +3453,7 @@ In `agentloop/agentloop_test/`:
 ### Addendum verification
 
 - Both plans land in one commit: this addendum's `agentloop` code and
-  `docs/plans/contextplan.md`'s `Calibrated.Observe` signature change
+  `docs/history/contextplan.md`'s `Calibrated.Observe` signature change
   land together. `agentloop` does not compile against the new
   `Observe` signature until `chatAttempt.estimatedTokens` and the
   updated call site land, so a split commit leaves the tree
@@ -3463,7 +3463,7 @@ In `agentloop/agentloop_test/`:
 - `go test -race ./agentloop/... ./contextplan/...` passes.
 - `make api-update` produces no `api/agentloop.txt` diff: confirm this
   explicitly, since `chatAttempt` and its new field stay unexported.
-  `api/contextplan.txt` changes, per `docs/plans/contextplan.md`'s
+  `api/contextplan.txt` changes, per `docs/history/contextplan.md`'s
   Fix verification.
 - `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
   `scripts/check_prose.py` pass. No `policy/layers.json` change:
@@ -3814,7 +3814,7 @@ diff stays a pure append:
 // loop owns. The loop adds no bound of its own for this hook: a
 // caller that sets neither MaxIterations nor MaxTotalTokens and
 // always returns messages gets an unbounded run. That is the
-// caller's choice. See docs/plans/agentloop.md.
+// caller's choice. See docs/history/agentloop.md.
 ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 ```
 
@@ -4021,7 +4021,7 @@ cap.
 
 ### Addendum documentation
 
-- The plan deletes `docs/plans/agents/proposal_stop_decision_hook.md`.
+- The plan deletes `docs/history/agents/proposal_stop_decision_hook.md`.
   This addendum carries its content, and a duplicate invites drift.
 - The plan drops that file's "Sequencing" section rather than folding it
   in. The repository owner decided to build the seam on its own merits.
@@ -4391,7 +4391,7 @@ Outside:
 Two document classes take two different edits. This rule covers every
 doc site in items A and B.
 
-- A historical addendum in `docs/plans/agentloop.md` records a past
+- A historical addendum in `docs/history/agentloop.md` records a past
   decision. Never delete its text. Annotate it. A prose line gets the
   appended clause "later removed; see the closing maintenance
   addendum". A line inside a Go code fence gets the same clause as a
@@ -4399,7 +4399,7 @@ doc site in items A and B.
 - `docs/packages/agentloop.md` is the live reference. It must state
   today's truth. Drop the removed name outright.
 - The precedent for the annotate rule is
-  `docs/plans/agentloop.md:3654`, written when
+  `docs/history/agentloop.md:3654`, written when
   `ConcludeToolCallsLeft` went away.
 
 ### Item A: remove Options.ConcludeStepsLeft
@@ -4563,10 +4563,10 @@ Code sites:
 
 Item A, historical plan sites. Annotate, do not delete:
 
-- `docs/plans/agentloop.md:3596`, `:3611`, and `:3632`: append the
+- `docs/history/agentloop.md:3596`, `:3611`, and `:3632`: append the
   clause "later removed; see the closing maintenance addendum" to each
   `ConcludeStepsLeft` mention.
-- `docs/plans/agentloop.md:3655`: rewrite the line to name
+- `docs/history/agentloop.md:3655`: rewrite the line to name
   `TestRunConcludeMarginThresholdFires` and the margin term, and
   append the same clause about the old name.
 - Backtick rule for that line. Line 3655 sits in the `### Addendum
@@ -4591,15 +4591,15 @@ Item A, live reference sites. Drop outright:
 
 Item B, historical plan sites. Annotate, do not delete:
 
-- `docs/plans/agentloop.md:3778`: the prose bullet listing the
+- `docs/history/agentloop.md:3778`: the prose bullet listing the
   `StopDecision` fields. Append the clause about `ToolCalls`.
-- `docs/plans/agentloop.md:3815-3817`: the `StopDecision` code fence.
+- `docs/history/agentloop.md:3815-3817`: the `StopDecision` code fence.
   Put the clause as a trailing `//` comment on the `ToolCalls
   []provider.ToolCall` line at `:3817`.
-- `docs/plans/agentloop.md:3863`: the `gracefulStop` code fence. Put
+- `docs/history/agentloop.md:3863`: the `gracefulStop` code fence. Put
   the clause as a trailing `//` comment on the `ToolCalls:
   resp.ToolCalls,` line.
-- `docs/plans/agentloop.md:3839` reads `if len(resp.ToolCalls) == 0`.
+- `docs/history/agentloop.md:3839` reads `if len(resp.ToolCalls) == 0`.
   That is the response field, not the struct field. Leave it alone.
 
 Item B, live reference sites. Drop outright:
@@ -5183,7 +5183,7 @@ grep -rnE 'l\.(maxIterations|maxCallsPerTurn|maxTotalTokens|concludeMargin|concl
   quotes stay byte-identical. `docs/architecture.md` lines 358-359
   name `MaxIterations`, `MaxCallsPerTurn`, and `MaxTotalTokens` in a
   bound list; that line names the `Bounds` group after the change.
-- Historical plan text in `docs/plans/agentloop.md` is not rewritten.
+- Historical plan text in `docs/history/agentloop.md` is not rewritten.
   This addendum is the only description of the new shape. Precedent:
   the ConcludeToolCallsLeft addendum kept historical mentions.
 
@@ -5340,12 +5340,12 @@ main.go design:
   in the live struct), work and tool budgets closed (`WorkBudget` and
   `ToolBudget` in the live struct), conclude closed
   (`agentloop/conclude.go`), injection-safe framing still plan-only
-  (`docs/plans/agents/phase82_injection_safe_framing.md` reads
+  (`docs/history/agents/phase82_injection_safe_framing.md` reads
   `Status: plan, not scheduled`).
 - Full proposed reason text:
 
 ```json
-"reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against the sibling consumer repo's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires every Options group offline, runs a scripted two-turn tool exchange through RunSteerable, and verify-fast vets it. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that the sibling consumer repo lacks. Adoption needs the sibling consumer repo to build an adapter closing its side of that gap, not an SDK-internal caller."
+"reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against the sibling consumer repo's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/history/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires every Options group offline, runs a scripted two-turn tool exchange through RunSteerable, and verify-fast vets it. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that the sibling consumer repo lacks. Adoption needs the sibling consumer repo to build an adapter closing its side of that gap, not an SDK-internal caller."
 ```
 
 - The provider/anthropic row already anticipates "the agentloop
@@ -5577,7 +5577,7 @@ Outside:
 Status: shipped.
 
 Note: this addendum predates the `contextplan` to `context/plan`
-rename (docs/plans/context/plan.md). Every `contextsummary.` prose
+rename (docs/history/context/plan.md). Every `contextsummary.` prose
 reference below is the historical package name; the shipped code
 already uses `plan.`, the current import name for `context/plan`.
 
@@ -6279,7 +6279,7 @@ Chosen: spool's contract and docs change to match the loud failure.
   model-facing registries.
 - `memory/memory_test/tool_parity_test.go`'s header comment states the
   same consequence.
-- `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section)'s Schema forwarding section drops its
+- `docs/history/spool.md` (spool's plan, now the memory package's SpoolTool section)'s Schema forwarding section drops its
   silent-skip sentences and states the loud contract.
 - Tests asserting `tools.SchemaOf(wrapper)` reports nil and false
   stay unchanged. They pin `tools.SchemaOf`'s fail-closed property,
@@ -6389,7 +6389,7 @@ Docs:
   update every hit, including line 367's "A non-nil `Options.Window`
   plans every iteration". The package count is unchanged, so the
   opening paragraph stands.
-- `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section): the Schema forwarding section, per the
+- `docs/history/spool.md` (spool's plan, now the memory package's SpoolTool section): the Schema forwarding section, per the
   spool resolution. Historical sections already marked superseded
   stay untouched.
 
@@ -6493,7 +6493,7 @@ Changed tests, names kept, bodies flipped; the name-kept precedent is
   conclude addendum's `Options.Conclude`, the dedup addendum's
   `Options.DedupWithinTurn`, and the context-planning addendum's
   flat triple: all regrouped per the field map.
-- `memory/tool.go`'s skip-reliance sentences and `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section)'s
+- `memory/tool.go`'s skip-reliance sentences and `docs/history/spool.md` (spool's plan, now the memory package's SpoolTool section)'s
   Schema forwarding text: superseded by the spool resolution.
 - The capability-derivation addendum stays accurate. Its derivation
   condition is this addendum's step 5, restated with member paths.
@@ -6754,7 +6754,7 @@ fix, per this repo's TDD convention.
 
 ## Addendum: compaction trigger parity, recovery mirror, option sentinels
 
-Status: planned, not yet built.
+Status: shipped.
 
 Three defects, found by a read-only audit of the last twenty commits.
 

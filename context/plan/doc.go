@@ -11,5 +11,5 @@
 // the x/ sub-module (github.com/MiviaLabs/mivia-ai-sdk/x), private to
 // that module.
 //
-// See docs/plans/context/plan.md.
+// See docs/history/context/plan.md.
 package plan

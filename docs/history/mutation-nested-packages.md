@@ -80,7 +80,7 @@ Probes only, added to the existing `check_mutation.py --probe` suite.
 
 TT12 and TT13 must stay silent. No denylist file and no stored floor
 changes. TT11 stays silent too: this plan's own doc
-(`docs/plans/mutation-nested-packages.md`) is a doc companion under
+(`docs/history/mutation-nested-packages.md`) is a doc companion under
 the TT11 doc-companion exemption, so pairing it with `scripts/` and
-`Makefile` alone does not fire. See `docs/plans/test-tampering.md`'s
+`Makefile` alone does not fire. See `docs/history/test-tampering.md`'s
 "TT11 doc-companion probes" addendum.

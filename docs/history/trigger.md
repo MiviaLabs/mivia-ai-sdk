@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 folded this package into scheduler;
 the symbols live in scheduler now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 edges. It ships independently of phase 38 (flow loop). It composes
 with phase 39 (scheduler) and `channel` only through caller-owned
 closures.

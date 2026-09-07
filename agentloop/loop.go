@@ -16,7 +16,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
 
-// Result holds a Run call's outcome. See docs/plans/agentloop.md's
+// Result holds a Run call's outcome. See docs/history/agentloop.md's
 // Result-shape rule for how each field behaves on a graceful stop
 // versus a hard-fail error return.
 type Result struct {

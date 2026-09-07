@@ -3,7 +3,7 @@
 Applies text-level operator mutations to a package's tracked source,
 runs that package's own test target per mutant, and reports the kill
 rate against a per-package floor. See
-docs/plans/agents/phase54_mutation_kit.md. Stdlib-only plus the go
+docs/history/agents/phase54_mutation_kit.md. Stdlib-only plus the go
 tool: site-finding shells out to a small embedded go/scanner helper
 program, run through `go run`, never a third-party mutation library.
 Tokenizer glue lives in scripts/mutation_tokenize.py."""

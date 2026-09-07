@@ -3,7 +3,7 @@
 Rename `contextref` to `context/ref`. The Go package name is `ref`,
 the last path element. Phase 86 kept this package split; this is a
 path move only. The shared gate-surface enumeration lives in
-`docs/plans/context/plan.md`.
+`docs/history/context/plan.md`.
 
 ## Goal
 
@@ -47,7 +47,7 @@ old qualifier, `contextref.` becomes `ref.`. Run seeded smoke tests
 only; never run `go test -fuzz` at default parallelism. No TT01
 trailer is pre-authorized for this tree: any TT01 finding here stops
 the build and escalates to the orchestrator. See
-`docs/plans/context/plan.md`'s Tests section for the authorization
+`docs/history/context/plan.md`'s Tests section for the authorization
 scope and the hash-match caveat.
 
 ## Verification
@@ -74,7 +74,7 @@ Importer set, verified on this tip, so no consumer is missed:
   `x/contextsession/planner.go`, `x/runconfig/loader.go`.
 - x/ sub-module, tests: the `x/contextsession` and
   `x/contextstate` and `x/runconfig` test files the grep in
-  `docs/plans/context/plan.md` step 12 lists.
+  `docs/history/context/plan.md` step 12 lists.
 - Aliasing: `memory/store.go` and `envelope/message.go` import under
   the alias `contextref`; both declare locals named `ref` in scopes
   that call the minter.

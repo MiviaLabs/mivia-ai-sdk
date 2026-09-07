@@ -73,7 +73,7 @@ func TestDeriveWindowFromContextAccountant(t *testing.T) {
 // therefore triggers at an effective 64% of MaxTokens and targets an
 // effective 40%, floored. Checked at MaxTokens 1000 (a multiple of
 // five, no floor rounding) and 1003 (not a multiple, so Reserve and
-// both thresholds floor). See docs/plans/agentloop.md, "Effective
+// both thresholds floor). See docs/history/agentloop.md, "Effective
 // thresholds for host-style configs".
 func TestDeriveWindowEffectiveThresholds(t *testing.T) {
 	cases := []struct {

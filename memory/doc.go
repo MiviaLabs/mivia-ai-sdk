@@ -15,5 +15,5 @@
 // readtool.go = ReadOutputTool and MoreMarker; tool.go = SpoolTool
 // and WithSpool. A spool grant bounds one principal's oversized
 // content and hands back a bounded view plus a content ref.
-// Rationale: ../docs/plans/memory.md. Contribution rules: ../AGENTS.md.
+// Rationale: ../docs/history/memory.md. Contribution rules: ../AGENTS.md.
 package memory

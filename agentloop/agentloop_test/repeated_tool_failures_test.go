@@ -131,7 +131,7 @@ func TestRepeatedToolFailuresResetsOnMixedTurn(t *testing.T) {
 // default ErrorPolicyReport, alongside unknown-tool-name errors, because
 // collectCalls now counts any reported tool error. Name kept for history;
 // see the addendum "widen the consecutive-tool-failure counter" in
-// docs/plans/agentloop.md.
+// docs/history/agentloop.md.
 func TestRepeatedToolFailuresExcludesArgValidationAndToolError(t *testing.T) {
 	echo := &schemaEchoTool{name: "echo", schema: []byte(`{"type":"object","required":["req"]}`), result: "x"}
 	failing := &schemaEchoTool{name: "failing", schema: []byte(`{}`), runErr: errBoom}

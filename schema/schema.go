@@ -1,6 +1,6 @@
 // Package schema compiles a JSON Schema document, validates JSON
 // payloads against it, and builds a bounded, model-facing corrective
-// message on a validation failure. See docs/plans/schema.md for the
+// message on a validation failure. See docs/history/schema.md for the
 // contract.
 package schema
 
@@ -118,7 +118,7 @@ func parseJSON(data []byte) (any, error) {
 // containerDepth reports the object/array nesting depth of v: a scalar
 // is depth 0, an empty object or array is depth 1, and each further
 // nesting level adds 1. Counts literal nesting only; a $ref hop is not
-// a nesting level (see docs/plans/schema.md's accepted ref-chain
+// a nesting level (see docs/history/schema.md's accepted ref-chain
 // limit).
 func containerDepth(v any) int {
 	switch t := v.(type) {

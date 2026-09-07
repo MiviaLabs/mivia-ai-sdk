@@ -233,6 +233,24 @@ def _probe_read_source_skips_unreadable(root: Path) -> list[str]:
     return []
 
 
+def _probe_retired_plan_path_fires(root: Path) -> list[str]:
+    go_packages.write_file(root, "a.md", "See " + _RETIRED_PLAN_DIR + "x.md\n")
+    problems = check_retired_plan_path([root / "a.md"], root)
+    if not any("a.md:1" in p for p in problems):
+        return [f"probe_retired_plan_path_fires: expected a hit, got {problems}"]
+    return []
+
+
+def _probe_retired_plan_path_silent_when_clean(root: Path) -> list[str]:
+    go_packages.write_file(root, "a.md", "See docs/history/x.md\n")
+    binary = root / "logo.png"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n\x00")
+    problems = check_retired_plan_path([root / "a.md", binary], root)
+    if problems:
+        return [f"probe_retired_plan_path_silent_when_clean: got {problems}"]
+    return []
+
+
 def run_probe() -> bool:
     """run_probe exercises the count parser against fixed strings,
     following check_plan.py's --probe convention. The go-list
@@ -270,6 +288,8 @@ def run_probe() -> bool:
             _probe_source_files_walks_without_repo,
             _probe_source_files_lists_tracked_only,
             _probe_read_source_skips_unreadable,
+            _probe_retired_plan_path_fires,
+            _probe_retired_plan_path_silent_when_clean,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()
@@ -280,6 +300,31 @@ def run_probe() -> bool:
     return True
 
 
+# The retired plan directory. Built from parts so this source holds no
+# literal for its own rule to match, which keeps the rule exemption-free.
+_RETIRED_PLAN_DIR = "docs/" + "plans/"
+
+
+def check_retired_plan_path(paths: list[Path], root: Path) -> list[str]:
+    """check_retired_plan_path flags a file naming the retired plan
+    directory. The directory moved and only one gate script was
+    repointed, so every cross-reference in the tree kept naming a path
+    that no longer exists. A path holding no readable text is skipped:
+    it cannot carry the prefix as text."""
+    problems = []
+    for path in paths:
+        lines = read_source(path)
+        if lines is None:
+            continue
+        for i, line in enumerate(lines):
+            if _RETIRED_PLAN_DIR in line:
+                problems.append(
+                    f"{path.relative_to(root)}:{i + 1}: names the retired "
+                    f"{_RETIRED_PLAN_DIR} directory; plans live in docs/history/"
+                )
+    return problems
+
+
 def repo_root(start: Path):
     """repo_root walks up to the checkout root; None outside a repo."""
     for candidate in [start, *start.parents]:
@@ -288,30 +333,34 @@ def repo_root(start: Path):
     return None
 
 
-def source_files(root: Path) -> list[Path]:
-    """source_files returns the non-test Go files the doc-comment rule
-    judges. Inside a checkout it lists tracked files, so an untracked
-    working copy under the tree is never judged: a stale copy must not
-    fail the gate for a tree that does not hold the file. Outside a
-    checkout it walks the tree, which the pre-commit hook needs, since
-    the hook runs gates on an archive of the staged tree that carries
-    no repository and holds tracked files only. Any other listing
-    failure is an error, never a silent downgrade to the walk."""
+def tracked_paths(root: Path) -> list[Path]:
+    """tracked_paths returns the files a rule may judge. Inside a
+    checkout it lists tracked files, so an untracked working copy under
+    the tree is never judged: a stale copy must not fail a gate for a
+    tree that does not hold the file. Outside a checkout it walks the
+    tree, which the pre-commit hook needs, since the hook runs gates on
+    an archive of the staged tree that carries no repository and holds
+    tracked files only. Any other listing failure is an error, never a
+    silent downgrade to the walk."""
     if repo_root(root) is None:
-        return sorted(
-            p for p in root.rglob("*.go") if not p.name.endswith("_test.go")
-        )
+        return sorted(p for p in root.rglob("*") if p.is_file())
     out = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z"],
         capture_output=True,
         check=True,
     )
     names = out.stdout.decode("utf-8", errors="surrogateescape").split("\0")
-    return sorted(
-        root / name
-        for name in names
-        if name.endswith(".go") and not name.endswith("_test.go")
-    )
+    return sorted(root / name for name in names if name)
+
+
+def source_files(root: Path) -> list[Path]:
+    """source_files returns the non-test Go files the doc-comment rule
+    judges, drawn from the same tracked listing every rule here uses."""
+    return [
+        p
+        for p in tracked_paths(root)
+        if p.name.endswith(".go") and not p.name.endswith("_test.go")
+    ]
 
 
 def read_source(path: Path):
@@ -350,6 +399,7 @@ def main() -> int:
                 violations.append(f"{path.relative_to(root)}:{i + 1}: {name} lacks doc comment")
     violations.extend(check_package_count(root))
     violations.extend(check_package_doc_paths(root))
+    violations.extend(check_retired_plan_path(tracked_paths(root), root))
     if violations:
         print("\n".join(violations))
         return 1

@@ -67,7 +67,7 @@ Outside:
 - `bypass_text`'s message-stripping and option-cluster branches. The
   builder must not edit that function's body.
 - `scripts/check_test_tampering.py` and
-  `docs/plans/test-tampering.md`. A separate change owns both files.
+  `docs/history/test-tampering.md`. A separate change owns both files.
 - The heredoc-body defect already recorded in `docs/architecture.md`.
   Its body-extent problem is unsolved and the fix is not cheap. It
   stays open, exactly as that paragraph says.
@@ -837,7 +837,7 @@ Gate findings this change triggers:
 - `scripts/` matches `_GATE_INFRA_PREFIXES` in
   `scripts/test_tampering_rules_infra.py`, so TT11 fires when the
   diff also holds a file that is not a doc companion.
-- `_is_doc_companion` accepts `AGENTS.md`, `docs/plans/*.md`, and
+- `_is_doc_companion` accepts `AGENTS.md`, `docs/history/*.md`, and
   `docs/packages/*.md`. This plan file is a companion.
   `docs/architecture.md` is not, so the doc edit makes TT11 fire.
 - A TT11 waiver needs `Allow-Gate-Change` with at least 15
@@ -876,14 +876,14 @@ Doc update:
 ### This revision's verification
 
 The diff holds four files: `scripts/agent_hook_guard.py`,
-`scripts/agent_hook_guard_cases.py`, `docs/plans/hook-guard.md`, and
+`scripts/agent_hook_guard_cases.py`, `docs/history/hook-guard.md`, and
 `docs/architecture.md`.
 
 Gate outcome, measured against the rule source:
 
 - `_DOC_COMPANION_DIR_PREFIXES` in
   `scripts/test_tampering_rules_infra.py` is
-  `("docs/plans/", "docs/packages/")`. `check_self_reference_guard`
+  `("docs/history/", "docs/packages/")`. `check_self_reference_guard`
   fires only when the diff holds a file that is neither gate infra nor
   a doc companion. Two `scripts/` files plus this plan would therefore
   raise no TT11 finding and need no trailer.

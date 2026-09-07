@@ -1,9 +1,9 @@
 # Plan: a2aloopback
 
-Status: superseded, see docs/plans/a2aclient/a2atest.md. The
+Status: superseded, see docs/history/a2aclient/a2atest.md. The
 `a2aloopback` package folded into `a2aclient/a2atest`. This plan
 stays as history. Commit cc4d060 extracted `a2aclient/loopback.go`
-into its own package. See `docs/plans/a2aclient.md`'s "Loopback
+into its own package. See `docs/history/a2aclient.md`'s "Loopback
 extraction" addendum for the reasoning.
 
 ## Goal
@@ -109,7 +109,7 @@ whitebox, mirrors `a2aclient/grpc_loopback_integration_test.go`):
   contract this fixture's caller relies on.
 
 `loopbackPayload`'s two error branches (no message, no payload) stay
-uncovered by design, the same reasoning `docs/plans/a2aclient.md`'s
+uncovered by design, the same reasoning `docs/history/a2aclient.md`'s
 gap-fix section already gives: no real caller can construct a request
 missing either field, since `a2a.ToPart` always produces both. This
 plan carries that reasoning forward unchanged; it does not reopen it.
@@ -245,13 +245,13 @@ whole `a2aproject/a2a-go` module, and its server-side subpackages
 module. The builder runs `go mod tidy` after the move and confirms
 `go.mod` and `go.sum` are unchanged, or, if the module graph shifts,
 reconciles `scripts/check_gomod.py`'s `ALLOWED_MODULES` the same way
-`docs/plans/a2aclient.md`'s go.mod section already describes: trim or
+`docs/history/a2aclient.md`'s go.mod section already describes: trim or
 add entries to match `go mod tidy`'s real output, never widen the set
 beyond what tidy actually adds.
 
 ### AGENTS.md: the relocated and split exception
 
-See `docs/plans/a2aclient.md`'s addendum for the exact sentence and
+See `docs/history/a2aclient.md`'s addendum for the exact sentence and
 layout-bullet edits this plan needs in `AGENTS.md`, applied by the
 builder in the same change as the code, per that file's own
 write-scope rule.
@@ -338,5 +338,5 @@ and `check_labels.py` pass. `make verify` passes, including the
 coverage floor at 85 for `a2aloopback`.
 
 The tampering trailer inventory for the slice's commit lives in
-`docs/plans/a2aclient.md`'s addendum. This package's share is the
+`docs/history/a2aclient.md`'s addendum. This package's share is the
 `TestDataFromRawRejectsMalformedJSON` deletion, already named there.

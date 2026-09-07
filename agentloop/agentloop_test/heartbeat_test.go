@@ -17,7 +17,7 @@ import (
 // The fixed timing convention every heartbeat test follows: a short
 // interval, scripted blocking work past two intervals, and a
 // generous, hard-failing timeout. See
-// docs/plans/agentloop.md's heartbeat and progress events addendum.
+// docs/history/agentloop.md's heartbeat and progress events addendum.
 const (
 	heartbeatTestInterval = 5 * time.Millisecond
 	heartbeatTestBlock    = 30 * time.Millisecond

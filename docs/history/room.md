@@ -178,7 +178,7 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 6e.
+docs/history/agents/maintenance-addenda-batch.md, item 6e.
 
 `room/room.go:33` declared `ErrUnsigned` with the text "unsigned
 message cannot be admitted". `room/room.go:159` also wraps that
@@ -198,7 +198,7 @@ no change.
   sentinel with `errors.Is`, not by string, so both keep passing.
 - The case "invalid payload, validly signed" now builds its message
   with a local `signBypassingValidate` helper, because
-  `envelope.Sign` validates first. See docs/plans/envelope.md,
+  `envelope.Sign` validates first. See docs/history/envelope.md,
   "Addendum: Sign validates a normalized copy".
 
 ### Addendum verification
@@ -213,8 +213,8 @@ Status: shipped.
 
 This addendum is one of three that ship in one commit. The other two
 are "Addendum: maintenance batch — return an unnamed ack resolver" in
-`docs/plans/a2aack.md` and "Addendum: maintenance batch — delegate the
-ref-form check to contextstate" in `docs/plans/envelope.md`. Each one
+`docs/history/a2aack.md` and "Addendum: maintenance batch — delegate the
+ref-form check to contextstate" in `docs/history/envelope.md`. Each one
 removes a dependency edge that exists for one symbol.
 
 ### Addendum goal
@@ -320,7 +320,7 @@ findings:
   `_GATE_INFRA_PREFIXES` at
   `scripts/test_tampering_rules_infra.py:10` lists `policy/`, and this
   commit edits `policy/layers.json` beside real code files. The
-  doc-companion exception covers only `docs/plans/` and
+  doc-companion exception covers only `docs/history/` and
   `docs/packages/` markdown, so it does not apply.
 
 The justification for every test-class finding above, `TT01` through

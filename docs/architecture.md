@@ -377,7 +377,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `Ledger`.
   See [packages/ledger.md](packages/ledger.md).
 - `memory/` — the content-addressed context store. It provides
-  `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
+  `Store`, `New`, `Put`, `Get`, and the sentinels `ErrInvalidOptions`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's
   ref with `context/ref.Mint` and stores it under a fixed byte
   budget; a blob that would exceed the budget evicts the
@@ -475,7 +475,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `Total` reads the current sum, and `Reset` clears it. It also holds
   the multi-provider routing registry: `Registry`, `NewRegistry`,
   `Register`, `Get`, `Names`, `Retryable`, `Route`, and the sentinels
-  `ErrNilCompleter`, `ErrBlankName`, `ErrDuplicateName`,
+  `ErrInvalidOptions`, `ErrDuplicateName`,
   `ErrUnknownName`, `ErrEmptyOrder`, and `ErrAllFailed`. `Registry`
   holds named `Completer` values behind the same mutex shape
   `tools.Registry` uses. `Route` walks a caller-chosen order of names
@@ -498,7 +498,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `Summarizer` with `NewSummarizer` and `Summarize`, the bounds
   `MaxFieldBytes`, `MaxItems`, `MaxExcerptTotalBytes`, and
   `SummaryTimeout`, the injected message name `SummaryMessageName`,
-  and the sentinels `ErrNilCompleter`, `ErrNoMessagesToSummarize`,
+  and the sentinels `ErrInvalidOptions`, `ErrNoMessagesToSummarize`,
   `ErrInvalidReply`, `ErrSummarySkipped`, and `ErrCallFailed`. One summarizer call is one bounded
   `provider.Completer` call: excerpts cap the input, a 20 second
   timeout caps the duration, and strict decoding plus
@@ -523,13 +523,13 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   this module. See [packages/channel.md](packages/channel.md).
 - `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
   `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
-  `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,
-  `ErrNilSchedule`, `ErrNilJob`, and `ErrDuplicateID`. `Run` fires each
+  `Run`, `JobFailedEvent`, and the sentinels `ErrInvalidOptions`
+  and `ErrDuplicateID`. `Run` fires each
   due `Job` in its own goroutine on a wake-channel sleep loop and
   emits `JobFailedEvent` on a caller-supplied `*events.Bus` when a
   `Job` fails. The package also holds the trigger registry:
   `Condition`, `Action`, `Registry`, `NewRegistry`, `Add`, `Remove`,
-  `Fire`, and the sentinels `ErrBlankName`, `ErrNilAction`,
+  `Fire`, and the sentinels `ErrInvalidOptions`,
   `ErrDuplicateName`, `ErrUnknownName`, and `ErrConditionNotMet`. A
   `Registry` maps a name to one `Condition` and one `Action`; `Fire`
   evaluates the named `Condition` and, when true, calls the `Action`.
@@ -874,7 +874,7 @@ The architecture enforces these rules:
 - The API locks. The files in `api/` pin the exported surface;
   `scripts/check_api.py` diffs them.
 - The plans gate. Every package needs a plan at
-  `docs/plans/<package path>.md`; `scripts/check_plan.py` enforces it.
+  `docs/history/<package path>.md`; `scripts/check_plan.py` enforces it.
 - The writing standard. Sentences stay at or below 25 words;
   `scripts/check_prose.py` scans the whole docs tree.
 - The label ban. Audit-finding labels never appear in comments, docs,

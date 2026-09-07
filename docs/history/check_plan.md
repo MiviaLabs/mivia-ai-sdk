@@ -6,7 +6,7 @@ package, so it owns no `api/` lock.
 
 ## Goal
 
-Every Go package carries a plan at `docs/plans/<pkg>.md` with the
+Every Go package carries a plan at `docs/history/<pkg>.md` with the
 template sections. The gate makes that structure non-optional. The
 plan is the design contract an agent writes before or with the code.
 

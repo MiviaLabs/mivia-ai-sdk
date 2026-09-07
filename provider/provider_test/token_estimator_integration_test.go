@@ -8,7 +8,7 @@ import (
 
 // TestTokenEstimatorContextWindowComposition proves EstimateTokens and
 // ContextWindow compose in caller code, with no provider-internal
-// glue, per docs/plans/agents/phase44_provider_token_estimation.md's
+// glue, per docs/history/agents/phase44_provider_token_estimation.md's
 // caller-side composition decision.
 func TestTokenEstimatorContextWindowComposition(t *testing.T) {
 	cases := []struct {

@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 folded this package into envelope;
 the symbols live in envelope now. See
-docs/plans/agents/phase86_package_consolidation.md. The history
+docs/history/agents/phase86_package_consolidation.md. The history
 below stays for reference. This package depended on envelope,
 which is shipped.
 The agent card, the trust policy, and the registry live elsewhere. A
@@ -52,7 +52,7 @@ The builder applies these doc-truth corrections in the same change:
 - README.md:55,69,71 — change "Future" to "Shipped" for agent and
   discovery; add heartbeat, discovery, and agent to the Features
   list and Layout tree.
-- docs/plans/heartbeat.md:3, docs/plans/discovery.md:3 —
+- docs/history/heartbeat.md:3, docs/history/discovery.md:3 —
   change "Status: planned" to "Status: shipped."
 - docs/packages/identity.md:41 — change "The public key equals
   the private key's public half." to "The public key equals the
@@ -212,7 +212,7 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 4.
+docs/history/agents/maintenance-addenda-batch.md, item 4.
 
 The comment above the `Validate` call at `identity/identity.go:63`
 called the check defensive and said it "cannot fail for any id built

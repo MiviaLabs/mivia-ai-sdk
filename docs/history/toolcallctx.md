@@ -29,7 +29,7 @@ TestToolCallContextRoundTrip
 ## Addendum: per-batch dispatch order ledger
 Status: superseded. Phase 86 folded this package into agentloop;
 the symbols live unexported inside agentloop now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 
 
 ### Addendum goal

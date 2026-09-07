@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 folded this package into flow;
 the symbols live in flow now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 docs/packages/discovery.md's "Why this shape" section for the
 capability-card decision.
 
@@ -173,9 +173,9 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 3.
+docs/history/agents/maintenance-addenda-batch.md, item 3.
 
-`docs/plans/discovery.md:44` lists the `Validate` rules. It gains one
+`docs/history/discovery.md:44` lists the `Validate` rules. It gains one
 rule: `Validate` rejects a capability entry that differs from its
 trimmed form.
 

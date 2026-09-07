@@ -118,5 +118,5 @@ that import them but not advertised as SDK surface.
 
 ## Internal records
 
-`docs/plans/` holds internal development records: the change contract
+`docs/history/` holds internal development records: the change contract
 behind each package. They are not part of this documentation.

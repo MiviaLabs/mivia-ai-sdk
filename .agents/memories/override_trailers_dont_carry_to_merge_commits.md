@@ -52,7 +52,7 @@ the first parent.
 
 The same change made the gate audit the working tree. A bare run with a
 dirty tree used to audit the previous commit and exit 0. It now runs
-`git diff HEAD`. See `docs/plans/test-tampering.md`, "Diff resolution
+`git diff HEAD`. See `docs/history/test-tampering.md`, "Diff resolution
 order" and "Merge commits".
 
 ## What to do now

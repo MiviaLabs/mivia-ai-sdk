@@ -157,7 +157,7 @@ the loop instead of discovering that later.
 - Changes to message semantics must update `docs/architecture.md`'s
   "Why the envelope is shaped this way" section in the same change.
 
-## Enforcement ladder (all mechanical, all in make verify)
+## Enforcement ladder (all mechanical, each names its tier)
 
 Rules below are phrased as prohibitions because that is what agents
 follow reliably. Each has a gate behind it.
@@ -198,7 +198,8 @@ follow reliably. Each has a gate behind it.
   section deliberately references, write
   `Status: planned, extends <symbol>` — that escape itself fails if
   the named symbol is locked, since a locked anchor means the addition
-  has shipped. Gate: `scripts/check_plan.py`.
+  has shipped. Gate: `scripts/check_plan.py`, run by
+  `make verify-maintainer`.
 - Do not let `docs/architecture.md`'s opening paragraph drift from the
   tree: its spelled-out package count must equal `go list`'s
   non-test package count. Gate: `scripts/check_docs.py`.
@@ -234,7 +235,7 @@ follow reliably. Each has a gate behind it.
   `scripts/check_test_tampering.py`.
 - Do not write an audit-finding label in comments, docs, or plans: a
   letter A through G followed by a digit. Gate:
-  `scripts/check_labels.py`.
+  `scripts/check_labels.py`, run by `make verify-maintainer`.
 - Do not weaken a gate, raise a limit, or widen an exclusion to make
   your change pass. Change the design instead, or convince the user
   and record the exception in the gate file itself.

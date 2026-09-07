@@ -18,7 +18,7 @@ The former gate-infra rules TT03, TT05-TT08, and TT11-TT14 are gone:
 TT06, TT07, TT08, TT10 never fired outside their own probes, TT05 and
 TT03 fired rarely, and TT11-TT14 duplicate the deps, api, and
 thirdparty gates, which already fail on policy drift. See
-docs/plans/test-tampering.md.
+docs/history/test-tampering.md.
 
 An `Allow-Test-Change: TTxx <reason>` commit-message trailer waives
 one finding at a time; no CLI flag or env var ever does. The reason

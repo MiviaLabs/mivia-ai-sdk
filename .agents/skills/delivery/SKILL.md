@@ -14,7 +14,7 @@ return to the user with proposals A/B/C instead of guessing.
 ## Stage 1: Plan
 
 Dispatch the `planner` agent with the task text. It writes
-`docs/plans/<pkg>.md`, the `policy/layers.json` row, and the expected
+`docs/history/<pkg>.md`, the `policy/layers.json` row, and the expected
 API surface. It validates with `check_plan.py` and `check_deps.py`.
 
 ## Stage 2: Plan review

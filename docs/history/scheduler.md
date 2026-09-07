@@ -34,7 +34,7 @@ Outside:
   caller in this module needs one today. A caller who wants cron
   syntax writes their own type that satisfies `Schedule`. `scheduler`
   ships two schedules and no parser, following the same
-  no-speculative-generality reasoning as `docs/plans/channel.md`.
+  no-speculative-generality reasoning as `docs/history/channel.md`.
 - A distributed or persistent job store. `Scheduler` is in-process,
   like `flow`'s runner. A job list lives in memory only and does not
   survive a process restart. A caller who needs durability re-`Add`s
@@ -51,7 +51,7 @@ Outside:
   policy" below. A caller who wants a `Job` to retry its own internal
   work writes retry logic inside the closure itself, or wraps
   `flow.Run` and its `RetryPolicy` (shipped by phase 30; see
-  `docs/plans/flow.md`).
+  `docs/history/flow.md`).
 
 ### Prior art: the `Schedule` interface shape
 

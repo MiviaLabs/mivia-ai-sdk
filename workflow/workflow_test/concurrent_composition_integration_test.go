@@ -2,7 +2,7 @@
 // Eight workflow.Run calls share one memory.Store, one tools.Registry,
 // one ledger.Ledger, one events.Bus, and one flow.Monitor. It
 // proves the shared blocks stay correct under real contention.
-// See docs/plans/agents/PHASES.md's phase 47 paragraph.
+// See docs/history/agents/PHASES.md's phase 47 paragraph.
 package workflow_test
 
 import (

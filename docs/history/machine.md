@@ -1,7 +1,7 @@
 # Plan: machine
 
 Status: shipped through phases 1 through 3. The build phases live in
-docs/plans/agents/. See phases 1 through 3.
+docs/history/agents/. See phases 1 through 3.
 
 ## Goal
 
@@ -57,7 +57,7 @@ that one package owns one concern: `machine` owns status mechanics
 (typed statuses, gates, inputs, outputs, entry and exit actions, no
 graph, no scheduler), and `flow` owns step scheduling (a step graph,
 panels, parallel execution, chaining), composing `machine` for each
-step's status transitions. See docs/plans/flow.md.
+step's status transitions. See docs/history/flow.md.
 
 Every shipped requirement maps to a published, simple pattern, none
 of which drags in a framework. The action model (a transition table
@@ -198,7 +198,7 @@ Grep for `machine.Encode`, `machine.Decode`, `machine.NewRegistry`,
 and `machine.Registry` across the tree. Production callers: none.
 Consumers live only in `machine/machine_test/` and in comments
 (`flow/wire.go`, `flow/flow_test/checkpoint_fuzz_test.go`,
-`docs/plans/agentrun.md`).
+`docs/history/agentrun.md`).
 
 `Encode` is unusable on definitions built through `machine.New`.
 `wireName` rejects a bound function that carries no recorded wire
@@ -278,13 +278,13 @@ change. The diff holds deletions only. No other package lock changes.
 - `docs/README.md`: the machine blurb reads "the status model, the
   move dispatch, and the JSON wire form". Drop "and the JSON wire
   form" from that one line.
-- `docs/plans/agentrun.md`: lines 186, 220, and 226 cite
+- `docs/history/agentrun.md`: lines 186, 220, and 226 cite
   `machine.Decode` in present tense. Rewrite those passages without
   the machine half of the analogy. `flow.Decode` stays the live
   example. Historical plans are frozen records; this file is treated
   as live because it cites the removed API as current fact.
 - `machine/doc.go`: drop the `wire.go` line from the package map.
-- `docs/plans/machine.md`: this addendum.
+- `docs/history/machine.md`: this addendum.
 
 ### Verification
 
@@ -302,7 +302,7 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 6b.
+docs/history/agents/maintenance-addenda-batch.md, item 6b.
 
 `Fire` returned two plain errors, so a caller could only match them by
 substring. Add `machine/errors.go` with two sentinels:

@@ -8,7 +8,7 @@ an optional step-liveness heartbeat and an optional room name, so a
 built step message can pass `room.Room.Accepts`. `Run` also carries
 an optional context budget, `*budget.Limits`, that gates each
 gated step's `wait` call against a cumulative byte and event cap; see
-`docs/plans/context/budget.md`.
+`docs/history/context/budget.md`.
 
 ## Goal
 
@@ -487,7 +487,7 @@ payload byte length, and the 1-indexed count of steps built so far. A
 calling `hb.Beat`, `wait`, or `EmitMessageAcked` for that step. A
 panel step reaches no `confirmStep` `wait` call at all, so a panel
 member's payload never adds to `runningBytes` and never trips
-`budget`; see `docs/plans/context/budget.md`'s disclosed scope limit.
+`budget`; see `docs/history/context/budget.md`'s disclosed scope limit.
 
 The expected `api/workflow.txt` diff, against the room-parameter block
 above:
@@ -814,7 +814,7 @@ value.
 - This phase adds no conformance vector. It composes envelope.Message
   and envelope.Ack, both already vector-covered in envelope, and
   defines no new wire schema.
-- docs/plans/a2a.md stays status future. This phase does not add code
+- docs/history/a2a.md stays status future. This phase does not add code
   to a2a and does not require it.
 
 ### Heartbeat: verification
@@ -956,7 +956,7 @@ import path is `github.com/MiviaLabs/mivia-ai-sdk/workflow`. The
 package clause is `workflow`. The test directory is
 `workflow/workflow_test/`; its package clause is `workflow_test`.
 The runner package moved from `agentrun/` to `workflow/run/`; see
-`docs/plans/workflow/run.md` for its rename record. This section is
+`docs/history/workflow/run.md` for its rename record. This section is
 the plan of record for the whole rename.
 
 Exported identifiers keep their names. `Agent`, `New`, `Run`,
@@ -1014,8 +1014,8 @@ prefixes after the rename.
   `workflow/run/wire.go`, so `r.agent.Run` stays. The compiler flags
   a wrong rewrite; fix it by hand.
 - Update the Go comments that name the old doc paths:
-  `workflow/doc.go` names `../docs/plans/agent.md`, and
-  `workflow/run/doc.go` names `../docs/plans/agentrun.md` and
+  `workflow/doc.go` names `../docs/history/agent.md`, and
+  `workflow/run/doc.go` names `../docs/history/agentrun.md` and
   `../docs/packages/agentrun.md`. Four comment sites sit in files
   whose import lines never change, so no import rewrite touches them;
   fix all four by hand. `channel/ndjson_notifier.go:73` says
@@ -1129,8 +1129,8 @@ prefixes after the rename.
   entries, and the example entries.
 - Update the `AGENTS.md` layout bullets: `agent/` to `workflow/`,
   `agentrun/` to `workflow/run/`, and the `runconfig` line to name
-  `run.Options`. Leave `.agents/` and `docs/plans/agents/` untouched;
-  they are historical records. Sibling plans under `docs/plans/` are
+  `run.Options`. Leave `.agents/` and `docs/history/agents/` untouched;
+  they are historical records. Sibling plans under `docs/history/` are
   dated records; this change does not rewrite them.
 - Run the greps in the verification list below. Each returns the
   result stated there, and nothing else.

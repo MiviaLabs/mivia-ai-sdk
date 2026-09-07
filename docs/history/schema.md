@@ -6,9 +6,9 @@ the third-party dependency decision below: `schema` may import
 leaf-shaped package, `schema`, alongside `channel`, `contextbudget`,
 `discovery`, `durablefence`, `envelope`, `events`, `hooks`, `provider`,
 `tools`, `trace`, and `trigger`. It corresponds to phase 64 in
-`docs/plans/agents/PHASES.md`'s numbering. This plan is this
+`docs/history/agents/PHASES.md`'s numbering. This plan is this
 package's sole plan file: no standalone phase 64 plan file remains in
-`docs/plans/agents/`. This plan gains a phase 64 entry in `PHASES.md`
+`docs/history/agents/`. This plan gains a phase 64 entry in `PHASES.md`
 once the phase ships, not phase 63.
 
 ## Goal
@@ -405,7 +405,7 @@ the code:
   `go mod tidy` adds beneath it. `scripts/check_gomod.py`'s
   `ALLOWED_MODULES` set gains the resolved module paths that import
   chain actually adds, reconciled against real `go mod tidy` output
-  the same way `docs/plans/mcp.md`'s equivalent section records for
+  the same way `docs/history/mcp.md`'s equivalent section records for
   its own allowlist. `check_gomod.py`'s module docstring gains one
   sentence naming the `schema` exception.
 - `docs/architecture.md`'s Package map section gains a `schema/`
@@ -429,7 +429,7 @@ the code:
   `MaxSchemaDepth`, `MaxPayloadBytes`, `MaxCorrectiveBytes`,
   `ErrAdmission`, `ErrCompile`, `ErrMalformedPayload`, and
   `ErrValidation`.
-- `docs/plans/agents/PHASES.md` gains a phase 64 entry once the phase
+- `docs/history/agents/PHASES.md` gains a phase 64 entry once the phase
   ships, following the phase 62 entry's pattern. This is a Stage 5
   concern for the delivery loop, not a change this plan itself makes.
 - `schema` holds a mutation-kill floor of 83, in

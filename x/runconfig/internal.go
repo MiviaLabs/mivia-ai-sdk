@@ -1,5 +1,5 @@
 // Document-built internal tools: the internal section, its builders
-// table, and the caller-built split. See docs/plans/runconfig.md's
+// table, and the caller-built split. See docs/history/runconfig.md's
 // "Document-built internal tools" addendum.
 
 package runconfig

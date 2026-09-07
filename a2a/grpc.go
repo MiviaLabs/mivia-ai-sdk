@@ -13,7 +13,7 @@ import (
 
 // grpcTransport implements transport over a2a-go's gRPC transport.
 // It is the only production implementation of transport; New builds
-// one for every Client. See docs/plans/a2a.md's design notes
+// one for every Client. See docs/history/a2a.md's design notes
 // for why gRPC, and newFromTransport for the test substitute.
 type grpcTransport struct {
 	tr a2asdk.Transport
@@ -109,7 +109,7 @@ func (g *grpcTransport) Close() error {
 // an old peer until v0.4.0. That re-marshal passes through float64
 // and cannot restore the deleted numPrefix markers; a legacy marker
 // string fails the closed decode, and the sender must upgrade within
-// the window. See docs/plans/a2a.md's text-carrier addendum.
+// the window. See docs/history/a2a.md's text-carrier addendum.
 func mappedFromParts(parts a2acore.ContentParts) (Part, error) {
 	var data a2acore.DataPart
 	hasData := false

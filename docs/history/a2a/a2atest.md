@@ -2,7 +2,7 @@
 
 Status: shipped. Relocates `a2aclient/a2atest` into `a2a/a2atest`
 after the `a2aclient` package merged into `a2a`. See
-`docs/plans/a2aclient/a2atest.md`, marked superseded, for the
+`docs/history/a2aclient/a2atest.md`, marked superseded, for the
 original design history.
 
 ## Goal

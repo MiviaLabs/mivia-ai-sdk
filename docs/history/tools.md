@@ -495,7 +495,7 @@ non-nil check.
 
 ### Addition, planned with `agentloop`: `SchemaTool` and `SchemaOf`
 
-Status: shipped. Commit 16a7478. See `docs/plans/agentloop.md` for the
+Status: shipped. Commit 16a7478. See `docs/history/agentloop.md` for the
 full contract; this section is the `tools`-side record of the same
 change, since `agentloop` is the first caller.
 
@@ -587,7 +587,7 @@ its name and panic value.
 
 Status: shipped. `tools` was the one package in this
 module that used the functional-option pattern.
-`docs/plans/workspace.md` records the rule, in the bullet on the
+`docs/history/workspace.md` records the rule, in the bullet on the
 per-call read override: this module uses no functional-option
 pattern. Grep that file for `functional-option` to find it; a sibling
 change in this batch moves its line number. This change restores the
@@ -922,7 +922,7 @@ No conformance vector changes. The `tools` package owns none.
 
 ### Correction: SchemaOf fails closed on a nil schema
 
-Status: shipped. One commit together with `docs/plans/spool.md`'s
+Status: shipped. One commit together with `docs/history/spool.md`'s
 "Change: collapse the wrapper variants to one". See that section's
 "Landing order" for the two-commit split. The fail-closed rule is a
 precondition for the `spool` collapse in the same commit.

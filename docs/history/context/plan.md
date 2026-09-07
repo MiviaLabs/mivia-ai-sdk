@@ -2,7 +2,7 @@
 
 Rename `contextplan` to `context/plan`. The Go package name is
 `plan`, the last path element. Phase 86
-(`docs/plans/agents/phase86_package_consolidation.md`, merge 5c5239b)
+(`docs/history/agents/phase86_package_consolidation.md`, merge 5c5239b)
 already folded `contextsummary` into `contextplan`; this is a path
 move only, with no merge steps and no symbol changes. It is the
 largest of the three renames and carries the documentation and gate
@@ -187,7 +187,7 @@ cross-module path updates through the existing `replace` directive.
    `contextplan`, `contextref`, or `contextbudget`, and the ejected
    `contextstate` floor left with the x/ package. The nested-package
    limitation in `check_mutation.py` still exists on this tip
-   (`docs/plans/mutation-nested-packages.md` is unscheduled); if a
+   (`docs/history/mutation-nested-packages.md` is unscheduled); if a
    future floor for `context/plan` is wanted, that plan must land
    first.
 10. Go import rewrites. Production code: `agentloop`
@@ -244,7 +244,7 @@ cross-module path updates through the existing `replace` directive.
       bytes, stay verbatim. Grep-list them explicitly
       (`grep -rn '"contextplan:\|"contextsummary:' context/`) and
       treat that list as the exemption inventory, not as failures.
-    - Hits inside `docs/plans/` are historical records and stay;
+    - Hits inside `docs/history/` are historical records and stay;
       each old plan carries a superseded marker naming its
       successor.
 

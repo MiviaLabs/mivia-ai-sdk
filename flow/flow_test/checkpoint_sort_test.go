@@ -2,7 +2,7 @@ package flow_test
 
 // Six single-assertion cases pinning Checkpoint.Validate's sortedness
 // check. Kept out of checkpoint_test.go, which sits at 404 of the
-// 500-line structure cap; see docs/plans/flow.md's checkpoint
+// 500-line structure cap; see docs/history/flow.md's checkpoint
 // correctness fix for the line-count reasoning.
 
 import (

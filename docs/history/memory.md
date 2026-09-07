@@ -2,7 +2,7 @@
 
 Status: shipped. `memory` depends on `contextref` only, for `Mint`.
 See the "mint directly through contextref" addendum below. This file
-is the package plan docs/plans/TEMPLATE.md and scripts/check_plan.py
+is the package plan docs/history/TEMPLATE.md and scripts/check_plan.py
 require.
 
 ## Goal
@@ -199,7 +199,7 @@ Status: shipped.
 ### Addendum goal
 
 `Put` computed its ref through `envelope.ContextRef`, which itself is
-one call into `contextref.Mint` (see `docs/plans/envelope.md`'s
+one call into `contextref.Mint` (see `docs/history/envelope.md`'s
 carve-out addenda). Once `contextref` existed as its own leaf,
 `memory` importing `envelope` for one hash pulled the whole wire,
 signing, and ed25519 surface into `memory`'s closure for no reason:

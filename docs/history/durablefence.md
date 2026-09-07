@@ -1,9 +1,9 @@
 # Plan: durablefence
 
-Status: superseded, see docs/plans/ledger/ledgertest.md. The
+Status: superseded, see docs/history/ledger/ledgertest.md. The
 `durablefence` package folded into `ledger/ledgertest`. This plan
 stays as history. Sequenced after `ledger` (phase 34; see
-`docs/plans/ledger.md`), which wired this kit into
+`docs/history/ledger.md`), which wired this kit into
 `ledger/ledger_test/scenario_test.go` as its named-caller proof.
 
 ### Amendment: close the missing happy-path Mutate check
@@ -289,7 +289,7 @@ package durablefence
 ## Tests
 
 New test files live in `durablefence/durablefence_test/`, matching
-the flat test layout in `docs/plans/agents/PHASES.md`. `durablefence`
+the flat test layout in `docs/history/agents/PHASES.md`. `durablefence`
 is itself a test-helper package, so its own tests prove the harness is
 correct, not that a runtime feature works.
 

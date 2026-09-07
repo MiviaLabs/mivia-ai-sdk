@@ -256,7 +256,7 @@ until:
   produced two wrong lists in this program's revision history —
   automate it once, do not repeat that mistake per absorption.
 - That absorption's own SDK-side plan is written and reviewed. Each is
-  its own `docs/plans/<pkg>.md` change in this repo, its own plan
+  its own `docs/history/<pkg>.md` change in this repo, its own plan
   review, and its own conformance-vector commit, per
   `convergence.md`'s "Stage 3" and "Stage 6" exit criteria.
 

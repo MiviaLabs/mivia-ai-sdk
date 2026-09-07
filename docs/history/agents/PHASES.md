@@ -3,7 +3,7 @@
 This document is the framework for the phase plans. It defines a phase,
 the test layout for every phase, and the test contract for each test
 kind. It lists the phase order. The phase plans live in
-`docs/plans/agents/`. Read this file before any phase plan.
+`docs/history/agents/`. Read this file before any phase plan.
 
 ## A phase
 
@@ -11,7 +11,7 @@ A phase is the smallest unit of implementation that ships. It builds one
 slice of one block. A block from the research table often splits into
 two or more phases. A phase is small enough to review in one sitting.
 
-Every phase has the same shape. It has a plan in `docs/plans/agents/`.
+Every phase has the same shape. It has a plan in `docs/history/agents/`.
 It has code in the target package. It has one directory of tests. It
 ends green under `make verify`.
 
@@ -127,15 +127,15 @@ composition comes last.
   code and no new `policy/layers.json` edge.
 - Durability and reference gaps: phase 42, a `ledger.Store` backed by
   the pure-Go `modernc.org/sqlite` driver, behind a dedicated build
-  tag (shipped; see docs/plans/ledger.md); phase 42b, a
+  tag (shipped; see docs/history/ledger.md); phase 42b, a
   bounded-entry-cap knob for `MemStore` in the default build, split
   out of phase 42 to stay independently reviewable and revertible
-  (shipped; see docs/plans/ledger.md); phase 43, an NDJSON-over-stdio
+  (shipped; see docs/history/ledger.md); phase 43, an NDJSON-over-stdio
   `channel.Notifier` transport, shipped as real `channel` package API;
   phase 44, a `provider` token-estimation capability. Each depends
   only on its own already-shipped package (phase 34 `ledger`, phase 37
   `channel`, phase 29 `provider`) and ships independently of the
-  others and of phase 45. See docs/plans/channel.md (phase 43's plan
+  others and of phase 45. See docs/history/channel.md (phase 43's plan
   folded in on shipping). Phase 42c is a follow-on to phase 42: it
   adds an `Actor` type and
   `CreatedBy`/`CreatedAt`/`UpdatedBy`/`UpdatedAt` fields to
@@ -144,7 +144,7 @@ composition comes last.
   database file created under the pre-42c schema. It depends only on
   phase 42, which has shipped, and is an exported-API break for
   `Ledger`'s `Admit`, `Claim`, `Renew`, `Release`, `Takeover`, and
-  `Complete` (shipped; see docs/plans/ledger.md).
+  `Complete` (shipped; see docs/history/ledger.md).
 - Verification: phase 46, a system integration suite: two new
   `agent/agent_test/` files proving the current, widened package
   surface composes end to end, using `ledger.MemStore` and a
@@ -175,18 +175,18 @@ composition comes last.
   52, `dispatch`, a stdlib NDJSON and HTTP envelope endpoint for the
   receive ladder; phase 53, `a2aserver`, an `a2a-go` server bridge,
   deferred behind two gates. See each phase plan under
-  docs/plans/agents/.
+  docs/history/agents/.
 
 Each plan names its phase number and its dependency on the prior phase.
 Phase 35 depended on phase 14 (tools), which has since shipped.
 
 Phases 22, 23, 25, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 42,
-and 43 have shipped; see docs/plans/flow.md, docs/plans/durablefence.md,
-docs/plans/ledger.md, docs/plans/provider.md, docs/plans/tools.md,
-docs/plans/contextbudget.md, docs/plans/mcp.md, docs/plans/channel.md,
-docs/plans/scheduler.md, and docs/plans/trigger.md. Phase 38 (flow
-loop) shipped; see docs/plans/flow.md's Phase 38 subsection. Phase 43's
-own plan folded into docs/plans/channel.md on shipping; no standalone
+and 43 have shipped; see docs/history/flow.md, docs/history/durablefence.md,
+docs/history/ledger.md, docs/history/provider.md, docs/history/tools.md,
+docs/history/contextbudget.md, docs/history/mcp.md, docs/history/channel.md,
+docs/history/scheduler.md, and docs/history/trigger.md. Phase 38 (flow
+loop) shipped; see docs/history/flow.md's Phase 38 subsection. Phase 43's
+own plan folded into docs/history/channel.md on shipping; no standalone
 phase 43 plan file remains. Phase 45's own plan folded into
 docs/packages/agent.md and docs/examples/agent-composition.md on
 shipping; no standalone phase 45 plan file remains. It depended only
@@ -229,20 +229,20 @@ Phase 48 ships in this change. It widens the shipped `flow` package with
 `Step.PayloadFrom` and the `Definition.Steps` and `Definition.Panels`
 accessors, and adds the `agent` `Plan` and
 `Signer` accessors ahead of phase 49's validators. The shipped
-contract lives in docs/plans/flow.md and docs/plans/agent.md.
+contract lives in docs/history/flow.md and docs/history/agent.md.
 
 Phase 50 (`taskrun`) has shipped. It adds the ledger
 admit-claim-complete ceremony around a work func as one top-level
 package: admission with dependency keys, claim with lease and fence,
 work execution, and completion with the mapped status. It depends only
 on the shipped `ledger` package and adds one `policy/layers.json`
-edge. Its package plan lives at docs/plans/taskrun.md.
+edge. Its package plan lives at docs/history/taskrun.md.
 
 Phase 49 (`agentrun`) has shipped. It adds the config-struct
 composition layer over `agent.Run` as one top-level package, with
 up-front validators including the plan-versus-machine transition-matrix
 check. It depends on phase 48 and adds one `policy/layers.json` edge.
-Its package plan lives at docs/plans/agentrun.md; no standalone
+Its package plan lives at docs/history/agentrun.md; no standalone
 phase 49 plan file remains.
 
 Phases 51 and 52 each add one package and depend on no unshipped
@@ -251,7 +251,7 @@ phase; they shipped independently of each other and of phase 49.
 Phase 51 (`a2aack`) has shipped. It turns a remote A2A task round
 trip into the composition layer's `AckWait` as one top-level package,
 over `a2aclient`. It adds one `policy/layers.json` edge. Its package
-plan lives at docs/plans/a2aack.md; no standalone phase 51 plan file
+plan lives at docs/history/a2aack.md; no standalone phase 51 plan file
 remains.
 
 Phase 52 (`dispatch`) has shipped. It adds the NDJSON envelope
@@ -261,12 +261,12 @@ per-line error objects; `Send` posts a batch and collects results in
 order. `EmitMessageDelivered` and `EmitMessageAcked` are best-effort
 diagnostics, not ladder stages. It depends on no unshipped phase and
 adds one `policy/layers.json` edge. Its package plan lives at
-docs/plans/dispatch.md; no standalone phase 52 plan file remains.
+docs/history/dispatch.md; no standalone phase 52 plan file remains.
 
 Phase 53 is plan-only and not scheduled. It builds nothing until two
 gates open: phase 52 proving the receive ladder, and the user
 authorizing a widened `a2a-go` import exception. See
-docs/plans/agents/phase53_a2a_go_server.md.
+docs/history/agents/phase53_a2a_go_server.md.
 
 Phase 54 (`scripts/check_mutation.py`) has shipped its first rollout
 step. It adds no package: one stdlib-only script applies text-level
@@ -282,7 +282,7 @@ wraps a built runner as a `tools.Tool`, `RunAll` joins concurrent
 spawns behind a ctx-carried depth guard, ten internal tools expose
 the SDK's blocks, and a signed-message mailbox carries both
 directions between orchestrators, subagents, and humans. Its
-package plan lives at docs/plans/subagent.md.
+package plan lives at docs/history/subagent.md.
 
 Phase 56 (`providerregistry`) has shipped. It adds one package:
 `Registry` holds named `provider.Completer` values, and `Route`
@@ -290,7 +290,7 @@ walks a caller-chosen order of names through `provider.RunTurn`.
 `Route` falls through to the next name only when the caller's
 `Retryable` predicate approves the failure. It depends on the
 shipped `provider` package and one `policy/layers.json` edge. Its
-package plan lives at docs/plans/providerregistry.md; no
+package plan lives at docs/history/providerregistry.md; no
 standalone phase 56 plan file remains.
 
 Phase 57 (`hooks`) has shipped. It adds one package: a named,
@@ -300,7 +300,7 @@ every handler at a point in registration order and stops at the
 first veto. It depends on no unshipped phase and imports no other
 package in this module. It ships with no caller, the same way
 phase 14 shipped `tools`. Its package plan lives at
-docs/plans/hooks.md; no standalone phase 57 plan file remains.
+docs/history/hooks.md; no standalone phase 57 plan file remains.
 
 Phase 58 (`usage`) has shipped. It adds one package: an
 `Accumulator` records one `provider.Usage` per call, keyed by a
@@ -309,7 +309,7 @@ a session, `Reset` clears one session, and `Record` is safe for
 concurrent use. It reuses `provider.Usage`, so one token-count
 definition serves the whole SDK. It depends on the shipped
 `provider` package and adds one `policy/layers.json` edge. Its
-package plan lives at docs/plans/usage.md; no standalone phase 58
+package plan lives at docs/history/usage.md; no standalone phase 58
 plan file remains.
 
 Phase 59 (`trace`) has shipped. It adds one package: a `Span`
@@ -318,7 +318,7 @@ and `SpanFrom` reads the current span back. `End`, `SetAttribute`,
 and `Attributes` are safe for concurrent use on one shared span. It
 depends on no unshipped phase and imports no other package in this
 module. It ships with no caller, the same way phase 57 shipped
-`hooks`. Its package plan lives at docs/plans/trace.md; no
+`hooks`. Its package plan lives at docs/history/trace.md; no
 standalone phase 59 plan file remains.
 
 Phase 60 has shipped. It changes no package surface: a loop child
@@ -340,7 +340,7 @@ turn back into `Request.Messages`. `Validate` adds
 `ErrToolCallsUnexpected`: a non-empty `ToolCalls` on any role but
 `RoleAssistant` rejects. `buildResponse` keeps `Response.ToolCalls`
 and `Response.Message.ToolCalls` in sync on the streamed path. Its
-contract folded into docs/plans/provider.md; no standalone phase 62
+contract folded into docs/history/provider.md; no standalone phase 62
 plan file remains.
 
 Phase 63 (`skills`) has shipped. It adds one leaf package: `Skill`
@@ -356,7 +356,7 @@ skill whose `Triggers` list contains the query under
 skill is read, not called: it carries no `Run` method. It depends on
 no unshipped phase and imports no other package in this module. It
 ships with no caller, the same way phase 57 shipped `hooks`. Its
-package plan lives at docs/plans/skills.md.
+package plan lives at docs/history/skills.md.
 
 Phase 64 (`schema`) has shipped, in commit 7aea007. It adds one leaf
 package: `Compiled` and `Compile` load a JSON Schema document;
@@ -366,7 +366,7 @@ model-facing `Corrective` message on failure. `MaxSchemaBytes`,
 the admission and the reply. It imports
 `github.com/santhosh-tekuri/jsonschema/v6`, an authorized third-party
 exception scoped to this package. Its package plan lives at
-docs/plans/schema.md.
+docs/history/schema.md.
 
 Phase 65 (`contextstate`) has shipped. It adds one leaf package, plus
 a unification inside `envelope`, ported from the sibling consumer
@@ -374,7 +374,7 @@ repo's `internal/contextstate` and `internal/contentref`. It holds the
 durable context contract and the single canonical content-reference
 minter: sessions, checkpoints, commit validation, retention classes,
 and volume `Limits`. Its package plan lives at
-docs/plans/contextstate.md.
+docs/history/contextstate.md.
 
 Phase 66 (`contextplan`) has shipped. It adds one package, built on
 the shipped phase 65 `contextstate` and `provider` interfaces. It
@@ -382,7 +382,7 @@ fits one durable session into a bounded provider request: `Planner`
 decides what a token `Window` keeps, stubs, or drops, and
 `Calibrated` corrects its token estimator against each turn's real
 usage. A companion change folds reasoning vocabulary types into
-`provider`. Its package plan lives at docs/plans/contextplan.md.
+`provider`. Its package plan lives at docs/history/contextplan.md.
 
 Phase 67 (`spool`) has shipped. It adds one leaf package plus a
 `tools.Tool` wrapper, under the phase 65 `contextstate` contract.
@@ -390,7 +390,7 @@ Phase 67 (`spool`) has shipped. It adds one leaf package plus a
 hands the caller a bounded view plus a reference; `SpoolTool` wraps
 any `tools.Tool` with the same truncate-and-reference behavior. No
 standalone phase 67 plan file remains; its contract lives in
-docs/plans/spool.md.
+docs/history/spool.md.
 
 Phase 68 (file text leaves) has shipped. It adds four packages:
 `envfile` loads a dotenv file into a map without leaking parsed
@@ -399,8 +399,8 @@ against configured secret-path patterns; `workspace` confines
 filesystem access to one root directory through `os.Root`, with a
 size-bounded read; `diff` produces a bounded unified line diff
 between two byte slices. Each package plan lives at
-docs/plans/envfile.md, docs/plans/secretpath.md,
-docs/plans/workspace.md, and docs/plans/diff.md; no standalone phase
+docs/history/envfile.md, docs/history/secretpath.md,
+docs/history/workspace.md, and docs/history/diff.md; no standalone phase
 68 plan file remains.
 
 Phase 69 (`agentloop`) has shipped. It adds one composition package:
@@ -410,7 +410,7 @@ runs the tool calls the model requests, appends the results as
 `RoleTool` messages, and repeats until the model returns no tool
 call or a bound trips. It depends on the shipped phase 62
 (`Message.ToolCalls`) and adds no import cycle. Its package plan
-lives at docs/plans/agentloop.md; no standalone phase 69 plan file
+lives at docs/history/agentloop.md; no standalone phase 69 plan file
 remains.
 
 Phase 71 (file tools, gated by a mandatory secret policy) has
@@ -421,7 +421,7 @@ every `WorkspaceReadTool`/`WorkspaceWriteTool`/`WorkspaceListTool`/
 `WorkspaceStatTool`/`DiffTool` behind a mandatory `Deny` matcher;
 `FileToolOptions.Validate` rejects a nil `Deny` before any workspace
 opens. It adds no new package. Its addendum lives in
-docs/plans/subagent.md's "File tools addendum"; no standalone phase
+docs/history/subagent.md's "File tools addendum"; no standalone phase
 71 plan file remains.
 
 Phase 72 (`runconfig` blocks) has shipped. It adds six `Kind`
@@ -433,7 +433,7 @@ JSON `options` section, mapping to `agentrun.Options.Budget`. It
 depends on the shipped `subagent`, `workspace`, `diff`, and
 `contextbudget` packages, and on the shipped phase 71. It adds no
 new package and one `policy/layers.json` edge (`runconfig` to
-`contextbudget`). Its contract folded into docs/plans/runconfig.md's
+`contextbudget`). Its contract folded into docs/history/runconfig.md's
 API section; no standalone phase 72 plan file remains.
 
 Phase 73 (`contextplan` spools its own overflow) has shipped. It
@@ -443,7 +443,7 @@ window-overflow or retention-expired elision's full payload to a
 wired `Spool`, keyed to the payload's own `SubjectID`. A spool write
 never fails `Plan`. It adds no new package and one
 `policy/layers.json` edge (`contextplan` to `spool`). Its contract
-folded into docs/plans/contextplan.md's "Correctness fix: contextplan
+folded into docs/history/contextplan.md's "Correctness fix: contextplan
 spools its own overflow" section; no standalone phase 73 plan file
 remains.
 
@@ -453,7 +453,7 @@ second rollout step: seven new per-package floors (`workspace`,
 a re-measured `ledger` floor, and a new `make mutation-gate` target
 that runs every floored package's sweep on demand. It depends on the
 shipped phase 54 kit and adds no new package. See
-docs/plans/agents/phase74_mutation_coverage_rollout.md.
+docs/history/agents/phase74_mutation_coverage_rollout.md.
 
 Phase 75 (orphan-package gate and probe-basename collision gate) has
 shipped. It adds `scripts/check_orphan_packages.py`, which fails on
@@ -490,7 +490,7 @@ phase 77 plan file remains.
 
 Phases 82 and 84 are plan-only and not scheduled. Phases 78, 79, 80,
 81, and 83 have shipped; their design rationale is folded into
-`docs/plans/agentloop.md`'s "steering and interruption", "graceful
+`docs/history/agentloop.md`'s "steering and interruption", "graceful
 work-limit conclude", "per-batch tool-result size shaping",
 "duplicate-call dedup within a turn", and "heartbeat and progress
 events" addenda, and no standalone phase 78, phase 79, phase 80,
@@ -515,7 +515,7 @@ decision. No other phase in this group depends on another. Phase 82 is
 partly blocked on a `hooks.Handler` signature change, flagged in its
 own file. Each remaining phase needs its own plan review before a
 builder starts it. See
-docs/plans/agents/phase82_injection_safe_framing.md and
+docs/history/agents/phase82_injection_safe_framing.md and
 phase84_partial_recovery_streaming.md.
 
 Phase 78 (steering and interruption) has shipped. It adds one new
@@ -527,7 +527,7 @@ goroutine; the run stops gracefully at the next iteration boundary
 with the new `StopSteered` reason, instead of the hard-fail path a
 `ctx` cancellation takes. It adds no new package and no new
 `policy/layers.json` edge. Its contract folded into
-docs/plans/agentloop.md's "Addendum: steering and interruption"
+docs/history/agentloop.md's "Addendum: steering and interruption"
 section.
 
 Phase 80 (`agentloop` per-batch tool-result size shaping) shipped,
@@ -537,7 +537,7 @@ intended consumer, the sibling consumer repo's CLI adapter, rejected the
 omit-over-budget semantics and ships its own degrade-with-notice
 shaping wrapper. The field, the `BatchTruncationNotice` constant, and
 the `ErrTurnResultBudget` sentinel are gone. Its
-contract folded into docs/plans/agentloop.md's "Addendum: per-batch
+contract folded into docs/history/agentloop.md's "Addendum: per-batch
 tool-result size shaping" section; no standalone phase 80 plan file
 remains.
 
@@ -551,14 +551,14 @@ stays silent, and `Options.Validate` rejects a positive
 `HeartbeatInterval` with a nil `Bus` as `ErrHeartbeatRequiresBus`. It
 adds no new package and no new `policy/layers.json` edge: `events`
 was already an allowed `agentloop` import. Its contract folded into
-docs/plans/agentloop.md's "Addendum: heartbeat and progress events"
+docs/history/agentloop.md's "Addendum: heartbeat and progress events"
 section; no standalone phase 83 plan file remains.
 
 Phase 85 is plan-only and not scheduled, reviewed and approved. A bug
 audit found a confirmed, reproducible defect with no test coverage:
 `longtermmemory` silently splits one scope into two buckets when a
 caller's `Scope` string carries stray whitespace. See
-docs/plans/agents/phase85_longtermmemory_scope_normalization.md.
+docs/history/agents/phase85_longtermmemory_scope_normalization.md.
 
 Phase 86 (`contextplan.Calibrated` observe/estimate pairing) has
 shipped. `Calibrated.Observe` now takes an explicit `estimated`

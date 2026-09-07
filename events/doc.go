@@ -9,6 +9,6 @@
 // one lifecycle point's action. A caller emits one event per state
 // change. The bus runs each handler in order, one at a time. The
 // package imports nothing of this module; it stays a leaf block. The
-// module has no shared bus. Rationale: ../docs/plans/events.md.
+// module has no shared bus. Rationale: ../docs/history/events.md.
 // Contribution rules: ../AGENTS.md.
 package events

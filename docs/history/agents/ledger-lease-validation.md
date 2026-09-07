@@ -30,9 +30,9 @@ Outside: `Admit`, `Release`, `Complete`, `blockOne`, `Restore`,
 new package. No new import. No `policy/layers.json` row.
 
 Also outside: two sentences in
-`docs/plans/agents/maintenance-addenda-batch.md`, at line 104 and at
+`docs/history/agents/maintenance-addenda-batch.md`, at line 104 and at
 line 147. Both are historical claims about a finished batch. Both were
-true when that batch landed. The addendum in `docs/plans/ledger.md`
+true when that batch landed. The addendum in `docs/history/ledger.md`
 supersedes them, following the convention that plan set at line 1924.
 
 The exclusion covers those two lines only. Line 174 of the same file
@@ -207,32 +207,32 @@ Grep terms: `lease`, `Validate`, `Claim`, `Renew`, `Takeover` in
 
 ### Plan sentences that become false
 
-Grep terms in `docs/plans/`: `hole stays open`, `run no validation`,
+Grep terms in `docs/history/`: `hole stays open`, `run no validation`,
 `every production caller`, `self-need`, `plantSelfNeed`. The first
 three terms cannot surface a fixture description. The last two can.
 
-- `docs/plans/ledger.md:181` — the `Claim` API entry. Add the lease
+- `docs/history/ledger.md:181` — the `Claim` API entry. Add the lease
   check.
-- `docs/plans/ledger.md:188` — the `Renew` API entry. Add the lease
+- `docs/history/ledger.md:188` — the `Renew` API entry. Add the lease
   check.
-- `docs/plans/ledger.md:194` — the `Takeover` API entry. Add the lease
+- `docs/history/ledger.md:194` — the `Takeover` API entry. Add the lease
   check.
-- `docs/plans/ledger.md:1238` — the `TestClaimRejectsBlockingAncestor`
+- `docs/history/ledger.md:1238` — the `TestClaimRejectsBlockingAncestor`
   row list. It reads "a self-need where `S` names `S`". The shift
   makes that false. The row now plants `S2` naming `S2` and claims
   `S`. Reword it, and reword the sentence after it that says the row
   "plants the record straight through the `Store`".
-- `docs/plans/agents/maintenance-addenda-batch.md:174` — "The two
+- `docs/history/agents/maintenance-addenda-batch.md:174` — "The two
   self-need rows set that field instead of an `admits` entry or a
   `mustAdmit` call." The shift makes that false. The Claim row now
   sets `plantSelfNeeds` and an `admits` entry. The Takeover row sets
   `plantSelfNeeds` and a `before` hook calling `mustAdmit`. Reword it.
-- `docs/plans/ledger.md`, "That hole stays open and needs its own
+- `docs/history/ledger.md`, "That hole stays open and needs its own
   change." Already replaced by this plan change.
-- `docs/plans/ledger.md`, "Those three are every production caller
+- `docs/history/ledger.md`, "Those three are every production caller
   after the fix." Already replaced by this plan change.
 
-Both replacements are quoted in the `docs/plans/ledger.md` addendum
+Both replacements are quoted in the `docs/history/ledger.md` addendum
 "The lease write paths validate". The builder writes the code and the
 remaining doc sites, not those two sentences.
 

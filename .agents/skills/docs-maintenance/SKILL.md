@@ -25,7 +25,7 @@ disagreeing with itself. Your job is to stop that drift.
   same change as the code.
 - `docs/packages/*.md` — per-package references (envelope, room).
 - `docs/examples/*.md` — walkthroughs with complete fenced Go programs.
-- `docs/plans/*.md` — change contracts, one per package or concern.
+- `docs/history/*.md` — change contracts, one per package or concern.
 
 ## The writing standard
 
@@ -179,7 +179,7 @@ Two traps recur in this repo:
 
 - Docs only. Never change Go code, `api/` locks, `policy/layers.json`, or
   `.githooks/` to make a doc pass. Change the doc.
-- A plan file (`docs/plans/*.md`) is a gate-mandated contract. Add or
+- A plan file (`docs/history/*.md`) is a gate-mandated contract. Add or
   rewrite a plan only when a new package or concern exists. Do not pad an
   existing plan.
 - If a doc change is large (new package, restructure, many files), route it

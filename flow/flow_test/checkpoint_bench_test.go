@@ -15,7 +15,7 @@ package flow_test
 // 1.4x, ns/op 1.5x. A benchmark may skip a fixed allocation budget
 // when goroutine and closure overhead vary; this file reports the
 // allocs/op ratio instead of asserting a fixed budget, per
-// docs/plans/agents/PHASES.md.
+// docs/history/agents/PHASES.md.
 
 import (
 	"context"
@@ -54,7 +54,7 @@ func BenchmarkRunWithOnCheckpoint(b *testing.B) {
 // TestCheckpointHookAllocRatio reports the allocs/op ratio between a
 // non-nil and a nil onCheckpoint, run once outside the benchmark
 // harness. It asserts no fixed budget; goroutine and closure overhead
-// vary across toolchains. See docs/plans/agents/PHASES.md.
+// vary across toolchains. See docs/history/agents/PHASES.md.
 func TestCheckpointHookAllocRatio(t *testing.T) {
 	t.Parallel()
 	d, m := flatThreeGraph(t)

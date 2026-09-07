@@ -5,5 +5,5 @@
 // LedgerTool, MemoryTool, RoomTool, SchedulerTool, HeartbeatTool,
 // DiscoveryTool, ProviderTool, ProviderRegistryTool, TriggerTool, and
 // ChannelTool expose SDK blocks as tools. See docs/packages/subagent.md
-// and docs/plans/subagent.md.
+// and docs/history/subagent.md.
 package subagent

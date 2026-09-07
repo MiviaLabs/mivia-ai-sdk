@@ -1,7 +1,7 @@
 // Package dispatch receives newline-delimited envelope JSON over HTTP,
 // runs the full receive ladder per line, and answers with
 // newline-delimited ack JSON. Send posts messages and collects the
-// replies. See docs/plans/dispatch.md for the contract.
+// replies. See docs/history/dispatch.md for the contract.
 //
 // The ladder runs, per line, in fixed order and fails fast: Decode,
 // VerifySignature, Room.Accepts, resolve, handle, then NewAck, Confirm,

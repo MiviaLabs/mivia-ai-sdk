@@ -18,7 +18,7 @@ Read these before any assessment.
   is the design rule this skill enforces.
 - `docs/architecture.md` — the module map and the message flow.
 - `policy/layers.json` — the allowed import edges.
-- `docs/plans/<pkg>.md` — the plan the package promised.
+- `docs/history/<pkg>.md` — the plan the package promised.
 
 ## The four lenses
 

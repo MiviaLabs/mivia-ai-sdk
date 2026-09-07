@@ -89,7 +89,7 @@ own tests needs it. The package's own tests use an unexported
 test file to substitute a scripted transport instead of dialing a
 live network endpoint, since `policy/thirdparty.json` scopes the
 third-party-import exception to `a2a` and an external test package
-cannot import `a2a-go` directly. See `docs/plans/a2a.md`'s Tests and
+cannot import `a2a-go` directly. See `docs/history/a2a.md`'s Tests and
 Verification sections for this test seam.
 
 ## Client functions

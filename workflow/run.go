@@ -67,7 +67,7 @@ var (
 // heartbeat call; Run's behavior is otherwise unchanged. A non-nil hb
 // beats one id, a.id.Signer()+":"+threadID, right before each gated
 // step's wait call, and forgets that id once, on every return path.
-// A panel step reaches no beat call; see docs/plans/agents/
+// A panel step reaches no beat call; see docs/history/agents/
 // phase26_agent_heartbeat.md's disclosed scope limit. Run never calls
 // hb.Dead and never aborts a step on staleness; an external caller
 // holding the same hb polls Dead on its own schedule.
@@ -89,7 +89,7 @@ var (
 // A Fits failure returns ErrOverBudget, wrapping the step ID, without
 // calling hb.Beat, wait, or EmitMessageAcked for that step. A panel
 // step reaches no confirmStep wait call, so its payload never adds to
-// the running total and never trips budget; see docs/plans/agents/
+// the running total and never trips budget; see docs/history/agents/
 // phase32_context_budget.md's disclosed scope limit.
 func (a *Agent) Run(
 	ctx context.Context, threadID string, m *machine.Definition,

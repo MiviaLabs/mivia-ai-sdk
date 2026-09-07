@@ -135,12 +135,12 @@ Design notes:
 `policy/layers.json` gains one row: `"a2a": ["envelope"]`. No other
 internal import is allowed here. `a2a` stays a leaf against the
 standard library; `a2aclient` is the only package granted the
-third-party exception, in `docs/plans/a2aclient.md`.
+third-party exception, in `docs/history/a2aclient.md`.
 
 ## Tests
 
 Test files live in `a2a/a2a_test/`, per
-`docs/plans/agents/PHASES.md`:
+`docs/history/agents/PHASES.md`:
 
 - `mapping_test.go` — red-green unit cases for `ToPart` and
   `FromPart`. Cases: a minimal valid message round-trips; `ID` maps to
@@ -420,7 +420,7 @@ coverage floor at 85 for `a2a`.
 Predicted tampering findings: none from this package. The change
 deletes no test function and no vector, and it adds assertion sites.
 The slice's commit-level trailer inventory lives in
-`docs/plans/a2aclient.md`'s addendum.
+`docs/history/a2aclient.md`'s addendum.
 
 ## Addendum: a2aclient merged into a2a
 

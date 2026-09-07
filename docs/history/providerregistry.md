@@ -2,8 +2,8 @@
 
 Status: superseded. Phase 86 folded this package into provider;
 the symbols live in provider now. See
-docs/plans/agents/phase86_package_consolidation.md.
-contract (docs/plans/provider.md). It imports `provider` only, plus
+docs/history/agents/phase86_package_consolidation.md.
+contract (docs/history/provider.md). It imports `provider` only, plus
 stdlib; no third-party import.
 
 ## Goal
@@ -143,7 +143,7 @@ Test files live in `providerregistry/providerregistry_test/`:
 - `docs/architecture.md` carries a `providerregistry/` bullet
   describing the routing package and its one internal import.
 - `AGENTS.md`'s Layout section carries a `providerregistry/` line.
-- `docs/plans/agents/PHASES.md` carries the phase 56 entry.
+- `docs/history/agents/PHASES.md` carries the phase 56 entry.
 - `docs/packages/providerregistry.md` documents the exported surface.
 - This package defines no wire format, so it adds no conformance
   vector.

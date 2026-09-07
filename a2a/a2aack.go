@@ -1,7 +1,7 @@
 // AckWait turns a remote A2A task round trip into the agent
 // composition layer's AckWait. Wait resolves one gated step through a
 // Remote: send, poll, result, verify, and ack. See
-// docs/plans/a2a.md for the contract.
+// docs/history/a2a.md for the contract.
 
 package a2a
 

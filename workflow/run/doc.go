@@ -4,5 +4,5 @@
 // builds anything. One Run method drives the wired run. Store, Ask,
 // and Artifacts compose through the built ack chain, which runs each
 // gated step's tool by ID and confirms its ack. See
-// ../../docs/plans/workflow/run.md and ../../docs/packages/workflow/run.md.
+// ../../docs/history/workflow/run.md and ../../docs/packages/workflow/run.md.
 package run

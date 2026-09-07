@@ -21,11 +21,21 @@ func TestRunPriorSummaryReplacedOnSecondCompaction(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "x"},
 	}
 	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	// Two tool rounds, so the third planning pass holds an older
+	// tool-call unit that is no longer the latest complete turn. That
+	// unit is the droppable one. With a single round every surviving
+	// unit is mandatory and the pass correctly drops nothing.
 	responses := []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")}),
+		toolCallResponse(provider.ToolCall{ID: "c2", Name: "search", Arguments: []byte("{}")}),
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}
-	loop, f := newPlanningFixture(t, w, responses, nil)
+	// The tool result carries content, so the second compaction has a
+	// unit to drop. With an empty result the second pass drops nothing
+	// and correctly skips the summarizer, which proves nothing about
+	// folding a prior summary into a new one.
+	const toolResult = "TOOLRESULT" + "cccccccccccccccccccccccccccccccccccccccccccccccccc"
+	loop, f := newPlanningFixtureWithResult(t, w, responses, toolResult)
 	res, err := loop.Run(context.Background(), msgs)
 	if err != nil {
 		t.Fatalf("Run() = %v, want nil", err)
@@ -42,8 +52,13 @@ func TestRunPriorSummaryReplacedOnSecondCompaction(t *testing.T) {
 	excerpts := sumReqs[1].Messages[1].Content
 	// The prior summary rides as one message whose content leads with
 	// the preamble SummaryMessage joins before Render output.
-	if !strings.HasPrefix(excerpts, "[user] "+plan.SummaryPreamble) {
-		t.Fatalf("second summarizer input missing the prior summary excerpt first:\n%s", excerpts)
+	// buildExcerpts walks newest first, so the prior sits after the
+	// newly dropped turns rather than at the front.
+	if !strings.Contains(excerpts, "[user] "+plan.SummaryPreamble) {
+		t.Fatalf("second summarizer input missing the prior summary excerpt:\n%s", excerpts)
+	}
+	if !strings.Contains(excerpts, "TOOLRESULT") {
+		t.Fatalf("second summarizer input missing the newly dropped turn:\n%s", excerpts)
 	}
 	if !strings.Contains(excerpts, "Objective:") {
 		t.Fatalf("second summarizer input missing the prior summary's rendered labels:\n%s", excerpts)

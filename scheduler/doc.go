@@ -11,5 +11,5 @@
 // wake-channel sleep loop; events.go = JobFailedEvent. Scheduler holds
 // no events.Bus of its own; Run takes one as a parameter, and a nil
 // bus silently skips the emit, matching flow.Run's own precedent.
-// Rationale: ../docs/plans/scheduler.md. Contribution rules: ../AGENTS.md.
+// Rationale: ../docs/history/scheduler.md. Contribution rules: ../AGENTS.md.
 package scheduler

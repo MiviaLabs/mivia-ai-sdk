@@ -2,13 +2,13 @@
 
 Status: superseded. Phase 86 folded this package into
 contextplan; the symbols live in contextplan now. See
-docs/plans/agents/phase86_package_consolidation.md. This package
+docs/history/agents/phase86_package_consolidation.md. This package
 ported the summarizer half of the sibling consumer repo's
 `internal/contextmgr`, simplified to this task's contract.
 Compaction is LLM-only; this package was the only summarizer.
 
 `context/plan` renamed `contextplan` after this plan shipped; see
-docs/plans/context/plan.md. Every `contextplan.` and `contextsummary.`
+docs/history/context/plan.md. Every `contextplan.` and `contextsummary.`
 symbol reference below is a historical name; the live package is
 `context/plan`.
 
@@ -39,9 +39,9 @@ Inside:
 Outside:
 
 - Any retention or trigger math. `contextplan` owns compaction; see
-  `docs/plans/contextplan.md`.
+  `docs/history/contextplan.md`.
 - Any loop wiring. `agentloop` owns the compaction call sequence; see
-  `docs/plans/agentloop.md`.
+  `docs/history/agentloop.md`.
 - Any degrade-to-structural path. A summarizer failure fails the
   caller. This reverses the reference design, which fell back to
   structural-only compaction.
@@ -145,7 +145,7 @@ var (
   The call sets `Stream` false and leaves `Model` empty, so the
   Completer uses its own default model.
 - The injected message rides as `RoleUser` with `Name` set. This needs
-  the `provider.Message.Name` field; see `docs/plans/provider.md`.
+  the `provider.Message.Name` field; see `docs/history/provider.md`.
 - `provider.Message.Validate` must accept the injected message. The
   Name rules there allow a name on `RoleUser`; this package relies on
   that rule.
@@ -340,7 +340,7 @@ Outside:
   data-only and the caller owns durability.
 - Any `agentloop.compactHistory` change that consumes
   `ErrSummarySkipped`. A follow-up addendum to
-  `docs/plans/agentloop.md`, later in this same session, lands that
+  `docs/history/agentloop.md`, later in this same session, lands that
   consumer and removes the pending-symbols entry.
 - Any strictness change to `decodeReply`. `DisallowUnknownFields`
   stays and the function stays byte-identical. Capitalized replies
@@ -532,7 +532,7 @@ stays green with no trailer.
 ```json
 "contextsummary.ErrSummarySkipped": {
   "reason": "Sentinel an adapter returns to decline summary injection; the concrete Summarizer never returns it. No caller yet: agentloop.compactHistory learns skip-not-fail handling in a follow-up addendum.",
-  "target": "agentloop compaction addendum (docs/plans/agentloop.md), next change in this session",
+  "target": "agentloop compaction addendum (docs/history/agentloop.md), next change in this session",
   "permanent": false
 }
 ```

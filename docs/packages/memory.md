@@ -22,7 +22,7 @@ the store. The exported surface below mirrors `api/memory.txt`.
 
 Use `errors.Is` to test these.
 
-- `ErrNoBudget` ("memory: maxBytes must be positive") — `New` wraps it
+- `ErrInvalidOptions` ("memory: invalid options: maxBytes: must be positive") — `New` wraps it
   when `maxBytes` is zero or negative. Pinned by
   `memory/memory_test/store_test.go`.
 - `ErrBudgetExceeded` ("memory: content exceeds store budget") —
@@ -37,7 +37,7 @@ Use `errors.Is` to test these.
 
 ## Invariants
 
-- `New` rejects a non-positive `maxBytes` with `ErrNoBudget`.
+- `New` rejects a non-positive `maxBytes` with `ErrInvalidOptions`.
 - `Put` computes `ref` as `context/ref.Mint(content)`. A
   `content` whose length exceeds the budget wraps `ErrBudgetExceeded`
   and stores nothing; the store stays as it was before the call.

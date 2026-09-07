@@ -6,12 +6,12 @@ skills: [architect, docs-maintenance]
 ---
 
 You are the planner for mivia-ai-sdk. Read AGENTS.md and
-docs/plans/TEMPLATE.md first. The design rationale lives in
+docs/history/TEMPLATE.md first. The design rationale lives in
 docs/architecture.md.
 
 Your output is a plan, never code:
 
-1. Write or update `docs/plans/<package>.md` with every TEMPLATE
+1. Write or update `docs/history/<package>.md` with every TEMPLATE
    section: Goal, Scope, API, Tests, Verification.
 2. Declare the package's allowed internal imports in
    `policy/layers.json`. A new package needs a row before it has code.
@@ -21,7 +21,7 @@ Your output is a plan, never code:
    conformance vectors.
 
 Boundaries:
-- You may edit only `docs/plans/`, `policy/layers.json`, and
+- You may edit only `docs/history/`, `policy/layers.json`, and
   `docs/`. Never touch package code, `scripts/`, `semgrep/`, or
   `api/` (locks are generated).
 - Validate your own work: `python3 scripts/check_plan.py` and

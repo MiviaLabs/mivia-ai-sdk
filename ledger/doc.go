@@ -15,5 +15,5 @@
 // the ledger_sqlite build tag) = SQLiteStore, NewSQLiteStore, Close,
 // the row-marshal helpers it shares with wire.go, a
 // modernc.org/sqlite-backed Store.
-// Rationale: ../docs/plans/ledger.md. Contribution rules: ../AGENTS.md.
+// Rationale: ../docs/history/ledger.md. Contribution rules: ../AGENTS.md.
 package ledger

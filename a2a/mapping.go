@@ -3,7 +3,7 @@
 // and FromPart hold the mapping. Client sends a message to a remote
 // agent and polls task status and results, through the
 // a2aproject/a2a-go client. Wait turns one remote round trip into an
-// agent step ack. See docs/plans/a2a.md for the contract.
+// agent step ack. See docs/history/a2a.md for the contract.
 package a2a
 
 import (

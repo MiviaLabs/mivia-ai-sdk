@@ -38,7 +38,7 @@ phase:
   the partial `Response` accumulated so far, alongside the `ctx`
   error, instead of a zero `Response`. This changes `RunTurn`'s
   already-locked, documented contract in `api/provider.txt` and needs
-  its own plan review against `docs/plans/provider.md`, weighed
+  its own plan review against `docs/history/provider.md`, weighed
   against every other `RunTurn` caller's expectations.
 - Option B: `agentloop` drains `ChatStream` itself, without calling
   `RunTurn`, duplicating `drainStream`'s merge logic
@@ -78,7 +78,7 @@ Outside:
 
 ## Amendment to the Result-shape rule
 
-The base plan's Result-shape rule, in `docs/plans/agentloop.md`,
+The base plan's Result-shape rule, in `docs/history/agentloop.md`,
 states `Final` and `Stop` "stay the zero value" on every hard-fail
 error return, including a `ctx`-cancellation mid-`Completer`-call.
 This phase amends that rule for the one case it targets: a `ctx`

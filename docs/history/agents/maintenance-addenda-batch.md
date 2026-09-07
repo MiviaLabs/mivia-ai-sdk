@@ -174,7 +174,7 @@ Give each case table a `plantSelfNeeds []ledger.IdempotencyKey` field.
 The two self-need rows set that field. The `Claim` row pairs it with
 an `admits` entry, and the `Takeover` row pairs it with a `before`
 hook calling `mustAdmit`; see "Addendum: the lease write paths
-validate" in `docs/plans/ledger.md`. Both test bodies build a
+validate" in `docs/history/ledger.md`. Both test bodies build a
 `ledger.NewMemStore()`, wrap it with `newLedgerOverStore`, and plant
 before the rest of the fixture runs.
 
@@ -673,7 +673,7 @@ New numbered step:
 Step 2 in that same list already says `Encode` "validates, then
 marshals". The new step 1 carries the matching clause.
 
-`docs/plans/envelope.md:19` says validation is "centralized in
+`docs/history/envelope.md:19` says validation is "centralized in
 Validate and called by Encode/Decode". The addendum for that file
 corrects it.
 
@@ -774,7 +774,7 @@ different string, "no transition to status %q from %q", at
 - `flow/flow_test/panel_test.go:279`, `chain_test.go:136`,
   `run_test.go:205`, `run_test.go:230`,
   `checkpoint_resume_test.go:382`, `loop_edge_test.go:167`.
-- `docs/packages/flow.md:557` and `docs/plans/flow.md:137`.
+- `docs/packages/flow.md:557` and `docs/history/flow.md:137`.
 
 Agentrun's own text, also untouched. `agentrun/matrix.go:332` builds
 "no transition from %q to %q":
@@ -907,22 +907,22 @@ Three sites reference the symbol only and need no change:
 Write these addenda with the code, in the same commit. Each names the
 exact sentence that changes.
 
-- `docs/plans/ledger.md:457` — the sentence that defers the `Admit`
+- `docs/history/ledger.md:457` — the sentence that defers the `Admit`
   validation gap. The addendum also names the `Claim` and `Takeover`
   hole this batch leaves open.
-- `docs/plans/ledger.md:200` — the `Takeover` check order.
-- `docs/plans/envelope.md:19` — the sentence saying validation is
+- `docs/history/ledger.md:200` — the `Takeover` check order.
+- `docs/history/envelope.md:19` — the sentence saying validation is
   called by `Encode` and `Decode`. The quoted clause sits at `:20`.
-- `docs/plans/discovery.md:44` — the `Validate` rule list.
-- `docs/plans/machine.md` — the `Fire` sentinels.
-- `docs/plans/workspace.md:63` — the blank-root rule. The addendum
-  also reconciles `docs/plans/workspace.md:1082`.
-- `docs/plans/events.md` — the zero-value `Bus` rule and the user's
+- `docs/history/discovery.md:44` — the `Validate` rule list.
+- `docs/history/machine.md` — the `Fire` sentinels.
+- `docs/history/workspace.md:63` — the blank-root rule. The addendum
+  also reconciles `docs/history/workspace.md:1082`.
+- `docs/history/events.md` — the zero-value `Bus` rule and the user's
   instruction as its authority.
-- `docs/plans/room.md` — the `ErrUnsigned` meaning.
-- `docs/plans/agentrun.md:104` — the new equivalence test, its exact
+- `docs/history/room.md` — the `ErrUnsigned` meaning.
+- `docs/history/agentrun.md:104` — the new equivalence test, its exact
   claim, and its residual gap.
-- `docs/plans/identity.md` — the `Load` comment claim.
+- `docs/history/identity.md` — the `Load` comment claim.
 
 ## Package doc updates
 
@@ -1085,16 +1085,16 @@ Package docs:
 
 Plans:
 
-- `docs/plans/ledger.md`
-- `docs/plans/envelope.md`
-- `docs/plans/discovery.md`
-- `docs/plans/identity.md`
-- `docs/plans/machine.md`
-- `docs/plans/workspace.md`
-- `docs/plans/events.md`
-- `docs/plans/room.md`
-- `docs/plans/agentrun.md`
-- `docs/plans/agents/maintenance-addenda-batch.md`
+- `docs/history/ledger.md`
+- `docs/history/envelope.md`
+- `docs/history/discovery.md`
+- `docs/history/identity.md`
+- `docs/history/machine.md`
+- `docs/history/workspace.md`
+- `docs/history/events.md`
+- `docs/history/room.md`
+- `docs/history/agentrun.md`
+- `docs/history/agents/maintenance-addenda-batch.md`
 
 ## Commit
 
@@ -1129,7 +1129,7 @@ design. Both replacements keep or raise the assertion count. Two
 ledger fixture rows now plant their self-need record through the
 Store, because Admit rejects one.
 
-See docs/plans/agents/maintenance-addenda-batch.md.
+See docs/history/agents/maintenance-addenda-batch.md.
 
 Allow-Test-Change: TT01 two replacements, each by design: TestZeroValueBusPinsConstructorOnly pinned the zero-Bus panic the user instructed us to remove, and TestSignRejectsUnserializableMessage pinned a marshal branch that Sign's new Validate call makes unreachable; both replacements keep or raise the assertion count
 

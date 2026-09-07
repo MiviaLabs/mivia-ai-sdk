@@ -6,7 +6,7 @@ routing, the failure fallback path, the checkpoint pause/resume pair,
 a bounded retry loop around a step's `Fire` call, and a loop-driving
 repeat of a step's `Sub` all ship. This plan expands the earlier
 step-list design into a step runner for v1. Rationale in
-docs/plans/machine.md's "Why build, not buy" section. `Run` returns a `Report` holding every
+docs/history/machine.md's "Why build, not buy" section. `Run` returns a `Report` holding every
 step's terminal `Outcome`, replacing the boolean done map. Phase 22
 shipped the admission rule, the skip semantics, and the branch step.
 Phase 23 shipped the fallback path and the failure context. Phase 25
@@ -90,7 +90,7 @@ meets the need without overengineering.
 ## API
 
 Proposed shape, subject to plan review. It follows the DAG scheduler
-and step-as-data patterns. See docs/plans/machine.md's "Why build, not
+and step-as-data patterns. See docs/history/machine.md's "Why build, not
 buy" section for the pattern sources.
 
 - `type Step struct { ID string; Needs []string; To string; Payload string; Sub *Definition }`
@@ -781,7 +781,7 @@ never changes the stored definition.
 ## Verification
 
 `make verify`. Conformance vectors for the definition form. The
-rationale lives in docs/plans/machine.md's "Why build, not buy"
+rationale lives in docs/history/machine.md's "Why build, not buy"
 section. `api/flow.txt` lands via make api-update. Phase 22 extended
 `api/flow.txt` with
 `Admission`, its two constants, the `Route` type, and the two new
@@ -924,7 +924,7 @@ incomplete without the new rule.
 - `docs/packages/flow.md:71` — the `RetryPolicy` entry.
 - `docs/packages/flow.md:144` — the `RetryPolicy.Validate()` entry.
 - `docs/packages/flow.md:206` — the non-nil `Retry` rule statement.
-- `docs/plans/flow.md:332` — this plan's own API entry for
+- `docs/history/flow.md:332` — this plan's own API entry for
   `RetryPolicy.Validate`. It is corrected in this plan revision, so
   the plan does not contradict itself.
 
@@ -953,7 +953,7 @@ against today's code.
 #### Verification for this gap fix
 
 Land this gap fix as its own commit, separate from the `subagent`
-mailbox gap fix in `docs/plans/subagent.md`. The two fixes share no
+mailbox gap fix in `docs/history/subagent.md`. The two fixes share no
 file and no package. One commit per fix keeps a revert granular.
 
 No exported symbol changes. `make api-update` must produce no diff
@@ -1253,15 +1253,15 @@ the phrase across a line break, so grep each half.
 
 Two plan sites cite the removed short-circuit. Annotate both; never
 delete historical plan text. Match the convention at
-`docs/plans/subagent.md:204`.
+`docs/history/subagent.md:204`.
 
-- `docs/plans/flow.md:607`, in the `checkpoint_test.go` bullet of the
+- `docs/history/flow.md:607`, in the `checkpoint_test.go` bullet of the
   Tests section. The bullet ends with "not a dedicated `Resume`
   check." Add a nested annotation under it: the one-step
   short-circuit named above no longer exists; see the addendum
   "runLoop drops its zero-step and one-step branches"; the case now
   runs through the general loop, and the test keeps every assertion.
-- `docs/plans/flow.md:1064-1065`, in the
+- `docs/history/flow.md:1064-1065`, in the
   `TestCheckpointValidateAcceptsEmptyLists` bullet. Add a nested
   annotation under it: `Run` has no single-step short-circuit after
   that addendum, so the zero-list case now comes from the general

@@ -1,7 +1,7 @@
 # Plan: mcp
 
 Status: shipped. Builds on the shipped `tools` package
-(`docs/plans/tools.md`).
+(`docs/history/tools.md`).
 
 ## Goal
 
@@ -625,7 +625,7 @@ one change: the `mcp` package and its tests; the `go.mod` and `go.sum`
 additions; the `policy/thirdparty.json` row and the
 `policy/thirdparty_closure.txt` diff; the `AGENTS.md`
 exception-sentence edit; and the `docs/architecture.md` and
-`docs/plans/mcp.md` doc updates. The `policy/layers.json` row is
+`docs/history/mcp.md` doc updates. The `policy/layers.json` row is
 already landed with this plan. `docs/architecture.md` does not change
 in this phase: `mcp`
 adds no message-semantics rule to this module's own envelope wire

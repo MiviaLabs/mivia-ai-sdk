@@ -203,9 +203,9 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 6a.
+docs/history/agents/maintenance-addenda-batch.md, item 6a.
 
-`docs/plans/envelope.md:19` says validation is "centralized in
+`docs/history/envelope.md:19` says validation is "centralized in
 Validate and called by Encode/Decode". That list is now incomplete.
 `Sign` calls `Validate` too, after its key-length check and before it
 sets `Signer`.
@@ -274,7 +274,7 @@ to contextref".
 
 This addendum is one of three that ship in one commit. See "Addendum:
 maintenance batch — drop StaleMembers and the heartbeat edge" in
-`docs/plans/room.md` for the batch.
+`docs/history/room.md` for the batch.
 
 ### Addendum goal
 
@@ -440,7 +440,7 @@ The "Delegate isHashRef" addendum above kept `envelope`'s private
 `Signer` and `Signature`'s different lengths and prefix-free form.
 That reasoning did not require the scan to stay unexported; it only
 showed `IsRef` itself was the wrong function. `contextref/ref.go`
-gained an exported `IsLowerHex` (see `docs/plans/contextref.md`'s
+gained an exported `IsLowerHex` (see `docs/history/contextref.md`'s
 "Export IsLowerHex" addendum), so the reason to keep a second copy is
 gone.
 

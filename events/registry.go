@@ -114,7 +114,7 @@ func (r *Registry) Remove(point Point, name string) bool {
 // handler call. A point with no registered handlers returns nil at
 // once. A handler returning true, nil moves Fire to the next
 // handler. A handler returning false, nil stops Fire and returns
-// ErrVetoed wrapped `hooks: %s: handler %q: %w`. A handler returning
+// ErrVetoed wrapped `events: %s: handler %q: %w`. A handler returning
 // a non-nil error stops Fire and returns that error wrapped the same
 // way. Fire returns nil once every handler has allowed. Fire
 // releases the mutex before it calls a handler, so a slow handler

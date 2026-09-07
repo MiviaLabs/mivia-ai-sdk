@@ -1,6 +1,6 @@
 # Plan: contextbudget
 
-Status: superseded by `docs/plans/context/budget.md`. The rename
+Status: superseded by `docs/history/context/budget.md`. The rename
 pass moves the package to `context/budget`. This file is a
 historical record of the shipped work.
 
@@ -81,7 +81,7 @@ literal; both fields default to the uncapped zero value.
 
 `agent.Run` gains a trailing `budget *contextbudget.Limits`
 parameter and a new sentinel, `ErrOverBudget`. See
-`docs/plans/agent.md`'s "The budget parameter" section for the full
+`docs/history/agent.md`'s "The budget parameter" section for the full
 signature and behavior.
 
 ## Tests
@@ -100,7 +100,7 @@ no allocation; a benchmark would measure noise, not signal.
 `agent/agent_test/run_budget_test.go` and the
 `TestBudgetPanelWaveReachesNoCheck` case in
 `agent/agent_test/run_panel_integration_test.go` hold the `agent.Run`
-integration cases; see `docs/plans/agent.md`'s "Context budget: tests"
+integration cases; see `docs/history/agent.md`'s "Context budget: tests"
 section for the full case list.
 
 ## Verification

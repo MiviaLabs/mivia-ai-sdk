@@ -353,7 +353,7 @@ probe:
   cannot fail after a true probe.
 
 This lands in the same change as the `runconfig` step tool collapse.
-See `docs/plans/runconfig.md`, "Addendum: one step tool wrapper", for
+See `docs/history/runconfig.md`, "Addendum: one step tool wrapper", for
 the coupling analysis and the shared test and verification duties. The
 edit is behavior-preserving: `tools.SchemaOf` returns true exactly
 when the tool implements `tools.SchemaTool`. Existing tests in
@@ -370,19 +370,19 @@ event names. `events.Bus.Emit` returns nil for a name with no subscriber,
 so the workaround is dead weight. Delete the loop and the `noop`
 closure at `workflow/run/options.go:147-152`. The Scope bullet naming the
 default placeholder wiring is removed with the code. See
-docs/plans/events.md, "Addendum: Emit accepts an unobserved event",
+docs/history/events.md, "Addendum: Emit accepts an unobserved event",
 for the contract, the test rewrites, and the verification set.
 
 Every commit in this change that rewrites a mandated test carries an
 `Allow-Test-Change` commit-message trailer. The trailer names the
-rewrites. See docs/plans/events.md, Verification.
+rewrites. See docs/history/events.md, Verification.
 
 ## Addendum: an equivalence test for ValidateMatrix
 Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, item 5.
+docs/history/agents/maintenance-addenda-batch.md, item 5.
 
 `workflow/run/matrix.go:99` and `workflow/run/matrix.go:200` re-implement
 flow's declaration-order scan, which `nextReadyGroup` at
@@ -505,7 +505,7 @@ renamed to `workflow`. The pending-symbols key becomes
 
 The full builder step list, the README Quick Start spec, the docs and
 example renames, and the verification greps live in
-`docs/plans/workflow.md`, "Rename: agent moved to workflow". That
+`docs/history/workflow.md`, "Rename: agent moved to workflow". That
 section is the plan of record for the whole rename. This package's
 own steps are the directory moves, the `run` package clause, the
 `workflow/run` import paths, the `run.` qualifiers, the
@@ -544,7 +544,7 @@ left unedited.
 
 ## Addendum: decoded artifacts must not panic on the first write
 
-Status: planned, not yet built.
+Status: shipped.
 
 `DecodeArtifacts` builds an `Artifacts` from the two decoded maps.
 Either map can be absent from the JSON and so arrive nil. `SetRun` keys

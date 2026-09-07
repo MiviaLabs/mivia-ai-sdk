@@ -38,7 +38,7 @@ func buildChain(b *testing.B, l *ledger.Ledger, ctx context.Context, keys []ledg
 // BenchmarkClaimChainDepth measures Claim's transitive ancestor walk
 // against MemStore. Each iteration claims every record of a healthy
 // chain, not only its leaf, so the measured workload matches the depth
-// table in docs/plans/ledger.md. The cost is proportional to the
+// table in docs/history/ledger.md. The cost is proportional to the
 // caller's declared graph, so it rises with depth; that is the one
 // worst case the pull design accepts. No fixed allocation budget:
 // MemStore's internal locking varies with GOMAXPROCS.
@@ -72,7 +72,7 @@ func BenchmarkClaimChainDepth(b *testing.B) {
 // one key from the set, cycling through the set as b.N grows, so the
 // benchmark exercises both a fresh insert and a rebase path. No fixed
 // allocation budget: MemStore's internal locking varies with
-// GOMAXPROCS, per the exception docs/plans/agents/PHASES.md allows for
+// GOMAXPROCS, per the exception docs/history/agents/PHASES.md allows for
 // goroutine-dependent counts. Report ops/sec and allocs/op with
 // go test -bench=. -benchmem.
 func BenchmarkAdmit(b *testing.B) {

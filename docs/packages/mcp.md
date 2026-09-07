@@ -104,7 +104,7 @@ needs the SDK's dependency closure regardless of where the package
 boundary sits. `mcp` is the second package, after `a2a`, allowed
 to carry a third-party import: `github.com/modelcontextprotocol/go-sdk`;
 see `AGENTS.md`'s Rules section for the stated exception. See
-`docs/plans/mcp.md` for the full design record.
+`docs/history/mcp.md` for the full design record.
 
 ## Usage
 

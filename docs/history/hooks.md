@@ -2,10 +2,10 @@
 
 Status: superseded. Phase 86 folded this package into events;
 the symbols live in events now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 edges. It depends on no unshipped phase and ships with no caller, the
 same way `tools` shipped in phase 14. This plan folded in from
-`docs/plans/agents/phase57_hooks.md` on shipping; no standalone phase
+`docs/history/agents/phase57_hooks.md` on shipping; no standalone phase
 57 plan file remains.
 
 ## Goal
@@ -245,7 +245,7 @@ no caller wires it in this phase.
 `Remove`, and `Fire` paths. `AGENTS.md`'s package layout list gains
 a `hooks/` bullet, at the same level of detail as the `trigger/`
 bullet: package name, one-sentence purpose, and its import edges
-(none). `docs/plans/agents/PHASES.md` records phase 57's dependency
+(none). `docs/history/agents/PHASES.md` records phase 57's dependency
 on no unshipped phase, matching how it records phase 51 and phase
 52.
 

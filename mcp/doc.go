@@ -4,7 +4,7 @@
 // tools.Registry. Connect opens a session over a Transport; ListTools
 // and CallTool map tools/list and tools/call; CallToolWithProgress
 // correlates a notifications/progress stream to the call that
-// requested it. See ../docs/plans/mcp.md for the design contract.
+// requested it. See ../docs/history/mcp.md for the design contract.
 //
 // Map: transport.go = Transport, NewStdioTransport,
 // NewStreamableHTTPTransport; client.go = ClientInfo, ClientOptions,

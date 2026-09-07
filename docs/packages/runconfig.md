@@ -9,7 +9,7 @@ The runconfig package loads a JSON document into a validated
 data, without recompiling. `Load` feeds `flow.New`, `machine.New`, and
 `run.New`; it never re-runs their validation logic itself. The
 exported surface below mirrors `api/runconfig.txt`. The full document
-grammar lives in `docs/plans/runconfig.md`.
+grammar lives in `docs/history/runconfig.md`.
 
 ## Types
 
@@ -148,7 +148,7 @@ ignored. A duplicate section key follows `encoding/json` map
 semantics, so the last value wins. `Load`'s full field-by-field
 mapping, including
 the `retry` and `loop` policy shapes and the `when` enum values, lives
-in `docs/plans/runconfig.md`.
+in `docs/history/runconfig.md`.
 
 ## Invariants
 

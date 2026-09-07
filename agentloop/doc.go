@@ -6,5 +6,5 @@
 // bound trips. RunSteerable is Run with one addition: a caller-held
 // Steer handle lets another goroutine request a graceful, in-flight
 // stop of the current iteration, without a hard ctx cancellation. See
-// docs/plans/agentloop.md for the full contract.
+// docs/history/agentloop.md for the full contract.
 package agentloop

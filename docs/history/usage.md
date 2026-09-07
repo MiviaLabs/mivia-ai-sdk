@@ -2,11 +2,11 @@
 
 Status: superseded. Phase 86 folded this package into provider;
 the symbols live in provider now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 `provider` package for its `Usage` type; `usage` defines no
 token-count type of its own. `usage` imports `provider` only, plus
 stdlib; no third-party import. This plan folded in from
-`docs/plans/agents/phase58_usage.md` on shipping; no standalone
+`docs/history/agents/phase58_usage.md` on shipping; no standalone
 phase 58 plan file remains.
 
 ## Goal

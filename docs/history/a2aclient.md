@@ -306,7 +306,7 @@ sentinel needed there.
 Test files live directly in `a2aclient/`, not in a nested
 `a2aclient/a2aclient_test/` directory. This differs from the flat
 `<pkg>/<pkg>_test/` layout most other packages in this module use,
-per `docs/plans/agents/PHASES.md`. The nested layout does not work
+per `docs/history/agents/PHASES.md`. The nested layout does not work
 for this package: `sdk-standards.yml` scopes the third-party-import
 exception to `a2aclient/*.go` only (verified with a live Semgrep run;
 a single `*` does not cross a directory boundary), so a test package
@@ -563,7 +563,7 @@ import without its own plan review.
 ```
 
 This edit lands in AGENTS.md itself, a file outside this plan's
-`docs/plans/` and `policy/layers.json` write scope. The user has
+`docs/history/` and `policy/layers.json` write scope. The user has
 approved this exact sentence, naming both modules the shipped design
 needs: `a2a-go` for the client, and `google.golang.org/grpc` for the
 `grpc.ClientConn` dial the client's transport requires (see the design
@@ -663,7 +663,7 @@ Extract `Loopback` and its two supporting types to a new package,
 `a2aloopback`, following the `durablefence` precedent already in this
 module: a leaf-ish package that ships real (non-`_test.go`) source but
 carries a documented, convention-only rule that no production code may
-import it. See `docs/plans/a2aloopback.md`.
+import it. See `docs/history/a2aloopback.md`.
 
 This is not the file's original author changing their mind carelessly.
 The file's own doc comment gives a real reason to keep `Loopback` out
@@ -731,7 +731,7 @@ losing `loopback.go` removes no internal edge either, since
 `loopback.go` used only `a2a` and `envelope` among internal packages.
 
 A new row: `"a2aloopback": ["a2a", "envelope"]`. See
-`docs/plans/a2aloopback.md`.
+`docs/history/a2aloopback.md`.
 
 ### api/a2aclient.txt
 
@@ -840,14 +840,14 @@ third-party import.
 
 `make verify` passes only once all of the following land together:
 the `a2aloopback` package and its tests (see
-`docs/plans/a2aloopback.md`); the deletion of
+`docs/history/a2aloopback.md`); the deletion of
 `a2aclient/loopback.go`; the updated
 `grpc_loopback_integration_test.go` and the three `a2aack_test` files;
 the `policy/layers.json` new row; the two `semgrep/sdk-standards.yml`
 new rules, `sdk.go.a2aloopback-scoped-third-party-import` and
 `sdk.go.no-a2aloopback-import`, plus the `stdlib-only-imports`
 exclude-list entry; the two `check_semgrep_probes.py` new probe pairs
-(see `docs/plans/a2aloopback.md`); and the four AGENTS.md edits above.
+(see `docs/history/a2aloopback.md`); and the four AGENTS.md edits above.
 `docs/architecture.md` does not change: this move adds no
 message-semantics rule and changes no module in the dependency map,
 only which package one existing module lives behind.
@@ -877,7 +877,7 @@ Status: shipped.
 
 
 This addendum is commit two of two. Commit one fixes
-`longtermmemory`; see `docs/plans/longtermmemory.md`. The two commits
+`longtermmemory`; see `docs/history/longtermmemory.md`. The two commits
 do not share a file. This commit changes `a2aclient` and `a2aack`
 together, because `a2aack` reads `a2aclient.State`.
 
@@ -1026,8 +1026,8 @@ comes from a grep over `.md` for the `State` constant names and for
 - `docs/packages/a2aack.md` — the poll steps near line 41 and the
   `ErrRemoteFailed` entry near line 67.
 - `docs/examples/a2aack.md` — the terminal state list near line 71.
-- `docs/plans/a2aclient.md` — the API code block near line 87.
-- `docs/plans/a2aack.md` — the poll contract in its Scope section.
+- `docs/history/a2aclient.md` — the API code block near line 87.
+- `docs/history/a2aack.md` — the poll contract in its Scope section.
 - `docs/architecture.md` — the `a2aclient` and `a2aack` module-map
   bullets, near lines 288 and 307.
 

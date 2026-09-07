@@ -5,5 +5,5 @@
 // Guard, Action, Transition; inout.go = InOut; definition.go =
 // Definition, New, Validate, Fire, Initial, Transitions,
 // AllowedTransitions, AllowedTriggers.
-// Rationale: ../docs/plans/machine.md. Contribution rules: ../AGENTS.md.
+// Rationale: ../docs/history/machine.md. Contribution rules: ../AGENTS.md.
 package machine

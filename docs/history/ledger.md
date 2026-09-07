@@ -22,11 +22,11 @@ is not `machine` either: it reuses `machine.Status` and a
 states instead of inventing a second enum, and adds what `machine`
 does not have: an idempotency key, a claim lease, a fence token, and
 dependency-driven blocking. `ledger` composes with `durablefence`'s
-`Scenario` harness (`docs/plans/durablefence.md`) to prove its claim,
+`Scenario` harness (`docs/history/durablefence.md`) to prove its claim,
 takeover, and fence invariants without a second copy of that test
 logic; `durablefence` names `ledger` as its first intended adopter.
 `ledger` is also distinct from `flow`'s retry policy (shipped by
-phase 30; see `docs/plans/flow.md`): `RetryPolicy` re-runs a failed
+phase 30; see `docs/history/flow.md`): `RetryPolicy` re-runs a failed
 step under backoff inside one process, one graph walk, while
 `ledger.Admit` makes an out-of-process retry (a whole new process
 picking up the task) safe by rejecting the second attempt under the
@@ -979,7 +979,7 @@ Four consequences are real. Document all four; do not soften them.
    was previously impossible for a key the caller had admitted. A
    caller that treats `ErrNoKey` as a programming error must now treat
    it as a runtime outcome under a bounded `Store`. See the `dispatch`
-   line shape in `docs/plans/dispatch.md`, "The corrected contract".
+   line shape in `docs/history/dispatch.md`, "The corrected contract".
 
 ### The bound
 
@@ -1058,11 +1058,11 @@ Each site below states the tombstone contract and becomes false.
   the statement that a live lease is not bounded by `MaxEntries`.
 - `MemStoreOptions.Now` needs its own doc comment, starting with the
   field name, naming the `time.Now` default.
-- `docs/plans/ledger.md`, the `MemStoreOptions` bullet in the API
+- `docs/history/ledger.md`, the `MemStoreOptions` bullet in the API
   section. Corrected in this revision.
-- `docs/plans/ledger.md`, "Restore and eviction". Corrected in this
+- `docs/history/ledger.md`, "Restore and eviction". Corrected in this
   revision.
-- `docs/plans/ledger.md:1140-1146`, the `eviction_race_test.go` bullet
+- `docs/history/ledger.md:1140-1146`, the `eviction_race_test.go` bullet
   under Tests. It states the tombstone contract that test asserted.
   Rewrite it to the deletion contract this plan gives that file.
 - `taskrun/taskrun.go:47-53`, the `Run` doc comment. It enumerates
@@ -1098,7 +1098,7 @@ Each site below states the tombstone contract and becomes false.
 - `dispatch/options.go:51`, the `ReplayCapacity` doc comment. State
   that a capacity-evicted key can be processed again, so replay
   protection is a bounded window.
-- `docs/plans/dispatch.md:558-566`, "Bounded memory". See the dispatch
+- `docs/history/dispatch.md:558-566`, "Bounded memory". See the dispatch
   plan.
 - `docs/packages/dispatch.md:73-78`, "Replay protection". See the
   dispatch plan.
@@ -1816,7 +1816,7 @@ Commits for this change, in order:
 2. `taskrun`: the `Run` doc comment and `docs/packages/taskrun.md`.
    Doc only; no `taskrun` production code and no test changes.
 3. `dispatch`: doc corrections and new tests. See
-   `docs/plans/dispatch.md`, "Bounded replay window".
+   `docs/history/dispatch.md`, "Bounded replay window".
 
 Phase 42c adds the `Actor` type and four `TaskState` audit fields
 (`CreatedBy`, `CreatedAt`, `UpdatedBy`, `UpdatedAt`), threaded through
@@ -1915,7 +1915,7 @@ case all use valid records and stay green.
 
 ### Doc updates
 
-- `docs/plans/ledger.md`, "Restore and eviction": add one sentence.
+- `docs/history/ledger.md`, "Restore and eviction": add one sentence.
   It states that `Restore` now validates each record before insert,
   so the per-record skip is no longer true.
 - `docs/packages/ledger.md`, the `Ledger.Restore` line: add "It
@@ -1926,11 +1926,11 @@ Status: shipped.
 
 
 Part of the maintenance addenda batch. See
-docs/plans/agents/maintenance-addenda-batch.md, items 1 and 2.
+docs/history/agents/maintenance-addenda-batch.md, items 1 and 2.
 
 ### Admit validates the record it writes
 
-`docs/plans/ledger.md:457` says the `Admit` self-need gap "predates
+`docs/history/ledger.md:457` says the `Admit` self-need gap "predates
 this change and stays out of scope here". That sentence is now
 historical. `Admit` calls `next.Validate()` after the blocked branch
 and before `Store.CompareAndSwap`. It returns `false` and that error
@@ -1972,7 +1972,7 @@ validate" below.
 as `ErrNoKey`, then `ErrNotStale`, then `ErrNotClaimed`. The code
 matched that comment, not this plan. The new order is `ErrNoKey`, then
 `ErrNotClaimed`, then `ErrNotStale`. It matches `Claim`, and it matches
-the order `docs/plans/ledger.md:200` already specified.
+the order `docs/history/ledger.md:200` already specified.
 
 `Complete` leaves `LeaseUntil` on the record. Under the old order a
 completed record inside its lease window returned `ErrNotStale`, which
@@ -2006,7 +2006,7 @@ production order, so it is reordered with the code.
 Status: shipped.
 
 
-See `docs/plans/agents/ledger-lease-validation.md` for the full plan.
+See `docs/history/agents/ledger-lease-validation.md` for the full plan.
 
 ### The superseded sentence
 
@@ -2096,8 +2096,8 @@ lease.
 - `stress_test.go` needs no model change. Its generator emits only
   positive leases, and no storm record fails `TaskState.Validate`.
 - Two fixture descriptions go stale with the shift.
-  `docs/plans/ledger.md:1238` says the row is "a self-need where `S`
-  names `S`". `docs/plans/agents/maintenance-addenda-batch.md:174`
+  `docs/history/ledger.md:1238` says the row is "a self-need where `S`
+  names `S`". `docs/history/agents/maintenance-addenda-batch.md:174`
   says the two rows set `plantSelfNeeds` instead of an `admits` entry
   or a `mustAdmit` call. Both are reworded.
 

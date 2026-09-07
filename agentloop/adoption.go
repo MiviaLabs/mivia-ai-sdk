@@ -9,7 +9,7 @@ import (
 // percents. Window.CompactTrigger and CompactTarget price a percent
 // against Budget, not MaxTokens. Budget is 4/5 of MaxTokens here
 // (Reserve below), so 80 and 50 of Budget are an effective 64% and
-// 40% of MaxTokens. See docs/plans/agentloop.md, "Effective
+// 40% of MaxTokens. See docs/history/agentloop.md, "Effective
 // thresholds for host-style configs".
 const (
 	defaultWindowTrigger = 80

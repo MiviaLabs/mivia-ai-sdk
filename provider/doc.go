@@ -2,8 +2,8 @@
 // complete a chat turn against a language model, plus the request
 // and response shapes the contract carries. The package defines the
 // contract only; see provider/anthropic for the Messages API adapter.
-// See ../docs/plans/provider.md for the locked surface and
-// ../docs/plans/agents/phase29_provider.md for the design rationale.
+// See ../docs/history/provider.md for the locked surface and
+// ../docs/history/agents/phase29_provider.md for the design rationale.
 //
 // Map: accumulator.go = Accumulator, NewAccumulator, Record, Total,
 // Reset, and the sentinel error ErrBlankSessionID; wrap.go =

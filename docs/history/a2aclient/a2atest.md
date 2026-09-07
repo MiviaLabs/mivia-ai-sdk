@@ -2,7 +2,7 @@
 
 Status: superseded, see docs/history/a2a.md. The fixture moved to
 `a2a/a2atest` when `a2aclient` merged into `a2a`; see
-`docs/plans/a2a/a2atest.md`. This plan stays as history.
+`docs/history/a2a/a2atest.md`. This plan stays as history.
 
 ## Goal
 

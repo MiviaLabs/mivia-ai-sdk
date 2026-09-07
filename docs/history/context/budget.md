@@ -3,7 +3,7 @@
 Rename `contextbudget` to `context/budget`. The Go package name is
 `budget`, the last path element. Phase 86 kept this package split;
 this is a path move only. The shared gate-surface enumeration lives
-in `docs/plans/context/plan.md`.
+in `docs/history/context/plan.md`.
 
 ## Goal
 
@@ -42,7 +42,7 @@ rewrite import paths and, where the body names the old qualifier,
 `contextbudget.` becomes `budget.`. No test is deleted or weakened.
 The TT01 trailer for this tree is not pre-authorized; if the body
 rewrites trip TT01, take it to the orchestrator. See
-`docs/plans/context/plan.md`'s Tests section.
+`docs/history/context/plan.md`'s Tests section.
 
 Aliasing note, re-derived on this tip: the `budget` parameter and
 field of `agent.Run` and `agentloop` shadow the new package name in

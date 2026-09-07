@@ -3,7 +3,7 @@
 // stands in for a model: the first turn requests one tool call, the
 // second returns the final answer. Every Options group this example
 // carries is the grouping the Conclude and Bounds addendum defines;
-// see docs/plans/agentloop.md. The run needs no network access and
+// see docs/history/agentloop.md. The run needs no network access and
 // prints the Result's stop reason, iteration count, usage, and final
 // content.
 package main

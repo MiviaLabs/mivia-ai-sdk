@@ -2,8 +2,8 @@
 
 Status: superseded. Phase 86 folded this package into memory;
 the symbols live in memory now. See
-docs/plans/agents/phase86_package_consolidation.md.
-implementing `docs/plans/agents/phase67_truncation_spool.md` under
+docs/history/agents/phase86_package_consolidation.md.
+implementing `docs/history/agents/phase67_truncation_spool.md` under
 the phase 65 `contextstate` contract. No standalone phase 67 plan
 file remains.
 
@@ -20,7 +20,7 @@ The ref's format is a `ContentStore` implementation's own choice.
 today, since `Put` calls it directly, but a caller using a different
 `ContentStore` may mint refs some other way. `contextsession` consumes `spool` today: `Planner` writes a
 budget-driven elision's full payload to a wired `*memory.Spool`, keyed
-to the payload's `SubjectID`. See `docs/plans/contextsession.md`.
+to the payload's `SubjectID`. See `docs/history/contextsession.md`.
 `e2e/e2e_test/spool_test.go` proves a caller-driven
 `SpoolTool`/`ReadOutputTool` pairing runs through a live `agentrun`
 composition path; see "Change: prove ReadOutputTool reaches a live
@@ -258,7 +258,7 @@ var (
 Status: shipped. `tools.SchemaTool` landed in commit 16a7478.
 `spool/tool.go` forwards it, and
 `spool/spool_test/tool_parity_test.go` covers it. See
-`docs/plans/agentloop.md`.
+`docs/history/agentloop.md`.
 
 `SpoolTool` strips a capability silently when its combinatorial
 switch misses an optional interface. `tools.SchemaOf` fails closed:
@@ -266,7 +266,7 @@ a schema-less inner reports nil and false, and the wrapper forwards
 that result. `agentloop.New` then fails with `agentloop.ErrNoSchema`,
 naming the wrapper. Wrap schema-bearing inners for model-facing
 registries. See the Options and Extensions split addendum in
-`docs/plans/agentloop.md`.
+`docs/history/agentloop.md`.
 
 `spool` adopted `tools.SchemaTool` in the same change:
 
@@ -391,7 +391,7 @@ In `spool/spool_test/spool_test.go`:
 - `python3 scripts/check_api.py` passes with no `api/` diff.
 - `python3 scripts/check_plan.py`, `python3 scripts/check_deps.py`,
   and `python3 scripts/check_prose.py` pass.
-- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+- `docs/history/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
 
@@ -599,7 +599,7 @@ Inside:
 - `docs/packages/spool.md`'s usage example replaces the incomplete
   pairing with the full one: one `NewSpool` call feeds both
   `SpoolTool` and `ReadOutputTool`.
-- `docs/plans/subagent.md`'s "Deliberate non-goals" prose quotes the
+- `docs/history/subagent.md`'s "Deliberate non-goals" prose quotes the
   old four-argument call shape (`memory.SpoolTool(name, maxBytes,
   store, ...)`). Update that line to the new shape in the same
   commit; a stale signature in a plan is documentation drift.
@@ -726,7 +726,7 @@ In `e2e/e2e_test/spool_test.go`:
   and `check_labels.py` pass.
 - `docs/packages/spool.md`'s usage example and function-list entry
   for `SpoolTool` update in the same commit; see "Change docs" below.
-- `docs/plans/subagent.md`'s stale four-argument `SpoolTool` mention
+- `docs/history/subagent.md`'s stale four-argument `SpoolTool` mention
   updates in the same commit.
 
 ### Change docs
@@ -1277,11 +1277,11 @@ first grep pass found four and missed `docs/architecture.md`, the
 module map `AGENTS.md` treats as architecture truth. See
 `.agents/memories/grep_beats_reasoning_for_completeness.md`.
 
-- `docs/plans/spool.md:170-178`. It says `SpoolTool` builds one of
+- `docs/history/spool.md:170-178`. It says `SpoolTool` builds one of
   several concrete wrapper types chosen by which optional interfaces
   `inner` implements. Rewrite to name two variants and the one
   conditional bit.
-- `docs/plans/spool.md:262-266` and `268-275`, in the schema
+- `docs/history/spool.md:262-266` and `268-275`, in the schema
   forwarding section. They say the switch covers sixteen cases, and
   that a capability strips silently when the switch misses an
   interface. Rewrite both to the two-variant shape. Keep the sentence
@@ -1310,7 +1310,7 @@ does not treat the omission as an oversight.
   stays true.
 - `docs/packages/spool.md:134-138`. Its cross-reference warning about
   stripping `SchemaTool` stays true.
-- `docs/plans/spool.md:643-658`. That fenced block reproduces
+- `docs/history/spool.md:643-658`. That fenced block reproduces
   `SpoolTool`'s old doc comment verbatim, including the phrase "only
   when inner itself does". It sits inside a section marked `Status:
   shipped`. Leave it as a historical record of what that change
@@ -1382,7 +1382,7 @@ edge. A caller who registers a `runconfig`-built tool into an
 
 ## Change: collapse the wrapper variants to one
 
-Status: shipped. One commit together with `docs/plans/tools.md`'s
+Status: shipped. One commit together with `docs/history/tools.md`'s
 "Correction: SchemaOf fails closed on a nil schema". That correction
 is a precondition, not an option. This collapse is safe only under a
 fail-closed `tools.SchemaOf`.
@@ -1392,11 +1392,11 @@ fail-closed `tools.SchemaOf`.
 This slice lands as two commits, in this order:
 
 1. Commit 1: the fail-closed `tools.SchemaOf` plus this collapse.
-   Plans: `docs/plans/tools.md` and this section. The two parts ship
+   Plans: `docs/history/tools.md` and this section. The two parts ship
    in one commit because the collapse is unsafe without the
    fail-closed rule.
 2. Commit 2: the `runconfig` unbound-step rejection. Plan:
-   `docs/plans/runconfig.md`'s "Correctness fix: an unbound step
+   `docs/history/runconfig.md`'s "Correctness fix: an unbound step
    outside a two-member panel". Commit 2 does not depend on commit 1.
 
 ### Change goal

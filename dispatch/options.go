@@ -46,7 +46,7 @@ type Options struct {
 	// DefaultReplayLease. A negative value, or a value under one
 	// second, fails Validate. Size this above Handler.Handle's
 	// expected p99 latency; see the warning in the Scope section of
-	// docs/plans/dispatch.md.
+	// docs/history/dispatch.md.
 	ReplayLease time.Duration
 	// ReplayCapacity caps the entry count of the ledger New builds
 	// internally when Ledger is nil. Zero resolves to
@@ -72,7 +72,7 @@ const DefaultMaxBodyBytes int64 = 1 << 20
 // Options.ReplayLease is zero. This is not a crash-detection timeout:
 // size it above Handler.Handle's expected p99 latency, or a slow
 // handler's own replay can re-run work before its first claim
-// completes. See the Scope section warning in docs/plans/dispatch.md.
+// completes. See the Scope section warning in docs/history/dispatch.md.
 const DefaultReplayLease = 30 * time.Second
 
 // DefaultReplayCapacity caps the entry count of the ledger New builds

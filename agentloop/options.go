@@ -191,7 +191,7 @@ type Options struct {
 	Budget *budget.Limits
 	// Trim runs before each Completer call on the full message
 	// history. A nil Trim passes the history through unchanged. See
-	// docs/plans/agentloop.md for its contract with
+	// docs/history/agentloop.md for its contract with
 	// plan.Planner.Plan.
 	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
 	// Audit receives one AuditRecord per completed Completer turn and
@@ -315,7 +315,7 @@ func (o Options) Validate() error {
 	}
 	if o.Budget != nil {
 		if err := o.Budget.Validate(); err != nil {
-			return fmt.Errorf("agentloop: invalid Budget: %w", err)
+			return fmt.Errorf("%w: Budget: %w", ErrInvalidOptions, err)
 		}
 	}
 	// The typed-nil check runs unconditionally, not only when Window
@@ -330,7 +330,7 @@ func (o Options) Validate() error {
 	}
 	if o.Compaction.Window != nil {
 		if err := o.Compaction.Window.Validate(); err != nil {
-			return fmt.Errorf("agentloop: invalid Window: %w", err)
+			return fmt.Errorf("%w: Window: %w", ErrInvalidOptions, err)
 		}
 		if o.Compaction.Summarizer == nil {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Summarizer: required when Window is set")
@@ -352,10 +352,10 @@ func (o Options) Validate() error {
 	}
 	if o.Extensions != nil {
 		if err := o.Extensions.WorkBudget.validate(); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrInvalidOptions, err)
 		}
 		if err := o.Extensions.ToolBudget.validate(); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", ErrInvalidOptions, err)
 		}
 	}
 	return nil

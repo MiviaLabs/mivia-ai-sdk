@@ -91,9 +91,9 @@ unknown name fails. The exported surface below mirrors
 
 Use `errors.Is` to test these.
 
-- `ErrNilTool` ("tools: tool must not be nil") — `Registry.Add` returns
+- `ErrInvalidOptions` ("tools: invalid options: Tool: must not be nil") — `Registry.Add` returns
   it for a nil `Tool`. Pinned by `tools/tools_test/registry_test.go`.
-- `ErrBlankName` ("tools: tool name must not be blank") —
+- `ErrInvalidOptions` ("tools: invalid options: Name: must not be blank") —
   `Registry.Add` returns it when the tool's `Name()` is empty after
   `strings.TrimSpace`. Pinned by `tools/tools_test/registry_test.go`.
 - `ErrDuplicateName` ("tools: tool name already registered") —
@@ -110,7 +110,7 @@ Use `errors.Is` to test these.
   `Registry.RunScoped` returns it when `scope.Approve` returns
   `(false, nil)`. Pinned by
   `tools/tools_test/run_scoped_approval_test.go`.
-- `ErrInvalidExecutionClass` ("tools: invalid execution class") —
+- `ErrInvalidOptions` ("tools: invalid options", naming the field) —
   `ExecutionClass.Validate` returns it for a value outside the four
   known classes. Pinned by `TestExecutionClassValidate` in
   `tools/tools_test/execution_profile_test.go` with `errors.Is`.
@@ -121,9 +121,9 @@ Use `errors.Is` to test these.
 
 ## Invariants
 
-- `Add` rejects a nil `t` with `ErrNilTool`, before it calls any
+- `Add` rejects a nil `t` with `ErrInvalidOptions`, before it calls any
   method on `t`.
-- `Add` rejects a blank name, after trim, with `ErrBlankName`.
+- `Add` rejects a blank name, after trim, with `ErrInvalidOptions`.
 - `Add` rejects a duplicate name with `ErrDuplicateName`. It never
   overwrites an existing registration.
 - `Get` returns false for an unknown name. It never panics.

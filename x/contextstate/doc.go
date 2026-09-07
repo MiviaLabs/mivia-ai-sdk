@@ -7,6 +7,6 @@
 // contextref for the canonical reference form. checkpoint.go =
 // SourceID through Session. commit.go = CommitRequest and its
 // validators. limits.go = Limits. store.go = MemStore.
-// Rationale: ../docs/plans/contextstate.md. Contribution rules:
+// Rationale: ../docs/history/contextstate.md. Contribution rules:
 // ../AGENTS.md.
 package contextstate

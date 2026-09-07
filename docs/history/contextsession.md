@@ -2,7 +2,7 @@
 
 Status: superseded. Phase 86 quarantined this package into the
 x/ sub-module, which stops advertising it from the core module.
-See docs/plans/agents/phase86_package_consolidation.md.
+See docs/history/agents/phase86_package_consolidation.md.
 
 ## Goal
 
@@ -114,7 +114,7 @@ Tests will live in `contextsession/contextsession_test/`:
   ```json
   "contextsession": {
     "reason": "Durable session planner carved out of contextplan. Intended caller is external application code adapting Plan to agentloop.Options.Trim.",
-    "target": "agentloop or an external session-backed runner; see docs/plans/spool.md's read-back section",
+    "target": "agentloop or an external session-backed runner; see docs/history/spool.md's read-back section",
     "permanent": false
   }
   ```
@@ -123,7 +123,7 @@ Tests will live in `contextsession/contextsession_test/`:
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_deps.py` passes.
 - `python3 scripts/check_orphan_packages.py` passes.
-- `python3 scripts/check_prose.py docs/plans/contextsession.md` passes.
+- `python3 scripts/check_prose.py docs/history/contextsession.md` passes.
 - `python3 scripts/check_labels.py` passes.
 - Test coverage reaches at least 85 percent.
 

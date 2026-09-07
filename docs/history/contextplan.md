@@ -1,6 +1,6 @@
 # Plan: contextplan
 
-Status: superseded by `docs/plans/context/plan.md`. Phase 86 folded
+Status: superseded by `docs/history/context/plan.md`. Phase 86 folded
 `contextsummary` into this package; the rename pass moves it to
 `context/plan`. This file is a historical record of the shipped
 work.
@@ -12,7 +12,7 @@ holds the compaction and calibration surface: `Compact` decides what
 fits a `Window` and what does not, and `Calibrated` calibrates token
 estimates over time against a completed turn's real usage. The
 durable planner half of the original design lives in
-`contextsession`; see `docs/plans/contextsession.md`.
+`contextsession`; see `docs/history/contextsession.md`.
 
 ## Scope
 
@@ -443,13 +443,13 @@ against the 500-line structure limit.
   and `python3 scripts/check_prose.py` pass.
 - `docs/packages/contextplan.md` changes in the same commit as the
   code.
-- `docs/plans/agentloop.md` and the `policy/layers.json` row adding
+- `docs/history/agentloop.md` and the `policy/layers.json` row adding
   `schema` to `agentloop` stay out of this commit. They belong to the
   concurrent `agentloop` change and need their own plan review.
 
 ## Correctness fix: skip a revoked payload instead of failing Plan
 
-`docs/plans/contextstate.md` gives `contextstate.MemStore` a `Revoke`
+`docs/history/contextstate.md` gives `contextstate.MemStore` a `Revoke`
 method, a `Status` audit accessor, and makes `Get` deny a revoked
 record's `Data`, wrapping the new `contextstate.ErrPayloadRevoked` and
 returning the zero value like every other `Get` error. `Plan` calls
@@ -599,7 +599,7 @@ sibling under the 500-line limit:
   `resolvePayload` no longer skips `store.Get` on a cache hit, in the
   same commit as the code.
 - This change lands with or after the `contextstate` change in
-  `docs/plans/contextstate.md`: `MemStore.Revoke`, `MemStore.Status`,
+  `docs/history/contextstate.md`: `MemStore.Revoke`, `MemStore.Status`,
   and the new `Get` contract must exist before `contextplan` can
   compile against `contextstate.ErrPayloadRevoked`.
 
@@ -646,7 +646,7 @@ Outside:
   `contextplan` carries no structural fallback and no `Force` flag,
   and no manual compact entry point exists.
 - Any loop wiring, usage observation, or prompt-too-long recovery.
-  `agentloop` owns those; see `docs/plans/agentloop.md`.
+  `agentloop` owns those; see `docs/history/agentloop.md`.
 - Changes to `Plan`, `Elision`, `StubContent`, or `Calibrated`'s API
   or EWMA semantics; the one internal change is the concurrency guard
   the Inside section adds. The session-store planner keeps its
@@ -784,7 +784,7 @@ var (
   different keys. `encoding/json` over a struct is deterministic; no
   map appears in the fingerprint.
 - `Compact` reads `provider.Message.Name` for `PreserveNames`. That
-  field lands through `docs/plans/provider.md` in the same change
+  field lands through `docs/history/provider.md` in the same change
   window; `Compact` does not compile before it exists.
 
 ### Deviations from the reference
@@ -879,7 +879,7 @@ call `EstimateTokens` many times per call, for trial insertions and
 tail-fill probing, so `lastEst` holds an intermediate candidate
 estimate, not the one describing the final accepted request; and
 `agentloop.Loop.Run`, documented and tested to run concurrently on
-one shared `*Loop` (`docs/plans/agentloop.md`'s Options.Window
+one shared `*Loop` (`docs/history/agentloop.md`'s Options.Window
 design; `agentloop/agentloop_test/compaction_recovery_test.go`'s
 `TestRunConcurrentSharedLoopWithPlanning`), shares one `*Calibrated`
 across every goroutine, so one goroutine's `Observe` call can pair
@@ -935,7 +935,7 @@ Inside:
   idea of one shared calibration factor across concurrent callers.
 - A caller-side change in `agentloop`, landed in the same change: see
   the companion note below. This plan does not restate `agentloop`'s
-  own plan; `docs/plans/agentloop.md`'s Addendum sections on the
+  own plan; `docs/history/agentloop.md`'s Addendum sections on the
   observation step and the `Calibrated` field require a matching
   update in the same commit, since they quote the old `Observe(actual
   int)` call shape verbatim.
@@ -984,7 +984,7 @@ because `l.calibrated.EstimateTokens` last ran during `planHistory`,
 against the pre-compaction or pre-recovery-rebuild history, not
 necessarily the same `req.Messages` `Chat` finally receives.
 
-The companion change, for `docs/plans/agentloop.md` to carry in its
+The companion change, for `docs/history/agentloop.md` to carry in its
 own addendum, not this plan:
 
 - Add an `estimatedTokens int` field to `chatAttempt`
@@ -1005,7 +1005,7 @@ own addendum, not this plan:
   `recoverPromptTooLong` builds its own `retryReq` and calls
   `Completer.Chat` on it internally, so the primary `req`'s estimate
   never describes a recovered iteration's actual request.
-  `docs/plans/agentloop.md`'s own addendum must call
+  `docs/history/agentloop.md`'s own addendum must call
   `l.calibrated.EstimateTokens(retryReq)` on this branch too, or
   every recovered iteration's `Observe` call pairs against zero, a
   permanent no-op that silently disables calibration for every
@@ -1015,7 +1015,7 @@ own addendum, not this plan:
   resp.Usage.TotalTokens)`.
 - This adds one `EstimateTokens` call per iteration when `l.calibrated`
   is set but `l.window` is nil, a configuration that did not call
-  `EstimateTokens` at all before. `docs/plans/agentloop.md` must state
+  `EstimateTokens` at all before. `docs/history/agentloop.md` must state
   this cost explicitly and confirm it is acceptable: one estimator
   call is far cheaper than one `Chat` call, so the added cost is
   small relative to the iteration it measures.
@@ -1087,7 +1087,7 @@ In `contextplan/contextplan_test/calibrated_test.go`:
   argument.
 
 Companion tests in `agentloop/agentloop_test/`, tracked by
-`docs/plans/agentloop.md` in the same change:
+`docs/history/agentloop.md` in the same change:
 
 - A deterministic-estimate `Completer` and estimator pair, where
   `runChat` triggers `recoverPromptTooLong` for one iteration and
@@ -1123,7 +1123,7 @@ Companion tests in `agentloop/agentloop_test/`, tracked by
 - `docs/packages/contextplan.md`'s `Calibrated.Observe(actual)` entry
   updates to the two-argument form, in the same commit as the code.
 - This fix lands with, or before, its own update to
-  `docs/plans/agentloop.md`'s Addendum sections quoting the old
+  `docs/history/agentloop.md`'s Addendum sections quoting the old
   `Observe(actual int)` call shape and the `chatAttempt` struct; that
   update is `agentloop`'s own plan's responsibility, reviewed on its
   own, not restated here. `agentloop`'s code cannot compile against
@@ -1172,7 +1172,7 @@ Inside:
   format string, same replacement.
 - `docs/packages/contextplan.md:88` — reword the `Compaction.Validate()`
   entry, same replacement.
-- `docs/plans/contextplan.md:698` — the `Compaction.Validate` doc
+- `docs/history/contextplan.md:698` — the `Compaction.Validate` doc
   comment quoted in this plan's own "Change API" code block. Reword it
   to match, so the plan does not contradict the shipped code.
 
@@ -1219,11 +1219,11 @@ under the 500-line limit:
   code.
 - Grep confirms no remaining `(0, 100]` string anywhere in
   `contextplan/`, `docs/packages/contextplan.md`, or
-  `docs/plans/contextplan.md` after the fix.
+  `docs/history/contextplan.md` after the fix.
 
 ## Correctness fix: contextplan spools its own overflow
 
-Status: shipped. Folded from `docs/plans/agents/phase73_contextplan_spool.md`;
+Status: shipped. Folded from `docs/history/agents/phase73_contextplan_spool.md`;
 no standalone phase 73 plan file remains for this contract.
 
 ### Fix goal
@@ -1231,7 +1231,7 @@ no standalone phase 73 plan file remains for this contract.
 Wire `Planner` to `memory.Spool`, so a payload `Plan` elides for a
 budget reason lands in durable, principal-scoped storage instead of
 only a `contextstate.MemStore` ref that can itself evict. Both this
-file and `docs/plans/spool.md` already named `contextplan` as
+file and `docs/history/spool.md` already named `contextplan` as
 `spool`'s expected consumer; this fix is that wiring.
 
 ### Fix scope
@@ -1328,7 +1328,7 @@ No other exported symbol changes.
   shows no diff.
 - `python3 scripts/check_deps.py` passes with the new `spool` edge on
   the `contextplan` row and no edge added anywhere else.
-- `docs/plans/spool.md` gains a one-line note in its Goal section
+- `docs/history/spool.md` gains a one-line note in its Goal section
   that `contextplan` now consumes it.
 - `docs/packages/contextplan.md` reflects `NewPlanner`'s new
   signature and `Elision.SpoolRef`, in the same commit as the code.
@@ -1444,4 +1444,4 @@ Compaction and calibration tests remain in `contextplan/contextplan_test/`. Plan
 - `api/contextplan.txt` locks the streamlined compaction surface.
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_deps.py` passes.
-- `python3 scripts/check_prose.py docs/plans/contextplan.md` passes.
+- `python3 scripts/check_prose.py docs/history/contextplan.md` passes.

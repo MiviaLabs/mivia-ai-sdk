@@ -1,6 +1,6 @@
 # Doc path gate
 
-Status: planned, not yet built.
+Status: shipped.
 
 ## Goal
 
@@ -58,7 +58,7 @@ across 138 files proves nothing.
 
 ## Addendum: enumeration and exemptions
 
-Status: planned, not yet built.
+Status: shipped.
 
 The rule enumerates tracked files with `git ls-files`, not a directory
 walk. The repository root holds several untracked working copies of
@@ -156,7 +156,7 @@ example-sync gate, so the page and the source change together.
 
 ## Addendum: three sibling doc-truth repairs
 
-Status: planned, not yet built.
+Status: shipped.
 
 The same audit found three more places where a document describes
 behavior the tree no longer has. None needs Go code.

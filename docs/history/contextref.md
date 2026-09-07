@@ -1,6 +1,6 @@
 # Plan: contextref
 
-Status: superseded by `docs/plans/context/ref.md`. The rename pass
+Status: superseded by `docs/history/context/ref.md`. The rename pass
 moves the package to `context/ref`. This file is a historical record
 of the shipped work.
 
@@ -69,7 +69,7 @@ Tests will live in `contextref/contextref_test/`:
 - `api/contextref.txt` is generated via `make api-update`.
 - `python3 scripts/check_plan.py` passes.
 - `python3 scripts/check_deps.py` passes.
-- `python3 scripts/check_prose.py docs/plans/contextref.md` passes.
+- `python3 scripts/check_prose.py docs/history/contextref.md` passes.
 - `python3 scripts/check_labels.py` passes.
 - Unit tests pass with `go test -race ./contextref/...`.
 - Test coverage for `contextref` reaches at least 85 percent.

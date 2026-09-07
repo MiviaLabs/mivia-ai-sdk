@@ -21,6 +21,6 @@
 // itself.
 // The graph is data, not code. A step with Sub runs a nested
 // workflow to completion.
-// Rationale: ../docs/plans/flow.md. Contribution rules:
+// Rationale: ../docs/history/flow.md. Contribution rules:
 // ../AGENTS.md.
 package flow

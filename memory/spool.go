@@ -1,6 +1,6 @@
 // Spool stores oversized content under a principal-scoped
 // grant and hands the caller a bounded view plus a reference. See
-// docs/plans/memory.md.
+// docs/history/memory.md.
 
 package memory
 

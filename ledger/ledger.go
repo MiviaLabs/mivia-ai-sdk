@@ -162,7 +162,7 @@ func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (Idem
 // naming itself can still reach the walk. The walk makes only Load
 // calls and runs outside any Range callback, so it never reenters
 // Store from inside Range. See "Transitive blocking" in
-// docs/plans/ledger.md.
+// docs/history/ledger.md.
 func (l *Ledger) blockingAncestor(ctx context.Context, needs []IdempotencyKey) (IdempotencyKey, bool, error) {
 	seen := make(map[IdempotencyKey]bool, len(needs))
 	queue := make([]IdempotencyKey, 0, len(needs))

@@ -78,11 +78,11 @@ verify` passes and `a2aack` holds the 85 coverage floor.
 ## Addendum: states the poll loop cannot resolve
 Status: superseded. Phase 86 folded this package into a2aclient;
 the symbols live in a2aclient now. See
-docs/plans/agents/phase86_package_consolidation.md.
+docs/history/agents/phase86_package_consolidation.md.
 
 
 `a2aclient.State` gains four constants. See the addendum "Mirror the
-whole upstream task state enum" in `docs/plans/a2aclient.md` for the
+whole upstream task state enum" in `docs/history/a2aclient.md` for the
 design, the tests, and the doc sites. That addendum owns the change;
 this note records its effect on the poll contract.
 
@@ -125,7 +125,7 @@ Status: shipped.
 
 This addendum is one of three that ship in one commit. See "Addendum:
 maintenance batch — drop StaleMembers and the heartbeat edge" in
-`docs/plans/room.md` for the batch.
+`docs/history/room.md` for the batch.
 
 ### Addendum goal
 
@@ -272,7 +272,7 @@ Commands:
 - `python3 scripts/check_prose.py`.
 - `python3 scripts/check_test_tampering.py`. It must report no
   `a2aack` finding. The commit-wide `TT11` finding comes from
-  `policy/layers.json`; `docs/plans/room.md` records it.
+  `policy/layers.json`; `docs/history/room.md` records it.
 
 Coverage: `a2aack` and the total must stay at or above 85. The
 package measures 100.0 percent after the change. No executable line
@@ -296,6 +296,6 @@ Leave these alone:
   to `ag.Run`. Assignability keeps the sample correct as written.
 - `docs/README.md` describes the purpose, not the import. It stays
   true.
-- The quoted `AGENTS.md` bullet inside `docs/plans/a2aclient.md`
+- The quoted `AGENTS.md` bullet inside `docs/history/a2aclient.md`
   records a former state of that file. It is history, not a live
   rule. Do not rewrite it.

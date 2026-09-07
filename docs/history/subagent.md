@@ -192,7 +192,7 @@ Table-driven; one `TestMetamorphic*` function per property.
 - The metamorphic suite is test-only: no exported symbol changes, so
   `make api-update` must produce no diff for `api/subagent.txt` in
   that change. `go test -race ./subagent/...` covers the new file.
-- The e2e system scenarios in `docs/plans/e2e.md` drive the package
+- The e2e system scenarios in `docs/history/e2e.md` drive the package
   end to end.
 - `python3 scripts/check_prose.py` and `check_labels.py` pass.
 - `subagent` holds a mutation-kill floor of 94, in
@@ -202,7 +202,7 @@ Table-driven; one `TestMetamorphic*` function per property.
 ## File tools addendum
 
 Status: superseded by the corrected shape below.
-`docs/plans/agents/phase71_filetools.md` records why: the shipped
+`docs/history/agents/phase71_filetools.md` records why: the shipped
 five constructors took a bare `*workspace.Workspace`, so nothing
 stopped a caller from wiring an unrestricted workspace straight into
 a model-facing tool. This addendum now states the corrected,
@@ -269,7 +269,7 @@ Inside:
   Writes one file at a caller-model-supplied path plus
   caller-model-supplied content. `workspace.WriteFile` creates the
   file with a fixed `0o600` mode; no `os.FileMode` argument reaches
-  the model, matching the reasoning `docs/plans/workspace.md` states
+  the model, matching the reasoning `docs/history/workspace.md` states
   for dropping `WriteFile`'s `perm` parameter on a model-reachable
   path.
   The one truly dangerous operation this addendum adds: it mutates
@@ -523,7 +523,7 @@ model this addendum needs; nothing new is invented.
   completeness; `workspace.Matcher` cannot know what a deployment
   considers secret. Mitigation: the caller reviews its root for
   credential-bearing paths before naming its `Deny` patterns, the
-  same discipline `docs/plans/secretpath.md` already asks of a
+  same discipline `docs/history/secretpath.md` already asks of a
   `Matcher` builder for any other consumer.
 
 ### API
@@ -740,7 +740,7 @@ In `subagent/subagent_test/filetools_test.go`:
 - `docs/packages/subagent.md` and `AGENTS.md`'s `subagent/` entry
   gain `FileToolOptions`, `FileTools`, `OpenFileTools`,
   `ErrDenyRequired`, and the five tools' new signatures in the same
-  change as the code, following `docs/plans/TEMPLATE.md`'s
+  change as the code, following `docs/history/TEMPLATE.md`'s
   API-surface discipline.
 
 ### Gap fix: workspace list and stat results as a string
@@ -751,7 +751,7 @@ returned `[]WorkspaceEntry` and `WorkspaceFileInfo` directly in
 string. `agentrun`'s `chain` requires a string result, so
 `runconfig.WorkspaceListKind` and `runconfig.WorkspaceStatKind` failed
 every real `Runner.Run` with `ErrResultNotText`; see
-`docs/plans/runconfig.md`'s phase 76 addendum. The fix JSON-encodes
+`docs/history/runconfig.md`'s phase 76 addendum. The fix JSON-encodes
 each result into `Out.Value` as a string, matching every other tool's
 convention. No standalone phase 77 plan file remains for this
 contract.
@@ -839,7 +839,7 @@ A caller matches the sentinel with `errors.Is` and still reads the
 
 ## File tools removed
 
-Status: shipped. See `docs/plans/agents/convergence.md`'s "Boundary
+Status: shipped. See `docs/history/agents/convergence.md`'s "Boundary
 correction" section. The "File tools addendum" above added
 `FileTools`, `OpenFileTools`, `WorkspaceReadTool`, `WorkspaceWriteTool`,
 `WorkspaceListTool`, `WorkspaceStatTool`, `DiffTool`, their argument
@@ -853,7 +853,7 @@ section above: the eleven block-wrapper tools, `AsTool`, `SendTool`,
 and `InboxTool`. `runconfig`'s matching `Kind` constants
 (`WorkspaceReadKind`, `WorkspaceWriteKind`, `WorkspaceListKind`,
 `WorkspaceStatKind`, `DiffKind`) are removed in the same change; see
-`docs/plans/runconfig.md`'s matching addendum.
+`docs/history/runconfig.md`'s matching addendum.
 
 Update the `Mailbox` and `Deliver` comments to name the enforced
 rule. Update the mailbox entries in `docs/packages/subagent.md` in
@@ -885,7 +885,7 @@ floor of 94 holds.
 #### Verification for this gap fix
 
 Land this gap fix as its own commit, separate from the `flow` retry
-gap fix in `docs/plans/flow.md`. The two fixes share no file and no
+gap fix in `docs/history/flow.md`. The two fixes share no file and no
 package. One commit per fix keeps a revert granular.
 
 Run `make verify`, `go test -race ./subagent/...`, and
@@ -905,7 +905,7 @@ document `internal` section builds six tool families at `Load` time:
 caller-built shape: their constructors take a Go function value or a
 live object a JSON document cannot encode. The wiring contract, the
 document grammar, and the conformance test live in
-`docs/plans/runconfig.md`'s "Document-built internal tools" addendum.
+`docs/history/runconfig.md`'s "Document-built internal tools" addendum.
 
 No `subagent` symbol changes. `make api-update` must produce no
 `api/subagent.txt` diff. No new `subagent` test ships; the existing

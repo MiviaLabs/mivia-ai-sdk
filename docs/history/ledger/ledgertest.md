@@ -1,7 +1,7 @@
 # Plan: ledger/ledgertest
 
 Status: shipped. Relocates `durablefence` into `ledger/ledgertest`.
-See `docs/plans/durablefence.md`, marked superseded, for the original
+See `docs/history/durablefence.md`, marked superseded, for the original
 design history.
 
 ## Goal

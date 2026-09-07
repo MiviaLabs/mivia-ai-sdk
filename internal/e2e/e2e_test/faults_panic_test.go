@@ -38,7 +38,7 @@ func (panicCompleter) ChatStream(ctx context.Context, req provider.Request) (<-c
 // a crash. The registered-tool seam changed with the run timeout
 // backstop; see docs/packages/tools.md's "Run timeout backstop"
 // section. The stream half below still pins the unregistered path,
-// where a direct call panics its own caller. See docs/plans/e2e.md's
+// where a direct call panics its own caller. See docs/history/e2e.md's
 // "Disclosed limits" section for the goroutine-wave case this
 // scenario deliberately does not cover.
 func TestFaultCompleterPanicFailsClosed(t *testing.T) {

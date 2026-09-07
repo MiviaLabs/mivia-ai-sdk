@@ -24,7 +24,7 @@ or a bound trips. The exported surface below mirrors
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Bounds` — the loop's numeric caps group: `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
-  `MaxConsecutiveToolFailures`, `TurnResultBudget`. Zero follows each
+  `MaxConsecutiveToolFailures`. Zero follows each
   member's own rule.
 - `Conclude` — the graceful-conclude group: `Margin`, `Deadline`,
   `Notice`. See "Graceful conclude" below.
@@ -183,8 +183,6 @@ Use `errors.Is` to test these.
 - `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
   negative") — `Options.Validate` returns it for a negative
   `Conclude.Margin`.
-- `ErrTurnResultBudget` — `Options.Validate` returns it for a negative
-  `Bounds.TurnResultBudget`.
 - `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
   non-nil Bus") — `Options.Validate` returns it when
   `HeartbeatInterval` is positive and `Bus` is nil.
@@ -475,30 +473,6 @@ own length keeps zero content bytes and returns the marker alone. A
 bound shorter than the marker hard-cuts the content to `bound` bytes
 with no marker, since the marker itself would not fit.
 
-## Turn result budget
-
-A positive `Options.Bounds.TurnResultBudget` caps the summed byte size of one
-turn's rendered tool results, across every call in that turn. It
-shapes each call's content after that call's own `tools.ResultBudgetOf`
-bound already applied, not instead of it.
-
-`runToolCalls` runs calls in `ToolCall.Index` order and tracks a
-running byte total for the turn, reset to zero at the start of each
-turn. A call's content stays whole only when the running total plus
-its byte length does not exceed `Bounds.TurnResultBudget`; otherwise the
-content is replaced with `BatchTruncationNotice`
-("[batch-truncated] Turn tool-result budget exhausted; this result
-was omitted."), and the running total does not grow for that call. A
-zero `Bounds.TurnResultBudget` skips the check entirely and every call's
-content passes through whole.
-
-Shaping applies to every appended `RoleTool` message's content,
-including an `ErrorPolicyReport` error report marked with
-`ToolErrorPrefix`. `AuditRecord.Err` always carries the call's true
-outcome, independent of whether `ToolResult.Content` was replaced by
-shaping. A `PointPreTool` veto stops the turn before shaping considers
-any later call, unchanged from a run with `Bounds.TurnResultBudget` at zero.
-
 ## Concurrent tool dispatch
 
 A positive `Options.Bounds.MaxConcurrentTools` fans one turn's tool calls out
@@ -534,8 +508,7 @@ path exactly.
   arguments is a tool-run error and goes through the same
   `OnToolError` policy as a failed `Run`.
 - A zero `Bounds.MaxCallsPerTurn` means unbounded. A zero
-  `Bounds.MaxTotalTokens` means unbounded. A zero `Bounds.TurnResultBudget`
-  means unbounded.
+  `Bounds.MaxTotalTokens` means unbounded.
 - A nil `Options.Trim` passes history through unchanged and skips
   `provider.Message.Validate` on it.
 

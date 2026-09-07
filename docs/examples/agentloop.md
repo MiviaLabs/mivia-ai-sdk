@@ -222,7 +222,6 @@ func main() {
 			MaxTotalTokens:             100000,
 			MaxConcurrentTools:         2,
 			MaxConsecutiveToolFailures: 2,
-			TurnResultBudget:           4096,
 		},
 		Conclude:   agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
 		Window:     &contextplan.Window{MaxTokens: 512, Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50}},

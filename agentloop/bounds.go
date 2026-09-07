@@ -17,24 +17,17 @@ type Bounds struct {
 	// MaxConsecutiveToolFailures bounds consecutive all-failing turns.
 	// Zero means unbounded.
 	MaxConsecutiveToolFailures int
-	// TurnResultBudget caps one turn's summed tool-result bytes. Zero
-	// means uncapped.
-	TurnResultBudget int
 }
 
 // Validate checks the caps in a fixed order and returns the first
-// failure: MaxIterations, MaxTotalTokens, TurnResultBudget,
-// MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
-// negative.
+// failure: MaxIterations, MaxTotalTokens, MaxConcurrentTools, then
+// MaxConsecutiveToolFailures, each not negative.
 func (b Bounds) Validate() error {
 	if b.MaxIterations < 0 {
 		return ErrMaxIterations
 	}
 	if b.MaxTotalTokens < 0 {
 		return ErrMaxTotalTokens
-	}
-	if b.TurnResultBudget < 0 {
-		return ErrTurnResultBudget
 	}
 	if b.MaxConcurrentTools < 0 {
 		return ErrMaxConcurrentTools

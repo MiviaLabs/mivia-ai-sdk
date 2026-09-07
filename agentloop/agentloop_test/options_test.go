@@ -185,18 +185,6 @@ func TestConcludeValidate(t *testing.T) {
 
 func testOptionsValidateBudgetsAndLimits(t *testing.T) {
 	cases := []validateCase{
-		{"negative TurnResultBudget fails", func(o agentloop.Options) agentloop.Options {
-			o.Bounds = agentloop.Bounds{TurnResultBudget: -1}
-			return o
-		}, agentloop.ErrTurnResultBudget, false},
-		{"zero TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
-			o.Bounds = agentloop.Bounds{TurnResultBudget: 0}
-			return o
-		}, nil, true},
-		{"positive TurnResultBudget passes", func(o agentloop.Options) agentloop.Options {
-			o.Bounds = agentloop.Bounds{TurnResultBudget: 10}
-			return o
-		}, nil, true},
 		{"negative MaxConcurrentTools fails", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxConcurrentTools: -1}
 			return o

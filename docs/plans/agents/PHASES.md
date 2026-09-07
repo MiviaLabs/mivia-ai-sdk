@@ -530,15 +530,13 @@ with the new `StopSteered` reason, instead of the hard-fail path a
 docs/plans/agentloop.md's "Addendum: steering and interruption"
 section.
 
-Phase 80 (`agentloop` per-batch tool-result size shaping) has shipped.
-It adds `Options.TurnResultBudget`, capping the summed byte size of
-one turn's rendered tool results, across every call in that turn,
-after each call's own `tools.ResultBudgetOf` bound already applied. A
-positive `TurnResultBudget` replaces an over-budget call's content
-with the new `BatchTruncationNotice` constant, in `ToolCall.Index`
-order; a zero `TurnResultBudget` stays uncapped. `Options.Validate`
-rejects a negative `TurnResultBudget` as `ErrTurnResultBudget`. It
-adds no new package and no new `policy/layers.json` edge. Its
+Phase 80 (`agentloop` per-batch tool-result size shaping) shipped,
+then was removed. It added `Options.TurnResultBudget`, capping the
+summed byte size of one turn's rendered tool results. The only
+intended consumer, mivia-agent's CLI adapter, rejected the
+omit-over-budget semantics and ships its own degrade-with-notice
+shaping wrapper. The field, the `BatchTruncationNotice` constant, and
+the `ErrTurnResultBudget` sentinel are gone. Its
 contract folded into docs/plans/agentloop.md's "Addendum: per-batch
 tool-result size shaping" section; no standalone phase 80 plan file
 remains.

@@ -44,20 +44,8 @@ type dedupKey struct {
 // or ErrorPolicyReport-driven error, records its pair in the set once
 // its RoleTool message reaches history, so a later identical retry in
 // the same turn is deduped either way. A deduped call's
-// DuplicateCallNotice content never counts toward the turn's byte
-// total below, since it never reaches runOneToolCall or the shaping
-// step.
-//
-// When l.bounds.TurnResultBudget is positive, runToolCalls shapes each call's
-// already-rendered msg.Content against a running byte total for this
-// turn, after runOneToolCall's own per-call tools.ResultBudgetOf bound
-// already applied. A call's content stays whole only when the running
-// total plus its byte length does not exceed l.bounds.TurnResultBudget;
-// otherwise the content is replaced with BatchTruncationNotice and the
-// running total does not grow for it. AuditRecord.Err always reports
-// the true per-call outcome, independent of this shaping. The running
-// total resets to zero once per runToolCalls call, at the start of
-// this turn's batch. l.bounds.TurnResultBudget zero skips the check entirely.
+// DuplicateCallNotice content never reaches runOneToolCall or the
+// shaping step.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })
@@ -202,14 +190,12 @@ func (l *Loop) oneCallOutcome(ctx context.Context, call provider.ToolCall, itera
 // collectCalls walks the plans in Index order, appending each call's
 // message to history: a duplicate plan appends its pre-computed
 // DuplicateCallNotice; every other plan appends its dispatched
-// outcome, shaped against the turn's running byte budget. History
-// order, audit order, and the veto short-circuit therefore match the
-// serial path regardless of dispatch overlap. A veto or hard error
-// short-circuits at its own index; later calls the worker pool
-// already ran are appended and audited first, so an executed side
-// effect stays traceable.
+// outcome. History order, audit order, and the veto short-circuit
+// therefore match the serial path regardless of dispatch overlap. A
+// veto or hard error short-circuits at its own index; later calls the
+// worker pool already ran are appended and audited first, so an
+// executed side effect stays traceable.
 func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, plans []callPlan, outcomes []callOutcome, iteration int) ([]provider.Message, bool, bool, error) {
-	runningTotal := 0
 	dispatched := 0
 	failed := 0
 	for i, p := range plans {
@@ -240,13 +226,6 @@ func (l *Loop) collectCalls(ctx context.Context, history []provider.Message, pla
 			failed++
 		}
 		msg := out.msg
-		if l.bounds.TurnResultBudget > 0 {
-			if runningTotal+len(msg.Content) <= l.bounds.TurnResultBudget {
-				runningTotal += len(msg.Content)
-			} else {
-				msg.Content = BatchTruncationNotice
-			}
-		}
 		history = append(history, msg)
 		if err := l.auditToolCall(ctx, iteration, p.call, msg, out.reported); err != nil {
 			return history, false, false, err

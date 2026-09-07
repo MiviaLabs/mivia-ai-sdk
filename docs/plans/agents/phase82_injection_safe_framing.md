@@ -53,8 +53,8 @@ Outside, flagged:
   phase 81 ships. Migrating an already-shipped marker to a new framing
   scheme is a separate decision for phase 81's own follow-up, not a
   side effect of this phase.
-- Framing phase 79's `ConcludeNotice` or phase 80's
-  `BatchTruncationNotice`. Both are caller-authored, through `Options`,
+- Framing phase 79's `ConcludeNotice` or phase 80's (since removed)
+  batch-truncation notice. Both are caller-authored, through `Options`,
   not derived from untrusted tool or model text, so neither carries a
   forgery risk and neither needs this phase's framing.
 

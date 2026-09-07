@@ -2181,12 +2181,12 @@ for the full field list, the failure mode, and the gating rule.
 
 ## Addendum: per-batch tool-result size shaping
 
-Status: shipped. This addendum was phase 80
-(`docs/plans/agents/PHASES.md`); no standalone phase 80 plan file
-remains. It adds `Options.TurnResultBudget` and shapes each turn's
-tool results as a set, after each call's own per-call bound already
-applied. It changes `options.go`, `wire.go`, and `toolcall.go`. It
-adds no new package and no new `policy/layers.json` edge.
+Status: superseded. Shipped as phase 80
+(`docs/plans/agents/PHASES.md`), then removed: the only intended
+consumer, mivia-agent's CLI adapter, rejected the omit-over-budget
+semantics and ships its own degrade-with-notice shaping wrapper. The
+field, the notice constant, and the sentinel are gone. See
+`docs/packages/agentloop.md` for the current `Bounds` surface.
 
 ### Addendum goal
 

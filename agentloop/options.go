@@ -107,9 +107,6 @@ var (
 	// ErrMaxConsecutiveToolFailures is Validate's error when
 	// MaxConsecutiveToolFailures is negative. Test with errors.Is.
 	ErrMaxConsecutiveToolFailures = errors.New("agentloop: MaxConsecutiveToolFailures must not be negative")
-	// ErrTurnResultBudget is Validate's error when TurnResultBudget is
-	// negative. Test with errors.Is.
-	ErrTurnResultBudget = errors.New("agentloop: TurnResultBudget must not be negative")
 	// ErrHeartbeatRequiresBus is Options.Validate's error when
 	// HeartbeatInterval is positive and Bus is nil: a heartbeat with
 	// nowhere to emit is a caller mistake, not a silent no-op. Test

@@ -43,7 +43,7 @@ const (
 )
 
 // StopDecision is the evidence the loop had when it decided to stop.
-// Consulted only on a graceful stop; see Options.ContinueOnStop.
+// Consulted only on a graceful stop; see Extensions.ContinueOnStop.
 type StopDecision struct {
 	// Stop is the graceful reason the loop picked.
 	Stop StopReason

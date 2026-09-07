@@ -281,8 +281,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 
 	opts := agentloop.Options{
 		Completer: completer,
-		Tools:     reg,
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+		Tools:     reg, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			if tc, ok := toolcallctx.ToolCallFromContext(ctx); ok {
 				errHookCall = tc
 				errHookFound = true
@@ -293,7 +292,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 				Name:       call.Name,
 				Content:    fmt.Sprintf("recovered: %v", cerr),
 			}, nil
-		},
+		}},
 		Bounds: agentloop.Bounds{MaxIterations: 5},
 	}
 

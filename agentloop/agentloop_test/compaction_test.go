@@ -90,12 +90,9 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -142,28 +139,28 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 	}{
 		{
 			name:    "window without summarizer",
-			mutate:  func(o *agentloop.Options) { o.Window = validWindow; o.Calibrated = cal },
+			mutate:  func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Calibrated = cal },
 			wantErr: agentloop.ErrSummarizerRequired,
 		},
 		{
 			name:    "window without calibrated",
-			mutate:  func(o *agentloop.Options) { o.Window = validWindow; o.Summarizer = sum },
+			mutate:  func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Summarizer = sum },
 			wantErr: agentloop.ErrEstimatorRequired,
 		},
 		{
 			name: "window with both and no trim passes",
 			mutate: func(o *agentloop.Options) {
-				o.Window = validWindow
-				o.Summarizer = sum
-				o.Calibrated = cal
+				o.Compaction.Window = validWindow
+				o.Compaction.Summarizer = sum
+				o.Compaction.Calibrated = cal
 			},
 		},
 		{
 			name: "window and trim together fail",
 			mutate: func(o *agentloop.Options) {
-				o.Window = validWindow
-				o.Summarizer = sum
-				o.Calibrated = cal
+				o.Compaction.Window = validWindow
+				o.Compaction.Summarizer = sum
+				o.Compaction.Calibrated = cal
 				o.Trim = func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) { return msgs, nil }
 			},
 			wantErr: agentloop.ErrTrimExcluded,
@@ -171,9 +168,9 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 		{
 			name: "invalid window fails wrapping contextplan",
 			mutate: func(o *agentloop.Options) {
-				o.Window = &contextplan.Window{MaxTokens: 0}
-				o.Summarizer = sum
-				o.Calibrated = cal
+				o.Compaction.Window = &contextplan.Window{MaxTokens: 0}
+				o.Compaction.Summarizer = sum
+				o.Compaction.Calibrated = cal
 			},
 			wantErr: contextplan.ErrMaxTokensNotPositive,
 		},
@@ -374,13 +371,10 @@ func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &contextbudget.Limits{MaxBytes: 200},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 3},
+		Budget:    &contextbudget.Limits{MaxBytes: 200}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -427,13 +421,10 @@ func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
 	}
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &contextbudget.Limits{MaxBytes: 50},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 3},
+		Budget:    &contextbudget.Limits{MaxBytes: 50}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

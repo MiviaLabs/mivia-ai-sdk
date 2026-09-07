@@ -1,15 +1,17 @@
 package agentloop
 
 // Bounds groups the loop's numeric caps. Zero means uncapped or
-// serial, per the member's own doc comment.
+// serial, per the member's own doc comment. The fully zero struct
+// receives DefaultBounds at New; a partially set Bounds stays as
+// given, so each zero member keeps its uncapped meaning.
 type Bounds struct {
 	// MaxIterations bounds the Completer-call count of one Run.
 	MaxIterations int
 	// MaxCallsPerTurn bounds one turn's model-requested tool calls.
-	// Zero means unbounded.
+	// Zero inside a partial Bounds means unbounded.
 	MaxCallsPerTurn int
 	// MaxTotalTokens caps the run's cumulative billed tokens. Zero
-	// means unbounded.
+	// inside a partial Bounds means unbounded.
 	MaxTotalTokens int
 	// MaxConcurrentTools bounds one turn's parallel tool calls. Zero
 	// and one both mean serial.
@@ -18,7 +20,8 @@ type Bounds struct {
 	// A turn counts as failing when every dispatched (non-duplicate)
 	// call in it carries a reported tool error under
 	// ErrorPolicyReport — any reported error, not only
-	// tools.ErrUnknownName. Zero means unbounded.
+	// tools.ErrUnknownName. Zero inside a partial Bounds means
+	// unbounded.
 	MaxConsecutiveToolFailures int
 }
 

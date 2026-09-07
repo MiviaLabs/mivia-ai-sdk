@@ -121,26 +121,12 @@ func (upperTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	return tools.Out{Value: strings.ToUpper(s)}, nil
 }
 
-// shoutTool implements tools.Tool only, with no parameter schema. It
-// shows the plain-tool path beside the schema tool: registered and
-// allowed, but skipped by Definitions, so the model is never offered
-// it.
-type shoutTool struct{}
-
-// Name returns the tool's registry name.
-func (shoutTool) Name() string { return "shout" }
-
-// Run returns the input string uppercased with an exclamation mark.
-func (shoutTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	s, _ := in.Value.(string)
-	return tools.Out{Value: strings.ToUpper(s) + "!"}, nil
-}
-
-// buildRegistry registers both tools under one registry.
+// buildRegistry registers the upper tool under one registry. Every
+// registered tool must publish a parameter schema: agentloop.Definitions
+// fails New with ErrNoSchema naming any schema-free tool.
 func buildRegistry() *tools.Registry {
 	reg := tools.New()
 	_ = reg.Add(upperTool{})
-	_ = reg.Add(shoutTool{})
 	return reg
 }
 
@@ -175,21 +161,18 @@ func main() {
 	}
 
 	// One Options literal wires every group: the completer and
-	// registry, the scope, the Bounds and Conclude groups, the event
-	// bus with its heartbeat and dedup switches, the history budget,
-	// the start-time anchor, the context window with its summarizer
-	// and calibrated estimator, tracing, hooks, usage, both host
-	// budgets, and audit. New validates the whole literal before it
-	// builds anything.
+	// registry, the scope, the Bounds group, the event bus with its
+	// heartbeat, the history budget, the Compaction planning triple,
+	// tracing, hooks, usage, and audit. The host-integration knobs
+	// ride one Extensions pointer. New validates the whole literal
+	// before it builds anything.
 	loop, err := agentloop.New(agentloop.Options{
 		Bus:               events.New(),
 		HeartbeatInterval: time.Hour,
-		DedupWithinTurn:   true,
-		StartTime:         time.Now(),
 		Budget:            &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		Completer:         canned,
 		Tools:             buildRegistry(),
-		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
+		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper"}}),
 		Bounds: agentloop.Bounds{
 			MaxIterations:              4,
 			MaxCallsPerTurn:            4,
@@ -197,22 +180,32 @@ func main() {
 			MaxConcurrentTools:         2,
 			MaxConsecutiveToolFailures: 2,
 		},
-		Conclude:   agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		Window:     &contextplan.Window{MaxTokens: 512, Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(cannedEstimator{}, 0.25),
-		Tracer:     trace.New(),
-		Hooks:      buildHooks(),
-		Usage:      usage.New(),
-		SessionID:  "agentloop-example",
-		WorkBudget: &agentloop.WorkBudget{
-			Reserve: func(ctx context.Context, req provider.Request) error { return nil },
-			Refund:  func(ctx context.Context, req provider.Request, used provider.Usage) {},
+		Compaction: agentloop.Compaction{
+			Window:     &contextplan.Window{MaxTokens: 512, Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
+			Summarizer: summarizer,
+			Calibrated: contextplan.Calibrate(cannedEstimator{}, 0.25),
 		},
-		ToolBudget: &agentloop.ToolBudget{
-			Reserve: func(ctx context.Context, calls int) error { return nil },
+		Tracer:    trace.New(),
+		Hooks:     buildHooks(),
+		Usage:     usage.New(),
+		SessionID: "agentloop-example",
+		Audit:     auditPrinter,
+		Extensions: &agentloop.Extensions{
+			DedupWithinTurn: true,
+			StartTime:       time.Now(),
+			Conclude: agentloop.Conclude{
+				Margin:   1,
+				Deadline: time.Minute,
+				Notice:   "Wrap up with your best answer now.",
+			},
+			WorkBudget: &agentloop.WorkBudget{
+				Reserve: func(ctx context.Context, req provider.Request) error { return nil },
+				Refund:  func(ctx context.Context, req provider.Request, used provider.Usage) {},
+			},
+			ToolBudget: &agentloop.ToolBudget{
+				Reserve: func(ctx context.Context, calls int) error { return nil },
+			},
 		},
-		Audit: auditPrinter,
 	})
 	if err != nil {
 		fmt.Println("agentloop.New:", err)

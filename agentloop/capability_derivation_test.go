@@ -93,12 +93,10 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 		t.Fatalf("summarizer: %v", err)
 	}
 	opts := Options{
-		Completer:  completer,
-		Tools:      reg,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(completer, 0.25),
-		SessionID:  "cap",
-		Bounds:     Bounds{MaxIterations: 2},
+		Completer: completer,
+		Tools:     reg, Compaction: Compaction{Summarizer: summarizer, Calibrated: contextplan.Calibrate(completer, 0.25)},
+		SessionID: "cap",
+		Bounds:    Bounds{MaxIterations: 2},
 	}
 	loop, err := New(opts)
 	if err != nil {
@@ -125,11 +123,9 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	// would otherwise reach ErrTrimExcluded's forbidden combination
 	// without ever going through Validate.
 	trimmed := Options{
-		Completer:  completer,
-		Tools:      reg,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(completer, 0.25),
-		SessionID:  "cap",
+		Completer: completer,
+		Tools:     reg, Compaction: Compaction{Summarizer: summarizer, Calibrated: contextplan.Calibrate(completer, 0.25)},
+		SessionID: "cap",
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return msgs, nil
 		},
@@ -140,6 +136,36 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	}
 	if trimmedLoop.window != nil {
 		t.Fatal("window derived with Trim set; Validate would reject Window and Trim together")
+	}
+}
+
+// TestEnableCompactionZeroWindowAdoptsDerivedWindow pins the
+// EnableCompaction-plus-derivation compose: a zero window leaves
+// Compaction.Window nil, and New derives the window from the
+// Completer's ContextAccountant — 10000 tokens, 2000 reserve, 6400
+// trigger.
+func TestEnableCompactionZeroWindowAdoptsDerivedWindow(t *testing.T) {
+	completer := &capabilityCompleter{window: 10000}
+	reg := tools.New()
+	if err := reg.Add(&capabilityTool{}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	opts := Options{Completer: completer, Tools: reg, SessionID: "cap", Bounds: Bounds{MaxIterations: 2}}
+	if err := EnableCompaction(&opts, completer, contextplan.Window{}, 0.25); err != nil {
+		t.Fatalf("EnableCompaction: %v", err)
+	}
+	if opts.Compaction.Window != nil {
+		t.Fatalf("Compaction.Window = %+v, want nil before New", opts.Compaction.Window)
+	}
+	loop, err := New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if loop.window == nil || loop.window.MaxTokens != 10000 || loop.window.Reserve != 2000 {
+		t.Fatalf("window = %+v, want MaxTokens 10000 Reserve 2000", loop.window)
+	}
+	if loop.window.CompactTrigger() != 6400 {
+		t.Fatalf("trigger = %d, want 6400", loop.window.CompactTrigger())
 	}
 }
 

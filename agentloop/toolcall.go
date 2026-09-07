@@ -76,7 +76,7 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 }
 
 // callPlan is one call's pre-dispatch decision: the call itself and,
-// when DedupWithinTurn already served an identical (name,
+// when Extensions.DedupWithinTurn already served an identical (name,
 // canonical-argument) pair earlier in this turn, the pre-computed
 // DuplicateCallNotice message. duplicate calls never dispatch.
 type callPlan struct {
@@ -366,7 +366,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 }
 
 // toolErrorReportMessage builds the RoleTool message for a reported
-// tool-run error, consulting Options.OnToolCallError between the
+// tool-run error, consulting Extensions.OnToolCallError between the
 // policy's report-to-model branch and the default body construction.
 // A hook's non-zero Message replaces the default body; a hook error
 // fails the call with no append; the zero Message and nil fall

@@ -259,10 +259,12 @@ Status: shipped. `tools.SchemaTool` landed in commit 16a7478.
 `docs/plans/agentloop.md`.
 
 `SpoolTool` strips a capability silently when its combinatorial
-switch misses an optional interface. A schema-less wrapper tool is
-skipped by `agentloop.Definitions`, so the model never sees the tool.
-That failure is silent unless `Definitions` fails closed, which the
-`agentloop` plan now requires.
+switch misses an optional interface. `tools.SchemaOf` fails closed:
+a schema-less inner reports nil and false, and the wrapper forwards
+that result. `agentloop.New` then fails with `agentloop.ErrNoSchema`,
+naming the wrapper. Wrap schema-bearing inners for model-facing
+registries. See the Options and Extensions split addendum in
+`docs/plans/agentloop.md`.
 
 `spool` adopted `tools.SchemaTool` in the same change:
 

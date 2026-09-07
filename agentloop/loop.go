@@ -71,30 +71,32 @@ type Loop struct {
 	defaultEffort provider.ReasoningEffort
 	conclude      Conclude
 	// deadlineAt is StartTime.Add(Conclude.Deadline), computed once
-	// in New from opts.StartTime and opts.Conclude.Deadline. Zero
-	// when opts.Conclude.Deadline is zero, which makes the deadline
+	// in New from the Extensions' StartTime and Conclude.Deadline.
+	// Zero when Conclude.Deadline is zero, which makes the deadline
 	// term in shouldConclude a no-op. Stored as a wall-clock instant
 	// rather than re-derived on every shouldConclude call so the
 	// comparison source is stable across the run.
 	deadlineAt      time.Time
 	dedupWithinTurn bool
 	heartbeat       time.Duration
-	// streamSink is the caller's Options.StreamingWriter, nil when
-	// unset. Immutable after New, so concurrent runs share it safely.
-	// Each run's capture buffer is a local, threaded through run,
-	// runIteration, and runChat; see agentloop/streaming.go.
+	// streamSink is the caller's Options.Extensions.StreamingWriter,
+	// nil when unset. Immutable after New, so concurrent runs share
+	// it safely. Each run's capture buffer is a local, threaded
+	// through run, runIteration, and runChat; see
+	// agentloop/streaming.go.
 	streamSink io.Writer
-	// workBudget is the caller's Options.WorkBudget, nil when unset.
-	// Immutable after New; see agentloop/budget.go for the call
-	// contract the loop honors around each Completer call.
+	// workBudget is the caller's Options.Extensions.WorkBudget, nil
+	// when unset. Immutable after New; see agentloop/budget.go for
+	// the call contract the loop honors around each Completer call.
 	workBudget *WorkBudget
-	// toolBudget is the caller's Options.ToolBudget, nil when unset.
-	// Immutable after New; see agentloop/budget.go for the call
-	// contract the loop honors before each turn's tool calls dispatch.
+	// toolBudget is the caller's Options.Extensions.ToolBudget, nil
+	// when unset. Immutable after New; see agentloop/budget.go for
+	// the call contract the loop honors before each turn's tool calls
+	// dispatch.
 	toolBudget *ToolBudget
-	// continueOnStop is the caller's Options.ContinueOnStop, nil when
-	// unset. Immutable after New; consulted only from gracefulStop, at
-	// the three graceful stops in runToolStage.
+	// continueOnStop is the caller's Options.Extensions.ContinueOnStop,
+	// nil when unset. Immutable after New; consulted only from
+	// gracefulStop, at the three graceful stops in runToolStage.
 	continueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 }
 
@@ -107,34 +109,53 @@ type Loop struct {
 // Scope-offered set defs already carries, so a malformed schema on a
 // tool outside opts.Scope, or outside opts.Tools entirely, never fails
 // this Loop's New call.
+//
+// New runs a fixed pipeline: validate, offer (Definitions), compile
+// (compileSchemas), default (the fully zero Bounds receives
+// DefaultBounds), adopt (capability derivation), transform (Conclude),
+// build. A nil opts.Extensions behaves as the zero Extensions.
 func New(opts Options) (*Loop, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
+	}
+	// The Extensions local stands in for the nil pointer once, after
+	// Validate; every Loop field the group feeds reads through it.
+	ext := opts.Extensions
+	if ext == nil {
+		ext = &Extensions{}
 	}
 	defs, err := Definitions(opts.Tools, opts.Scope)
 	if err != nil {
 		return nil, err
 	}
-	// Adoption rows: a completer that implements ContextAccountant
-	// and ReasoningPolicy hands the loop its window size and default
-	// reasoning effort without per-request wiring. The derived window
-	// only applies when the summarizer and estimator are already
-	// wired, because Validate requires all three together; see
-	// EnableCompaction, which wires the missing pair in one call.
-	window := opts.Window
-	if window == nil && opts.Trim == nil && opts.Summarizer != nil && opts.Calibrated != nil {
-		window = deriveWindow(opts.Completer)
-	}
-	defaultEffort := deriveReasoningEffort(opts.Completer)
 	schemas, err := compileSchemas(defs)
 	if err != nil {
 		return nil, err
 	}
+	// Bounds defaulting on a copy: only the fully zero struct
+	// receives DefaultBounds, then a zero MaxIterations maps to
+	// math.MaxInt32. A partial Bounds keeps each zero member's own
+	// meaning; see unboundedOrSet below.
 	bounds := opts.Bounds
-	conclude := opts.Conclude
-	// Two transforms on the copies: zero MaxIterations becomes
-	// math.MaxInt32, and an empty Notice becomes DefaultConcludeNotice.
+	if bounds == (Bounds{}) {
+		bounds = DefaultBounds()
+	}
 	bounds.MaxIterations = unboundedOrSet(bounds.MaxIterations)
+	// Adoption rows: a completer that implements ContextAccountant
+	// and ReasoningPolicy hands the loop its window size and default
+	// reasoning effort without per-request wiring. Derivation reads
+	// only Options fields. The derived window only applies when the
+	// summarizer and estimator are already wired, because Validate
+	// requires all three together; see EnableCompaction, which wires
+	// the missing pair in one call.
+	window := opts.Compaction.Window
+	if window == nil && opts.Trim == nil && opts.Compaction.Summarizer != nil && opts.Compaction.Calibrated != nil {
+		window = deriveWindow(opts.Completer)
+	}
+	defaultEffort := deriveReasoningEffort(opts.Completer)
+	conclude := ext.Conclude
+	// Two transforms: an empty Notice becomes DefaultConcludeNotice,
+	// and StartTime anchors the wall-clock deadline instant.
 	conclude.Notice = resolveConcludeNotice(conclude.Notice)
 	return &Loop{
 		completer:       opts.Completer,
@@ -143,7 +164,7 @@ func New(opts Options) (*Loop, error) {
 		model:           opts.Model,
 		bounds:          bounds,
 		onToolError:     opts.OnToolError,
-		onToolCallError: opts.OnToolCallError,
+		onToolCallError: ext.OnToolCallError,
 		hooksReg:        opts.Hooks,
 		tracer:          opts.Tracer,
 		usageAcc:        opts.Usage,
@@ -151,22 +172,22 @@ func New(opts Options) (*Loop, error) {
 		bus:             opts.Bus,
 		budget:          opts.Budget,
 		trim:            opts.Trim,
-		surfaceFn:       opts.Surface,
+		surfaceFn:       ext.Surface,
 		defs:            defs,
 		schemas:         schemas,
 		audit:           opts.Audit,
 		window:          window,
 		defaultEffort:   defaultEffort,
-		summarizer:      opts.Summarizer,
-		calibrated:      opts.Calibrated,
+		summarizer:      opts.Compaction.Summarizer,
+		calibrated:      opts.Compaction.Calibrated,
 		conclude:        conclude,
-		deadlineAt:      computeDeadlineAt(opts.StartTime, opts.Conclude.Deadline),
-		dedupWithinTurn: opts.DedupWithinTurn,
+		deadlineAt:      computeDeadlineAt(ext.StartTime, ext.Conclude.Deadline),
+		dedupWithinTurn: ext.DedupWithinTurn,
 		heartbeat:       opts.HeartbeatInterval,
-		streamSink:      opts.StreamingWriter,
-		workBudget:      opts.WorkBudget,
-		toolBudget:      opts.ToolBudget,
-		continueOnStop:  opts.ContinueOnStop,
+		streamSink:      ext.StreamingWriter,
+		workBudget:      ext.WorkBudget,
+		toolBudget:      ext.ToolBudget,
+		continueOnStop:  ext.ContinueOnStop,
 	}, nil
 }
 
@@ -212,10 +233,12 @@ func compileSchemas(defs []provider.ToolDefinition) (map[string]*schema.Compiled
 	return schemas, nil
 }
 
-// unboundedOrSet maps the legacy MaxSteps <= 0 == unbounded contract
-// onto the SDK's bounds.MaxIterations cap. Zero becomes math.MaxInt32:
-// the existing run loop's `iterations >= l.bounds.MaxIterations` check
-// at run.go then never trips within a realistic run. Negative
+// unboundedOrSet maps a zero MaxIterations to math.MaxInt32: the run
+// loop's `iterations >= l.bounds.MaxIterations` check at run.go then
+// never trips within a realistic run. It runs after New's zero-Bounds
+// defaulting, so a zero here comes from a partial Bounds that left
+// the member at zero, still unbounded. A caller wanting an unbounded
+// MaxIterations can also set math.MaxInt32 explicitly. Negative
 // values are rejected at Validate time, so this helper never sees
 // one.
 func unboundedOrSet(n int) int {

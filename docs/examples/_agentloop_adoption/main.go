@@ -2,8 +2,9 @@
 // control: it sets every agentloop Options row an external consumer
 // is expected to adopt, one commented line per row of the adoption
 // table (Usage, Budget, MaxTotalTokens, MaxConsecutiveToolFailures,
-// Tracer, DedupWithinTurn, Audit, Conclude, HeartbeatInterval + Bus,
-// and the Window/Summarizer/Calibrated compaction triple). A canned
+// Tracer, Audit, HeartbeatInterval + Bus, the Window/Summarizer/
+// Calibrated compaction triple, and the Extensions group: DedupWithinTurn,
+// Conclude, and StartTime). A canned
 // provider.Completer stands in for a model, so the run is offline and
 // deterministic. verify-fast runs it and asserts its final output.
 package main
@@ -118,33 +119,36 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		},
 		// Row: Tracer. Spans for the host's session sink.
 		Tracer: trace.New(),
-		// Row: DedupWithinTurn. The SDK dedups identical calls per turn.
-		DedupWithinTurn: true,
 		// Row: Audit. One structured record per tool call.
 		Audit: func(ctx context.Context, rec agentloop.AuditRecord) error {
 			return nil
 		},
-		// Row: Conclude. The graceful wrap-up budget.
-		Conclude:  agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		StartTime: time.Now(),
 		// Row: HeartbeatInterval + Bus. The host subscribes to this bus.
 		Bus:               bus,
 		HeartbeatInterval: time.Hour,
+		// Row: Extensions. The host-mirror knobs: DedupWithinTurn and
+		// the Conclude group with its StartTime anchor.
+		Extensions: &agentloop.Extensions{
+			DedupWithinTurn: true,
+			StartTime:       time.Now(),
+			Conclude:        agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
+		},
 	}
-	// Row: Window + Summarizer + Calibrated. The compaction triple;
-	// the completer must implement provider.TokenEstimator.
+	// Row: Compaction (Window + Summarizer + Calibrated). The
+	// planning triple; the completer must implement
+	// provider.TokenEstimator.
 	window := contextplan.Window{
 		MaxTokens:  2048,
 		Reserve:    512,
 		Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}
-	opts.Window = &window
+	opts.Compaction.Window = &window
 	summarizer, err := contextsummary.NewSummarizer(completer)
 	if err != nil {
 		return opts, err
 	}
-	opts.Summarizer = summarizer
-	opts.Calibrated = contextplan.Calibrate(completer, 0.25)
+	opts.Compaction.Summarizer = summarizer
+	opts.Compaction.Calibrated = contextplan.Calibrate(completer, 0.25)
 	return opts, nil
 }
 

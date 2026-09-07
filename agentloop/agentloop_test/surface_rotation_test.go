@@ -78,11 +78,10 @@ func TestSurfaceHookRotatesAdvertisedSetFromSecondIteration(t *testing.T) {
 		Completer: comp,
 		Tools:     reg,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			// From step 2 on, offer ONLY alpha.
 			return &sdkagentloop.Surface{Advertised: []provider.ToolDefinition{alphaDef}}
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,10 +121,9 @@ func TestSurfaceHookNilReturnKeepsPrior(t *testing.T) {
 		Completer: comp,
 		Tools:     reg,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			return nil
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -151,10 +149,9 @@ func TestSurfaceHookPanicFailsRunClosed(t *testing.T) {
 		Completer: comp,
 		Tools:     reg,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			panic("hook exploded")
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -179,10 +176,9 @@ func TestSurfaceConcurrentRunDoesNotRace(t *testing.T) {
 		Completer: &surfaceRotationCompleter{},
 		Tools:     reg,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{Advertised: []provider.ToolDefinition{alphaDef}}
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -231,8 +227,7 @@ func TestSurfaceHookScopeOverrideAndRetain(t *testing.T) {
 		Tools:     reg,
 		Scope:     initScope,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			step++
 			if step == 1 {
 				// Step 1 of Surface hook (iteration 2): deny alpha via new scope.
@@ -246,7 +241,7 @@ func TestSurfaceHookScopeOverrideAndRetain(t *testing.T) {
 				Advertised: []provider.ToolDefinition{alphaDef, betaDef},
 				Scope:      nil,
 			}
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -302,13 +297,12 @@ func TestSurfaceHookRegistryOverrideAndRetain(t *testing.T) {
 		Completer: completer,
 		Tools:     reg1,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{
 				Advertised: []provider.ToolDefinition{alphaDef},
 				Registry:   reg2,
 			}
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -345,14 +339,13 @@ func TestSurfaceHookInvalidSchemaFailsRun(t *testing.T) {
 		Completer: comp,
 		Tools:     reg,
 		Model:     "m",
-		Bounds:    sdkagentloop.Bounds{MaxIterations: 4},
-		Surface: func() *sdkagentloop.Surface {
+		Bounds:    sdkagentloop.Bounds{MaxIterations: 4}, Extensions: &sdkagentloop.Extensions{Surface: func() *sdkagentloop.Surface {
 			return &sdkagentloop.Surface{
 				Advertised: []provider.ToolDefinition{
 					{Name: "bad", Schema: []byte("not-valid-json")},
 				},
 			}
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

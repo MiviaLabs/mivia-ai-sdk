@@ -1,7 +1,7 @@
 package agentloop_test
 
 // ToolBudget hook tests: reserve-before-dispatch with the full raw
-// tool-call count, no hook calls when Options.ToolBudget is nil, and
+// tool-call count, no hook calls when Options.Extensions.ToolBudget is nil, and
 // hard-fail before any tool runs when Reserve errors.
 
 import (
@@ -53,7 +53,7 @@ func TestToolBudgetReserveRunsWithFullRawCountBeforeDispatch(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	log := &toolBudgetLog{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, ToolBudget: log.hook()})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Extensions: &agentloop.Extensions{ToolBudget: log.hook()}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -101,7 +101,7 @@ func TestToolBudgetReserveErrorFailsClosedBeforeAnyToolRuns(t *testing.T) {
 		),
 	}}
 	budget := &agentloop.ToolBudget{Reserve: func(ctx context.Context, calls int) error { return errRefused }}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, ToolBudget: budget})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Extensions: &agentloop.Extensions{ToolBudget: budget}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -127,9 +127,8 @@ func TestToolBudgetValidateRequiresReserve(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
 	completer := &scriptedCompleter{}
 	opts := agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		ToolBudget: &agentloop.ToolBudget{Reserve: nil},
+		Completer: completer,
+		Tools:     reg, Extensions: &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: nil}},
 	}
 	err := opts.Validate()
 	if !errors.Is(err, agentloop.ErrIncompleteToolBudget) {
@@ -144,9 +143,8 @@ func TestToolBudgetNewRejectsNilReserve(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		ToolBudget: &agentloop.ToolBudget{Reserve: nil},
+		Completer: completer,
+		Tools:     reg, Extensions: &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: nil}},
 	})
 	if !errors.Is(err, agentloop.ErrIncompleteToolBudget) {
 		t.Fatalf("New() error = %v, want ErrIncompleteToolBudget", err)

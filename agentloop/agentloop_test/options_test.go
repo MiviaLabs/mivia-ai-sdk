@@ -131,27 +131,27 @@ func testOptionsValidateBasics(t *testing.T) {
 func testOptionsValidateConclude(t *testing.T) {
 	cases := []validateCase{
 		{"negative ConcludeMargin fails", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Margin: -1}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: -1}}
 			return o
 		}, agentloop.ErrConcludeMargin, false},
 		{"zero ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Margin: 0}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 0}}
 			return o
 		}, nil, true},
 		{"positive ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Margin: 3}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 3}}
 			return o
 		}, nil, true},
 		{"negative ConcludeDeadline fails", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Deadline: -time.Second}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: -time.Second}}
 			return o
 		}, agentloop.ErrConcludeDeadline, false},
 		{"zero ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Deadline: 0}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: 0}}
 			return o
 		}, nil, true},
 		{"positive ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
-			o.Conclude = agentloop.Conclude{Deadline: time.Minute}
+			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: time.Minute}}
 			return o
 		}, nil, true},
 	}
@@ -206,11 +206,11 @@ func testOptionsValidateBudgetsAndLimits(t *testing.T) {
 			return o
 		}, nil, true},
 		{"incomplete ToolBudget fails", func(o agentloop.Options) agentloop.Options {
-			o.ToolBudget = &agentloop.ToolBudget{Reserve: nil}
+			o.Extensions = &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: nil}}
 			return o
 		}, agentloop.ErrIncompleteToolBudget, false},
 		{"valid ToolBudget passes", func(o agentloop.Options) agentloop.Options {
-			o.ToolBudget = &agentloop.ToolBudget{Reserve: func(ctx context.Context, calls int) error { return nil }}
+			o.Extensions = &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: func(ctx context.Context, calls int) error { return nil }}}
 			return o
 		}, nil, true},
 	}
@@ -245,9 +245,9 @@ func TestOptionsValidateHeartbeat(t *testing.T) {
 }
 
 // TestOptionsValidateHeartbeatOrder proves the HeartbeatInterval check
-// runs last: an earlier invalid field's error wins over
-// ErrHeartbeatRequiresBus, even when HeartbeatInterval is also
-// positive with a nil Bus.
+// runs before the WorkBudget and ToolBudget checks: an earlier invalid
+// field's error wins over ErrHeartbeatRequiresBus, even when
+// HeartbeatInterval is also positive with a nil Bus.
 func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
@@ -266,9 +266,32 @@ func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
-	o.Conclude = agentloop.Conclude{Deadline: -time.Second}
+	o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: -time.Second}}
 	err := o.Validate()
 	if !errors.Is(err, agentloop.ErrNoCompleter) {
 		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)
+	}
+}
+
+// TestExtensionsNilBehavesAsZero proves a nil Options.Extensions
+// behaves as the zero Extensions: the Options pass Validate and build
+// through New, while the same Options with a bad Conclude inside
+// Extensions fail, proving the Validate walk reads the pointer.
+func TestExtensionsNilBehavesAsZero(t *testing.T) {
+	valid := agentloop.Options{
+		Completer: &scriptedCompleter{},
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: 1},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil without Extensions", err)
+	}
+	if _, err := agentloop.New(valid); err != nil {
+		t.Fatalf("New() error = %v, want nil without Extensions", err)
+	}
+	withBadConclude := valid
+	withBadConclude.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: -1}}
+	if err := withBadConclude.Validate(); !errors.Is(err, agentloop.ErrConcludeMargin) {
+		t.Fatalf("Validate() error = %v, want ErrConcludeMargin once Extensions is set", err)
 	}
 }

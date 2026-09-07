@@ -364,7 +364,8 @@ flowchart LR
   `AuditRecord` per completion and per tool call, keeping `agentloop`
   envelope-agnostic: a caller signs its own audit trail from those
   records, outside the block, the way `agent.confirmStep` signs `flow`
-  steps. A non-nil `Options.Window` plans every iteration against a
+  steps. A non-nil `Options.Compaction.Window` plans every iteration
+  against a
   token budget: under the trigger the history passes through; at or
   above it, `contextplan.Compact` plus one `contextsummary` call
   rebuild the history around an injected summary message, and one

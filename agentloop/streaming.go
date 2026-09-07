@@ -8,7 +8,8 @@ import (
 )
 
 // newStreamBuffer returns the per-run capture buffer when the caller
-// set Options.StreamingWriter, nil otherwise. run creates it once per
+// set Options.Extensions.StreamingWriter, nil otherwise. run creates
+// it once per
 // Run or RunSteerable call and threads it down, so concurrent runs on
 // one Loop never share buffer state.
 func newStreamBuffer(sink io.Writer) *bytes.Buffer {
@@ -19,8 +20,8 @@ func newStreamBuffer(sink io.Writer) *bytes.Buffer {
 }
 
 // streamMirror returns the writer the Completer writes to for one
-// runChat call: the caller's Options.StreamingWriter and the capture
-// buffer together, so the caller sees the same bytes the loop
+// runChat call: the caller's Extensions.StreamingWriter and the
+// capture buffer together, so the caller sees the same bytes the loop
 // buffers. It resets the buffer first: a prior canceled iteration's
 // partial must not bleed into this call's Final.
 func streamMirror(sink io.Writer, buf *bytes.Buffer) io.Writer {

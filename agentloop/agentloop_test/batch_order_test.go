@@ -53,8 +53,7 @@ func runBatchOrderTurn(t *testing.T, maxConcurrent int) *toolcallctx.BatchOrder 
 	completer := &scriptedCompleter{responses: []provider.Response{resp, final}}
 
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3, MaxConcurrentTools: maxConcurrent},
-		DedupWithinTurn: true,
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 3, MaxConcurrentTools: maxConcurrent}, Extensions: &agentloop.Extensions{DedupWithinTurn: true},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

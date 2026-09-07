@@ -85,12 +85,9 @@ func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      tools.New(),
-		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Window:     w,
-		Summarizer: sum,
-		Calibrated: contextplan.Calibrate(erroringEstimator{err: errEstimateBoom}, 1.0),
+		Completer: completer,
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: 3}, Compaction: agentloop.Compaction{Window: w, Summarizer: sum, Calibrated: contextplan.Calibrate(erroringEstimator{err: errEstimateBoom}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -164,8 +161,7 @@ func TestRunCompactedBudgetEstimateFailure(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3},
-		Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(est, 1.0),
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3}, Compaction: agentloop.Compaction{Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(est, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -230,12 +226,9 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -283,12 +276,9 @@ func TestRunCompactedHistoryExactlyAtBudgetPasses(t *testing.T) {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -331,12 +321,9 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsClosed(t *testing.T) {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: sum,
-		Calibrated: contextplan.Calibrate(failOnSummaryEstimator{err: estErr}, 1.0),
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4}, Compaction: agentloop.Compaction{Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(failOnSummaryEstimator{err: estErr}, 1.0)},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

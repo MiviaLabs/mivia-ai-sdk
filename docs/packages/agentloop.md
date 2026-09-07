@@ -13,27 +13,34 @@ or a bound trips. The exported surface below mirrors
   not usable; create one with `New`.
 - `Options` — the config struct `New` validates and wires:
   `Completer`, `Tools`, `Scope`, `Model`, `Bounds`,
-  `OnToolError`, `OnToolCallError`,
+  `OnToolError`,
   `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
-  `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
-  `Calibrated`, `StartTime`, `Conclude`,
-  `DedupWithinTurn`, `HeartbeatInterval`,
-  `WorkBudget`, `ToolBudget`,
-  `ContinueOnStop`.
+  `Audit`, `Compaction`, `Extensions`.
   `Completer` and `Tools` are required; the rest are optional.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
+- `Compaction` — the context-window planning triple: `Window`,
+  `Summarizer`, `Calibrated`. The zero value disables planning. See
+  "Context planning" below.
+- `Extensions` — the host-integration knobs, reached only through the
+  `Options.Extensions` pointer; a nil pointer means every knob at its
+  zero value: `OnToolCallError`, `Surface`, `StreamingWriter`,
+  `Conclude`, `StartTime`, `DedupWithinTurn`, `WorkBudget`,
+  `ToolBudget`, `ContinueOnStop`.
 - `Bounds` — the loop's numeric caps group: `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
-  `MaxConsecutiveToolFailures`. Zero follows each
-  member's own rule.
+  `MaxConsecutiveToolFailures`. The fully zero value receives
+  `DefaultBounds` at `New`; a partially set `Bounds` stays as given,
+  so zero follows each member's own rule.
 - `Conclude` — the graceful-conclude group: `Margin`, `Deadline`,
   `Notice`. See "Graceful conclude" below.
-- `Surface` — one iteration's tool surface from `Options.Surface`:
+- `Surface` — one iteration's tool surface from
+  `Extensions.Surface`:
   `Advertised`, `Registry`, `Scope`.
 - `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
 - `ToolBudget` — host cumulative tool-call budget hook: `Reserve`.
 - `ErrorFunc` — `func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)`,
-  custom tool-error message constructor for `Options.OnToolCallError`.
+  custom tool-error message constructor for
+  `Extensions.OnToolCallError`.
 - `Result` — one `Run` or `RunSteerable` call's outcome: `Final`,
   `History`, `Iterations`, `Usage`, `Stop`. See "Result shape" below
   for how each field behaves on a graceful stop versus a hard-fail
@@ -48,7 +55,8 @@ or a bound trips. The exported surface below mirrors
   with `NewSteer` and call `Trigger` from another goroutine. One
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
-- `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
+- `StopDecision` — the evidence the loop hands
+  `Extensions.ContinueOnStop`
   at a graceful stop: `Stop`, `Message`, `Iterations`, and
   `History`. See "Stop-decision hook" below.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
@@ -74,20 +82,26 @@ or a bound trips. The exported surface below mirrors
   sensible production default: 24 iterations, 8 calls per turn,
   200k total tokens, 4-way tool parallelism, and a 3-turn failure
   tripwire. Copy and adjust single members.
-- `EnableCompaction(o, completer, window, alpha)` — fills a
-  `Options`' `Window`, `Summarizer`, and `Calibrated` fields from one
-  `Completer`, in one call. The `Completer` must also implement
+- `EnableCompaction(o, completer, window, alpha)` — fills an
+  `Options`' `Compaction` group from one `Completer`, in one call.
+  The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
   call fails with `ErrNoTokenEstimator` and leaves `Options`
-  untouched. A minimal entry path is therefore: `anthropic.New`,
-  `tools.New`, `Options{Completer, Tools, Bounds: DefaultBounds()}`,
-  `EnableCompaction`, `agentloop.New`, `Run`. See
+  untouched. A `window` whose `MaxTokens` is positive lands in
+  `Compaction.Window` as given; a zero or negative `MaxTokens` leaves
+  `Compaction.Window` nil, so `New` derives the window from the
+  `Completer`'s `ContextAccountant` capability — `contextplan.Window.
+  Validate` rejects `MaxTokens <= 0`, so such a value can never be an
+  explicit window. A minimal entry path is therefore: `anthropic.New`,
+  `tools.New`, `Options{Completer, Tools}`, `EnableCompaction`,
+  `agentloop.New`, `Run`. See
   `docs/examples/_agentloop_minimal`.
 - `New(opts)` — validates `opts`, calls
   `Definitions(opts.Tools, opts.Scope)` once, and binds the result
   onto a `Loop`. `Run` reuses that same `[]provider.ToolDefinition`
   slice for `provider.Request.Tools` on every iteration unless rotated
-  by `Surface`.
+  by `Surface`. A fully zero `opts.Bounds` receives `DefaultBounds`
+  before the loop is built; a partially set `Bounds` stays as given.
 - `(*Loop) Run(ctx, msgs)` — calls `Registry.RunScoped`, never
   `Registry.Run`, so a model-chosen call always passes through the
   `Loop`'s `Scope`. Returns the final `Result` and the first error.
@@ -106,18 +120,23 @@ or a bound trips. The exported surface below mirrors
   set, `Bounds.Validate` passes (each cap non-negative), `Usage`
   requires a non-blank `SessionID`, a non-nil `Budget` passes
   `contextbudget.Limits.
-  Validate`, a non-nil `Window`
-  passes `Window.Validate` and requires `Summarizer`, requires
-  `Calibrated`, and excludes `Trim`, `Conclude.Validate` passes
-  (`Margin` not negative, then `Deadline` not negative),
+  Validate`, a non-nil `Compaction.Window`
+  passes `Window.Validate` and requires `Compaction.Summarizer`,
+  requires `Compaction.Calibrated`, and excludes `Trim`,
+  `Extensions.Conclude.Validate` passes (`Margin` not negative, then
+  `Deadline` not negative),
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
-  `WorkBudget` and a non-nil `ToolBudget` each pass their own
-  `validate` check.
+  `Extensions.WorkBudget` and a non-nil `Extensions.ToolBudget` each
+  pass their own `validate` check. A nil `Extensions` skips both
+  `Extensions` blocks.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
-  `reg`, skipping a tool with no published schema and one `scope`
-  denies. Fails closed with `ErrNoSchemas` whenever `reg` is
-  non-empty and the offered set ends up empty, whatever the cause. An
-  empty `reg` returns an empty set and no error.
+  `reg`. A registered tool that publishes no parameter schema through
+  `tools.SchemaOf` fails with `ErrNoSchema`, wrapped with the tool's
+  registry name. A tool `scope` denies is skipped silently: denial is
+  policy filtering, not a mistake. Still fails closed with
+  `ErrNoSchemas` whenever `reg` is non-empty and the offered set ends
+  up empty; past `ErrNoSchema` that means the scope denied every tool.
+  An empty `reg` returns an empty set and no error.
 
 ## Failure modes
 
@@ -130,21 +149,30 @@ Use `errors.Is` to test these.
 - `ErrMaxIterations` ("agentloop: MaxIterations must be non-negative") —
   `Options.Validate` returns it for a negative `Bounds.MaxIterations`.
   `Run` never returns it; hitting `Bounds.MaxIterations` at run time is a
-  graceful `StopMaxIterations` stop, not an error.
+  graceful `StopMaxIterations` stop, not an error. A zero
+  `MaxIterations` inside the fully zero `Bounds` receives
+  `DefaultBounds` at `New`; a zero inside a partial `Bounds` stays
+  unbounded.
 - `ErrMaxConcurrentTools` ("agentloop: MaxConcurrentTools must not be
   negative") — `Options.Validate` returns it for a negative
   `Bounds.MaxConcurrentTools`.
 - `ErrMaxConsecutiveToolFailures` — `Options.Validate` returns it
   for a negative `Bounds.MaxConsecutiveToolFailures`.
 - `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
-  `Options.Validate` returns it when `WorkBudget` is set but either
-  `Reserve` or `Refund` is nil.
+  `Options.Validate` returns it when `Extensions.WorkBudget` is set but
+  either `Reserve` or `Refund` is nil.
 - `ErrIncompleteToolBudget` ("agentloop: ToolBudget requires Reserve") —
-  `Options.Validate` returns it when `ToolBudget` is set but
-  `Reserve` is nil.
-- `ErrNoSchemas` ("agentloop: registry offers no schema-bearing tool
+  `Options.Validate` returns it when `Extensions.ToolBudget` is set
+  but `Reserve` is nil.
+- `ErrNoSchema` ("agentloop: registered tool publishes no parameter
+  schema") — `Definitions` returns it, wrapped with the tool's
+  registry name, when a registered tool publishes no schema through
+  `tools.SchemaOf`. `New` inherits the failure, before any schema
+  compiles.
+- `ErrNoSchemas` ("agentloop: registry offers no tool
   the scope allows") — `Definitions` returns it when the registry is
-  non-empty and the offered tool set ends up empty.
+  non-empty and the offered tool set ends up empty. Past
+  `ErrNoSchema` this means a `Scope` denied every tool.
 - `ErrUnrenderableResult` ("agentloop: tool result cannot be
   rendered") — the render path's error when a tool result's
   `Out.Value` cannot be marshaled to JSON after failing the string
@@ -184,26 +212,28 @@ Use `errors.Is` to test these.
   `contextplan.ErrRetentionOverflow`). Nothing is sent for that
   iteration.
 - `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
-  `Options.Validate` returns it when `Window` is set and `Summarizer`
-  is nil.
+  `Options.Validate` returns it when `Compaction.Window` is set and
+  `Compaction.Summarizer` is nil.
 - `ErrEstimatorRequired` ("agentloop: Window requires Calibrated") —
-  `Options.Validate` returns it when `Window` is set and `Calibrated`
-  is nil.
+  `Options.Validate` returns it when `Compaction.Window` is set and
+  `Compaction.Calibrated` is nil.
 - `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
-  exclusive") — `Options.Validate` returns it when both `Window` and
-  `Trim` are set.
+  exclusive") — `Options.Validate` returns it when both
+  `Compaction.Window` and `Trim` are set.
 - `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
   negative") — `Options.Validate` returns it for a negative
-  `Conclude.Margin`.
+  `Extensions.Conclude.Margin`.
 - `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
   non-nil Bus") — `Options.Validate` returns it when
   `HeartbeatInterval` is positive and `Bus` is nil.
 
 ## Context planning and prompt-too-long recovery
 
-A non-nil `Options.Window` plans every iteration against a token
-budget. `Window` requires `Summarizer` and `Calibrated`, and excludes
-`Trim`; a nil `Window` keeps the loop exactly as it was.
+A non-nil `Options.Compaction.Window` plans every iteration against a
+token budget. It requires `Compaction.Summarizer` and
+`Compaction.Calibrated`, and excludes `Trim`; a nil `Window` keeps the
+loop unplanned, and derivation may still supply one at `New` (see
+"Capability derivation" below).
 
 Before each `Completer.Chat`, `Run` estimates the history through
 `Calibrated` and passes through under `Window.CompactTrigger`. At or
@@ -244,8 +274,9 @@ path exists anywhere in `Run`.
 `New` derives two Options defaults from `opts.Completer`, without any
 per-request wiring from the caller.
 
-`Window`: when `opts.Window` and `opts.Trim` are both nil and
-`opts.Summarizer` and `opts.Calibrated` are both set, `New` checks
+`Window`: when `opts.Compaction.Window` and `opts.Trim` are both nil
+and `opts.Compaction.Summarizer` and `opts.Compaction.Calibrated` are
+both set, `New` checks
 whether `opts.Completer` implements `provider.ContextAccountant`. If
 it does, and `ContextAccountant.ContextWindow()` returns a positive
 value, `New` builds a default `contextplan.Window`: `MaxTokens` is the
@@ -268,7 +299,7 @@ before. See `agentloop/adoption.go` (`deriveWindow`,
 
 ## Graceful conclude near Bounds.MaxIterations
 
-A positive `Options.Conclude.Margin` nudges the model toward a final
+A positive `Options.Extensions.Conclude.Margin` nudges the model toward a final
 answer as `Bounds.MaxIterations` approaches, instead of hard-stopping with
 whatever partial state the transcript holds. Zero disables nudging.
 
@@ -297,13 +328,13 @@ the notice and that the notice still sits in the request the model
 actually answered; a `Trim` or `Window` step that strips the notice
 before the model sees it falls back to `StopNoToolCalls`.
 
-`Options.Window` may also drop, reorder, or summarize away the notice
+`Options.Compaction.Window` may also drop, reorder, or summarize away the notice
 before a nudged call; no test covers `Conclude.Margin` combined with
 `Window`, and the two have no current caller pairing them.
 
 ## Duplicate-call dedup within a turn
 
-`Options.DedupWithinTurn` detects a duplicate `(tool name, canonical
+`Options.Extensions.DedupWithinTurn` detects a duplicate `(tool name, canonical
 arguments)` call already served earlier in the same turn, and serves
 `DuplicateCallNotice` instead of running the tool a second time. False,
 the zero value, runs every call, unchanged from the base behavior.
@@ -353,7 +384,7 @@ case for ctx cancellation or any other cause.
 
 ## Stop-decision hook
 
-`Options.ContinueOnStop` observes a graceful stop and may continue the
+`Options.Extensions.ContinueOnStop` observes a graceful stop and may continue the
 run. The loop consults the hook only at the three tool-stage stops:
 `StopNoToolCalls`, `StopEmptyResponse`, and `StopConcluded`. The hook
 never runs at `StopSteered`, `StopHookVeto`, `StopMaxIterations`,
@@ -546,8 +577,10 @@ path exactly.
 - A `DecodeArguments` failure on malformed model-supplied JSON
   arguments is a tool-run error and goes through the same
   `OnToolError` policy as a failed `Run`.
-- A zero `Bounds.MaxCallsPerTurn` means unbounded. A zero
-  `Bounds.MaxTotalTokens` means unbounded.
+- A zero `Bounds.MaxCallsPerTurn` inside a partial `Bounds` means
+  unbounded. A zero `Bounds.MaxTotalTokens` inside a partial `Bounds`
+  means unbounded. The fully zero `Bounds` receives `DefaultBounds`
+  at `New`.
 - A nil `Options.Trim` passes history through unchanged and skips
   `provider.Message.Validate` on it.
 

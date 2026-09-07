@@ -231,14 +231,35 @@ func messagesEqual(a, b provider.Message) bool {
 	return true
 }
 
-// EnableCompaction fills a Options' Window, Summarizer, and
-// Calibrated fields from one Completer, in one call. The Completer
-// must also implement provider.TokenEstimator; anthropic.Client
-// does. window keeps the caller's configured trigger and target
-// percentages. alpha is the calibration factor passed to
-// contextplan.Calibrate. The Options must not already carry Trim;
-// Window and Trim are mutually exclusive, and Validate rejects the
-// pair.
+// Compaction groups the context-window planning triple. The zero
+// value disables planning; the loop then runs unplanned. Window nil
+// with Summarizer and Calibrated set asks New to derive the window
+// from the Completer's ContextAccountant capability.
+type Compaction struct {
+	// Window plans every iteration against a token budget. Nil asks
+	// for derivation at New. Requires Summarizer and Calibrated, and
+	// excludes Options.Trim.
+	Window *contextplan.Window
+	// Summarizer runs the LLM summary every compaction requires.
+	// Required when Window is set.
+	Summarizer *contextsummary.Summarizer
+	// Calibrated estimates tokens and receives one Observe call after
+	// every Chat. Required when Window is set.
+	Calibrated *contextplan.Calibrated
+}
+
+// EnableCompaction fills an Options' Compaction group from one
+// Completer, in one call. The Completer must also implement
+// provider.TokenEstimator; anthropic.Client does. alpha is the
+// calibration factor passed to contextplan.Calibrate. A window with a
+// positive MaxTokens lands in Compaction.Window as given. A zero or
+// negative MaxTokens leaves Compaction.Window nil, so New derives the
+// window from the Completer's ContextAccountant capability:
+// contextplan.Window.Validate rejects MaxTokens <= 0, so such a value
+// can never be an explicit window, and derive is the only sensible
+// reading. The Options must not already carry Trim;
+// Compaction.Window and Trim are mutually exclusive, and Validate
+// rejects the pair.
 func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) error {
 	est, ok := completer.(provider.TokenEstimator)
 	if !ok {
@@ -248,10 +269,12 @@ func EnableCompaction(o *Options, completer provider.Completer, window contextpl
 	if err != nil {
 		return err
 	}
-	w := window
-	o.Window = &w
-	o.Summarizer = summarizer
-	o.Calibrated = contextplan.Calibrate(est, alpha)
+	if window.MaxTokens > 0 {
+		w := window
+		o.Compaction.Window = &w
+	}
+	o.Compaction.Summarizer = summarizer
+	o.Compaction.Calibrated = contextplan.Calibrate(est, alpha)
 	return nil
 }
 

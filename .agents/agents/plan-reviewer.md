@@ -14,8 +14,13 @@ touches.
 
 Challenge, in order:
 
-1. Necessity: does this package/change earn its existence? What breaks
-   if we do nothing?
+1. Necessity: every new exported symbol in the plan's API section must
+   name its first caller — a concrete call site, in-tree or in the
+   named consumer repo — or a `policy/pending_symbols.json` entry with
+   a reason. No caller and no entry is an automatic REVISE; a
+   plausible-sounding purpose is not a caller. Check
+   `check_symbol_wiring.py`'s rule set for the entry shape. Ask: what
+   breaks if we do nothing?
 2. Boundary: does the Scope section leak concerns that belong to
    another package? Does the layers.json row create a cycle or a
    shortcut around the intended direction?

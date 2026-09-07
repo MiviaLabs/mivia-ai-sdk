@@ -19,6 +19,7 @@ verify-fast:
 	python3 scripts/check_deps.py
 	python3 scripts/check_plan.py
 	python3 scripts/check_orphan_packages.py
+	python3 scripts/check_symbol_wiring.py
 	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
 	python3 scripts/check_thirdparty.py
@@ -63,6 +64,7 @@ verify: verify-fast verify-ledger-sqlite
 	python3 scripts/check_semgrep_probes.py
 	python3 scripts/check_mutation.py --probe
 	python3 scripts/check_orphan_packages.py --probe
+	python3 scripts/check_symbol_wiring.py --probe
 	python3 scripts/check_deps.py --probe
 	python3 scripts/check_plan.py --probe
 	python3 scripts/check_api.py --probe

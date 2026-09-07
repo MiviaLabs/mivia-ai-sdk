@@ -17,18 +17,24 @@ Review, in order:
 
 1. Plan conformance: every Scope item present, nothing beyond Scope.
    Silent deviations are findings.
-2. Confirmed bugs: validation gaps, edge cases, crypto misuse, races.
+2. Necessity: run `python3 scripts/check_symbol_wiring.py`. Every new
+   exported symbol in this diff needs a non-test caller — in-tree or
+   in the named consumer repo — or a `policy/pending_symbols.json`
+   entry. A symbol the gate flags is a finding, even if the plan
+   approved it: the plan-reviewer works from intent, this check works
+   from the actual diff.
+3. Confirmed bugs: validation gaps, edge cases, crypto misuse, races.
    A bug claim needs a reproduction (a command or a scratch test under
    /tmp with a replace directive). No reproduction, no finding.
-3. Gate integrity: did any gate get weakened, limit raised, or
+4. Gate integrity: did any gate get weakened, limit raised, or
    exclusion widened in this diff? Check `scripts/`, `semgrep/`,
    `Makefile`, `.githooks/` line by line.
-4. Doc truth: do the doc comments, README, plan, and
+5. Doc truth: do the doc comments, README, plan, and
    docs/architecture.md describe the code as it now is? Grep the
    distinctive term across the whole tree before you claim every
    stale site is fixed. Reasoning alone has repeatedly missed sites a
    grep found.
-5. Test adequacy: do the tests fail when the code is broken? Pick one
+6. Test adequacy: do the tests fail when the code is broken? Pick one
    invariant and mentally mutate the code; if no test catches it, that
    is a finding. A test that passes is not proof by itself: confirm
    it reaches the path it claims to cover by tracing its fixture's
@@ -36,11 +42,11 @@ Review, in order:
    proof both ways, that correct behavior passes and a planted
    mispairing or race fails, under the same fixture. Name the
    assertion that discriminates between them.
-6. Doc-comment claims inside branching code paths: a comment in
+7. Doc-comment claims inside branching code paths: a comment in
    `if`/`switch`/`for`/`select` that runs longer than one line of "what"
    is a behavioral claim about that branch's control flow. Re-read the
    actual branch on review; do not trust the comment's prose.
-7. Plan `## Tests` cross-reference: if the plan names test functions,
+8. Plan `## Tests` cross-reference: if the plan names test functions,
    verify they exist in the package's test files in the same review
    pass. A missing or renamed test is a finding, not a minor note.
 

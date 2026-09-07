@@ -28,7 +28,8 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `contextplan/` / `contextsession/` / `contextref/` / `contextstate/` / `contextsummary/` — context window management, durable planning, content references & compaction.
 - `longtermmemory/` / `memory/` — tiered long-term and content-addressed memory.
 - `channel/` / `scheduler/` / `trigger/` / `heartbeat/` / `discovery/` — supporting primitives.
-- `policy/` — `layers.json` allowed imports; `pending_wiring.json`.
+- `policy/` — `layers.json` allowed imports; `pending_wiring.json`;
+  `pending_symbols.json`.
 - `api/` — exported-surface locks checked by `scripts/check_api.py`.
 - `docs/` — design reference, package docs, examples, and change plans.
 - `scripts/` — gate validation scripts.
@@ -94,6 +95,12 @@ planner → plan-reviewer (hostile, before code) → builder → reviewer
 (adversarial, after code) → verify → commit. Never skip a review
 stage. Never let an agent grade its own work. Three failed rounds at
 any stage means stop and escalate to the user.
+
+An API change made as a single direct commit, with no plan file
+touched, is not a shortcut. It is the loop skipped, and
+`scripts/check_symbol_wiring.py` will catch the untethered symbol on
+the next `make verify` regardless of how it landed. Route it through
+the loop instead of discovering that later.
 
 ## Rules
 
@@ -196,6 +203,15 @@ follow reliably. Each has a gate behind it.
   it in `policy/pending_wiring.json` with a reason and a target. A
   caller at any depth counts as a real caller. Gate:
   `scripts/check_orphan_packages.py`.
+- Do not leave one exported symbol undeclared with zero non-test
+  reference in this module or, when `--sibling` or `SDK_CONSUMER_PATH`
+  names one, an external consumer checkout. This is the
+  package-internal case `check_orphan_packages.py` cannot see: a
+  func, type, or var inside a package that itself has other, real
+  callers. List it in `policy/pending_symbols.json` with a reason and
+  a target, the same shape as `pending_wiring.json`. A plan that adds
+  an exported symbol names its first caller before the plan-reviewer
+  approves it. Gate: `scripts/check_symbol_wiring.py`.
 - Do not let coverage fall below 85%. The total and every package each
   need the floor. Gate: `make verify` coverage block. Assertion-free
   tests and deleted tests game the floor; review catches them.
@@ -236,9 +252,9 @@ violation and stays silent on clean code. The coverage block asserts
 the profile lists every package and that the total and each package
 reach 85. `verify` also runs the gates' own probe suites:
 `check_deps.py --probe`, `check_plan.py --probe`, `check_api.py
---probe`, `check_orphan_packages.py --probe`, `check_mutation.py
---probe`, `check_thirdparty.py --probe`, and
-`check_test_tampering.py --probe`.
+--probe`, `check_orphan_packages.py --probe`,
+`check_symbol_wiring.py --probe`, `check_mutation.py --probe`,
+`check_thirdparty.py --probe`, and `check_test_tampering.py --probe`.
 
 `scripts/go_packages.py` is the one package enumerator behind the
 deps, plan, orphan, API, and third-party gates. It wraps `go list

@@ -10,8 +10,12 @@ surface below mirrors `api/contextsummary.txt`.
 ## Types
 
 - `Summary` — one validated summary document: `Objective`, `State`,
-  `Decisions`, `OpenWork`, `Risks`. Data only: no tool, policy, or
-  credential fields.
+  `Decisions`, `Evidence`, `ChangedSurfaces`, `OpenWork`, `Risks`.
+  The json tags pin the host durable schema keys: `objective`,
+  `state`, `decisions`, `evidence`, `changed_surfaces`, `open_work`,
+  `risks`; the five lists carry `omitempty`. Data only: no tool,
+  policy, or credential fields; `version` and `source_range` stay
+  with the caller.
 - `Summarizer` — one `provider.Completer` adapted to summary
   generation. Built through `NewSummarizer` only.
 
@@ -27,6 +31,8 @@ surface below mirrors `api/contextsummary.txt`.
 - `SummaryMessageName` — "context-summary", the
   `provider.Message.Name` of the injected summary message. Compaction
   preserves it through `PreserveNames`.
+- `SummaryPreamble` — the framing line `SummaryMessage` places before
+  `Render` output; `Render` itself carries no preamble.
 
 ## Functions and methods
 
@@ -47,7 +53,8 @@ surface below mirrors `api/contextsummary.txt`.
   or bullet per field, in field order.
 - `SummaryMessage(s Summary) provider.Message` — renders `s` as one
   `RoleUser` message named `SummaryMessageName`, whose `Content` is
-  `s.Render()`. The message passes `provider.Message.Validate`.
+  `SummaryPreamble`, one newline, then `s.Render()`. The message
+  passes `provider.Message.Validate`.
 - `TokenEstimate(n int) int` — prices `n` bytes at `n/4` tokens,
   minimum one for non-zero input, zero for zero input.
 
@@ -71,6 +78,10 @@ Use `errors.Is` to test these.
 - `ErrCallFailed` ("contextsummary: summary call failed") —
   `Summarize` returns it wrapping the Completer's own error. Pinned by
   `contextsummary/contextsummary_test/summarizer_test.go`.
+- `ErrSummarySkipped` ("contextsummary: summary skipped") — the
+  sentinel a summarize adapter returns to decline summary injection;
+  the concrete `Summarizer` never returns it. The caller then declines
+  injection.
 
 ## Invariants
 

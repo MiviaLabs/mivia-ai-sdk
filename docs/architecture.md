@@ -568,12 +568,13 @@ flowchart LR
   imports `contextplan`, `contextstate`, `provider`, and
   `spool`. See [packages/contextsession.md](packages/contextsession.md).
 - `contextsummary/` — the LLM summarizer for compaction. It provides
-  `Summary` with `Validate` and `Render`, `SummaryMessage`,
-  `TokenEstimate`, `Summarizer` with `NewSummarizer` and `Summarize`,
-  the bounds `MaxFieldBytes`, `MaxItems`, `MaxExcerptTotalBytes`, and
-  `SummaryTimeout`, the injected message name `SummaryMessageName`,
-  and the sentinels `ErrNilCompleter`, `ErrNoMessages`,
-  `ErrInvalidReply`, and `ErrCallFailed`. One summarizer call is one
+  `Summary` with `Validate` and `Render`, `SummaryMessage` with
+  `SummaryPreamble`, `TokenEstimate`, `Summarizer` with
+  `NewSummarizer` and `Summarize`, the bounds `MaxFieldBytes`,
+  `MaxItems`, `MaxExcerptTotalBytes`, and `SummaryTimeout`, the
+  injected message name `SummaryMessageName`, and the sentinels
+  `ErrNilCompleter`, `ErrNoMessages`, `ErrInvalidReply`,
+  `ErrSummarySkipped`, and `ErrCallFailed`. One summarizer call is one
   bounded `provider.Completer` call: excerpts cap the input, a 20
   second timeout caps the duration, and strict decoding plus
   `Summary.Validate` cap the accepted output. A summary failure is a

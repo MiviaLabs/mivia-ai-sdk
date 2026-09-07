@@ -25,17 +25,21 @@ func TestRenderDeterministic(t *testing.T) {
 
 func TestRenderShowsEveryField(t *testing.T) {
 	s := contextsummary.Summary{
-		Objective: "obj-text",
-		State:     "state-text",
-		Decisions: []string{"decision-text"},
-		OpenWork:  []string{"openwork-text"},
-		Risks:     []string{"risk-text"},
+		Objective:       "obj-text",
+		State:           "state-text",
+		Decisions:       []string{"decision-text"},
+		Evidence:        []string{"evidence-text"},
+		ChangedSurfaces: []string{"changedsurfaces-text"},
+		OpenWork:        []string{"openwork-text"},
+		Risks:           []string{"risk-text"},
 	}
 	got := s.Render()
 	for _, want := range []string{
 		"Objective:", "obj-text",
 		"State:", "state-text",
 		"Decisions:", "- decision-text",
+		"Evidence:", "- evidence-text",
+		"ChangedSurfaces:", "- changedsurfaces-text",
 		"OpenWork:", "- openwork-text",
 		"Risks:", "- risk-text",
 	} {
@@ -43,11 +47,14 @@ func TestRenderShowsEveryField(t *testing.T) {
 			t.Fatalf("Render() missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Index(got, "Objective:") > strings.Index(got, "State:") {
-		t.Fatal("Render() objective does not precede state")
+	chain := []string{
+		"Objective:", "State:", "Decisions:", "Evidence:",
+		"ChangedSurfaces:", "OpenWork:", "Risks:",
 	}
-	if strings.Index(got, "State:") > strings.Index(got, "Decisions:") {
-		t.Fatal("Render() state does not precede decisions")
+	for i := 0; i+1 < len(chain); i++ {
+		if strings.Index(got, chain[i]) > strings.Index(got, chain[i+1]) {
+			t.Fatalf("Render() %s does not precede %s:\n%s", chain[i], chain[i+1], got)
+		}
 	}
 }
 
@@ -68,10 +75,32 @@ func TestSummaryMessage(t *testing.T) {
 	if msg.Name != contextsummary.SummaryMessageName {
 		t.Fatalf("SummaryMessage name = %q, want %q", msg.Name, contextsummary.SummaryMessageName)
 	}
-	if msg.Content != s.Render() {
-		t.Fatalf("SummaryMessage content = %q, want Render() = %q", msg.Content, s.Render())
+	want := contextsummary.SummaryPreamble + "\n" + s.Render()
+	if msg.Content != want {
+		t.Fatalf("SummaryMessage content = %q, want %q", msg.Content, want)
 	}
 	if err := msg.Validate(); err != nil {
 		t.Fatalf("SummaryMessage Validate() = %v, want nil", err)
+	}
+}
+
+// TestSummaryMessagePreamble pins the join: the content is the
+// preamble, one newline, then exactly the Render output. Render alone
+// carries no preamble.
+func TestSummaryMessagePreamble(t *testing.T) {
+	s := contextsummary.Summary{Objective: "o", State: "s"}
+	msg := contextsummary.SummaryMessage(s)
+	if !strings.HasPrefix(msg.Content, contextsummary.SummaryPreamble) {
+		t.Fatalf("SummaryMessage content lacks the preamble prefix: %q", msg.Content)
+	}
+	rest, ok := strings.CutPrefix(msg.Content, contextsummary.SummaryPreamble)
+	if !ok || rest == "" || rest[0] != '\n' {
+		t.Fatalf("SummaryMessage content lacks one newline after the preamble: %q", msg.Content)
+	}
+	if rest[1:] != s.Render() {
+		t.Fatalf("SummaryMessage content after the preamble = %q, want Render() = %q", rest[1:], s.Render())
+	}
+	if strings.Contains(s.Render(), contextsummary.SummaryPreamble) {
+		t.Fatalf("Render() carries the preamble; only SummaryMessage joins it:\n%s", s.Render())
 	}
 }

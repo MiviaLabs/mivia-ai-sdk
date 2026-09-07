@@ -68,8 +68,10 @@ func (s *summaryScript) stats() (int, []provider.Request) {
 	return s.calls, append([]provider.Request(nil), s.reqs...)
 }
 
-// summaryReplyJSON is one strict-schema reply every field set.
-const summaryReplyJSON = `{"Objective":"Ship","State":"Two tests fail","Decisions":["d1"],"OpenWork":["w1"],"Risks":["r1"]}`
+// summaryReplyJSON is one strict-schema reply every field set. Five
+// snake_case keys, no more: the tagged Summary schema minus the two
+// optional list keys this fixture does not exercise.
+const summaryReplyJSON = `{"objective":"Ship","state":"Two tests fail","decisions":["d1"],"open_work":["w1"],"risks":["r1"]}`
 
 // planningFixture wires one Loop with Window, Summarizer, and
 // Calibrated for the compaction tests.
@@ -201,7 +203,7 @@ func TestRunUnderTriggerNoCompaction(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("o", 40)},
 		{Role: provider.RoleUser, Content: strings.Repeat("u", 59)},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetPercent: 5}}
+	w := contextplan.Window{MaxTokens: 1600, Compaction: contextplan.Compaction{TriggerPercent: 10, TargetPercent: 5}}
 	responses := []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")}),
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}, Usage: provider.Usage{TotalTokens: 396}},
@@ -247,7 +249,7 @@ func TestRunAtExactTriggerCompacts(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("x", 38)},
 		{Role: provider.RoleUser, Content: "y"},
 	}
-	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 20, TargetTokens: 20}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}, nil)

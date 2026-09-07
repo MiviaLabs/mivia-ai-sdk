@@ -218,7 +218,7 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 	}
 	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
 	hugeField := strings.Repeat("x", 1024)
-	hugeReply := fmt.Sprintf(`{"Objective":%q,"State":%q,"Decisions":[],"OpenWork":[],"Risks":[]}`, hugeField, hugeField)
+	hugeReply := fmt.Sprintf(`{"objective":%q,"state":%q,"decisions":[],"open_work":[],"risks":[]}`, hugeField, hugeField)
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: []provider.Response{
@@ -264,20 +264,24 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 // lands exactly on the window's Budget() passes, since the check
 // fails only strictly above it (est > w.Budget()), not at or under.
 // The empty system message, the fixed-content summary, and the
-// single-byte mandatory user message sum to exactly 51 bytes; Budget
-// is set to 51 to land the estimate exactly on the boundary.
+// single-byte mandatory user message sum to exactly 142 bytes; Budget
+// is set to 142 to land the estimate exactly on the boundary. The
+// rendered summary is 141 bytes: 50 document bytes, 64 for
+// SummaryPreamble plus its join newline, and 27 for the Evidence and
+// ChangedSurfaces label lines, which Render writes for every summary,
+// empty lists included.
 func TestRunCompactedHistoryExactlyAtBudgetPasses(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: ""},
 		{Role: provider.RoleUser, Content: strings.Repeat("d", 100)},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 51, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 1}}
+	w := contextplan.Window{MaxTokens: 142, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 1}}
 	reg := tools.New()
 	sc := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
-	sum := &summaryScript{reply: `{"Objective":"o","State":"s","Decisions":[],"OpenWork":[],"Risks":[]}`}
+	sum := &summaryScript{reply: `{"objective":"o","state":"s","decisions":[],"open_work":[],"risks":[]}`}
 	summarizer, err := contextsummary.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
@@ -383,8 +387,10 @@ func TestRunRetentionOverflowFailsBeforeRequest(t *testing.T) {
 // checkCompactedBudget boundary from the passing side: a summarized
 // rebuild that re-estimates to exactly w.Budget() must not fail. The
 // fixed system message (1 byte) plus the fixed summaryScript reply's
-// 81-byte rendered form plus one user byte total 83, matching
-// MaxTokens 83 with Reserve 0 exactly.
+// 172-byte rendered form plus one user byte total 174, matching
+// MaxTokens 174 with Reserve 0 exactly. The rendered form is the
+// 81-byte document plus the 64-byte preamble join and the 27 bytes of
+// Evidence and ChangedSurfaces label lines, written for every summary.
 func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
@@ -392,7 +398,7 @@ func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
 		{Role: provider.RoleUser, Content: "u"},
 	}
 	w := contextplan.Window{
-		MaxTokens: 83,
+		MaxTokens: 174,
 		Compaction: contextplan.Compaction{
 			TriggerPercent: 1,
 			TargetTokens:   1,
@@ -415,8 +421,9 @@ func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
 
 // TestCheckCompactedBudgetOverBudgetFails pairs
 // TestCheckCompactedBudgetAtBudgetPasses from the failing side: the
-// same window, with the user message one byte longer, pushes the
-// rebuilt re-estimate to Budget()+1 and fails closed.
+// same 174-token window, with the user message one byte longer, puts
+// the rebuilt re-estimate at 175, one byte above Budget(), and fails
+// closed.
 func TestCheckCompactedBudgetOverBudgetFails(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
@@ -424,7 +431,7 @@ func TestCheckCompactedBudgetOverBudgetFails(t *testing.T) {
 		{Role: provider.RoleUser, Content: "uu"},
 	}
 	w := contextplan.Window{
-		MaxTokens: 83,
+		MaxTokens: 174,
 		Compaction: contextplan.Compaction{
 			TriggerPercent: 1,
 			TargetTokens:   1,

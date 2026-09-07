@@ -98,25 +98,25 @@ func TestSummarizeCallErrorWrapsErrCallFailed(t *testing.T) {
 }
 
 func TestSummarizeInvalidReplies(t *testing.T) {
-	unknownFields := `{"Objective":"o","State":"s","Extra":"x"}`
-	trailingBytes := `{"Objective":"o","State":"s"} trailing`
-	overBound := `{"Objective":"` + strings.Repeat("a", 3*1024) + `","State":"s"}`
-	blankObjective := `{"Objective":"  ","State":"s"}`
+	unknownFields := `{"objective":"o","state":"s","Extra":"x"}`
+	trailingBytes := `{"objective":"o","state":"s"} trailing`
+	overBound := `{"objective":"` + strings.Repeat("a", 3*1024) + `","state":"s"}`
+	blankObjective := `{"objective":"  ","state":"s"}`
 	cases := []struct {
 		name  string
 		reply string
 	}{
-		{name: "malformed json", reply: `{"Objective":`},
+		{name: "malformed json", reply: `{"objective":`},
 		{name: "empty reply", reply: ``},
 		{name: "whitespace reply", reply: `   `},
 		{name: "unknown field", reply: unknownFields},
 		{name: "trailing bytes", reply: trailingBytes},
 		{name: "over bound objective", reply: overBound},
 		{name: "blank objective", reply: blankObjective},
-		{name: "two code fences", reply: "```json\n{\"Objective\":\"o\",\"State\":\"s\"}\n```\n```json\n{}"},
-		{name: "unclosed code fence", reply: "```json\n{\"Objective\":\"o\",\"State\":\"s\"}"},
+		{name: "two code fences", reply: "```json\n{\"objective\":\"o\",\"state\":\"s\"}\n```\n```json\n{}"},
+		{name: "unclosed code fence", reply: "```json\n{\"objective\":\"o\",\"state\":\"s\"}"},
 		{name: "fence with no body", reply: "```"},
-		{name: "array reply", reply: `["Objective"]`},
+		{name: "array reply", reply: `["objective"]`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -128,6 +128,22 @@ func TestSummarizeInvalidReplies(t *testing.T) {
 				t.Fatalf("Summarize() error = %v, want errors.Is ErrInvalidReply", err)
 			}
 		})
+	}
+}
+
+// TestSummarizeRejectsCapitalizedKeyReply keeps one literal in the old
+// capitalized reply shape. OpenWork cannot case-fold onto the
+// open_work tag, so DisallowUnknownFields rejects the key. A reply
+// keyed only Objective, State, Decisions, and Risks still decodes
+// through the fold; OpenWork is what makes this one fail.
+func TestSummarizeRejectsCapitalizedKeyReply(t *testing.T) {
+	capitalized := `{"Objective":"o","State":"s","OpenWork":["w"]}`
+	f := &scriptCompleter{replies: []string{capitalized}}
+	s, _ := contextsummary.NewSummarizer(f)
+	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
+	_, err := s.Summarize(context.Background(), msgs)
+	if !errors.Is(err, contextsummary.ErrInvalidReply) {
+		t.Fatalf("Summarize() error = %v, want errors.Is ErrInvalidReply", err)
 	}
 }
 

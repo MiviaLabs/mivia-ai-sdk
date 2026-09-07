@@ -51,7 +51,9 @@ type fixedSummaryCompleter struct{}
 func (fixedSummaryCompleter) Name() string { return "fixed-summary" }
 
 func (fixedSummaryCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
-	summaryJSON := `{"Objective":"Ship","State":"Compacted","Decisions":["d1"],"OpenWork":["w1"],"Risks":["r1"]}`
+	// Five snake_case keys, no more: the tagged Summary schema minus
+	// the two optional list keys this fixture does not exercise.
+	summaryJSON := `{"objective":"Ship","state":"Compacted","decisions":["d1"],"open_work":["w1"],"risks":["r1"]}`
 	return provider.Response{
 		Message: provider.Message{Role: provider.RoleAssistant, Content: summaryJSON},
 	}, nil
@@ -114,10 +116,10 @@ func buildControlLoop(t *testing.T, serverURL string, client *http.Client) *agen
 	}
 
 	window := &contextplan.Window{
-		MaxTokens: 400,
+		MaxTokens: 800,
 		Reserve:   100,
 		Compaction: contextplan.Compaction{
-			TriggerPercent: 80,
+			TriggerPercent: 35,
 			TargetPercent:  20,
 		},
 	}

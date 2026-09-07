@@ -472,6 +472,30 @@ pass over the budget tests found three more sites:
   `Contains(m.Content, "Objective: Ship")` check still matches,
   because `Render` keeps its labels. Verify by running the test;
   change nothing blindly.
+- `agentloop/agentloop_test/compaction_test.go`, two windows the
+  byte-boundary pass missed. `checkCompactedBudget` re-estimates the
+  rebuilt history through the calibrated estimator, so the 91-byte
+  growth multiplies by the Observe-inflated factor.
+  `TestRunAtExactTriggerCompacts` raises `MaxTokens` 100 to 200 and
+  `TriggerPercent` 40 to 20. The trigger stays at exactly 40 tokens,
+  the estimate the test pins. The rebuilt estimate lands at 174
+  under factor 1. `TestRunUnderTriggerNoCompaction` raises
+  `MaxTokens` 400 to 1600 and lowers `TriggerPercent` 40 to 10. The
+  trigger stays at 160 tokens, today's exact value: the
+  iteration-one estimate at 99 stays under it. The iteration-two raw
+  bytes stay 99; the correction factor clamps at `MaxCorrectionFactor`,
+  so the calibrated estimate caps at 198 and still trips. The
+  rebuilt estimate, about 462, fits Budget 1600.
+- `e2e/e2e_test/anthropic_compaction_test.go`,
+  `TestAnthropicAgentLoopCompactionControl`. Raise `MaxTokens` 400 to
+  800 and lower `TriggerPercent` 80 to 35. Budget 700 puts the
+  trigger at 245: the iteration-one estimate at 200 stays under it,
+  and the calibrated iteration-two estimate at about 308 trips it.
+  The rebuilt estimate, about 500, fits Budget 700. `Iterations`
+  stays 2 and the summary stays present.
+- Each window bump preserves the pinned property: the exact trip,
+  the under-trigger pass, or the two-iteration control flow. No
+  assertion drops.
 
 Pin for the `agentloop` and `e2e` reply fixtures: keep the five
 existing keys, snake_cased. Do not add `evidence` or

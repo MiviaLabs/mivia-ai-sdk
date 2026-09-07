@@ -41,8 +41,13 @@ func TestRunPriorSummaryReplacedOnSecondCompaction(t *testing.T) {
 		t.Fatalf("summarizer calls = %d, want 2", sumCalls)
 	}
 	excerpts := sumReqs[1].Messages[1].Content
-	if !strings.HasPrefix(excerpts, "[user] Objective:") {
+	// The prior summary rides as one message whose content leads with
+	// the preamble SummaryMessage joins before Render output.
+	if !strings.HasPrefix(excerpts, "[user] "+contextsummary.SummaryPreamble) {
 		t.Fatalf("second summarizer input missing the prior summary excerpt first:\n%s", excerpts)
+	}
+	if !strings.Contains(excerpts, "Objective:") {
+		t.Fatalf("second summarizer input missing the prior summary's rendered labels:\n%s", excerpts)
 	}
 	if summaryNamed(res.History) != 1 {
 		t.Fatalf("Result.History summary count = %d, want 1", summaryNamed(res.History))

@@ -28,20 +28,28 @@ var (
 	// ErrCallFailed is Summarize's error when the Completer call
 	// itself fails.
 	ErrCallFailed = errors.New("contextsummary: summary call failed")
+	// ErrSummarySkipped is the sentinel a summarize adapter returns
+	// to decline summary injection; the concrete Summarizer never
+	// returns it.
+	ErrSummarySkipped = errors.New("contextsummary: summary skipped")
 )
 
 // codeFence delimits the one markdown code fence a reply may carry.
 const codeFence = "```"
 
 // systemPrompt states the summarize task and the exact JSON reply
-// schema, with the Summary field names encoding/json decodes.
+// schema, with the tagged Summary keys encoding/json decodes. The
+// snake_case keys make capitalized replies fail: OpenWork and
+// ChangedSurfaces cannot case-fold onto open_work and changed_surfaces,
+// so DisallowUnknownFields rejects them.
 const systemPrompt = "Summarize the conversation excerpt for an agent. " +
 	"Reply with one JSON object and nothing else. The object keys are " +
-	"\"Objective\" (string), \"State\" (string), \"Decisions\" (array of " +
-	"strings), \"OpenWork\" (array of strings), and \"Risks\" (array of " +
-	"strings). No other keys. One markdown code fence around the object " +
-	"is allowed. Objective and State are non-empty. Every list item is " +
-	"non-blank and unique."
+	"\"objective\" (string), \"state\" (string), \"decisions\" (array of " +
+	"strings), \"evidence\" (array of strings), \"changed_surfaces\" " +
+	"(array of strings), \"open_work\" (array of strings), and \"risks\" " +
+	"(array of strings). No other keys. One markdown code fence around " +
+	"the object is allowed. Objective and State are non-empty. Every " +
+	"list item is non-blank and unique."
 
 // Summarizer adapts one provider.Completer to summary generation.
 type Summarizer struct {

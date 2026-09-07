@@ -61,5 +61,6 @@ func (f *scriptCompleter) stats() (int, provider.Request) {
 	return f.calls, f.lastReq
 }
 
-// validReply is one strict-schema reply every field set.
-const validReply = `{"Objective":"Ship the release","State":"Two tests fail","Decisions":["Use SQLite"],"OpenWork":["Fix tests"],"Risks":["Deadline slips"]}`
+// validReply is one strict-schema reply every field set, keyed with
+// the tagged Summary json keys.
+const validReply = `{"objective":"Ship the release","state":"Two tests fail","decisions":["Use SQLite"],"evidence":["CI log"],"changed_surfaces":["api/envelope"],"open_work":["Fix tests"],"risks":["Deadline slips"]}`

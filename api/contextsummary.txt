@@ -3,6 +3,7 @@ package contextsummary
   const MaxFieldBytes = 2 * 1024
   const MaxItems = 32
   const SummaryMessageName = "context-summary"
+  const SummaryPreamble = "This message restates the conversation that compaction removed."
   const SummaryTimeout = 20 * time.Second
   func (s *Summarizer) Summarize(ctx context.Context, msgs []provider.Message) (Summary, error)
   func (s Summary) Render() (string)
@@ -13,13 +14,16 @@ package contextsummary
   type Summarizer struct {
 }
   type Summary struct {
-  Objective string
-  State string
-  Decisions []string
-  OpenWork []string
-  Risks []string
+  Objective string `json:"objective"`
+  State string `json:"state"`
+  Decisions []string `json:"decisions,omitempty"`
+  Evidence []string `json:"evidence,omitempty"`
+  ChangedSurfaces []string `json:"changed_surfaces,omitempty"`
+  OpenWork []string `json:"open_work,omitempty"`
+  Risks []string `json:"risks,omitempty"`
 }
   var ErrCallFailed
   var ErrInvalidReply
   var ErrNilCompleter
   var ErrNoMessages
+  var ErrSummarySkipped

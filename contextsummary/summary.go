@@ -24,13 +24,16 @@ const MaxExcerptTotalBytes = 16 * 1024
 const SummaryMessageName = "context-summary"
 
 // Summary is one validated summary document. Data only: no tool,
-// policy, or credential fields.
+// policy, or credential fields. The json tags pin the host durable
+// schema keys; version and source_range stay with the caller.
 type Summary struct {
-	Objective string
-	State     string
-	Decisions []string
-	OpenWork  []string
-	Risks     []string
+	Objective       string   `json:"objective"`
+	State           string   `json:"state"`
+	Decisions       []string `json:"decisions,omitempty"`
+	Evidence        []string `json:"evidence,omitempty"`
+	ChangedSurfaces []string `json:"changed_surfaces,omitempty"`
+	OpenWork        []string `json:"open_work,omitempty"`
+	Risks           []string `json:"risks,omitempty"`
 }
 
 // Validate enforces every bound this package claims: valid UTF-8, no
@@ -45,6 +48,12 @@ func (s Summary) Validate() error {
 		return err
 	}
 	if err := validateItemList("Decisions", s.Decisions); err != nil {
+		return err
+	}
+	if err := validateItemList("Evidence", s.Evidence); err != nil {
+		return err
+	}
+	if err := validateItemList("ChangedSurfaces", s.ChangedSurfaces); err != nil {
 		return err
 	}
 	if err := validateItemList("OpenWork", s.OpenWork); err != nil {
@@ -104,6 +113,8 @@ func (s Summary) Render() string {
 	b.WriteString("Objective: " + s.Objective + "\n")
 	b.WriteString("State: " + s.State + "\n")
 	writeItems(&b, "Decisions", s.Decisions)
+	writeItems(&b, "Evidence", s.Evidence)
+	writeItems(&b, "ChangedSurfaces", s.ChangedSurfaces)
 	writeItems(&b, "OpenWork", s.OpenWork)
 	writeItems(&b, "Risks", s.Risks)
 	return b.String()
@@ -117,13 +128,18 @@ func writeItems(b *strings.Builder, field string, items []string) {
 	}
 }
 
+// SummaryPreamble is the framing line SummaryMessage places before
+// Render output; Render itself carries no preamble.
+const SummaryPreamble = "This message restates the conversation that compaction removed."
+
 // SummaryMessage renders s as one RoleUser message named
-// SummaryMessageName, whose Content is s.Render().
+// SummaryMessageName, whose Content is SummaryPreamble, one newline,
+// then s.Render().
 func SummaryMessage(s Summary) provider.Message {
 	return provider.Message{
 		Role:    provider.RoleUser,
 		Name:    SummaryMessageName,
-		Content: s.Render(),
+		Content: SummaryPreamble + "\n" + s.Render(),
 	}
 }
 

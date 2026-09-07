@@ -112,7 +112,7 @@ the loop instead of discovering that later.
   at or below 25 words. Instructions use the imperative mood. Same
   thing, same word — no synonym drift. No filler words ("simply",
   "just", "seamless", "robust"). Gate: `scripts/check_prose.py`
-  enforces sentence length in `docs/plans/`.
+  enforces sentence length in `docs/`, run by `make verify-maintainer`.
 - Run `make install-hooks` once per clone, `make verify` before you
   report done. `make verify` is the full gate: gofmt, vet, tests,
   doc gate, structure gate, Semgrep scan, and probes.
@@ -139,7 +139,7 @@ the loop instead of discovering that later.
   tmp, old, backup, version suffixes (v2, v3). Use descriptive names
   like `panel_test.go`, `chain_bench_test.go`. Gate:
   `scripts/check_names.py`. Plan documents in
-  `docs/plans/agents/` may use phase numbers as plan identifiers.
+  `docs/history/agents/` may use phase numbers as plan identifiers.
 - No string literals where constants exist: enum values (Intent,
   Epistemic, AckStatus, Role), hash prefixes, wire serialization
   (Encode), signing (Sign). Enforced by `semgrep/sdk-standards.yml`.
@@ -185,10 +185,11 @@ follow reliably. Each has a gate behind it.
 - Do not let a package see its own caller. Dependency direction flows
   inward; the import policy declares each edge, so a cycle or a caller
   import cannot compile. Gate: `scripts/check_deps.py`.
-- Do not land a package without `docs/plans/<pkg>.md` following
-  `docs/plans/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
+- Do not land a package without `docs/history/<pkg>.md` following
+  `docs/history/TEMPLATE.md` (Goal, Scope, API, Tests, Verification).
   The plan path mirrors the package path: a package at `foo/bar/`
-  plans at `docs/plans/foo/bar.md`. Gate: `scripts/check_plan.py`.
+  plans at `docs/history/foo/bar.md`. Gate: `scripts/check_plan.py`,
+  run by `make verify-maintainer`.
 - Do not leave a plan section with any status other than `shipped` or
   `superseded` once its symbols are in the `api/` lock. This is a
   closed allowlist, not a list of known-stale phrases: an unfamiliar
@@ -258,20 +259,30 @@ Semgrep probe suite. The probes prove every Semgrep rule fires on a
 violation and stays silent on clean code. The coverage block asserts
 the profile lists every package and that the total and each package
 reach 85. `verify` also runs the gates' own probe suites:
-`check_deps.py --probe`, `check_plan.py --probe`, `check_api.py
---probe`, `check_orphan_packages.py --probe`,
-`check_symbol_wiring.py --probe`, `check_mutation.py --probe`,
-`check_thirdparty.py --probe`, and `check_test_tampering.py --probe`.
+`check_deps.py --probe`, `check_api.py --probe`,
+`check_orphan_packages.py --probe`, `check_symbol_wiring.py --probe`,
+`check_mutation.py --probe`, `check_thirdparty.py --probe`, and
+`check_test_tampering.py --probe`.
 
 `scripts/go_packages.py` is the one package enumerator behind the
 deps, plan, orphan, API, and third-party gates. It wraps `go list
 -json`, so a package at any depth is visible.
 
+Neither tier runs the plan, prose, or label gates. Those three encode
+maintainer history and process, not the public contract, and live in
+`make verify-maintainer`: `check_plan.py`, `check_plan.py --probe`,
+`check_prose.py`, and `check_labels.py`. `check_plan.py` reads plan
+docs from `docs/history/`, the record of shipped and in-flight
+package designs. Run `make verify-maintainer` by hand before a
+maintainer merge. A contributor's PR needs only `make verify`; see
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 The hook guard and the pre-commit hook are best-effort against
 careless agents. They are not a security boundary. GitHub Actions CI
-now runs `make verify` on every push and pull request to `main`. No
-branch protection rule exists yet, so CI stays informational only: a
-failing check does not block a merge or a direct push.
+runs `make verify` on every push and pull request to `main`. CI does
+not run `make verify-maintainer`. No branch protection rule exists
+yet, so CI stays informational only: a failing check does not block a
+merge or a direct push.
 
 - Optional, not blocking: `make lint-unparam` runs golangci-lint's
   `unparam` linter against `.golangci.yml`. It needs golangci-lint

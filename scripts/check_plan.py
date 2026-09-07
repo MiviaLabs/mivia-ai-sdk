@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Gate: every Go package needs a plan at docs/plans/<path>.md with the
-sections from docs/plans/TEMPLATE.md. The path is the package path
+"""Gate: every Go package needs a plan at docs/history/<path>.md with the
+sections from docs/history/TEMPLATE.md. The path is the package path
 relative to the module root, so a nested package needs a nested plan
 file. The plan is where an agent declares the package's goal, scope,
 API, tests, and verification BEFORE or WITH the code; the gate makes the
@@ -245,7 +245,7 @@ def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
             anchor_hit = next((part for part in anchor.split(".") if part in locked), None)
             if anchor_hit is not None:
                 problems.append(
-                    f"docs/plans/{pkg}.md:{idx + 1}: status 'planned, extends {anchor}' "
+                    f"docs/history/{pkg}.md:{idx + 1}: status 'planned, extends {anchor}' "
                     f"names an anchor already locked in api/{pkg}.txt; the addition "
                     f"has shipped, write 'Status: shipped'"
                 )
@@ -266,7 +266,7 @@ def _check_planned_status(root: Path, pkg: str, text: str) -> list[str]:
             if hit is None:
                 continue
             problems.append(
-                f"docs/plans/{pkg}.md:{idx + 1}: status {status_text!r} names locked "
+                f"docs/history/{pkg}.md:{idx + 1}: status {status_text!r} names locked "
                 f"symbol {hit!r} from api/{pkg}.txt; ship the section or write "
                 f"'Status: planned, extends {hit}'"
             )
@@ -283,9 +283,9 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
     structural section check still applies."""
     problems: list[str] = []
     for pkg in go_packages.package_paths(root, env_extra):
-        plan = root / "docs" / "plans" / f"{pkg}.md"
+        plan = root / "docs" / "history" / f"{pkg}.md"
         if not plan.exists():
-            problems.append(f"{pkg}: no plan; create docs/plans/{pkg}.md from TEMPLATE.md")
+            problems.append(f"{pkg}: no plan; create docs/history/{pkg}.md from TEMPLATE.md")
             continue
         text = plan.read_text()
         for section in REQUIRED:
@@ -306,7 +306,7 @@ def check(root: Path, env_extra: dict | None = None) -> list[str]:
             missing = [name for name in named if name not in declared]
             for name in missing:
                 problems.append(
-                    f"{pkg}: test {name!r} named in docs/plans/{pkg}.md "
+                    f"{pkg}: test {name!r} named in docs/history/{pkg}.md "
                     f"{heading} has no func declaration in any "
                     f"{pkg}/*_test.go"
                 )
@@ -336,7 +336,7 @@ def _probe_nested_without_plan_fails(root: Path) -> list[str]:
 
 def _probe_nested_with_plan_passes(root: Path) -> list[str]:
     _write_fixture(root)
-    go_packages.write_file(root, "docs/plans/flow/engine.md", _plan_text(REQUIRED))
+    go_packages.write_file(root, "docs/history/flow/engine.md", _plan_text(REQUIRED))
     problems = check(root, go_packages.probe_env())
     if problems:
         return [f"probe_nested_with_plan_passes: expected pass, got {problems}"]
@@ -345,7 +345,7 @@ def _probe_nested_with_plan_passes(root: Path) -> list[str]:
 
 def _probe_missing_section_fails(root: Path) -> list[str]:
     _write_fixture(root)
-    go_packages.write_file(root, "docs/plans/flow/engine.md", _plan_text(REQUIRED[:-1]))
+    go_packages.write_file(root, "docs/history/flow/engine.md", _plan_text(REQUIRED[:-1]))
     problems = check(root, go_packages.probe_env())
     if not any("plan lacks section '## Verification'" in p for p in problems):
         return [f"probe_missing_section_fails: expected a missing-section problem, got {problems}"]
@@ -369,7 +369,7 @@ def _probe_backticked_cross_ref_passes(root: Path) -> list[str]:
         "Cross-package reference: `TestCrossPkgRef`.\n\n"
         "## Verification\n\nText.\n"
     )
-    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    go_packages.write_file(root, "docs/history/flow/engine.md", plan)
     problems = check(root, go_packages.probe_env())
     if problems:
         return [f"probe_backticked_cross_ref_passes: expected pass, got {problems}"]
@@ -391,7 +391,7 @@ def _probe_no_test_files_skips(root: Path) -> list[str]:
         "Names one test that has no source file: TestNeverLanded.\n\n"
         "## Verification\n\nText.\n"
     )
-    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    go_packages.write_file(root, "docs/history/flow/engine.md", plan)
     problems = check(root, go_packages.probe_env())
     if problems:
         return [f"probe_no_test_files_skips: expected pass, got {problems}"]
@@ -424,7 +424,7 @@ def _probe_addendum_tests_checked(root: Path) -> list[str]:
         "### Addendum verification\n\n"
         "make verify passes.\n"
     )
-    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    go_packages.write_file(root, "docs/history/flow/engine.md", plan)
     problems = check(root, go_packages.probe_env())
     if not any(
         "TestAddendumClaim" in p and "### Addendum tests" in p for p in problems
@@ -471,7 +471,7 @@ def _probe_addendum_tests_passes_when_declared(root: Path) -> list[str]:
         "### Addendum verification\n\n"
         "make verify passes.\n"
     )
-    go_packages.write_file(root, "docs/plans/flow/engine.md", plan)
+    go_packages.write_file(root, "docs/history/flow/engine.md", plan)
     problems = check(root, go_packages.probe_env())
     if problems:
         return [
@@ -518,9 +518,9 @@ def _probe_plan_status(root: Path) -> list[str]:
             f"{status_line}\n\nUses {ref} from this package.\n\n"
             "## Tests\n\nText.\n\n## Verification\n\nText.\n"
         )
-        go_packages.write_file(sub, "docs/plans/flow/engine.md", plan)
+        go_packages.write_file(sub, "docs/history/flow/engine.md", plan)
         got = check(sub, go_packages.probe_env())
-        failed = any("docs/plans/flow/engine.md" in p for p in got)
+        failed = any("docs/history/flow/engine.md" in p for p in got)
         if want_fail and not failed:
             problems.append(f"probe_plan_status/{name}: expected a locked-symbol problem, got {got}")
         if not want_fail and got:

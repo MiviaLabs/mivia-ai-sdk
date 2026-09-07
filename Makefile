@@ -4,6 +4,11 @@ SEMGREP_SCAN := semgrep scan --config semgrep/ --error --metrics=off --quiet -j 
 # verify-fast is the local tier: the pre-commit hook runs it on the staged
 # snapshot. verify is the full tier: it adds the coverage floor and the
 # semgrep probe suite. Never weaken a gate to make a change pass.
+#
+# verify-fast and verify hold the public contract: the API lock, the
+# import policy, third-party approval, orphan and symbol wiring, test
+# tampering, and coverage. They do not run the plan, prose, or label
+# gates; those encode maintainer history and live in verify-maintainer.
 verify-fast:
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; exit 1; }
 	go vet ./...
@@ -19,14 +24,11 @@ verify-fast:
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py
 	python3 scripts/check_deps.py
-	python3 scripts/check_plan.py
 	python3 scripts/check_orphan_packages.py
 	python3 scripts/check_symbol_wiring.py
-	python3 scripts/check_prose.py
 	python3 scripts/check_api.py
 	python3 scripts/check_thirdparty.py
 	python3 scripts/check_semgrepignore.py
-		python3 scripts/check_labels.py
 		python3 scripts/check_names.py
 		python3 scripts/check_examples_sync.py
 	python3 scripts/check_test_tampering.py
@@ -72,10 +74,20 @@ verify: verify-fast verify-ledger-sqlite
 	python3 scripts/check_orphan_packages.py --probe
 	python3 scripts/check_symbol_wiring.py --probe
 	python3 scripts/check_deps.py --probe
-	python3 scripts/check_plan.py --probe
 	python3 scripts/check_api.py --probe
 	python3 scripts/check_thirdparty.py --probe
 	python3 scripts/check_test_tampering.py --probe
+
+# verify-maintainer runs the gates that encode maintainer history and
+# process, not the public contract: the plan-template gate, the docs
+# prose standard, and the audit-finding-label ban. A contributor's PR
+# does not need this tier; CI and the pre-commit hook never run it.
+# Run it by hand before a maintainer merge.
+verify-maintainer:
+	python3 scripts/check_plan.py
+	python3 scripts/check_plan.py --probe
+	python3 scripts/check_prose.py
+	python3 scripts/check_labels.py
 
 bench:
 	go test -run=NONE -bench=. -benchmem ./...
@@ -89,7 +101,7 @@ mutation:
 # mutation-gate runs a full sweep against every package that holds a
 # scripts/mutation_denylist/<pkg>.json floor, one package at a time,
 # and fails if any drops below its own stored floor. It never runs
-# inside verify or verify-fast: see docs/plans/agents/phase74_mutation_coverage_rollout.md,
+# inside verify or verify-fast: see docs/history/agents/phase74_mutation_coverage_rollout.md,
 # "Verify wiring". check_mutation.py's finally block restores a
 # mutated file on a normal interrupt, but not on an external hard
 # kill, so this target ends with a git diff check: a leftover mutant
@@ -104,7 +116,7 @@ mutation-gate:
 	git diff --exit-code
 
 # verify-ledger-sqlite is the tag-gated verification command for
-# SQLiteStore (docs/plans/agents/phase42_ledger_durable_store.md).
+# SQLiteStore (docs/history/agents/phase42_ledger_durable_store.md).
 # sqlite_store*.go never compiles into the default build, so verify
 # depends on this target for the tagged tier. It holds the tag-gated
 # ledger package to the same 85% coverage floor verify's default

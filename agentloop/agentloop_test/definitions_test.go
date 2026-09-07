@@ -21,41 +21,40 @@ func TestDefinitionsEmptyRegistry(t *testing.T) {
 	}
 }
 
-// TestDefinitionsSkipsSchemaFreeTools proves a schema-bearing tool is
-// offered and a schema-free tool is skipped and reported.
+// TestDefinitionsSkipsSchemaFreeTools proves a mixed registry fails
+// loudly: a schema-free registered tool fails Definitions with
+// ErrNoSchema naming it, instead of a silent skip.
 func TestDefinitionsSkipsSchemaFreeTools(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "with-schema", schema: []byte(`{}`)})
 	mustAdd(t, reg, &noSchemaTool{name: "without-schema"})
 
 	defs, err := agentloop.Definitions(reg, nil)
-	if err != nil {
-		t.Fatalf("Definitions() error = %v, want nil", err)
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("Definitions() error = %v, want ErrNoSchema", err)
 	}
-	if len(defs) != 1 || defs[0].Name != "with-schema" {
-		t.Fatalf("Definitions() defs = %v, want one entry named with-schema", defs)
+	if defs != nil {
+		t.Fatalf("Definitions() defs = %v, want nil on failure", defs)
 	}
 }
 
 // TestDefinitionsSkipsNilSchemaSchemaTool proves a tool implementing
-// tools.SchemaTool whose ParameterSchema returns nil lands in the skip
-// list: SchemaOf fails closed on nil schema bytes, so the tool is
-// offered in no definition and its name appears in no error. A
-// one-tool registry whose offered set ends empty fails closed with
-// ErrNoSchemas, per Definitions' documented contract.
+// tools.SchemaTool whose ParameterSchema returns nil fails Definitions
+// with ErrNoSchema: SchemaOf fails closed on nil schema bytes, so the
+// wrapper's name appears in the wrapped error.
 func TestDefinitionsSkipsNilSchemaSchemaTool(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "nil-schema", schema: nil})
 
 	defs, err := agentloop.Definitions(reg, nil)
-	if !errors.Is(err, agentloop.ErrNoSchemas) {
-		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("Definitions() error = %v, want ErrNoSchema", err)
 	}
 	if len(defs) != 0 {
 		t.Fatalf("Definitions() defs = %v, want none: a nil schema is not a published schema", defs)
 	}
-	if strings.Contains(err.Error(), "nil-schema") {
-		t.Fatalf("err = %v, want it to not name the skipped tool", err)
+	if !strings.Contains(err.Error(), "nil-schema") {
+		t.Fatalf("err = %v, want it to name the schema-free tool", err)
 	}
 }
 
@@ -78,18 +77,43 @@ func TestDefinitionsScopeDenial(t *testing.T) {
 }
 
 // TestDefinitionsErrNoSchemasEveryToolMissingSchema proves a registry
-// whose every tool lacks a schema fails closed.
+// whose every tool lacks a schema fails loudly with ErrNoSchema naming
+// the first tool in sorted order; the empty-set cause is unreachable
+// past ErrNoSchema.
 func TestDefinitionsErrNoSchemasEveryToolMissingSchema(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &noSchemaTool{name: "a"})
 	mustAdd(t, reg, &noSchemaTool{name: "b"})
 
 	defs, err := agentloop.Definitions(reg, nil)
-	if !errors.Is(err, agentloop.ErrNoSchemas) {
-		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("Definitions() error = %v, want ErrNoSchema", err)
 	}
 	if len(defs) != 0 {
 		t.Fatalf("Definitions() defs = %v, want none", defs)
+	}
+	if !strings.Contains(err.Error(), "a") {
+		t.Fatalf("err = %v, want it to name the first tool in sorted order", err)
+	}
+}
+
+// TestDefinitionsRejectsSchemaFreeToolNames proves the loud failure's
+// shape on a mixed registry: a wrapped ErrNoSchema whose message names
+// the schema-free tool, and a nil definition set.
+func TestDefinitionsRejectsSchemaFreeToolNames(t *testing.T) {
+	reg := tools.New()
+	mustAdd(t, reg, &schemaEchoTool{name: "good", schema: []byte(`{}`)})
+	mustAdd(t, reg, &noSchemaTool{name: "schema-free"})
+
+	defs, err := agentloop.Definitions(reg, nil)
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("Definitions() error = %v, want ErrNoSchema", err)
+	}
+	if !strings.Contains(err.Error(), "schema-free") {
+		t.Fatalf("err = %v, want it to name the schema-free tool", err)
+	}
+	if defs != nil {
+		t.Fatalf("Definitions() defs = %v, want nil on failure", defs)
 	}
 }
 

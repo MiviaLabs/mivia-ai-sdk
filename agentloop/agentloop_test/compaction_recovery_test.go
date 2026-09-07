@@ -94,13 +94,15 @@ func newRecoveryFixture(t *testing.T, w plan.Window, div int, errs []error, resp
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(scaleEstimator{div: div}, 1.0),
-	})
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: div}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

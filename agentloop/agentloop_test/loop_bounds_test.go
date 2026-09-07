@@ -168,7 +168,7 @@ func TestRunPreToolNonVetoErrorFails(t *testing.T) {
 	if err := hreg.Add(events.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
@@ -356,7 +356,7 @@ func TestRunMidTurnVetoPreservesPriorCall(t *testing.T) {
 		}
 		return call.Name != "vetoed", nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(
@@ -390,4 +390,109 @@ func TestRunMidTurnVetoPreservesPriorCall(t *testing.T) {
 	if !found {
 		t.Fatalf("no RoleTool message for call-1 in history: %+v, want the first call's result preserved", res.History)
 	}
+}
+
+// toolCallTurn builds one provider.Response that requests exactly one
+// echo tool call.
+func toolCallTurn() provider.Response {
+	return toolCallResponse(
+		provider.ToolCall{ID: "call", Index: 0, Name: "echo", Arguments: []byte("{}")},
+	)
+}
+
+// TestNewDefaultsFullyZeroBounds proves New applies DefaultBounds to
+// the fully zero Bounds: a tool-calling loop with no Bounds set stops
+// with StopMaxIterations at exactly 24 iterations.
+func TestNewDefaultsFullyZeroBounds(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	responses := make([]provider.Response, 30)
+	for i := range responses {
+		responses[i] = toolCallTurn()
+	}
+	completer := &scriptedCompleter{responses: responses}
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+	if err != nil {
+		t.Fatalf("Run() error = %v, want nil", err)
+	}
+	if res.Stop != agentloop.StopMaxIterations {
+		t.Fatalf("Stop = %v, want StopMaxIterations", res.Stop)
+	}
+	if res.Iterations != 24 {
+		t.Fatalf("Iterations = %d, want 24: DefaultBounds' MaxIterations must land at New", res.Iterations)
+	}
+}
+
+// TestNewKeepsPartialBoundsAsGiven proves New defaults only the fully
+// zero Bounds: a partially set Bounds stays as given, and a zero
+// member inside it keeps its uncapped meaning.
+func TestNewKeepsPartialBoundsAsGiven(t *testing.T) {
+	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
+	reg := tools.New()
+	mustAdd(t, reg, tool)
+	turns := make([]provider.Response, 30)
+	for i := range turns {
+		turns[i] = toolCallTurn()
+	}
+
+	t.Run("MaxIterations two stops at two", func(t *testing.T) {
+		completer := &scriptedCompleter{responses: turns}
+		loop, err := agentloop.New(agentloop.Options{
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 2},
+		})
+		if err != nil {
+			t.Fatalf("New() error = %v, want nil", err)
+		}
+		res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+		if res.Stop != agentloop.StopMaxIterations || res.Iterations != 2 {
+			t.Fatalf("Stop = %v Iterations = %d, want StopMaxIterations at 2, not the default 24", res.Stop, res.Iterations)
+		}
+	})
+
+	t.Run("MaxTotalTokens ten fails over the cap", func(t *testing.T) {
+		completer := &scriptedCompleter{responses: []provider.Response{
+			{Message: textMessage(provider.RoleAssistant, "done"), Usage: provider.Usage{TotalTokens: 11}},
+		}}
+		loop, err := agentloop.New(agentloop.Options{
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxTotalTokens: 10},
+		})
+		if err != nil {
+			t.Fatalf("New() error = %v, want nil", err)
+		}
+		_, err = loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+		if !errors.Is(err, agentloop.ErrTokenBudgetExceeded) {
+			t.Fatalf("Run() error = %v, want ErrTokenBudgetExceeded: the 200k default must not land", err)
+		}
+	})
+
+	t.Run("zero MaxIterations inside partial Bounds stays unbounded", func(t *testing.T) {
+		responses := append([]provider.Response(nil), turns[:24]...)
+		responses = append(responses, provider.Response{Message: textMessage(provider.RoleAssistant, "done")})
+		completer := &scriptedCompleter{responses: responses}
+		loop, err := agentloop.New(agentloop.Options{
+			Completer: completer, Tools: reg,
+			Bounds: agentloop.Bounds{MaxIterations: 0, MaxCallsPerTurn: 1},
+		})
+		if err != nil {
+			t.Fatalf("New() error = %v, want nil", err)
+		}
+		res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
+		if err != nil {
+			t.Fatalf("Run() error = %v, want nil", err)
+		}
+		if res.Iterations != 25 {
+			t.Fatalf("Iterations = %d, want 25: a zero member inside a partial Bounds must not receive the default 24", res.Iterations)
+		}
+		if res.Stop != agentloop.StopNoToolCalls {
+			t.Fatalf("Stop = %v, want StopNoToolCalls", res.Stop)
+		}
+	})
 }

@@ -3,7 +3,8 @@
 // tools.PrivilegedTool, and tools.SchemaTool, for every inner, and it
 // mirrors inner's values through the tools helpers. tools.SchemaOf
 // still reports nil, false for a schema-less wrapper, because
-// tools.SchemaOf fails closed on nil schema bytes. Enumerates every
+// tools.SchemaOf fails closed on nil schema bytes; agentloop.New then
+// fails with ErrNoSchema naming the wrapper. Enumerates every
 // subset of the known interfaces, so a wrapper that dropped a
 // capability, or that forwarded a wrong value, fails here, not in a
 // live run. When tools gains a new optional interface, add it to

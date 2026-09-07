@@ -64,10 +64,9 @@ func TestRunResultFinalCapturesStreamedPartialOnCancel(t *testing.T) {
 		cancelled: make(chan struct{}),
 	}
 	loop, err := sdkagentloop.New(sdkagentloop.Options{
-		Completer:       comp,
-		Tools:           tools.New(),
-		Model:           "m",
-		StreamingWriter: &strings.Builder{},
+		Completer: comp,
+		Tools:     tools.New(),
+		Model:     "m", Extensions: &sdkagentloop.Extensions{StreamingWriter: &strings.Builder{}},
 	})
 	if err != nil {
 		t.Fatal(err)

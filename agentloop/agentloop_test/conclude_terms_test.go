@@ -94,9 +94,7 @@ func TestRunConcludeDeadlineThresholdFires(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Deadline: time.Hour},
-		StartTime: start,
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: time.Hour}, StartTime: start},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -124,9 +122,7 @@ func TestRunConcludeDeadlineFutureDoesNotFire(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Deadline: 2 * time.Hour},
-		StartTime: time.Now(),
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: 2 * time.Hour}, StartTime: time.Now()},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -157,8 +153,7 @@ func TestRunConcludeMarginThresholdFires(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Margin: 4},
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 4}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -196,9 +191,7 @@ func TestRunConcludeTermsOREDTogether(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Margin: 4, Deadline: time.Hour},
-		StartTime: time.Now().Add(-2 * time.Hour),
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 4, Deadline: time.Hour}, StartTime: time.Now().Add(-2 * time.Hour)},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -231,8 +224,7 @@ func TestRunConcludeZeroTermsDoNotFire(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Margin: 0, Deadline: 0},
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 0, Deadline: 0}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -261,8 +253,7 @@ func TestRunConcludeMarginBoundary(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Margin: 3},
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 3}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -296,8 +287,7 @@ func TestRunConcludeZeroTermsKExceedsMaxIterations(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 3},
-		Conclude:  agentloop.Conclude{Margin: 0, Deadline: 0},
+		Bounds:    agentloop.Bounds{MaxIterations: 3}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 0, Deadline: 0}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -327,9 +317,7 @@ func TestRunConcludeZeroDeadlineWithPastStartTimeDoesNotFire(t *testing.T) {
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
-		Conclude:  agentloop.Conclude{Deadline: 0},
-		StartTime: time.Now().Add(-2 * time.Hour),
+		Bounds:    agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: 0}, StartTime: time.Now().Add(-2 * time.Hour)},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

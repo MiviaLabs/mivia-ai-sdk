@@ -5859,3 +5859,658 @@ interface field, a plain conversion.
 - `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
   `scripts/check_prose.py` pass.
 - The coverage floor of 85 holds for `agentloop` and the total.
+
+## Addendum: the Options and Extensions split
+
+Status: shipped. The struct split, the Bounds defaulting, the
+zero-Window derivation fix, the loud schema failure, and the API lock
+refresh land as one change.
+
+### Addendum goal
+
+`Options` carried 27 fields. Nine of them, counted by field,
+existed to mirror one external caller's legacy loop. The
+`policy/pending_wiring.json` agentloop row names that gap analysis.
+Several mirrored knobs, `DedupWithinTurn` and `Conclude` among them,
+the consumer then declined to adopt. Peer SDKs carry less surface:
+Anthropic's tool runner adds one field; eino's agent config carries
+13 fields.
+
+This addendum does four things:
+
+- Moves the nine host-mirror fields behind one optional pointer,
+  `Options.Extensions`. The main struct reads like the product
+  surface it is.
+- Folds `Window`, `Summarizer`, and `Calibrated` into one
+  `Options.Compaction` value group.
+- Applies `DefaultBounds()` at `New` when `Bounds` is the zero
+  value, so a zero `Bounds` is no longer an unbounded run.
+- Fails loudly when a registered tool publishes no schema.
+
+Two fixes ride along. `EnableCompaction` now accepts a zero `Window`
+and lets `New` derive it, so the helper composes with derivation.
+`New`'s defaulting order is pinned in this addendum.
+
+### The field map
+
+Every one of today's 27 `Options` fields moves to exactly one place.
+Fifteen stay on `Options`. Nine move to `Extensions`. Three fold into
+the `Compaction` group.
+
+| Today's field | Destination | Why, one line |
+|---|---|---|
+| `Completer` | `Options` | Required core. |
+| `Tools` | `Options` | Required core. |
+| `Scope` | `Options` | Core admission policy. |
+| `Model` | `Options` | Core request field. |
+| `Bounds` | `Options` | Numeric caps every user needs. |
+| `OnToolError` | `Options` | The tool-failure policy switch. |
+| `Hooks` | `Options` | Product observability surface. |
+| `Tracer` | `Options` | Product observability surface. |
+| `Usage` | `Options` | Product telemetry; pairs with `SessionID`. |
+| `SessionID` | `Options` | Keys `Usage`. |
+| `Bus` | `Options` | Product event surface. |
+| `HeartbeatInterval` | `Options` | Pairs with `Bus`; the rule stays intra-struct. |
+| `Budget` | `Options` | Context bounding every user needs. |
+| `Trim` | `Options` | Context bounding; `Compaction.Window` excludes it. |
+| `Audit` | `Options` | Product audit surface. |
+| `Window` | `Options.Compaction.Window` | One third of the co-required planning triple. |
+| `Summarizer` | `Options.Compaction.Summarizer` | One third of the co-required planning triple. |
+| `Calibrated` | `Options.Compaction.Calibrated` | One third of the co-required planning triple. |
+| `OnToolCallError` | `Extensions` | Host mirror: report-path response shaping. |
+| `Surface` | `Extensions` | Host mirror: per-iteration tool rotation. |
+| `StreamingWriter` | `Extensions` | Host mirror: steered-stop stream capture. |
+| `Conclude` | `Extensions` | Host mirror wrap-up terms; the consumer leaves it unset. |
+| `StartTime` | `Extensions` | Anchors `Conclude.Deadline`; moves with it. |
+| `DedupWithinTurn` | `Extensions` | Host mirror; the consumer leaves it unset. |
+| `WorkBudget` | `Extensions` | Host mirror: token reservation around `Chat`. |
+| `ToolBudget` | `Extensions` | Host mirror: reservation before dispatch. |
+| `ContinueOnStop` | `Extensions` | Host mirror; the host's wrap-up budget rides it. |
+
+### Addendum scope
+
+Inside:
+
+- `agentloop/options.go`: the split struct, the `Compaction` field,
+  the `Extensions` pointer, `Validate`, `ErrMaxIterations`'s doc
+  comment, and the new `ErrNoSchema` sentinel.
+- `agentloop/extensions.go`, a new file in the package: the
+  `Extensions` type. Named by feature, not by process.
+- `agentloop/compaction.go`: the `Compaction` type and
+  `EnableCompaction`'s zero-Window rule.
+- `agentloop/loop.go`: `New`'s order, the zero-Bounds defaulting,
+  `unboundedOrSet`'s comment, and the nil-Extensions local.
+- `agentloop/bounds.go`: the member comments that currently say zero
+  means unbounded.
+- `agentloop/definitions.go`: the loud schema failure.
+- Every in-repo caller; see the migration list.
+
+Outside:
+
+- No new package. `policy/layers.json` needs no row; no import edge
+  moves. No `policy/thirdparty.json` change.
+- No change to `Loop`'s unexported fields. `New` still fills the same
+  fields; only the read paths move to `opts.Extensions` and
+  `opts.Compaction`.
+- No code change to `spool`, `contextplan`, `contextsummary`,
+  `contextbudget`, `tools`, `agentrun`, or `runconfig`. The spool
+  change is comments and docs only; see the spool resolution.
+- The external consumer's own migration to `Extensions`. That is the
+  consumer repo's change. Only `policy/pending_wiring.json`'s agentloop
+  reason text updates in this repo, so the row does not go stale.
+
+### The new declarations
+
+`agentloop/options.go` holds `Options` and `Validate`.
+`agentloop/extensions.go` holds `Extensions`. `agentloop/compaction.go`
+holds `Compaction` beside `EnableCompaction`. Field order is exactly
+as below; the API lock mirrors it.
+
+```go
+// Options declares the blocks one New call wires into a Loop.
+// Completer and Tools are required; the rest are optional. The host
+// integration knobs live behind Extensions, the last field.
+type Options struct {
+	// Completer runs each chat turn. Required.
+	Completer provider.Completer
+	// Tools is the registry Definitions builds the offered tool set
+	// from, and RunScoped resolves a model-chosen call against.
+	// Required.
+	Tools *tools.Registry
+	// Scope narrows which tools a model-chosen call may invoke. Run
+	// always calls Registry.RunScoped, never Registry.Run.
+	Scope *tools.Scope
+	// Model names the model Request.Model carries. An empty Model
+	// means the Completer's own default.
+	Model string
+	// Bounds groups the loop's numeric caps. The zero value receives
+	// DefaultBounds at New; see this addendum's defaulting rule.
+	Bounds Bounds
+	// OnToolError governs what Run does with a tool-run error.
+	OnToolError ErrorPolicy
+	// Hooks fires PointPreTool and PointPostTool per tool call, and
+	// PointStop once at the end. Optional.
+	Hooks *hooks.Registry
+	// Tracer opens one span per iteration and one per tool call.
+	// Optional.
+	Tracer *trace.Tracer
+	// Usage records per-iteration provider.Usage under SessionID.
+	// Requires SessionID. Optional.
+	Usage *usage.Accumulator
+	// SessionID keys Usage's running total. Required when Usage is
+	// set.
+	SessionID string
+	// Bus receives Run's iteration, heartbeat, and tool-call events.
+	// Required when HeartbeatInterval is positive. Optional.
+	Bus *events.Bus
+	// HeartbeatInterval emits a heartbeat Event on Bus while one
+	// Completer or tool call is in flight. Zero disables heartbeats.
+	HeartbeatInterval time.Duration
+	// Budget caps one Completer call's message history by byte count
+	// and message count. A nil Budget means uncapped. When
+	// Compaction.Window is set, Budget checks the compacted history.
+	Budget *contextbudget.Limits
+	// Trim runs before each Completer call on the full history. A nil
+	// Trim passes history through unchanged. Trim and
+	// Compaction.Window are mutually exclusive.
+	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
+	// Audit receives one AuditRecord per audited event. A nil Audit
+	// means Run performs no audit call. Optional.
+	Audit AuditFunc
+	// Compaction groups the context-window planning triple. The zero
+	// value disables planning. See the Compaction type.
+	Compaction Compaction
+	// Extensions holds the host-integration knobs. A nil Extensions
+	// means every knob at its zero value. Optional.
+	Extensions *Extensions
+}
+```
+
+```go
+// Extensions groups the host-integration knobs one external loop
+// mirror needs. Reached only through Options.Extensions; a nil
+// pointer means every member at its zero value.
+type Extensions struct {
+	// OnToolCallError runs on the ErrorPolicyReport path after a
+	// decodeAndRun or render failure. See ErrorFunc for the contract.
+	OnToolCallError ErrorFunc
+	// Surface, when non-nil, replaces the iteration's advertised
+	// definitions, registry, and scope from iteration two onward.
+	Surface func() *Surface
+	// StreamingWriter, when non-nil, mirrors what the Completer
+	// writes; on a Steered stop the buffered bytes become
+	// Result.Final.Content. Must be safe for concurrent use.
+	StreamingWriter io.Writer
+	// Conclude groups the graceful-conclude terms; see the Conclude
+	// type for Margin, Deadline, and Notice.
+	Conclude Conclude
+	// StartTime is the wall-clock anchor for Conclude.Deadline. Zero
+	// falls back to the time of New.
+	StartTime time.Time
+	// DedupWithinTurn serves DuplicateCallNotice for a repeated
+	// (tool, canonical-argument) call within one turn.
+	DedupWithinTurn bool
+	// WorkBudget, when non-nil, is the token-reservation surface the
+	// loop invokes around each Completer call.
+	WorkBudget *WorkBudget
+	// ToolBudget, when non-nil, is the cumulative tool-call budget
+	// invoked once per turn before dispatch.
+	ToolBudget *ToolBudget
+	// ContinueOnStop is consulted on every graceful stop; a non-empty
+	// return continues the loop. See StopDecision.
+	ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
+}
+```
+
+```go
+// Compaction groups the context-window planning triple. The zero
+// value disables planning; the loop then runs unplanned. Window nil
+// with Summarizer and Calibrated set asks New to derive the window
+// from the Completer's ContextAccountant capability.
+type Compaction struct {
+	// Window plans every iteration against a token budget. Nil asks
+	// for derivation at New. Requires Summarizer and Calibrated, and
+	// excludes Options.Trim.
+	Window *contextplan.Window
+	// Summarizer runs the LLM summary every compaction requires.
+	// Required when Window is set. See the Summarizer interface for
+	// the sanctioned constructors and the typed-nil warning.
+	Summarizer Summarizer
+	// Calibrated estimates tokens and receives one Observe call after
+	// every Chat. Required when Window is set.
+	Calibrated *contextplan.Calibrated
+}
+```
+
+Allocation decisions, one line each:
+
+- `Compaction` earns its keep: the three fields are co-required by
+  `Validate`, excluded together with `Trim`, written together by
+  `EnableCompaction`, and read together by `New`'s derivation. One
+  named slot deletes a three-field coupling from the main struct and
+  from every caller literal. It follows the shipped `Bounds` and
+  `Conclude` value-group precedent. This is grouping, not framework.
+- `HeartbeatInterval` stays on `Options`: `Bus` stays on `Options`,
+  so `ErrHeartbeatRequiresBus` stays an intra-struct rule. It is
+  heartbeat-addendum product surface, not a mirror knob.
+- `StartTime` moves with `Conclude`: it anchors `Conclude.Deadline`,
+  and the pair shares one struct.
+- `Usage`, `SessionID`, `Budget`, and `Trim` stay: generic product
+  surface, not mirror knobs.
+- `Extensions` is a pointer so an unset group is visible at the call
+  site: a nil pointer means every knob is off.
+- New keeps an `ext := opts.Extensions` local, nil replaced by
+  `&Extensions{}` once, after `Validate`. Every `Loop` field the
+  group feeds reads through that local.
+
+### Validate order after the change
+
+`Options.Validate` checks in this fixed order and returns the first
+failure:
+
+1. `Completer` nil, `ErrNoCompleter`.
+2. `Tools` nil, `ErrNoTools`.
+3. `Bounds.Validate`: `MaxIterations`, `MaxTotalTokens`,
+   `MaxCallsPerTurn`, `MaxConcurrentTools`,
+   `MaxConsecutiveToolFailures`, each not negative.
+4. `Usage` set with a blank `SessionID`, `ErrSessionIDRequired`.
+5. `Budget` non-nil, wrapped `Budget.Validate`.
+6. `Compaction.Window` non-nil: wrapped `Window.Validate`, then
+   `ErrSummarizerRequired`, then `ErrEstimatorRequired`, then
+   `ErrTrimExcluded` when `Trim` is also set.
+7. `Extensions`, first block, skipped whole when the pointer is nil:
+   `Conclude.Validate`.
+8. `HeartbeatInterval` positive with nil `Bus`,
+   `ErrHeartbeatRequiresBus`.
+9. `Extensions`, second block, same nil guard:
+   `WorkBudget.validate`, then `ToolBudget.validate`.
+
+The split preserves today's precedence exactly: Conclude before
+Heartbeat before WorkBudget and ToolBudget. `Validate` reads the
+`Extensions` pointer twice for this; a nil pointer skips both blocks.
+No first-error among today's rules changes.
+
+`TestOptionsValidateHeartbeatOrder` stays green; its "runs last"
+comment is reworded to "runs before the WorkBudget and ToolBudget
+checks".
+
+### New's defaulting order
+
+`New` runs these steps in this order:
+
+1. `opts.Validate()`.
+2. `Definitions(opts.Tools, opts.Scope)`. A wrapped `ErrNoSchema`
+   fails `New` here.
+3. `compileSchemas(defs)`. `ErrInvalidSchema` unchanged.
+4. Bounds defaulting on a copy: a fully zero `opts.Bounds` becomes
+   `DefaultBounds()`; then `unboundedOrSet` maps a zero
+   `MaxIterations` to `math.MaxInt32`.
+5. Capability adoption: `deriveWindow` when `Compaction.Window` is
+   nil, `Trim` is nil, and `Compaction.Summarizer` and
+   `Compaction.Calibrated` are both set; then
+   `deriveReasoningEffort`.
+6. Conclude transforms: `resolveConcludeNotice`, then
+   `computeDeadlineAt(ext.StartTime, ext.Conclude.Deadline)`.
+7. Loop construction from the prepared locals.
+
+Derivation moves after `compileSchemas` against today's order. That
+is behavior-neutral: derivation reads only `Options` fields. Moving
+it after the schema compile keeps one canonical pipeline: validate,
+offer, compile, default, adopt, transform, build.
+
+### The zero-Bounds defaulting rule
+
+- Only the fully zero struct gets defaults: `opts.Bounds ==
+  Bounds{}`. A partially set `Bounds`, any member non-zero, stays
+  exactly as given.
+- Zero members inside a partial `Bounds` keep their zero meanings.
+  Zero `MaxIterations` is unbounded. Zero `MaxTotalTokens` is
+  unbounded. Zero `MaxConsecutiveToolFailures` sets no tripwire.
+- A caller wanting an unbounded `MaxIterations` sets
+  `math.MaxInt32` explicitly.
+- `unboundedOrSet` stays. Its comment drops the legacy-loop wording
+  and states the rule above.
+- `ErrMaxIterations`'s doc comment at `options.go` drops the
+  zero-equals-unbounded promise. It states: negative fails
+  `Validate`; zero inside a fully zero `Bounds` receives
+  `DefaultBounds` at `New`; zero inside a partial `Bounds` stays
+  unbounded.
+- `bounds.go`'s member comments that say zero means unbounded gain
+  the same pointer to the defaulting rule.
+- Sixteen `Options` literals in the test tree omit `Bounds` today:
+  `loop_wiring_test.go:20`, `streaming_partial_test.go:66`,
+  `enable_compaction_test.go:60`, eight in `work_budget_test.go`, and
+  five in `tool_budget_test.go`. None runs past the defaults of 24
+  turns, 8 calls per turn, a 4-way pool, 3 failing turns, or 200k
+  tokens. The builder runs the full suite to confirm.
+
+### EnableCompaction's new contract
+
+The signature is unchanged:
+
+```go
+func EnableCompaction(o *Options, completer provider.Completer,
+	window contextplan.Window, alpha float64) error
+```
+
+- The fallible steps run first and unchanged: the
+  `provider.TokenEstimator` assertion fails with
+  `ErrNoTokenEstimator`, and `contextsummary.NewSummarizer` may fail.
+  `Options` stay untouched on either failure.
+- New Window rule: when `window.MaxTokens > 0`, `EnableCompaction`
+  copies the window into `o.Compaction.Window`. Otherwise it leaves
+  `o.Compaction.Window` nil. A negative `MaxTokens` takes the same
+  derive path as zero, not an error.
+- Rationale: `contextplan.Window.Validate` rejects `MaxTokens <= 0`,
+  so such a value can never be an explicit window. It can only mean
+  "derive".
+- Accepted consequence: today `New` fails a negative `MaxTokens` with
+  a wrap of `contextplan.ErrMaxTokensNotPositive`. This change loses
+  that failure for the `EnableCompaction` path, on purpose. There is
+  no valid configuration to protect: `MaxTokens <= 0` is never a
+  usable explicit window, so derivation is the only sensible reading.
+- `EnableCompaction` then writes `o.Compaction.Summarizer` and
+  `o.Compaction.Calibrated` as today.
+- `New`'s derivation then supplies a window at 80 percent trigger
+  and 50 percent target of the Completer's `ContextWindow`, with one
+  fifth held back as reserve, when `Trim` is unset.
+- Corner: a caller setting only `TriggerPercent` gets the derived
+  default 80/50, not its own percent. A caller wanting custom
+  percents sets `MaxTokens`.
+- Zero Window with `Trim` set: `Validate` stays silent, because the
+  Window block guards on a non-nil `Compaction.Window`, and
+  derivation stands down on `Trim`. The wired pair goes unused, the
+  same outcome today's shape produces.
+- The `docs/examples/_agentloop_minimal` example becomes the
+  positive control for the derivation path.
+
+### Definitions' new error contract
+
+- One new sentinel:
+
+```go
+// ErrNoSchema is Definitions's error when a registered tool
+// publishes no parameter schema. Wrapped with the tool's registry
+// name. Test with errors.Is.
+ErrNoSchema = errors.New("agentloop: registered tool publishes no parameter schema")
+```
+
+- The loop checks `tools.SchemaOf` first, scope second. A not-ok
+  `SchemaOf` returns immediately:
+
+```go
+schema, ok := tools.SchemaOf(t)
+if !ok {
+	return nil, fmt.Errorf("agentloop: tool %q: %w", t.Name(), ErrNoSchema)
+}
+```
+
+- A scope-denied tool keeps the silent skip. Denial is policy
+  filtering, not a mistake.
+- `ErrNoSchemas` stays, with narrowed wording: a non-empty registry
+  whose offered set ends empty now means the scope denied every
+  tool. Every schema-less cause is unreachable past `ErrNoSchema`.
+- `New` inherits the failure. `Definitions` runs before
+  `compileSchemas`, so the loud error precedes schema compilation.
+- `api/agentloop.txt` gains the `ErrNoSchema` const line.
+
+### The spool resolution
+
+Chosen: spool's contract and docs change to match the loud failure.
+`SpoolTool` stays permissive over a schema-less inner.
+
+- `spool` imports `tools` only and stays agentloop-blind. A
+  schema-less tool is valid registry surface elsewhere: the e2e
+  spool test drives a schema-less `SpoolTool` through `agentrun`
+  today.
+- The spool parity suite treats the schema-less inner as a
+  first-class case. Construction-time rejection would delete
+  behavior and weaken tests.
+- The loud failure names the wrapper at `New`, the layer that owns
+  the policy. Diagnosis quality is equal.
+- `memory/tool.go`'s `SpoolTool` doc comment changes its closing
+  sentences: `tools.SchemaOf` fails closed, a schema-less inner
+  reports nil and false, and `agentloop.New` then fails with
+  `ErrNoSchema` naming the wrapper. Wrap schema-bearing inners for
+  model-facing registries.
+- `memory/memory_test/tool_parity_test.go`'s header comment states the
+  same consequence.
+- `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section)'s Schema forwarding section drops its
+  silent-skip sentences and states the loud contract.
+- Tests asserting `tools.SchemaOf(wrapper)` reports nil and false
+  stay unchanged. They pin `tools.SchemaOf`'s fail-closed property,
+  which survives this change.
+- No spool code change. No `policy/layers.json` change.
+
+### Migration list
+
+Package code:
+
+- `agentloop/options.go`, `agentloop/extensions.go`,
+  `agentloop/compaction.go`, `agentloop/loop.go`,
+  `agentloop/bounds.go`, `agentloop/definitions.go`.
+- Comment sweeps in `agentloop/stop.go` (`Options.ContinueOnStop`)
+  and `agentloop/surface.go` (`Options.Surface`) to the `Extensions`
+  paths. A grep over the twelve moved names sweeps any other comment
+  site in the package.
+
+Test files, mechanical `Extensions` literal moves:
+
+- `on_tool_call_error_test.go` and `tool_call_context_test.go`
+  (`OnToolCallError`).
+- `surface_rotation_test.go` (`Surface`).
+- `streaming_partial_test.go` (`StreamingWriter`).
+- `conclude_test.go`, `conclude_terms_test.go`,
+  `continue_on_stop_test.go`, `continue_on_stop_bounds_test.go`
+  (`Conclude`, `StartTime`, `ContinueOnStop`).
+- `dedup_test.go`, `dedup_canonicalize_test.go`,
+  `batch_order_test.go`, `parallel_tools_test.go`,
+  `steer_injector_review_test.go` (`DedupWithinTurn`).
+- `work_budget_test.go` (`WorkBudget`).
+- `tool_budget_test.go` (`ToolBudget`).
+
+Test files, mechanical `Compaction` literal moves:
+
+- `compaction_test.go`, `compaction_budget_test.go`,
+  `compaction_estimator_test.go`, `compaction_recovery_test.go`,
+  `compaction_reentry_test.go`, `enable_compaction_test.go`,
+  `events_bridge_test.go`, `heartbeat_iteration_test.go`,
+  `observe_pairing_test.go`, `steer_recovery_test.go`,
+  `work_budget_test.go`, and the internal
+  `capability_derivation_test.go`.
+
+Test files, contract changes:
+
+- `definitions_test.go`, `loop_wiring_test.go`, `options_test.go`,
+  and `unbounded_max_iterations_test.go`; see the tests section.
+
+Method: the Bounds-and-Conclude addendum's rename method, reused.
+A one-off script rewrites the nine moved literal keys and their
+assignment forms into `Extensions: agentloop.Extensions{...}` and
+the three triple keys into `Compaction: agentloop.Compaction{...}`,
+merging same-destination members into one key per literal. The
+builder deletes the script; it is not committed. Two closing greps
+cover both straggler classes, assignment and composite-literal key:
+
+```sh
+grep -rnE '\b(Window|Summarizer|Calibrated)([[:space:]]*=[^=]|:)' \
+  agentloop/agentloop_test/ docs/examples/ e2e/ --include='*.go'
+grep -rnE '\b(OnToolCallError|Surface|StreamingWriter|StartTime|DedupWithinTurn|WorkBudget|ToolBudget|ContinueOnStop)([[:space:]]*=[^=]|:)' \
+  agentloop/agentloop_test/ docs/examples/ e2e/ --include='*.go'
+```
+
+These greps keep hits after the migration: every member key inside
+the new `Extensions{...}` and `Compaction{...}` literals matches.
+The builder reads each hit and confirms it sits inside one of those
+literals. A hit naming a key on an `Options` literal is a straggler.
+Compile is the final arbiter: a straggler key fails to build.
+
+Examples and e2e:
+
+- `docs/examples/_agentloop/main.go`: drop `shoutTool` and the
+  `shout` allowlist entry. Every registered tool must publish a
+  schema now, and the example says so in a comment. Move
+  `DedupWithinTurn`, `StartTime`, `Conclude`, `WorkBudget`, and
+  `ToolBudget` into one `Extensions` literal. Move the planning
+  triple into `Compaction`. Output stays `final: HELLO`. Update
+  `docs/examples/agentloop.md`'s fence byte-identically;
+  `check_examples_sync.py` enforces the pair.
+- `docs/examples/agentloop.md`: rewrite the post-fence prose. Drop
+  the `shout` "implements `tools.Tool` only, so the offered set skips
+  it" explanation; state the loud `ErrNoSchema` failure instead. The
+  sync gate byte-compares only the fence, so this prose has no
+  standing check and needs this explicit edit.
+- `docs/examples/_agentloop_adoption/main.go`: move `DedupWithinTurn`,
+  `Conclude`, and `StartTime` into `Extensions`; the triple into
+  `Compaction`. Update the header's row list and the per-row
+  comments. This stays the adopted-row positive control. Output
+  stays `final: HELLO`.
+- `docs/examples/_agentloop_minimal/main.go`: pass
+  `contextplan.Window{}` to `EnableCompaction` and give the canned
+  completer a `ContextWindow() int` returning 2048. The example
+  becomes the derivation positive control: `New` derives 2048 with a
+  409 reserve at 80/50. Output stays `final: HELLO`.
+- `internal/e2e/e2e_test/anthropic_compaction_test.go`: regroup the triple
+  into one `Compaction` literal. No behavior change.
+
+Docs:
+
+- `docs/packages/agentloop.md`: sweep the moved field names to their
+  new paths; add `Extensions` and `Compaction` to the Types section;
+  restate `EnableCompaction`'s contract, the zero-Bounds defaulting,
+  and the loud `Definitions` failure. The failure-modes section
+  gains `ErrNoSchema`.
+- `docs/architecture.md`: grep the twelve moved names, the nine
+  Extensions fields plus `Window`, `Summarizer`, and `Calibrated`;
+  update every hit, including line 367's "A non-nil `Options.Window`
+  plans every iteration". The package count is unchanged, so the
+  opening paragraph stands.
+- `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section): the Schema forwarding section, per the
+  spool resolution. Historical sections already marked superseded
+  stay untouched.
+
+Policy:
+
+- `policy/pending_wiring.json`: rewrite the agentloop row's reason
+  text to describe the `Extensions` split and the consumer's
+  outstanding migration. Keep `permanent: true` and the target line.
+
+### Addendum tests
+
+New tests, exact names:
+
+- `TestNewDefaultsFullyZeroBounds` in
+  `agentloop_test/loop_bounds_test.go`. `Options` without `Bounds`;
+  a scripted completer that always requests one tool call. `Run`
+  stops with `StopMaxIterations` at exactly 24 iterations, proving
+  `DefaultBounds` landed.
+- `TestNewKeepsPartialBoundsAsGiven` in the same file. Three rows.
+  `Bounds{MaxIterations: 2}` stops at two, not 24.
+  `Bounds{MaxTotalTokens: 10}` with usage over the cap fails with
+  `ErrTokenBudgetExceeded`, proving the 200k default did not land.
+  `Bounds{MaxIterations: 0, MaxCallsPerTurn: 1}` with 25 scripted
+  tool-calling turns runs past 24 iterations, proving a zero member
+  inside a partial `Bounds` stays unbounded.
+- `TestEnableCompactionZeroWindowLeavesWindowNil` in
+  `agentloop_test/enable_compaction_test.go`. Two rows. A zero
+  `contextplan.Window` leaves `Compaction.Window` nil while
+  `Summarizer` and `Calibrated` land, and the `Options` pass
+  `Validate`. A negative `MaxTokens` row proves the same derive path.
+- `TestEnableCompactionExplicitWindowStillWins` in the same file. An
+  explicit 512-token window lands as given; derivation does not
+  replace it.
+- `TestEnableCompactionZeroWindowAdoptsDerivedWindow` in the internal
+  `capability_derivation_test.go`. `EnableCompaction` with a zero
+  window, then `New` over a `ContextAccountant` completer reporting
+  10000: the loop's window is 10000 with a 2000 reserve and a 6400
+  trigger.
+- `TestDefinitionsRejectsSchemaFreeToolNames` in
+  `agentloop_test/definitions_test.go`. A mixed registry fails with
+  `errors.Is(err, ErrNoSchema)`, a message naming the schema-free
+  tool, and a nil definition set.
+- `TestExtensionsNilBehavesAsZero` in `agentloop_test/options_test.go`.
+  A valid `Options` without `Extensions` passes `Validate` and builds
+  through `New`. The same `Options` with
+  `Extensions{Conclude: {Margin: -1}}` fails with
+  `ErrConcludeMargin`, proving the walk reads the pointer.
+
+Changed tests, names kept, bodies flipped; the name-kept precedent is
+`TestRepeatedToolFailuresExcludesArgValidationAndToolError`:
+
+- `TestDefinitionsSkipsSchemaFreeTools` now proves the mixed registry
+  fails with `ErrNoSchema`.
+- `TestDefinitionsSkipsNilSchemaSchemaTool` now expects
+  `ErrNoSchema` and requires the tool's name in the message. The
+  old not-named assertion flips.
+- `TestDefinitionsErrNoSchemasEveryToolMissingSchema` now expects
+  `ErrNoSchema` naming the first tool in sorted order.
+- `TestDefinitionsScopeDenial`,
+  `TestDefinitionsErrNoSchemasScopeDeniesEveryTool`, and
+  `TestDefinitionsEmptyRegistry` stay unchanged: scope denial keeps
+  the silent skip, and a fully denied registry keeps `ErrNoSchemas`.
+- `TestNewPropagatesDefinitionsError` in `loop_wiring_test.go` flips
+  to `errors.Is(err, agentloop.ErrNoSchema)`.
+- `TestRunHallucinatedSchemaFreeToolName` keeps its name and now
+  proves `New` fails with `ErrNoSchema` naming `no-schema` before
+  `Run`. The runtime hallucinated-name case stays covered by
+  `unknown_tool_error_test.go` for unregistered names.
+- `TestSDKValidateAllowsUnboundedMaxIterations` stays green, but the
+  pin changes. Its `Bounds{MaxIterations: 0}` literal is the fully
+  zero struct, so `New` now applies `DefaultBounds` there; the test
+  pins the defaulting path, not uncapped zero. Its legacy-contract
+  comment is reworded to say `New` accepts a fully zero `Bounds` by
+  applying defaults. Partial-`Bounds` uncapped coverage lives in
+  `TestNewKeepsPartialBoundsAsGiven` row three.
+- `options_test.go`'s Conclude and ToolBudget rows move under
+  `Extensions`; every sentinel stays.
+- Every mechanical move keeps its test name and assertion count.
+  No test is deleted or skipped. Predicted
+  `check_test_tampering.py` findings: none. If a TT finding fires
+  anyway, the builder adds one `Allow-Test-Change: TTxx <reason>`
+  trailer per finding.
+
+### Statements this addendum supersedes
+
+- The base API section's `Definitions` bullet and sentinel list:
+  rewritten in place, this change.
+- The Scope section's skip bullet: rewritten in place, this change.
+- The ErrMaxIterations zero-equals-unbounded sentence in the base
+  API section and in `options.go`: superseded by the defaulting
+  rule. Historical plan sentences stay as records.
+- The Conclude-and-Bounds addendum's "New's transforms" wording
+  about the legacy contract: superseded by the defaulting rule.
+- The minimal-entry-surface addendum's "sets all three Options
+  fields": superseded by the zero-Window contract.
+- The loop-extensions addendum's `Options` field list for
+  `OnToolCallError`, `Surface`, `StreamingWriter`, `StartTime`,
+  `WorkBudget`, and `ToolBudget`: the fields now live on
+  `Extensions`.
+- The stop-decision hook addendum's `Options.ContinueOnStop`, the
+  conclude addendum's `Options.Conclude`, the dedup addendum's
+  `Options.DedupWithinTurn`, and the context-planning addendum's
+  flat triple: all regrouped per the field map.
+- `memory/tool.go`'s skip-reliance sentences and `docs/plans/spool.md` (spool's plan, now the memory package's SpoolTool section)'s
+  Schema forwarding text: superseded by the spool resolution.
+- The capability-derivation addendum stays accurate. Its derivation
+  condition is this addendum's step 5, restated with member paths.
+
+### Addendum verification
+
+- `make verify` passes: gofmt, vet, tests, the doc, plan, API, deps,
+  orphan, symbol-wiring, mutation, thirdparty, and test-tampering
+  gates, the Semgrep scan and probes, and the 85 percent coverage
+  floor for every package.
+- `go test -race -count=1 ./agentloop/...` passes. The agentloop
+  mutation floor of 98 holds; every new branch above has a covering
+  test.
+- `go vet` and `go run` pass for all three `docs/examples/_agentloop*`
+  programs through the `verify-fast` lines, each printing
+  `final: HELLO`.
+- Exactly one `make api-update` runs at the end. The
+  `api/agentloop.txt` diff lands in the same change: `Options`
+  shrinks to 17 fields, `Extensions` and `Compaction` gain type
+  blocks, and `ErrNoSchema` joins the const list.
+- `python3 scripts/check_plan.py`, `scripts/check_prose.py`,
+  `scripts/check_labels.py`, and `scripts/check_names.py` pass.
+- No conformance vector applies; `agentloop` carries no wire format
+  of its own.

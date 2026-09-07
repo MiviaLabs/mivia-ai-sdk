@@ -40,13 +40,15 @@ func TestSteerTriggerMidPromptTooLongRecovery(t *testing.T) {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  c,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 5},
-		Window:     &w,
-		Summarizer: sum,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: c,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -119,13 +121,15 @@ func TestSteerTriggeredDuringFailingRecoveryRetry(t *testing.T) {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  c,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 5},
-		Window:     &w,
-		Summarizer: sum,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: c,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

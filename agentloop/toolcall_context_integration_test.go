@@ -279,20 +279,22 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 	opts := Options{
 		Completer: completer,
 		Tools:     reg,
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
-			if tc, ok := ToolCallFromContext(ctx); ok {
-				errHookCall = tc
-				errHookFound = true
-			}
-			return provider.Message{
-				Role:       provider.RoleTool,
-				ToolCallID: call.ID,
-				Name:       call.Name,
-				Content:    fmt.Sprintf("recovered: %v", cerr),
-			}, nil
-		},
-		Bounds: Bounds{MaxIterations: 5},
-	}
+		Bounds:    Bounds{MaxIterations: 5},
+
+		Extensions: &Extensions{
+			OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+				if tc, ok := ToolCallFromContext(ctx); ok {
+					errHookCall = tc
+					errHookFound = true
+				}
+				return provider.Message{
+					Role:       provider.RoleTool,
+					ToolCallID: call.ID,
+					Name:       call.Name,
+					Content:    fmt.Sprintf("recovered: %v", cerr),
+				}, nil
+			},
+		}}
 
 	loop, err := New(opts)
 	if err != nil {

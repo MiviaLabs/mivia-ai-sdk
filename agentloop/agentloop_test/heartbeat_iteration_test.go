@@ -189,10 +189,12 @@ func buildHardFailPlanHistoryError(t *testing.T, bus *events.Bus) (*agentloop.Lo
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
-		Window:     &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}},
-		Summarizer: sum,
-		Calibrated: plan.Calibrate(errEstimator{}, 1.0),
-	})
+
+		Compaction: agentloop.Compaction{
+			Window:     &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}},
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(errEstimator{}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -382,9 +384,13 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4},
-		Window: &w, Summarizer: sum, Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		Bus: bus, HeartbeatInterval: heartbeatTestInterval,
-	})
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

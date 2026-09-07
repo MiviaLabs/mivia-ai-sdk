@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"time"
 
@@ -26,9 +25,9 @@ var (
 	// ErrMaxIterations is Validate's error when MaxIterations is
 	// negative. Reserved for construction-time validation; Run itself
 	// never returns it, since hitting MaxIterations at runtime is a
-	// graceful StopMaxIterations stop, not an error. A zero value is
-	// accepted and treated as uncapped (matches the legacy loop's
-	// MaxSteps <= 0 == unbounded contract); see New's defaulting.
+	// graceful StopMaxIterations stop, not an error. A zero inside a
+	// fully zero Bounds receives DefaultBounds at New; a zero inside a
+	// partial Bounds stays unbounded; see New's defaulting.
 	ErrMaxIterations = errors.New("agentloop: MaxIterations must be non-negative")
 	// ErrUnrenderableResult is the render path's error when a tool
 	// result's Out.Value cannot be marshaled to JSON after failing the
@@ -40,10 +39,14 @@ var (
 	// regardless of OnToolError.
 	ErrCallsPerTurnExceeded = errors.New("agentloop: turn requested more calls than MaxCallsPerTurn allows")
 	// ErrNoSchemas is Definitions's error when the registry is
-	// non-empty and the offered tool set ends up empty, whatever the
-	// cause: every tool lacking a schema, a Scope denying every tool,
-	// or both together.
+	// non-empty and the offered tool set ends up empty. Past
+	// ErrNoSchema, which fails a schema-less tool directly, that means
+	// the scope denied every tool.
 	ErrNoSchemas = errors.New("agentloop: registry offers no schema-bearing tool the scope allows")
+	// ErrNoSchema is Definitions's error when a registered tool
+	// publishes no parameter schema. Wrapped with the tool's registry
+	// name. Test with errors.Is.
+	ErrNoSchema = errors.New("agentloop: registered tool publishes no parameter schema")
 	// ErrOverBudget is Run's error when the message history, summed by
 	// content bytes and message count, fails a non-nil Budget's Fits
 	// check ahead of a Completer call.
@@ -182,7 +185,8 @@ type Summarizer interface {
 var _ Summarizer = (*plan.Summarizer)(nil)
 
 // Options declares the blocks one New call wires into a Loop.
-// Completer and Tools are required; the rest are optional.
+// Completer and Tools are required; the rest are optional. The host
+// integration knobs live behind Extensions, the last field.
 type Options struct {
 	// Completer runs each chat turn. Required.
 	Completer provider.Completer
@@ -201,18 +205,6 @@ type Options struct {
 	Bounds Bounds
 	// OnToolError governs what Run does with a tool-run error.
 	OnToolError ErrorPolicy
-	// OnToolCallError runs only on the ErrorPolicyReport path after a
-	// decodeAndRun or render failure, between the policy's
-	// report-to-model branch and the [tool-error] body construction. It
-	// lets a host synthesize a RoleTool message to append in place of
-	// the default body, or skip the call entirely by returning a
-	// non-nil error. Return (msg, nil) with a non-zero msg to append
-	// msg; return (nil, err) to skip the call and fail the run with
-	// err; return the zero Message and nil to fall through to the
-	// default [tool-error] body, preserving the pre-hook contract.
-	// Never fires under ErrorPolicyFail: that path hard-fails Run
-	// before consulting the hook.
-	OnToolCallError ErrorFunc
 	// Hooks fires PointPreTool and PointPostTool per tool call, and
 	// PointStop once at the end. Optional.
 	Hooks *events.Registry
@@ -240,86 +232,27 @@ type Options struct {
 	// docs/plans/agentloop.md for its contract with
 	// plan.Planner.Plan.
 	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
-	// Surface, when non-nil, is consulted at the top of every
-	// iteration from the second one onward (after the steer
-	// injector drain, before the Completer call). The returned
-	// Surface replaces the iteration's advertised definitions,
-	// call-resolution registry, and scope; a nil return keeps the
-	// previous surface. A panic inside the hook fails the run.
-	// Optional; the default (nil) runs every iteration on the
-	// Options-level Tools and Scope unchanged.
-	Surface func() *Surface
-	// StreamingWriter, when non-nil, mirrors what the Completer
-	// writes through Request.StreamingWriter during a call. The
-	// loop buffers the same bytes; on a Steered stop the buffered
-	// bytes become Result.Final.Content, so a partial reply
-	// survives the cancel. A nil writer keeps Result.Final empty on
-	// Steered stop. Must be safe for concurrent use.
-	StreamingWriter io.Writer
 	// Audit receives one AuditRecord per completed Completer turn and
 	// per tool call whose result reaches history. A nil Audit means
 	// Run performs no audit call, at no added cost.
 	Audit AuditFunc
-	// Window plans every iteration against a token budget. A nil Window
-	// disables planning; the loop then runs exactly as before. A non-nil
-	// Window requires Summarizer and Calibrated, and excludes Trim. When
-	// Budget is also set, Window's compaction runs before the Budget
-	// check, so Budget sees the compacted history, not the raw one.
-	Window *plan.Window
-	// Summarizer runs the LLM summary every compaction requires.
-	// Required when Window is set. See the Summarizer interface for the
-	// sanctioned constructors and the typed-nil warning.
-	Summarizer Summarizer
-	// Calibrated estimates tokens for planning and receives one Observe
-	// call after every Chat. Required when Window is set.
-	Calibrated *plan.Calibrated
+	// Compaction groups the context-window planning triple. The zero
+	// value disables planning. See the Compaction type.
+	Compaction Compaction
 	// ObserveRequest runs after reserveWork and before every
 	// Completer.Chat call, including the prompt-too-long recovery retry's
 	// call. A non-nil error fails the iteration before the call runs.
 	// This is not Options.Audit: Audit records after the fact and cannot
 	// fail a call. A nil hook is a no-op.
 	ObserveRequest func(ctx context.Context, req provider.Request) error
-	// Conclude groups the graceful-conclude terms; see the Conclude
-	// type for Margin, Deadline, and Notice.
-	Conclude Conclude
-	// StartTime is the wall-clock anchor the SDK uses for the
-	// time-based Conclude.Deadline term. The work deadline the loop
-	// measures against is StartTime.Add(Conclude.Deadline) when
-	// Conclude.Deadline is positive; zero StartTime falls back to the
-	// time of New, so the threshold fires the deadline into the run
-	// from the moment of construction. Zero StartTime and zero
-	// Conclude.Deadline together disable the term entirely.
-	StartTime time.Time
-	// DedupWithinTurn detects a duplicate (tool, canonical-argument) call
-	// already served earlier in the same turn, and serves
-	// DuplicateCallNotice instead of running the tool again. False, the
-	// zero value, runs every call, unchanged from the base plan.
-	DedupWithinTurn bool
 	// HeartbeatInterval emits a heartbeat Event on Bus every interval
 	// while one Completer call or one tool call is in flight. Zero
 	// disables heartbeats. A positive HeartbeatInterval requires a
 	// non-nil Bus.
 	HeartbeatInterval time.Duration
-	// WorkBudget, when non-nil, is a host-callable token-reservation
-	// surface the loop invokes around each Completer call. A non-nil
-	// WorkBudget requires both functions; Validate rejects a half-wired
-	// one with ErrIncompleteWorkBudget. See WorkBudget for details.
-	WorkBudget *WorkBudget
-	// ToolBudget, when non-nil, is a host-callable cumulative tool-call
-	// budget invoked once per turn before dispatch. The zero value
-	// (nil) disables it. See ToolBudget for details.
-	ToolBudget *ToolBudget
-	// ContinueOnStop is consulted when the loop is about to stop
-	// gracefully. A non-empty return appends those messages to the run
-	// history and continues the loop. A nil or empty return stops the run
-	// unchanged. A nil hook changes no behavior. Runs on the loop
-	// goroutine, like Surface; a panic fails the run closed. A
-	// continuation is an ordinary iteration and obeys every bound the
-	// loop owns. The loop adds no bound of its own for this hook: a
-	// caller that sets neither MaxIterations nor MaxTotalTokens and
-	// always returns messages gets an unbounded run. That is the
-	// caller's choice. See docs/plans/agentloop.md.
-	ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
+	// Extensions holds the host-integration knobs. A nil Extensions
+	// means every knob at its zero value. Optional.
+	Extensions *Extensions
 }
 
 // AuditKind names which of Run's two audit-relevant events an
@@ -390,11 +323,14 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, Bounds.Validate (each
 // cap non-negative), Usage requires a non-blank SessionID, a non-nil
-// Budget passes budget.Limits.Validate, a non-nil Window passes
-// Window.Validate, requires Summarizer, requires Calibrated, and
-// excludes Trim, Conclude.Validate (Margin not negative, then Deadline
-// not negative), a positive HeartbeatInterval requires a non-nil Bus,
-// and finally WorkBudget and ToolBudget each pass their own check.
+// Budget passes budget.Limits.Validate, a non-nil Compaction.Window
+// passes Window.Validate, requires Compaction.Summarizer, requires
+// Compaction.Calibrated, and excludes Trim, Conclude.Validate (Margin
+// not negative, then Deadline not negative), a positive
+// HeartbeatInterval requires a non-nil Bus, and finally WorkBudget and
+// ToolBudget each pass their own check. The three Extensions checks
+// read the pointer nil-safely; a nil Extensions means every knob at
+// its zero value.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return ErrNoCompleter
@@ -413,31 +349,35 @@ func (o Options) Validate() error {
 			return fmt.Errorf("agentloop: invalid Budget: %w", err)
 		}
 	}
-	if o.Window != nil {
-		if err := o.Window.Validate(); err != nil {
+	if o.Compaction.Window != nil {
+		if err := o.Compaction.Window.Validate(); err != nil {
 			return fmt.Errorf("agentloop: invalid Window: %w", err)
 		}
-		if o.Summarizer == nil {
+		if o.Compaction.Summarizer == nil {
 			return ErrSummarizerRequired
 		}
-		if o.Calibrated == nil {
+		if o.Compaction.Calibrated == nil {
 			return ErrEstimatorRequired
 		}
 		if o.Trim != nil {
 			return ErrTrimExcluded
 		}
 	}
-	if err := o.Conclude.Validate(); err != nil {
-		return err
+	if o.Extensions != nil {
+		if err := o.Extensions.Conclude.Validate(); err != nil {
+			return err
+		}
 	}
 	if o.HeartbeatInterval > 0 && o.Bus == nil {
 		return ErrHeartbeatRequiresBus
 	}
-	if err := o.WorkBudget.validate(); err != nil {
-		return err
-	}
-	if err := o.ToolBudget.validate(); err != nil {
-		return err
+	if o.Extensions != nil {
+		if err := o.Extensions.WorkBudget.validate(); err != nil {
+			return err
+		}
+		if err := o.Extensions.ToolBudget.validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

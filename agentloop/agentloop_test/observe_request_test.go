@@ -69,12 +69,16 @@ func newObserveFixture(t *testing.T, w plan.Window, errs []error, responses []pr
 		Completer:      sc,
 		Tools:          reg,
 		Bounds:         agentloop.Bounds{MaxIterations: 4},
-		Window:         &w,
-		Summarizer:     summarizer,
-		Calibrated:     plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		ObserveRequest: log.hook,
-		WorkBudget:     budget,
-	})
+
+		Extensions: &agentloop.Extensions{
+			WorkBudget: budget,
+		},
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -100,8 +104,10 @@ func TestObserveRequestErrorFailsBeforeChat(t *testing.T) {
 			Completer:      completer,
 			Tools:          reg,
 			ObserveRequest: obs.hook,
-			WorkBudget:     log.hook(),
-		})
+
+			Extensions: &agentloop.Extensions{
+				WorkBudget: log.hook(),
+			}})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

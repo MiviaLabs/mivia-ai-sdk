@@ -263,15 +263,38 @@ func messagesEqual(a, b provider.Message) bool {
 	return true
 }
 
-// EnableCompaction fills a Options' Window, Summarizer, and
-// Calibrated fields from one Completer, in one call. The Completer
-// must also implement provider.TokenEstimator; anthropic.Client
-// does. window keeps the caller's configured trigger and target
-// percentages. alpha is the calibration factor passed to
-// plan.Calibrate. The Options must not already carry Trim;
-// Window and Trim are mutually exclusive, and Validate rejects the
-// pair. EnableCompaction and plan.NewSummarizer are the
-// only sanctioned constructors for Options.Summarizer. A typed nil
+// Compaction groups the context-window planning triple. The zero
+// value disables planning; the loop then runs unplanned. Window nil
+// with Summarizer and Calibrated set asks New to derive the window
+// from the Completer's ContextAccountant capability.
+type Compaction struct {
+	// Window plans every iteration against a token budget. Nil asks
+	// for derivation at New. Requires Summarizer and Calibrated, and
+	// excludes Options.Trim.
+	Window *plan.Window
+	// Summarizer runs the LLM summary every compaction requires.
+	// Required when Window is set. See the Summarizer interface for
+	// the sanctioned constructors and the typed-nil warning.
+	Summarizer Summarizer
+	// Calibrated estimates tokens for planning and receives one Observe
+	// call after every Chat. Required when Window is set.
+	Calibrated *plan.Calibrated
+}
+
+// EnableCompaction fills a Options' Compaction group from one
+// Completer, in one call. The Completer must also implement
+// provider.TokenEstimator; anthropic.Client does. A window with a
+// positive MaxTokens keeps the caller's configured trigger and target
+// percentages and lands in Compaction.Window. A window with MaxTokens
+// at or below zero means derive: Compaction.Window stays nil and New
+// derives 80/50 of the Completer's ContextWindow with one fifth held
+// back as reserve. A negative value takes the derive path too, not an
+// error: plan.Window.Validate rejects MaxTokens <= 0, so such a value
+// is never a usable explicit window. alpha is the calibration factor
+// passed to plan.Calibrate. The Options must not already carry Trim;
+// Compaction.Window and Trim are mutually exclusive, and Validate
+// rejects the pair. EnableCompaction and plan.NewSummarizer are the
+// only sanctioned constructors for Compaction.Summarizer. A typed nil
 // stored by hand is not nil as an interface; see the Summarizer
 // interface for the warning.
 func EnableCompaction(o *Options, completer provider.Completer, window plan.Window, alpha float64) error {
@@ -283,10 +306,12 @@ func EnableCompaction(o *Options, completer provider.Completer, window plan.Wind
 	if err != nil {
 		return err
 	}
-	w := window
-	o.Window = &w
-	o.Summarizer = summarizer
-	o.Calibrated = plan.Calibrate(est, alpha)
+	if window.MaxTokens > 0 {
+		w := window
+		o.Compaction.Window = &w
+	}
+	o.Compaction.Summarizer = summarizer
+	o.Compaction.Calibrated = plan.Calibrate(est, alpha)
 	return nil
 }
 

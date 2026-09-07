@@ -59,14 +59,16 @@ func TestRunBudgetWindowMaxTotalTokensCombined(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}, Usage: provider.Usage{TotalTokens: 50}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 3, MaxTotalTokens: 1},
-		Budget:     &budget.Limits{MaxBytes: 200},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 3, MaxTotalTokens: 1},
+		Budget:    &budget.Limits{MaxBytes: 200},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -115,14 +117,16 @@ func TestRunCtxCanceledDuringCompactionSummarizer(t *testing.T) {
 	reg := tools.New()
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &budget.Limits{MaxBytes: 200},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 3},
+		Budget:    &budget.Limits{MaxBytes: 200},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -189,14 +193,16 @@ func TestRunBudgetWindowSecondCompactionAcrossIterations(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Budget:     &budget.Limits{MaxBytes: 350},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+		Budget:    &budget.Limits{MaxBytes: 350},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -273,13 +279,15 @@ func TestRunPlanHistoryFailureLaterIterationPreservesPartialResult(t *testing.T)
 	resp.Usage = provider.Usage{TotalTokens: 30}
 	completer := &scriptedCompleter{responses: []provider.Response{resp}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  completer,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: completer,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

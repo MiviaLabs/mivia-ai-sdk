@@ -73,6 +73,11 @@ package agentloop
   MaxConcurrentTools int
   MaxConsecutiveToolFailures int
 }
+  type Compaction struct {
+  Window *plan.Window
+  Summarizer Summarizer
+  Calibrated *plan.Calibrated
+}
   type Conclude struct {
   Margin int
   Deadline time.Duration
@@ -80,6 +85,17 @@ package agentloop
 }
   type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)
   type ErrorPolicy string
+  type Extensions struct {
+  OnToolCallError ErrorFunc
+  Surface func() *Surface
+  StreamingWriter io.Writer
+  Conclude Conclude
+  StartTime time.Time
+  DedupWithinTurn bool
+  WorkBudget *WorkBudget
+  ToolBudget *ToolBudget
+  ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
+}
   type Loop struct {
 }
   type Options struct {
@@ -89,7 +105,6 @@ package agentloop
   Model string
   Bounds Bounds
   OnToolError ErrorPolicy
-  OnToolCallError ErrorFunc
   Hooks *events.Registry
   Tracer *trace.Tracer
   Usage *provider.Accumulator
@@ -97,20 +112,11 @@ package agentloop
   Bus *events.Bus
   Budget *budget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
-  Surface func() *Surface
-  StreamingWriter io.Writer
   Audit AuditFunc
-  Window *plan.Window
-  Summarizer Summarizer
-  Calibrated *plan.Calibrated
+  Compaction Compaction
   ObserveRequest func(ctx context.Context, req provider.Request) error
-  Conclude Conclude
-  StartTime time.Time
-  DedupWithinTurn bool
   HeartbeatInterval time.Duration
-  WorkBudget *WorkBudget
-  ToolBudget *ToolBudget
-  ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
+  Extensions *Extensions
 }
   type Result struct {
   Final provider.Message
@@ -159,6 +165,7 @@ package agentloop
   var ErrMaxIterations
   var ErrMaxTotalTokens
   var ErrNoCompleter
+  var ErrNoSchema
   var ErrNoSchemas
   var ErrNoTokenEstimator
   var ErrNoTools

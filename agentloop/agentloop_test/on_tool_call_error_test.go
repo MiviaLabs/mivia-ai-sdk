@@ -65,8 +65,7 @@ func TestOnToolCallErrorSynthesizesMessage(t *testing.T) {
 		hookCalled bool
 	)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			hookCalled = true
@@ -78,7 +77,7 @@ func TestOnToolCallErrorSynthesizesMessage(t *testing.T) {
 				Name:       call.Name,
 				Content:    "skipped-by-hook",
 			}, nil
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -128,13 +127,12 @@ func TestOnToolCallErrorSkipsWithErr(t *testing.T) {
 		hookCalled bool
 	)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			hookCalled = true
 			return provider.Message{}, hookErr
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -178,13 +176,12 @@ func TestOnToolCallErrorFailPolicyBypassesHook(t *testing.T) {
 	)
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		OnToolError: agentloop.ErrorPolicyFail,
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+		OnToolError: agentloop.ErrorPolicyFail, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			hookCalled = true
 			return provider.Message{Content: "should-never-append"}, nil
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -223,10 +220,9 @@ func TestOnToolCallErrorPartiallyPopulatedMessage(t *testing.T) {
 				{Message: textMessage(provider.RoleAssistant, "final")},
 			}}
 			loop, err := agentloop.New(agentloop.Options{
-				Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-				OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+				Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 					return tc.msg, nil
-				},
+				}},
 			})
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
@@ -257,10 +253,9 @@ func TestOnToolCallErrorZeroMessageFallsBack(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "final")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
+		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
 			return provider.Message{}, nil
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

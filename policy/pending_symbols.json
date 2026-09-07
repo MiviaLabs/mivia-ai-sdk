@@ -221,6 +221,41 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
+    "memory.Expire": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.GrantExpiry": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.NewSpool": {
+      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
+      "target": "no in-tree consumer; kept as SDK surface for external application code",
+      "permanent": true
+    },
+    "memory.ReadOutputTool": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.SpoolExpiring": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.SpoolTool": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.WithPrincipal": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
     "provider.CacheStyleImplicit": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
@@ -239,41 +274,6 @@
     "room.Leave": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "spool.Expire": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.GrantExpiry": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.NewSpool": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "spool.ReadOutputTool": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.SpoolExpiring": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.SpoolTool": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.WithPrincipal": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "subagent.AsTool": {

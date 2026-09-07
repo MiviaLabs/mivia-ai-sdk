@@ -1,6 +1,6 @@
 // ReadOutputTool tests: construction bounds, paging, argument and
 // principal handling, and the published schema.
-package spool_test
+package memory_test
 
 import (
 	"context"
@@ -10,16 +10,16 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // newReadFixture builds one Spool holding body under alice and the
 // read-back tool over it, with a page budget of page bytes.
-func newReadFixture(t *testing.T, body string, page int) (tools.Tool, *spool.Spool, string) {
+func newReadFixture(t *testing.T, body string, page int) (tools.Tool, *memory.Spool, string) {
 	t.Helper()
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -27,7 +27,7 @@ func newReadFixture(t *testing.T, body string, page int) (tools.Tool, *spool.Spo
 	if err != nil {
 		t.Fatalf("Spool: %v", err)
 	}
-	tool, err := spool.ReadOutputTool(sp, page)
+	tool, err := memory.ReadOutputTool(sp, page)
 	if err != nil {
 		t.Fatalf("ReadOutputTool: %v", err)
 	}
@@ -43,19 +43,19 @@ func runRead(t *testing.T, tool tools.Tool, principal, raw string) (tools.Out, e
 	}
 	ctx := context.Background()
 	if principal != "" {
-		ctx = spool.WithPrincipal(ctx, principal)
+		ctx = memory.WithPrincipal(ctx, principal)
 	}
 	return tool.Run(ctx, in)
 }
 
 func TestReadOutputToolConstruction(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 128)
-	if _, err := spool.ReadOutputTool(nil, 128); !errors.Is(err, spool.ErrNilSpool) {
+	sp, _ := memory.NewSpool(store, 128)
+	if _, err := memory.ReadOutputTool(nil, 128); !errors.Is(err, memory.ErrNilSpool) {
 		t.Fatalf("ReadOutputTool(nil, _) = %v, want errors.Is ErrNilSpool", err)
 	}
 	for _, page := range []int{0, -1} {
-		if _, err := spool.ReadOutputTool(sp, page); !errors.Is(err, spool.ErrInvalidLimit) {
+		if _, err := memory.ReadOutputTool(sp, page); !errors.Is(err, memory.ErrInvalidLimit) {
 			t.Fatalf("ReadOutputTool(sp, %d) = %v, want errors.Is ErrInvalidLimit", page, err)
 		}
 	}
@@ -72,12 +72,12 @@ func TestReadOutputToolPaging(t *testing.T) {
 		{
 			name: "first page carries the next offset",
 			raw:  fmt.Sprintf(`{"ref":%q}`, ref),
-			want: "012345" + fmt.Sprintf(spool.MoreMarker, 6),
+			want: "012345" + fmt.Sprintf(memory.MoreMarker, 6),
 		},
 		{
 			name: "middle page carries the next offset",
 			raw:  fmt.Sprintf(`{"ref":%q,"offset":6}`, ref),
-			want: "6789ab" + fmt.Sprintf(spool.MoreMarker, 12),
+			want: "6789ab" + fmt.Sprintf(memory.MoreMarker, 12),
 		},
 		{
 			name: "final page carries nothing extra",
@@ -92,12 +92,12 @@ func TestReadOutputToolPaging(t *testing.T) {
 		{
 			name: "limit over the page budget clamps",
 			raw:  fmt.Sprintf(`{"ref":%q,"offset":0,"limit":4096}`, ref),
-			want: "012345" + fmt.Sprintf(spool.MoreMarker, 6),
+			want: "012345" + fmt.Sprintf(memory.MoreMarker, 6),
 		},
 		{
 			name: "a small limit bounds the page",
 			raw:  fmt.Sprintf(`{"ref":%q,"offset":0,"limit":3}`, ref),
-			want: "012" + fmt.Sprintf(spool.MoreMarker, 3),
+			want: "012" + fmt.Sprintf(memory.MoreMarker, 3),
 		},
 	}
 	for _, c := range cases {
@@ -116,20 +116,20 @@ func TestReadOutputToolPaging(t *testing.T) {
 func TestReadOutputToolBadArguments(t *testing.T) {
 	tool, _, ref := newReadFixture(t, "body", 4)
 	_, err := tool.(tools.SchemaTool).DecodeArguments([]byte(`{"ref":`))
-	if !errors.Is(err, spool.ErrBadArguments) {
+	if !errors.Is(err, memory.ErrBadArguments) {
 		t.Fatalf("DecodeArguments on malformed JSON = %v, want errors.Is ErrBadArguments", err)
 	}
 	for _, raw := range []string{
 		fmt.Sprintf(`{"ref":%q,"offset":-1}`, ref),
 		fmt.Sprintf(`{"ref":%q,"limit":-1}`, ref),
 	} {
-		if _, err := tool.(tools.SchemaTool).DecodeArguments([]byte(raw)); !errors.Is(err, spool.ErrBadArguments) {
+		if _, err := tool.(tools.SchemaTool).DecodeArguments([]byte(raw)); !errors.Is(err, memory.ErrBadArguments) {
 			t.Fatalf("DecodeArguments(%s) = %v, want errors.Is ErrBadArguments", raw, err)
 		}
 	}
 	in := tools.InOut{Value: "not the argument type"}
-	_, err = tool.Run(spool.WithPrincipal(context.Background(), "alice"), in)
-	if !errors.Is(err, spool.ErrBadArguments) {
+	_, err = tool.Run(memory.WithPrincipal(context.Background(), "alice"), in)
+	if !errors.Is(err, memory.ErrBadArguments) {
 		t.Fatalf("Run with a mistyped input = %v, want errors.Is ErrBadArguments", err)
 	}
 }
@@ -140,22 +140,22 @@ func TestReadOutputToolPrincipalAndRefErrors(t *testing.T) {
 		t.Fatalf("Run under the granting principal = %v, want nil", err)
 	}
 	_, err := runRead(t, tool, "bob", fmt.Sprintf(`{"ref":%q}`, ref))
-	if !errors.Is(err, spool.ErrWrongPrincipal) {
+	if !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Fatalf("Run under a wrong principal = %v, want errors.Is ErrWrongPrincipal", err)
 	}
 	_, err = runRead(t, tool, "", fmt.Sprintf(`{"ref":%q}`, ref))
-	if !errors.Is(err, spool.ErrNoPrincipal) {
+	if !errors.Is(err, memory.ErrNoPrincipal) {
 		t.Fatalf("Run with no principal = %v, want errors.Is ErrNoPrincipal", err)
 	}
 	_, err = runRead(t, tool, "alice", `{"ref":"ref-missing"}`)
-	if !errors.Is(err, spool.ErrUnknownRef) {
-		t.Fatalf("Run on an unknown ref = %v, want errors.Is ErrUnknownRef", err)
+	if !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Fatalf("Run on an unknown ref = %v, want errors.Is ErrUnknownGrantRef", err)
 	}
 	if err := sp.Expire(ref); err != nil {
 		t.Fatalf("Expire: %v", err)
 	}
 	_, err = runRead(t, tool, "alice", fmt.Sprintf(`{"ref":%q}`, ref))
-	if !errors.Is(err, spool.ErrExpired) {
+	if !errors.Is(err, memory.ErrExpired) {
 		t.Fatalf("Run on an expired grant = %v, want errors.Is ErrExpired", err)
 	}
 }
@@ -173,7 +173,7 @@ func TestReadOutputToolPublishesSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeArguments: %v", err)
 	}
-	out, err := tool.Run(spool.WithPrincipal(context.Background(), "alice"), in)
+	out, err := tool.Run(memory.WithPrincipal(context.Background(), "alice"), in)
 	if err == nil {
 		_ = out
 	}
@@ -196,13 +196,13 @@ func TestReadOutputToolConcurrent(t *testing.T) {
 				if err != nil {
 					// Expiry races the pages; every failure must
 					// still be a typed sentinel.
-					if !errors.Is(err, spool.ErrExpired) && !errors.Is(err, spool.ErrUnknownRef) {
+					if !errors.Is(err, memory.ErrExpired) && !errors.Is(err, memory.ErrUnknownGrantRef) {
 						t.Errorf("Run: %v", err)
 					}
 					continue
 				}
 				page := out.Value.(string)
-				if len(page) > 32+len(fmt.Sprintf(spool.MoreMarker, 1<<20)) {
+				if len(page) > 32+len(fmt.Sprintf(memory.MoreMarker, 1<<20)) {
 					t.Errorf("torn page of %d bytes", len(page))
 					return
 				}
@@ -226,6 +226,6 @@ func runReadConcurrent(tool tools.Tool, principal, raw string) (tools.Out, error
 	if err != nil {
 		return tools.Out{}, err
 	}
-	ctx := spool.WithPrincipal(context.Background(), principal)
+	ctx := memory.WithPrincipal(context.Background(), principal)
 	return tool.Run(ctx, in)
 }

@@ -1,5 +1,5 @@
-// Package spool_test exercises spool.Spool and spool.SpoolTool.
-package spool_test
+// Package spool_test exercises memory.Spool and memory.SpoolTool.
+package memory_test
 
 import (
 	"bytes"
@@ -11,10 +11,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 )
 
-// fakeStore is a spool.ContentStore backed by an in-memory map, with
+// fakeStore is a memory.ContentStore backed by an in-memory map, with
 // optional per-ref hooks for injecting failures.
 type fakeStore struct {
 	mu       sync.Mutex
@@ -62,7 +62,7 @@ func (f *fakeStore) Get(ref string) ([]byte, error) {
 
 func TestSpoolLoadRoundTrip(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 4096)
+	sp, err := memory.NewSpool(store, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestSpoolLoadRoundTrip(t *testing.T) {
 
 func TestSpoolOversizedTruncatesView(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -110,30 +110,30 @@ func TestSpoolOversizedTruncatesView(t *testing.T) {
 
 func TestLoadWrongPrincipal(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 4096)
+	sp, _ := memory.NewSpool(store, 4096)
 	ctx := context.Background()
 	_, ref, err := sp.Spool(ctx, "alice", []byte("secret"))
 	if err != nil {
 		t.Fatalf("Spool: %v", err)
 	}
 	_, err = sp.Load(ctx, "bob", ref)
-	if !errors.Is(err, spool.ErrWrongPrincipal) {
+	if !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Errorf("Load err = %v, want ErrWrongPrincipal", err)
 	}
 }
 
 func TestLoadUnknownRef(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 4096)
+	sp, _ := memory.NewSpool(store, 4096)
 	_, err := sp.Load(context.Background(), "alice", "no-such-ref")
-	if !errors.Is(err, spool.ErrUnknownRef) {
-		t.Errorf("Load err = %v, want ErrUnknownRef", err)
+	if !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Errorf("Load err = %v, want ErrUnknownGrantRef", err)
 	}
 }
 
 func TestLoadStoreGetFailureWrapsUnknownRef(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 4096)
+	sp, _ := memory.NewSpool(store, 4096)
 	ctx := context.Background()
 	_, ref, err := sp.Spool(ctx, "alice", []byte("data"))
 	if err != nil {
@@ -144,8 +144,8 @@ func TestLoadStoreGetFailureWrapsUnknownRef(t *testing.T) {
 	store.mu.Unlock()
 
 	_, err = sp.Load(ctx, "alice", ref)
-	if !errors.Is(err, spool.ErrUnknownRef) {
-		t.Errorf("Load err = %v, want ErrUnknownRef", err)
+	if !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Errorf("Load err = %v, want ErrUnknownGrantRef", err)
 	}
 }
 
@@ -159,9 +159,9 @@ func TestNewSpoolNonPositiveBudget(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := spool.NewSpool(newFakeStore(), tt.maxGrantBytes)
-			if !errors.Is(err, spool.ErrNoBudget) {
-				t.Errorf("NewSpool(%d) err = %v, want ErrNoBudget", tt.maxGrantBytes, err)
+			_, err := memory.NewSpool(newFakeStore(), tt.maxGrantBytes)
+			if !errors.Is(err, memory.ErrNoGrantBudget) {
+				t.Errorf("NewSpool(%d) err = %v, want ErrNoGrantBudget", tt.maxGrantBytes, err)
 			}
 		})
 	}
@@ -169,7 +169,7 @@ func TestNewSpoolNonPositiveBudget(t *testing.T) {
 
 func TestGrantExpiryEvictsOldest(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 10)
+	sp, err := memory.NewSpool(store, 10)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -183,8 +183,8 @@ func TestGrantExpiryEvictsOldest(t *testing.T) {
 		t.Fatalf("Spool new: %v", err)
 	}
 
-	if _, err := sp.Load(ctx, "alice", oldRef); !errors.Is(err, spool.ErrUnknownRef) {
-		t.Errorf("Load oldRef err = %v, want ErrUnknownRef (evicted)", err)
+	if _, err := sp.Load(ctx, "alice", oldRef); !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Errorf("Load oldRef err = %v, want ErrUnknownGrantRef (evicted)", err)
 	}
 	if _, err := sp.Load(ctx, "alice", newRef); err != nil {
 		t.Errorf("Load newRef err = %v, want nil (still live)", err)
@@ -193,7 +193,7 @@ func TestGrantExpiryEvictsOldest(t *testing.T) {
 
 func TestSpoolReSpoolSameContentRefreshesOrder(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 10)
+	sp, err := memory.NewSpool(store, 10)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestSpoolReSpoolSameContentRefreshesOrder(t *testing.T) {
 
 func TestSpoolCrossPrincipalCollisionFails(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 100)
+	sp, err := memory.NewSpool(store, 100)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -232,28 +232,28 @@ func TestSpoolCrossPrincipalCollisionFails(t *testing.T) {
 	// bob spools byte-identical content. A content-addressed store
 	// returns the same ref; the grant must stay alice's, not silently
 	// transfer to bob.
-	if _, _, err := sp.Spool(ctx, "bob", data); !errors.Is(err, spool.ErrPrincipalConflict) {
+	if _, _, err := sp.Spool(ctx, "bob", data); !errors.Is(err, memory.ErrPrincipalConflict) {
 		t.Fatalf("Spool bob (collision) err = %v, want ErrPrincipalConflict", err)
 	}
 
 	if _, err := sp.Load(ctx, "alice", ref); err != nil {
 		t.Errorf("Load alice after bob's failed collision: err = %v, want nil (grant unchanged)", err)
 	}
-	if _, err := sp.Load(ctx, "bob", ref); !errors.Is(err, spool.ErrWrongPrincipal) {
+	if _, err := sp.Load(ctx, "bob", ref); !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Errorf("Load bob err = %v, want ErrWrongPrincipal (never granted)", err)
 	}
 }
 
 func TestSpoolGrantExceedsBudgetFails(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 10)
+	sp, err := memory.NewSpool(store, 10)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	ctx := context.Background()
 	oversized := []byte("this is eleven")
 
-	if _, _, err := sp.Spool(ctx, "alice", oversized); !errors.Is(err, spool.ErrGrantTooLarge) {
+	if _, _, err := sp.Spool(ctx, "alice", oversized); !errors.Is(err, memory.ErrGrantTooLarge) {
 		t.Fatalf("Spool oversized err = %v, want ErrGrantTooLarge", err)
 	}
 	if store.putCalls != 0 {
@@ -263,7 +263,7 @@ func TestSpoolGrantExceedsBudgetFails(t *testing.T) {
 
 func TestSpoolReSpoolSameContentMovesToBackOfOrder(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 20)
+	sp, err := memory.NewSpool(store, 20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -293,18 +293,18 @@ func TestSpoolReSpoolSameContentMovesToBackOfOrder(t *testing.T) {
 		t.Errorf("Load ref1 (re-spooled, should be freshest) err = %v, want nil", err)
 	}
 	secondRef := refFor(second)
-	if _, err := sp.Load(ctx, "alice", secondRef); !errors.Is(err, spool.ErrUnknownRef) {
-		t.Errorf("Load secondRef err = %v, want ErrUnknownRef (true oldest, evicted)", err)
+	if _, err := sp.Load(ctx, "alice", secondRef); !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Errorf("Load secondRef err = %v, want ErrUnknownGrantRef (true oldest, evicted)", err)
 	}
 }
 
 func TestPrincipalRoundTrip(t *testing.T) {
-	ctx := spool.WithPrincipal(context.Background(), "alice")
-	p, ok := spool.PrincipalFrom(ctx)
+	ctx := memory.WithPrincipal(context.Background(), "alice")
+	p, ok := memory.PrincipalFrom(ctx)
 	if !ok || p != "alice" {
 		t.Errorf("PrincipalFrom = %q,%v, want alice,true", p, ok)
 	}
-	_, ok = spool.PrincipalFrom(context.Background())
+	_, ok = memory.PrincipalFrom(context.Background())
 	if ok {
 		t.Errorf("PrincipalFrom on bare context = true, want false")
 	}
@@ -312,7 +312,7 @@ func TestPrincipalRoundTrip(t *testing.T) {
 
 func TestSpoolLoadConcurrent(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 200)
+	sp, err := memory.NewSpool(store, 200)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -333,9 +333,9 @@ func TestSpoolLoadConcurrent(t *testing.T) {
 			got, err := sp.Load(ctx, principal, ref)
 			if err != nil {
 				// Eviction under a tight budget with concurrent writers
-				// is expected; only ErrUnknownRef is a valid outcome.
-				if !errors.Is(err, spool.ErrUnknownRef) {
-					t.Errorf("goroutine %d Load: %v, want nil or ErrUnknownRef", i, err)
+				// is expected; only ErrUnknownGrantRef is a valid outcome.
+				if !errors.Is(err, memory.ErrUnknownGrantRef) {
+					t.Errorf("goroutine %d Load: %v, want nil or ErrUnknownGrantRef", i, err)
 				}
 				return
 			}

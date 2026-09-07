@@ -11,12 +11,11 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 )
 
 // TestPlanSpoolIntegrationRoundTrip seeds a MemStore with a session
-// that overflows a small Window, wires a real *spool.Spool over a
-// real *memory.Store (which satisfies spool.ContentStore with no
+// that overflows a small Window, wires a real *memory.Spool over a
+// real *memory.Store (which satisfies memory.ContentStore with no
 // import needed on either side), runs Plan, then resolves every
 // non-empty Elision.SpoolRef back through Spool.Load. This is the
 // cut-now, retrieve-later round trip the phase exists for.
@@ -26,7 +25,7 @@ func TestPlanSpoolIntegrationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memory.New: %v", err)
 	}
-	sp, err := spool.NewSpool(spoolBacking, 4096)
+	sp, err := memory.NewSpool(spoolBacking, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}

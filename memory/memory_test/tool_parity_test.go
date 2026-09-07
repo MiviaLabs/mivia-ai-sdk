@@ -8,14 +8,14 @@
 // capability, or that forwarded a wrong value, fails here, not in a
 // live run. When tools gains a new optional interface, add it to
 // probes and to SpoolTool in the same change. See docs/plans/spool.md.
-package spool_test
+package memory_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -198,11 +198,11 @@ func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
 		if !ok {
 			t.Fatalf("subset %04b: innerFor built a tool without SchemaTool, want the schema bit set", mask)
 		}
-		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		sp, err := memory.NewSpool(newFakeStore(), 1<<20)
 		if err != nil {
 			t.Fatalf("NewSpool: %v", err)
 		}
-		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		wrapped, err := memory.SpoolTool("wrapped", 8, sp, inner)
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}
@@ -237,11 +237,11 @@ func TestSpoolToolSchemaForwardsToInner(t *testing.T) {
 func TestSpoolToolNilSchemaIdentityDecode(t *testing.T) {
 	for mask := 0; mask < 8; mask++ {
 		inner := innerFor(mask)
-		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		sp, err := memory.NewSpool(newFakeStore(), 1<<20)
 		if err != nil {
 			t.Fatalf("NewSpool: %v", err)
 		}
-		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		wrapped, err := memory.SpoolTool("wrapped", 8, sp, inner)
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}
@@ -267,11 +267,11 @@ func TestSpoolToolNilSchemaIdentityDecode(t *testing.T) {
 func TestSpoolToolInterfaceParity(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
 		inner := innerFor(mask)
-		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		sp, err := memory.NewSpool(newFakeStore(), 1<<20)
 		if err != nil {
 			t.Fatalf("NewSpool: %v", err)
 		}
-		wrapped, err := spool.SpoolTool("wrapped", 8, sp, inner)
+		wrapped, err := memory.SpoolTool("wrapped", 8, sp, inner)
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}
@@ -333,11 +333,11 @@ func assertParityValues(t *testing.T, mask int, inner, wrapped tools.Tool) {
 // still runs through the wrapper, so the parity fixtures stay honest.
 func TestSpoolToolParityRunThroughCaps(t *testing.T) {
 	for mask := 0; mask < 1<<len(probes); mask++ {
-		sp, err := spool.NewSpool(newFakeStore(), 1<<20)
+		sp, err := memory.NewSpool(newFakeStore(), 1<<20)
 		if err != nil {
 			t.Fatalf("NewSpool: %v", err)
 		}
-		wrapped, err := spool.SpoolTool("wrapped", 8, sp, innerFor(mask))
+		wrapped, err := memory.SpoolTool("wrapped", 8, sp, innerFor(mask))
 		if err != nil {
 			t.Fatalf("SpoolTool: %v", err)
 		}

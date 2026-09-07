@@ -10,19 +10,19 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 )
 
 // TestPlanPrincipalConflictDoesNotFailPlan builds two separate
 // MemStores, each holding one byte-identical, over-budget payload
 // under a different SubjectID, and runs Plan against each store with
-// one shared *spool.Spool. contentStore computes ref deterministically
+// one shared *memory.Spool. contentStore computes ref deterministically
 // from data, so the second store's write collides with the first
 // store's grant even though the two MemStores never share state.
 func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 func TestPlanSpoolPrincipalIsContentSubject(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -130,21 +130,21 @@ func TestPlanSpoolPrincipalIsContentSubject(t *testing.T) {
 		t.Fatalf("Load(subject-second, secondRef) = %q, want %q", gotSecond, dataSecond)
 	}
 
-	if _, err := sp.Load(context.Background(), "subject-second", firstRef); !errors.Is(err, spool.ErrWrongPrincipal) {
+	if _, err := sp.Load(context.Background(), "subject-second", firstRef); !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Fatalf("Load with the second payload's subject: err = %v, want ErrWrongPrincipal", err)
 	}
-	if _, err := sp.Load(context.Background(), "subject-first", secondRef); !errors.Is(err, spool.ErrWrongPrincipal) {
+	if _, err := sp.Load(context.Background(), "subject-first", secondRef); !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Fatalf("Load with the first payload's subject: err = %v, want ErrWrongPrincipal", err)
 	}
 }
 
 // TestPlanConcurrentUseWithSpool extends TestPlanConcurrentUse with a
-// shared *spool.Spool: proves contextplan's new call site adds no
+// shared *memory.Spool: proves contextplan's new call site adds no
 // race of its own. Run under go test -race.
 func TestPlanConcurrentUseWithSpool(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 1<<20)
+	sp, err := memory.NewSpool(contentStore, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}

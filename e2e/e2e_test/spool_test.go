@@ -10,12 +10,11 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // readSpooledOutputName is the registered name of the tool
-// spool.ReadOutputTool builds. spool keeps the name unexported; this
+// memory.ReadOutputTool builds. spool keeps the name unexported; this
 // test names it the same way a real caller would, by the string the
 // tool's Name() method returns.
 const readSpooledOutputName = "read_spooled_output"
@@ -48,22 +47,22 @@ func TestSpoolToolTruncatesLargeStepResult(t *testing.T) {
 
 	full := strings.Repeat("log-line\n", 500)
 	inner := largeOutputTool{toolName: "tail", result: full}
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
-		t.Fatalf("spool.NewSpool: %v", err)
+		t.Fatalf("memory.NewSpool: %v", err)
 	}
-	wrapped, err := spool.SpoolTool("tail", 64, sp, inner)
+	wrapped, err := memory.SpoolTool("tail", 64, sp, inner)
 	if err != nil {
-		t.Fatalf("spool.SpoolTool: %v", err)
+		t.Fatalf("memory.SpoolTool: %v", err)
 	}
-	readBack, err := spool.ReadOutputTool(sp, 2048)
+	readBack, err := memory.ReadOutputTool(sp, 2048)
 	if err != nil {
-		t.Fatalf("spool.ReadOutputTool: %v", err)
+		t.Fatalf("memory.ReadOutputTool: %v", err)
 	}
 
 	reg, scope, runner, artifacts := buildSpoolRunner(t, wrapped, readBack)
 
-	runCtx := spool.WithPrincipal(ctx, "tailer")
+	runCtx := memory.WithPrincipal(ctx, "tailer")
 	status, _, err := runner.Run(runCtx, "thread-spool", machine.InOut{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -172,7 +171,7 @@ func readBackFull(t *testing.T, ctx context.Context, reg *tools.Registry, readBa
 		}
 		rebuilt.WriteString(page[:idx])
 		var next int
-		if _, err := fmt.Sscanf(page[idx:], spool.MoreMarker, &next); err != nil {
+		if _, err := fmt.Sscanf(page[idx:], memory.MoreMarker, &next); err != nil {
 			t.Fatalf("parse more marker %q: %v", page[idx:], err)
 		}
 		offset = next

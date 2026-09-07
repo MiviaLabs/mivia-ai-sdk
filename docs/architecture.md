@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the thirty-seven packages and the import edges
+The diagram shows the thirty-six packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `durablefence`, `envfile`, `events`,
@@ -28,7 +28,7 @@ package in this module. `envelope` imports `contextref` alone.
 `contextstate` imports `contextref` alone.
 `contextplan` imports `contextref` and `provider`.
 `contextsession` imports `contextplan`, `contextstate`,
-`provider`, and `spool`. `spool` imports `tools` alone.
+`provider`, and `spool`. The spool half of `memory` imports `tools` alone.
 `a2aloopback` imports `a2a` and `envelope`, the same two internal
 packages `a2aclient` imports. `workspace` imports no other package in this module.
 `runconfig` imports `agentrun`, `contextbudget`, `flow`,
@@ -48,7 +48,6 @@ flowchart LR
     contextsession --> contextplan
     contextsession --> contextstate
     contextsession --> provider
-    contextsession --> spool
     flow --> events
     flow --> machine
     machine --> events
@@ -62,7 +61,6 @@ flowchart LR
     a2aloopback --> a2a
     a2aloopback --> envelope
     mcp --> tools
-    spool --> tools
     agentloop --> provider
     agentloop --> tools
     agentloop --> trace
@@ -369,22 +367,8 @@ flowchart LR
   add a synchronous approval gate: `RunScoped` calls `Approve` with a
   `ToolCall` after `Allowed` passes and before it runs the tool,
   returning `ErrToolDeclined` for a decline. `tools` imports no other
-  package in this module; `mcp`, `spool`, and `agentloop` import
+  package in this module; `mcp`, `memory`, and `agentloop` import
   `tools`. See [packages/tools.md](packages/tools.md).
-- `spool/` — a principal-scoped grant store for oversized content. It
-  provides `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`,
-  `ContentStore`, `WithPrincipal`, `PrincipalFrom`, and `SpoolTool`.
-  `Spool.Spool` writes content to a caller-supplied `ContentStore`,
-  grants one principal the right to read it back, and returns a
-  bounded view plus a reference. `NewSpool`'s `maxGrantBytes` budget
-  evicts the oldest grants, by insertion order, once a new grant would
-  exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
-  `maxBytes` spools instead of returning in full, and the wrapper
-  always forwards `ExecutionProfile`, `MaxResultBytes`,
-  `Privileged`, and `SchemaTool` through the `tools` helpers.
-  `tools.SchemaOf` fails closed: a schema-less wrapper reports
-  `nil, false`, and `agentloop.Definitions` skips it.
-  `spool` imports `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
   `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,
@@ -420,8 +404,22 @@ flowchart LR
   ref with `contextref.Mint` and stores it under a fixed byte
   budget; a blob that would exceed the budget evicts the
   oldest-inserted blobs, in insertion order, until it fits. `memory`
-  imports `contextref` only, for `Mint`. See
-  [packages/memory.md](packages/memory.md).
+  imports `contextref`, for `Mint`, and `tools`, for the spool tool
+  wrappers. The package also holds the principal-scoped spool:
+  `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`, `ContentStore`,
+  `WithPrincipal`, `PrincipalFrom`, `SpoolTool`, `ReadOutputTool`,
+  and `MoreMarker`. `Spool.Spool` writes content to a
+  caller-supplied `ContentStore`, grants one principal the right to
+  read it back, and returns a bounded view plus a reference.
+  `NewSpool`'s `maxGrantBytes` budget evicts the oldest grants, by
+  insertion order, once a new grant would exceed it. `SpoolTool`
+  wraps a `tools.Tool`: a string result over `maxBytes` spools
+  instead of returning in full, and the wrapper always forwards
+  `ExecutionProfile`, `MaxResultBytes`, `Privileged`, and
+  `SchemaTool` through the `tools` helpers. `tools.SchemaOf` fails
+  closed: a schema-less wrapper reports `nil, false`, and
+  `agentloop.Definitions` skips it.
+  See [packages/memory.md](packages/memory.md).
 - `mcp/` — the MCP tool-calling client. It provides `Transport`,
   `NewStdioTransport`, `NewStreamableHTTPTransport`, `ClientInfo`,
   `ProgressHandler`, `ClientOptions`, `Client`, `Connect`, `Close`,

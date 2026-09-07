@@ -14,11 +14,11 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 )
 
-// fakeContentStore is a spool.ContentStore backed by an in-memory map,
+// fakeContentStore is a memory.ContentStore backed by an in-memory map,
 // keyed deterministically by content hash so byte-identical Data
 // across two calls resolves to one ref, matching
 // spool/spool_test/spool_test.go's fakeStore. putErr, when set, fails
@@ -61,7 +61,7 @@ func (f *fakeContentStore) Get(ref string) ([]byte, error) {
 	return b, nil
 }
 
-// putFailingStore is a spool.ContentStore whose Put fails the test if
+// putFailingStore is a memory.ContentStore whose Put fails the test if
 // called. Used to prove ElisionReasonReasoningRedacted and
 // ElisionReasonRevoked never reach Spool.Spool.
 type putFailingStore struct{ t *testing.T }
@@ -101,7 +101,7 @@ func TestPlanNilSpoolerLeavesSpoolRefEmpty(t *testing.T) {
 func TestPlanSpoolsWindowOverflow(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestPlanSpoolsWindowOverflow(t *testing.T) {
 func TestPlanSpoolsRetentionExpired(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestPlanSpoolsRetentionExpired(t *testing.T) {
 func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
 
 func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
 	store := newStore(t)
-	sp, err := spool.NewSpool(putFailingStore{t: t}, 4096)
+	sp, err := memory.NewSpool(putFailingStore{t: t}, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
 
 func TestPlanRevokedNeverSpools(t *testing.T) {
 	store := newStore(t)
-	sp, err := spool.NewSpool(putFailingStore{t: t}, 4096)
+	sp, err := memory.NewSpool(putFailingStore{t: t}, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestPlanSpoolWriteFailureDoesNotFailPlan(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
 	contentStore.putErr = errors.New("store unavailable")
-	sp, err := spool.NewSpool(contentStore, 4096)
+	sp, err := memory.NewSpool(contentStore, 4096)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestPlanSpoolWriteFailureDoesNotFailPlan(t *testing.T) {
 func TestPlanSpoolBudgetDoesNotFailPlan(t *testing.T) {
 	store := newStore(t)
 	contentStore := newFakeContentStore()
-	sp, err := spool.NewSpool(contentStore, 10)
+	sp, err := memory.NewSpool(contentStore, 10)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}

@@ -51,7 +51,7 @@
       "contextplan",
       "contextstate",
       "provider",
-      "spool"
+      "memory"
     ],
     "contextstate": [
       "contextref"
@@ -95,7 +95,8 @@
       "tools"
     ],
     "memory": [
-      "contextref"
+      "contextref",
+      "tools"
     ],
     "provider": [],
     "provider/anthropic": [
@@ -121,9 +122,6 @@
     ],
     "schema": [],
     "skills": [],
-    "spool": [
-      "tools"
-    ],
     "subagent": [
       "agent",
       "agentrun",

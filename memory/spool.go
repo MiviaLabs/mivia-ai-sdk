@@ -1,7 +1,8 @@
-// Package spool stores oversized content under a principal-scoped
+// Spool stores oversized content under a principal-scoped
 // grant and hands the caller a bounded view plus a reference. See
-// docs/plans/spool.md.
-package spool
+// docs/plans/memory.md.
+
+package memory
 
 import (
 	"bytes"
@@ -19,17 +20,17 @@ const maxViewBytes = 4096
 
 // Sentinel errors for Spool and SpoolTool; test with errors.Is.
 var (
-	// ErrUnknownRef is Load's error for a ref with no live grant, and
+	// ErrUnknownGrantRef is Load's error for a ref with no live grant, and
 	// for a live grant whose ContentStore.Get fails.
-	ErrUnknownRef = errors.New("spool: unknown ref")
+	ErrUnknownGrantRef = errors.New("spool: unknown ref")
 	// ErrWrongPrincipal is Load's error when principal does not match
 	// the grant's recorded principal.
 	ErrWrongPrincipal = errors.New("spool: wrong principal")
 	// ErrNoPrincipal is SpoolTool's error for a ctx with no principal
 	// attached, when the inner result needs a grant.
 	ErrNoPrincipal = errors.New("spool: no principal in context")
-	// ErrNoBudget is NewSpool's error for a non-positive maxGrantBytes.
-	ErrNoBudget = errors.New("spool: maxGrantBytes must be positive")
+	// ErrNoGrantBudget is NewSpool's error for a non-positive maxGrantBytes.
+	ErrNoGrantBudget = errors.New("spool: maxGrantBytes must be positive")
 	// ErrGrantTooLarge is Spool's error when data alone exceeds
 	// maxGrantBytes: no eviction can ever make room for it.
 	ErrGrantTooLarge = errors.New("spool: content exceeds grant budget")
@@ -57,7 +58,7 @@ var (
 )
 
 // ContentStore is the storage a Spool writes spooled bytes to and
-// reads them back from. memory.Store satisfies this interface with no
+// reads them back from. Store satisfies this interface with no
 // import needed on either side; a caller wires the two together.
 type ContentStore interface {
 	Put(content []byte) (ref string, err error)
@@ -94,10 +95,10 @@ type Spool struct {
 
 // NewSpool creates a Spool backed by store, tracking grants under a
 // maxGrantBytes budget. A non-positive maxGrantBytes wraps
-// ErrNoBudget.
+// ErrNoGrantBudget.
 func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error) {
 	if maxGrantBytes <= 0 {
-		return nil, fmt.Errorf("%w: %d", ErrNoBudget, maxGrantBytes)
+		return nil, fmt.Errorf("%w: %d", ErrNoGrantBudget, maxGrantBytes)
 	}
 	return &Spool{
 		store:         store,
@@ -162,13 +163,13 @@ func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte
 }
 
 // Expire marks one live grant expired immediately. Unknown ref wraps
-// ErrUnknownRef.
+// ErrUnknownGrantRef.
 func (s *Spool) Expire(ref string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	g, ok := s.grants[ref]
 	if !ok {
-		return fmt.Errorf("%w: %s", ErrUnknownRef, ref)
+		return fmt.Errorf("%w: %s", ErrUnknownGrantRef, ref)
 	}
 	g.expires = time.Now()
 	s.grants[ref] = g
@@ -237,13 +238,13 @@ func (s *Spool) removeFromOrder(ref string) {
 }
 
 // Load returns the full bytes stored under ref. It wraps
-// ErrUnknownRef when no live grant matches ref, ErrWrongPrincipal
+// ErrUnknownGrantRef when no live grant matches ref, ErrWrongPrincipal
 // when principal does not match the grant's recorded principal, even
 // on an expired grant, and ErrExpired when the right principal's
 // grant expired: that grant drops on this Load, freeing its budget.
 // When the grant is live but the underlying ContentStore.Get fails
 // (for example, the store's own independent budget evicted the blob
-// first), Load wraps that error under ErrUnknownRef too: a live grant
+// first), Load wraps that error under ErrUnknownGrantRef too: a live grant
 // whose bytes are gone is, from the caller's view, an unknown ref.
 func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error) {
 	s.mu.Lock()
@@ -262,12 +263,12 @@ func (s *Spool) Load(ctx context.Context, principal, ref string) ([]byte, error)
 	s.mu.Unlock()
 
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrUnknownRef, ref)
+		return nil, fmt.Errorf("%w: %s", ErrUnknownGrantRef, ref)
 	}
 
 	data, err := s.store.Get(ref)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s: %v", ErrUnknownRef, ref, err)
+		return nil, fmt.Errorf("%w: %s: %v", ErrUnknownGrantRef, ref, err)
 	}
 	return data, nil
 }

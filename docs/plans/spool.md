@@ -1,6 +1,8 @@
 # spool
 
-Status: shipped. One new leaf package plus a `tools.Tool` wrapper,
+Status: superseded. Phase 86 folded this package into memory;
+the symbols live in memory now. See
+docs/plans/agents/phase86_package_consolidation.md.
 implementing `docs/plans/agents/phase67_truncation_spool.md` under
 the phase 65 `contextstate` contract. No standalone phase 67 plan
 file remains.

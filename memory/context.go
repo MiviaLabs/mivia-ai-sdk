@@ -1,4 +1,4 @@
-package spool
+package memory
 
 import "context"
 

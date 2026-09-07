@@ -1,6 +1,6 @@
 // Expiry tests for Spool grants: SpoolExpiring, Expire, GrantExpiry,
 // and the lazy ErrExpired drop on Load.
-package spool_test
+package memory_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 )
 
 // awaitPast spins until the wall clock passes t. Expiry reads
@@ -24,7 +24,7 @@ func awaitPast(t time.Time) {
 
 func TestSpoolExpiringRoundTripBeforeExpiry(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1024)
+	sp, err := memory.NewSpool(store, 1024)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestSpoolExpiringRoundTripBeforeExpiry(t *testing.T) {
 
 func TestLoadAfterExpiryFailsErrExpiredAndRegrantLoads(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 1024)
+	sp, _ := memory.NewSpool(store, 1024)
 	_, ref, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), time.Nanosecond)
 	if err != nil {
 		t.Fatalf("SpoolExpiring: %v", err)
@@ -54,11 +54,11 @@ func TestLoadAfterExpiryFailsErrExpiredAndRegrantLoads(t *testing.T) {
 	}
 	awaitPast(expiry)
 	_, err = sp.Load(context.Background(), "alice", ref)
-	if !errors.Is(err, spool.ErrExpired) {
+	if !errors.Is(err, memory.ErrExpired) {
 		t.Fatalf("Load after expiry = %v, want errors.Is ErrExpired", err)
 	}
-	if errors.Is(err, spool.ErrUnknownRef) {
-		t.Fatalf("Load after expiry = %v, must not read as ErrUnknownRef", err)
+	if errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Fatalf("Load after expiry = %v, must not read as ErrUnknownGrantRef", err)
 	}
 	_, ref2, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), time.Minute)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestLoadAfterExpiryFailsErrExpiredAndRegrantLoads(t *testing.T) {
 
 func TestLoadWrongPrincipalBeforeExpiryCheck(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 1024)
+	sp, _ := memory.NewSpool(store, 1024)
 	_, ref, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), time.Hour)
 	if err != nil {
 		t.Fatalf("SpoolExpiring: %v", err)
@@ -80,17 +80,17 @@ func TestLoadWrongPrincipalBeforeExpiryCheck(t *testing.T) {
 		t.Fatalf("Expire: %v", err)
 	}
 	_, err = sp.Load(context.Background(), "bob", ref)
-	if !errors.Is(err, spool.ErrWrongPrincipal) {
+	if !errors.Is(err, memory.ErrWrongPrincipal) {
 		t.Fatalf("Load under wrong principal on an expired grant = %v, want ErrWrongPrincipal first", err)
 	}
 }
 
 func TestSpoolExpiringNonPositiveTTLFailsBeforeWrite(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 1024)
+	sp, _ := memory.NewSpool(store, 1024)
 	for _, ttl := range []time.Duration{0, -time.Second} {
 		_, _, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), ttl)
-		if !errors.Is(err, spool.ErrInvalidExpiry) {
+		if !errors.Is(err, memory.ErrInvalidExpiry) {
 			t.Fatalf("SpoolExpiring(ttl %v) = %v, want errors.Is ErrInvalidExpiry", ttl, err)
 		}
 	}
@@ -101,7 +101,7 @@ func TestSpoolExpiringNonPositiveTTLFailsBeforeWrite(t *testing.T) {
 
 func TestExpireMarksAndRejectsUnknownRef(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 1024)
+	sp, _ := memory.NewSpool(store, 1024)
 	_, ref, err := sp.Spool(context.Background(), "alice", []byte("payload"))
 	if err != nil {
 		t.Fatalf("Spool: %v", err)
@@ -109,17 +109,17 @@ func TestExpireMarksAndRejectsUnknownRef(t *testing.T) {
 	if err := sp.Expire(ref); err != nil {
 		t.Fatalf("Expire: %v", err)
 	}
-	if _, err := sp.Load(context.Background(), "alice", ref); !errors.Is(err, spool.ErrExpired) {
+	if _, err := sp.Load(context.Background(), "alice", ref); !errors.Is(err, memory.ErrExpired) {
 		t.Fatalf("Load after Expire = %v, want errors.Is ErrExpired", err)
 	}
-	if err := sp.Expire("ref-missing"); !errors.Is(err, spool.ErrUnknownRef) {
-		t.Fatalf("Expire on unknown ref = %v, want errors.Is ErrUnknownRef", err)
+	if err := sp.Expire("ref-missing"); !errors.Is(err, memory.ErrUnknownGrantRef) {
+		t.Fatalf("Expire on unknown ref = %v, want errors.Is ErrUnknownGrantRef", err)
 	}
 }
 
 func TestGrantExpiryReports(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 1024)
+	sp, _ := memory.NewSpool(store, 1024)
 	before := time.Now()
 	_, ref, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), time.Hour)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestGrantExpiryReports(t *testing.T) {
 
 func TestExpiredGrantFreesBudgetLazily(t *testing.T) {
 	store := newFakeStore()
-	sp, _ := spool.NewSpool(store, 200)
+	sp, _ := memory.NewSpool(store, 200)
 	if _, expRef, err := sp.SpoolExpiring(context.Background(), "alice", []byte("a-payload"), time.Hour); err != nil {
 		t.Fatalf("SpoolExpiring: %v", err)
 	} else if err := sp.Expire(expRef); err != nil {
@@ -165,7 +165,7 @@ func TestExpiredGrantFreesBudgetLazily(t *testing.T) {
 		}
 	}
 	store.mu.Unlock()
-	if _, err := sp.Load(context.Background(), "alice", expiredRef); !errors.Is(err, spool.ErrExpired) {
+	if _, err := sp.Load(context.Background(), "alice", expiredRef); !errors.Is(err, memory.ErrExpired) {
 		t.Fatalf("Load on the expired grant = %v, want ErrExpired", err)
 	}
 	if _, _, err := sp.Spool(context.Background(), "alice", []byte("c-payload")); err != nil {

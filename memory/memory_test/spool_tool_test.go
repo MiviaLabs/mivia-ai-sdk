@@ -1,7 +1,7 @@
-// Package spool_test exercises spool.SpoolTool: the tools.Tool
+// Package spool_test exercises memory.SpoolTool: the tools.Tool
 // wrapper half of the package. See spool_test.go for the Spool/Load
 // grant-store tests and the shared fakeStore fixture.
-package spool_test
+package memory_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -32,11 +32,11 @@ func (s stringTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) 
 
 func TestSpoolToolPassesThroughSmallResult(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	wrapped, err := spool.SpoolTool("wrapper-name", 100, sp, stringTool{name: "inner", result: "short"})
+	wrapped, err := memory.SpoolTool("wrapper-name", 100, sp, stringTool{name: "inner", result: "short"})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
@@ -55,16 +55,16 @@ func TestSpoolToolPassesThroughSmallResult(t *testing.T) {
 
 func TestSpoolToolTruncatesLargeResult(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	full := strings.Repeat("y", 1000)
-	wrapped, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", result: full})
+	wrapped, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", result: full})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
-	ctx := spool.WithPrincipal(context.Background(), "alice")
+	ctx := memory.WithPrincipal(context.Background(), "alice")
 	out, err := wrapped.Run(ctx, tools.InOut{})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -85,12 +85,12 @@ func TestSpoolToolTruncatesLargeResult(t *testing.T) {
 
 func TestSpoolToolExactMaxBytesBoundary(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	atBound := strings.Repeat("a", 10)
-	wrapped, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", result: atBound})
+	wrapped, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", result: atBound})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
@@ -107,11 +107,11 @@ func TestSpoolToolExactMaxBytesBoundary(t *testing.T) {
 	}
 
 	overBound := strings.Repeat("b", 11)
-	wrapped2, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", result: overBound})
+	wrapped2, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", result: overBound})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
-	ctx2 := spool.WithPrincipal(context.Background(), "alice")
+	ctx2 := memory.WithPrincipal(context.Background(), "alice")
 	out2, err := wrapped2.Run(ctx2, tools.InOut{})
 	if err != nil {
 		t.Fatalf("Run over bound: %v", err)
@@ -137,16 +137,16 @@ func TestSpoolToolClampsNegativeMaxBytes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
-			sp, err := spool.NewSpool(store, 1<<20)
+			sp, err := memory.NewSpool(store, 1<<20)
 			if err != nil {
 				t.Fatalf("NewSpool: %v", err)
 			}
 			full := "hello"
-			wrapped, err := spool.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: full})
+			wrapped, err := memory.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: full})
 			if err != nil {
 				t.Fatalf("SpoolTool: %v", err)
 			}
-			ctx := spool.WithPrincipal(context.Background(), "alice")
+			ctx := memory.WithPrincipal(context.Background(), "alice")
 			out, err := wrapped.Run(ctx, tools.InOut{})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -160,7 +160,7 @@ func TestSpoolToolClampsNegativeMaxBytes(t *testing.T) {
 				t.Errorf("store.Get(ref) = %q,%v, want the full inner result", got, err)
 			}
 
-			empty, err := spool.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: ""})
+			empty, err := memory.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: ""})
 			if err != nil {
 				t.Fatalf("SpoolTool: %v", err)
 			}
@@ -191,15 +191,15 @@ func TestSpoolToolViewStaysValidUTF8(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
-			sp, err := spool.NewSpool(store, 1<<20)
+			sp, err := memory.NewSpool(store, 1<<20)
 			if err != nil {
 				t.Fatalf("NewSpool: %v", err)
 			}
-			wrapped, err := spool.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: tt.result})
+			wrapped, err := memory.SpoolTool("t", tt.maxBytes, sp, stringTool{name: "inner", result: tt.result})
 			if err != nil {
 				t.Fatalf("SpoolTool: %v", err)
 			}
-			ctx := spool.WithPrincipal(context.Background(), "alice")
+			ctx := memory.WithPrincipal(context.Background(), "alice")
 			out, err := wrapped.Run(ctx, tools.InOut{})
 			if err != nil {
 				t.Fatalf("Run: %v", err)
@@ -283,11 +283,11 @@ func TestSpoolToolPartialInterfaceCombinations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := newFakeStore()
-			sp, err := spool.NewSpool(store, 1<<20)
+			sp, err := memory.NewSpool(store, 1<<20)
 			if err != nil {
 				t.Fatalf("NewSpool: %v", err)
 			}
-			wrapped, err := spool.SpoolTool("t", 100, sp, tt.inner)
+			wrapped, err := memory.SpoolTool("t", 100, sp, tt.inner)
 			if err != nil {
 				t.Fatalf("SpoolTool: %v", err)
 			}
@@ -315,15 +315,15 @@ func TestSpoolToolPartialInterfaceCombinations(t *testing.T) {
 
 func TestSpoolToolNoPrincipal(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	small, err := spool.SpoolTool("t", 100, sp, stringTool{name: "inner", result: "short"})
+	small, err := memory.SpoolTool("t", 100, sp, stringTool{name: "inner", result: "short"})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
-	large, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", result: strings.Repeat("z", 1000)})
+	large, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", result: strings.Repeat("z", 1000)})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
@@ -333,19 +333,19 @@ func TestSpoolToolNoPrincipal(t *testing.T) {
 		t.Errorf("small.Run with no principal err = %v, want nil (no grant needed)", err)
 	}
 	_, err = large.Run(ctx, tools.InOut{})
-	if !errors.Is(err, spool.ErrNoPrincipal) {
+	if !errors.Is(err, memory.ErrNoPrincipal) {
 		t.Errorf("large.Run with no principal err = %v, want ErrNoPrincipal", err)
 	}
 }
 
 func TestSpoolToolInnerErrorPassesThrough(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	innerErr := errors.New("inner blew up")
-	wrapped, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", errFail: innerErr})
+	wrapped, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", errFail: innerErr})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
@@ -361,15 +361,15 @@ func TestSpoolToolInnerErrorPassesThrough(t *testing.T) {
 func TestSpoolToolStorePutFailure(t *testing.T) {
 	store := newFakeStore()
 	store.putFail = errors.New("store is full")
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
-	wrapped, err := spool.SpoolTool("t", 10, sp, stringTool{name: "inner", result: strings.Repeat("q", 1000)})
+	wrapped, err := memory.SpoolTool("t", 10, sp, stringTool{name: "inner", result: strings.Repeat("q", 1000)})
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
-	ctx := spool.WithPrincipal(context.Background(), "alice")
+	ctx := memory.WithPrincipal(context.Background(), "alice")
 	_, err = wrapped.Run(ctx, tools.InOut{})
 	if !errors.Is(err, store.putFail) {
 		t.Errorf("Run err = %v, want the store's Put failure", err)
@@ -392,12 +392,12 @@ func (p profiledTool) Privileged() bool { return true }
 
 func TestSpoolToolForwardsOptionalInterfaces(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	inner := profiledTool{stringTool: stringTool{name: "inner", result: "x"}}
-	wrapped, err := spool.SpoolTool("t", 100, sp, inner)
+	wrapped, err := memory.SpoolTool("t", 100, sp, inner)
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}
@@ -421,12 +421,12 @@ func TestSpoolToolForwardsOptionalInterfaces(t *testing.T) {
 
 func TestSpoolToolOverPlainInnerForwardsDefaults(t *testing.T) {
 	store := newFakeStore()
-	sp, err := spool.NewSpool(store, 1<<20)
+	sp, err := memory.NewSpool(store, 1<<20)
 	if err != nil {
 		t.Fatalf("NewSpool: %v", err)
 	}
 	inner := stringTool{name: "inner", result: "x"}
-	wrapped, err := spool.SpoolTool("t", 100, sp, inner)
+	wrapped, err := memory.SpoolTool("t", 100, sp, inner)
 	if err != nil {
 		t.Fatalf("SpoolTool: %v", err)
 	}

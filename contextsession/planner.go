@@ -6,8 +6,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextstate"
+	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/spool"
 )
 
 // Sentinel errors for NewPlanner and Plan; test with errors.Is.
@@ -34,7 +34,7 @@ type PlanResult struct {
 // mutable state of its own between calls.
 type Planner struct {
 	store   *contextstate.MemStore
-	spooler *spool.Spool
+	spooler *memory.Spool
 }
 
 // NewPlanner builds a Planner over store, the durable payload source,
@@ -42,7 +42,7 @@ type Planner struct {
 // ErrNilStore. A nil spooler is valid: Plan never calls Spool.Spool,
 // and behaves exactly as it does with a wired spooler that never gets
 // used, byte for byte.
-func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, error) {
+func NewPlanner(store *contextstate.MemStore, spooler *memory.Spool) (*Planner, error) {
 	if store == nil {
 		return nil, ErrNilStore
 	}
@@ -54,7 +54,7 @@ func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, e
 type planState struct {
 	ctx        context.Context
 	e          provider.TokenEstimator
-	spooler    *spool.Spool
+	spooler    *memory.Spool
 	budget     int
 	messages   []provider.Message
 	elisions   []Elision
@@ -131,7 +131,7 @@ func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contex
 // trial insertion is treated as "does not fit," never a Plan-level
 // failure; only a payload-resolution failure fails Plan. A non-nil
 // spooler receives the full record.Data for the two budget-driven
-// drop paths, best-effort: a spool.Spool error leaves the returned
+// drop paths, best-effort: a memory.Spool error leaves the returned
 // Elision's SpoolRef empty and never fails admit.
 func (s *planState) admit(event contextstate.SourceEvent, record contextstate.PayloadRecord) {
 	if !s.overBudget {
@@ -166,7 +166,7 @@ func (s *planState) admit(event contextstate.SourceEvent, record contextstate.Pa
 // spoolRecord writes record.Data to spooler under record.Ref.SubjectID
 // and returns the reference. A nil spooler or a Spool.Spool error
 // returns an empty string; the caller never fails on either.
-func spoolRecord(ctx context.Context, spooler *spool.Spool, record contextstate.PayloadRecord) string {
+func spoolRecord(ctx context.Context, spooler *memory.Spool, record contextstate.PayloadRecord) string {
 	if spooler == nil {
 		return ""
 	}

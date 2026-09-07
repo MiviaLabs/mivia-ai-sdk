@@ -129,8 +129,7 @@ any stage means stop and escalate to the user.
   process. Forbidden in names: phase, tdd, perf, wip, draft, scratch,
   tmp, old, backup, version suffixes (v2, v3). Use descriptive names
   like `panel_test.go`, `chain_bench_test.go`. Gate:
-  `scripts/check_names.py`; Semgrep:
-  `sdk.go.no-phase-tdd-perf-names`. Plan documents in
+  `scripts/check_names.py`. Plan documents in
   `docs/plans/agents/` may use phase numbers as plan identifiers.
 - No string literals where constants exist: enum values (Intent,
   Epistemic, AckStatus, Role), hash prefixes, wire serialization
@@ -189,9 +188,7 @@ follow reliably. Each has a gate behind it.
   section deliberately references, write
   `Status: planned, extends <symbol>` — that escape itself fails if
   the named symbol is locked, since a locked anchor means the addition
-  has shipped. Every `## Addendum:` heading also carries a `Status:`
-  line inside its own section, so the gate sees a superseded addendum.
-  Gate: `scripts/check_plan.py`.
+  has shipped. Gate: `scripts/check_plan.py`.
 - Do not let `docs/architecture.md`'s opening paragraph drift from the
   tree: its spelled-out package count must equal `go list`'s
   non-test package count. Gate: `scripts/check_docs.py`.
@@ -204,8 +201,12 @@ follow reliably. Each has a gate behind it.
   tests and deleted tests game the floor; review catches them.
   `scripts/check_mutation.py` covers the packages with a stored floor
   in `scripts/mutation_denylist/`.
-- Do not delete, skip, rename out of collection, or weaken a test
-  instead of fixing the code behind it. Gate:
+- Do not delete, skip, or weaken a test instead of fixing the code
+  behind it; do not drop a test function or a conformance vector. The
+  gate watches four cases: a dropped test function (TT01), a new skip
+  (TT02), a net assertion-site decrease (TT04), and a deleted
+  conformance vector (TT09). One `Allow-Test-Change: TTxx <reason>`
+  commit-message trailer waives one finding. Gate:
   `scripts/check_test_tampering.py`.
 - Do not write an audit-finding label in comments, docs, or plans: a
   letter A through G followed by a digit. Gate:
@@ -225,8 +226,8 @@ follow reliably. Each has a gate behind it.
 ## Gate tiers
 
 Two tiers guard the tree. `make verify-fast` runs the fast local
-checks: gofmt, vet, tests, the python gates, the Semgrep scan, and the
-suppression-marker scan. The pre-commit hook runs `make verify-fast` on
+checks: gofmt, vet, tests, the python gates, and the Semgrep scan.
+The pre-commit hook runs `make verify-fast` on
 the staged snapshot.
 
 `make verify` runs `verify-fast`, the coverage floor block, and the

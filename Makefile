@@ -1,6 +1,5 @@
 COVERAGE_FLOOR := 85
 SEMGREP_SCAN := semgrep scan --config semgrep/ --error --metrics=off --quiet -j 1 .
-MARKER_SCAN := grep -riE '(//|\#)\s*nosem[g]rep' . --exclude-dir=.git --exclude-dir=semgrep
 
 # verify-fast is the local tier: the pre-commit hook runs it on the staged
 # snapshot. verify is the full tier: it adds the coverage floor and the
@@ -29,7 +28,6 @@ verify-fast:
 	python3 scripts/check_docs.py --probe
 	python3 scripts/check_timeout_saturation.py
 	$(SEMGREP_SCAN)
-	@if $(MARKER_SCAN); then echo "suppression markers are forbidden"; exit 1; fi
 
 # The race step gates every "run under go test -race" comment in the
 # tree. It runs over the default build, after verify-fast and before

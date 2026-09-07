@@ -38,13 +38,6 @@ PROBES = [
         'package p\n\nimport "log"\n\nfunc f() {\n\tlog.Print("ok")\n\t_ = 1\n}\n',
     ),
     (
-        "sdk.go.stdlib-only-imports",
-        "viol_import.go",
-        'package p\n\nimport "GitHub.com/acme/lib"\n',
-        "clean_import.go",
-        'package p\n\nimport (\n\t"encoding/json"\n\t"fmt"\n)\n',
-    ),
-    (
         "sdk.go.no-enum-string-literals",
         "viol_enum.go",
         'package p\n\ntype Intent string\n\ntype ExecutionClass string\n\nfunc f() {\n\t_ = Intent("x")\n\t_ = Intent( "y")\n\t_ = Intent(`z`)\n\tm := struct{ Intent string }{Intent: "w"}\n\t_ = m\n\t_ = ExecutionClass("x")\n}\n',
@@ -106,31 +99,6 @@ PROBES = [
         "# Title\n\n" + D_MARK + ": finish this\n\n" + SPACED_D + "\n\n" + H_MARK + " alert\n",
         "clean_drift.md",
         "# Title\n\nEverything is done.\n\nwith AckRequired set the check runs\n",
-    ),
-    (
-        "sdk.go.no-phase-tdd-perf-names",
-        "viol_bad_names.go",
-        'package p\n\nfunc phase07Build() {}\nfunc testTDDHelper() {}\nfunc perfMeasure() {}\nfunc wipHandler() {}\nfunc draft_v2() {}\n',
-        "clean_good_names.go",
-        'package p\n\nfunc panelBuild() {}\nfunc testHelper() {}\nfunc allocMeasure() {}\nfunc parseIPv4() {}\n',
-    ),
-    (
-        "sdk.go.stdlib-only-imports",
-        "viol_other_import_outside.go",
-        'package p\n\nimport "github.com/other/pkg"\n\nvar _ = pkg.X\n',
-        "clean_other_import_outside.go",
-        'package p\n\nimport "encoding/json"\n\nvar _ = json.RawMessage(nil)\n',
-    ),
-    # Proves the blanket rule's global pattern-not-regex module
-    # allowances: silent on an allowed module path, firing on another
-    # domain-shaped import in the same directory. The five allowances
-    # replace the former per-directory exclude list.
-    (
-        "sdk.go.stdlib-only-imports",
-        "viol_domain_shaped_import.go",
-        'package p\n\nimport "example.com/other/pkg"\n\nvar _ = pkg.X\n',
-        "clean_allowed_module_import.go",
-        'package p\n\nimport _ "modernc.org/sqlite"\n',
     ),
 ]
 

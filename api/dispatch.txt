@@ -25,11 +25,7 @@ package dispatch
   Ack envelope.Ack
   Err error
 }
-  var ErrBadMaxBody
   var ErrBadMethod
-  var ErrBadReplayLease
   var ErrBadRequest
-  var ErrNoID
-  var ErrNoResolve
-  var ErrNoRoom
+  var ErrInvalidOptions
   var ErrReplay

@@ -37,18 +37,13 @@ package a2aclient
   type State int
   type TaskHandle struct {
 }
-  var ErrNoBaseURL
-  var ErrNoClient
-  var ErrNoPoll
+  var ErrInvalidOptions
   var ErrNoResultMessage
-  var ErrNoTLSConfig
   var ErrNoTask
   var ErrNoTaskID
   var ErrNoTextPart
-  var ErrNoTransport
   var ErrNotTerminal
   var ErrRemoteFailed
-  var ErrShortTimeout
   var ErrSignatureCheckFailed
   var ErrSignerMismatch
   var ErrTimeout

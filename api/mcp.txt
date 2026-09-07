@@ -35,4 +35,4 @@ package mcp
   type ProgressHandler func(ctx context.Context, token any, message string, progress, total float64)
   type Transport = mcpsdk.Transport
   var ErrClosed
-  var ErrNilProgressHandler
+  var ErrInvalidOptions

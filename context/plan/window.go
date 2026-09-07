@@ -8,11 +8,14 @@ import (
 // Sentinel errors for Window.Validate; test with errors.Is.
 var (
 	// ErrMaxTokensNotPositive is Validate's error when MaxTokens <= 0.
-	ErrMaxTokensNotPositive = errors.New("contextplan: max tokens must be positive")
-	// ErrReserveNegative is Validate's error when Reserve < 0.
-	ErrReserveNegative = errors.New("contextplan: reserve must not be negative")
-	// ErrReserveTooLarge is Validate's error when Reserve >= MaxTokens.
-	ErrReserveTooLarge = errors.New("contextplan: reserve must be less than max tokens")
+	// Kept separate from ErrInvalidOptions: agentloop/agentloop_test
+	// asserts on this sentinel by name, so it stays a distinct value.
+	ErrMaxTokensNotPositive = errors.New("plan: max tokens must be positive")
+	// ErrInvalidOptions is the shared sentinel for every other
+	// construction-time argument error in this package. Wrap it with
+	// fmt.Errorf("%w: %s", ErrInvalidOptions, "<field>: <rule>") and
+	// test with errors.Is plus a substring check on the field name.
+	ErrInvalidOptions = errors.New("plan: invalid options")
 )
 
 // Window is the token budget for one planned request. MaxTokens is
@@ -34,17 +37,17 @@ func (w Window) Validate() error {
 		return ErrMaxTokensNotPositive
 	}
 	if w.Reserve < 0 {
-		return ErrReserveNegative
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Reserve: must not be negative")
 	}
 	if w.Reserve >= w.MaxTokens {
-		return ErrReserveTooLarge
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Reserve: must be less than max tokens")
 	}
 	if err := w.Compaction.Validate(); err != nil {
 		return err
 	}
 	if w.Compaction.TargetTokens > 0 && w.Compaction.TargetTokens >= w.Budget() {
-		return fmt.Errorf("contextplan: compaction target tokens %d at or above budget %d",
-			w.Compaction.TargetTokens, w.Budget())
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("TargetTokens: %d at or above budget %d", w.Compaction.TargetTokens, w.Budget()))
 	}
 	return nil
 }

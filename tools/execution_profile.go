@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"errors"
+	"fmt"
 	"time"
 )
 
@@ -18,19 +18,15 @@ const (
 	ExecutionClassExternal     ExecutionClass = "external"
 )
 
-// ErrInvalidExecutionClass is Validate's error for a value outside
-// the declared ExecutionClass set. Test with errors.Is.
-var ErrInvalidExecutionClass = errors.New("tools: invalid execution class")
-
 // Validate rejects any ExecutionClass value outside
 // ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite,
-// and ExecutionClassExternal.
+// and ExecutionClassExternal. Wraps ErrInvalidOptions.
 func (c ExecutionClass) Validate() error {
 	switch c {
 	case ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite, ExecutionClassExternal:
 		return nil
 	default:
-		return ErrInvalidExecutionClass
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ExecutionClass: unrecognized value")
 	}
 }
 

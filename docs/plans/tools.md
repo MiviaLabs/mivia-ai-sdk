@@ -993,3 +993,38 @@ says `Definitions` skips a tool that does not implement
 Check the `ErrArgumentDecode` entry at
 `docs/packages/agentrun.md:106-110`; add one clause for the
 nil-schema pass-through.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum classifies every `tools` sentinel error as CONFIG or
+RUNTIME. CONFIG means every return site checks caller-supplied
+construction input. RUNTIME means at least one return site reacts to
+live registry or scope state.
+
+Four sentinels were CONFIG. They merged into one new sentinel,
+`ErrInvalidOptions`, defined in `registry.go`. Each old return site now
+wraps it with a field name and a one-line rule, in the form
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "<Field>: <rule>")`.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNilTool` | CONFIG | Deleted. Merged into `ErrInvalidOptions`, field `Tool`. |
+| `ErrBlankName` | CONFIG | Deleted. Merged into `ErrInvalidOptions`, field `Tool.Name`. |
+| `ErrInvalidExecutionClass` | CONFIG | Deleted. Merged into `ErrInvalidOptions`, field `ExecutionClass`. |
+| `ErrUnknownApprovalThreshold` | CONFIG | Deleted. Merged into `ErrInvalidOptions`, field `ApprovalThreshold`. |
+| `ErrDuplicateName` | RUNTIME | Unchanged. `Add` reacts to a name already in the live map. |
+| `ErrUnknownName` | RUNTIME | Unchanged. `Run` and `RunScoped` react to a name absent from the live map. |
+| `ErrScopeDenied` | RUNTIME | Unchanged. `RunScoped` reacts to a live `Scope.Allowed` result. |
+| `ErrToolDeclined` | RUNTIME | Unchanged. `RunScoped` reacts to a live approval callback result. |
+| `ErrRunTimeout` | RUNTIME | Unchanged. `runBounded` reacts to a live deadline expiry. |
+
+Tests in `tools/tools_test/` that asserted the four deleted sentinels
+now assert `errors.Is(err, tools.ErrInvalidOptions)` plus a
+`strings.Contains` check on the field name. No test function was
+deleted.
+
+`tools/doc.go` still names `ErrNilTool` and `ErrBlankName` in its
+package map comment. That file is outside this sweep's owned file
+list and needs a follow-up edit to name `ErrInvalidOptions` instead.

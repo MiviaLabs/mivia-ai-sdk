@@ -9,17 +9,13 @@ package channel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
-// Sentinel errors returned by Question.Validate and Answer.Validate.
-// Test with errors.Is.
-var (
-	ErrEmptyID         = errors.New("channel: question id must not be empty")
-	ErrEmptyRecipient  = errors.New("channel: recipient must not be empty")
-	ErrEmptyPayload    = errors.New("channel: payload must not be empty")
-	ErrEmptyQuestionID = errors.New("channel: answer question id must not be empty")
-)
+// ErrInvalidOptions is Question.Validate's and Answer.Validate's error
+// for a blank required field. Test with errors.Is.
+var ErrInvalidOptions = errors.New("channel: invalid options")
 
 // Question is one thing being asked. ID names the question so an
 // Answer can reference it; the caller sets ID, channel never
@@ -46,18 +42,18 @@ type Answer struct {
 }
 
 // Validate rejects an empty ID, an empty Recipient, and an empty
-// Payload, each with its own sentinel error. A whitespace-only
-// string counts as empty: Validate trims with strings.TrimSpace
-// before comparing.
+// Payload, each wrapping ErrInvalidOptions with the field name. A
+// whitespace-only string counts as empty: Validate trims with
+// strings.TrimSpace before comparing.
 func (q Question) Validate() error {
 	if strings.TrimSpace(q.ID) == "" {
-		return ErrEmptyID
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "ID: must not be empty")
 	}
 	if strings.TrimSpace(q.Recipient) == "" {
-		return ErrEmptyRecipient
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Recipient: must not be empty")
 	}
 	if strings.TrimSpace(q.Payload) == "" {
-		return ErrEmptyPayload
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Payload: must not be empty")
 	}
 	return nil
 }
@@ -68,7 +64,7 @@ func (q Question) Validate() error {
 // with no invalid state.
 func (a Answer) Validate() error {
 	if strings.TrimSpace(a.QuestionID) == "" {
-		return ErrEmptyQuestionID
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "QuestionID: must not be empty")
 	}
 	return nil
 }

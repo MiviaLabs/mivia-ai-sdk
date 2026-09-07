@@ -22,39 +22,39 @@ const maxViewBytes = 4096
 var (
 	// ErrUnknownGrantRef is Load's error for a ref with no live grant, and
 	// for a live grant whose ContentStore.Get fails.
-	ErrUnknownGrantRef = errors.New("spool: unknown ref")
+	ErrUnknownGrantRef = errors.New("memory: unknown ref")
 	// ErrWrongPrincipal is Load's error when principal does not match
 	// the grant's recorded principal.
-	ErrWrongPrincipal = errors.New("spool: wrong principal")
+	ErrWrongPrincipal = errors.New("memory: wrong principal")
 	// ErrNoPrincipal is SpoolTool's error for a ctx with no principal
 	// attached, when the inner result needs a grant.
-	ErrNoPrincipal = errors.New("spool: no principal in context")
-	// ErrNoGrantBudget is NewSpool's error for a non-positive maxGrantBytes.
-	ErrNoGrantBudget = errors.New("spool: maxGrantBytes must be positive")
+	ErrNoPrincipal = errors.New("memory: no principal in context")
+	// ErrInvalidOptions is the sentinel for a caller-supplied
+	// constructor argument that fails a sanity check, such as a
+	// non-positive maxGrantBytes or ttl.
+	ErrInvalidOptions = errors.New("memory: invalid options")
 	// ErrGrantTooLarge is Spool's error when data alone exceeds
 	// maxGrantBytes: no eviction can ever make room for it.
-	ErrGrantTooLarge = errors.New("spool: content exceeds grant budget")
+	ErrGrantTooLarge = errors.New("memory: content exceeds grant budget")
 	// ErrPrincipalConflict is Spool's error when the store returns a
 	// ref already granted to a different principal. A content-addressed
 	// ContentStore returns the same ref for identical bytes regardless
 	// of caller; without this check, a second principal spooling the
 	// same content would silently take over the first principal's
 	// grant.
-	ErrPrincipalConflict = errors.New("spool: ref already granted to a different principal")
+	ErrPrincipalConflict = errors.New("memory: ref already granted to a different principal")
 	// ErrExpired is Load's error for a grant whose expiry passed. The
 	// grant drops on that Load, freeing its budget.
-	ErrExpired = errors.New("spool: grant expired")
-	// ErrInvalidExpiry is SpoolExpiring's error for a non-positive ttl.
-	ErrInvalidExpiry = errors.New("spool: ttl must be positive")
+	ErrExpired = errors.New("memory: grant expired")
 	// ErrNilSpool is ReadOutputTool's error for a nil Spool.
-	ErrNilSpool = errors.New("spool: spool is required")
+	ErrNilSpool = errors.New("memory: spool is required")
 	// ErrInvalidLimit is ReadOutputTool's error for a non-positive
 	// maxPageBytes.
-	ErrInvalidLimit = errors.New("spool: maxPageBytes must be positive")
+	ErrInvalidLimit = errors.New("memory: maxPageBytes must be positive")
 	// ErrBadArguments is ReadOutputTool's error for a malformed
 	// argument decode, a mistyped Run call, a negative offset, or a
 	// negative limit.
-	ErrBadArguments = errors.New("spool: bad arguments")
+	ErrBadArguments = errors.New("memory: bad arguments")
 )
 
 // ContentStore is the storage a Spool writes spooled bytes to and
@@ -95,10 +95,10 @@ type Spool struct {
 
 // NewSpool creates a Spool backed by store, tracking grants under a
 // maxGrantBytes budget. A non-positive maxGrantBytes wraps
-// ErrNoGrantBudget.
+// ErrInvalidOptions.
 func NewSpool(store ContentStore, maxGrantBytes int) (*Spool, error) {
 	if maxGrantBytes <= 0 {
-		return nil, fmt.Errorf("%w: %d", ErrNoGrantBudget, maxGrantBytes)
+		return nil, fmt.Errorf("%w: maxGrantBytes: must be positive, got %d", ErrInvalidOptions, maxGrantBytes)
 	}
 	return &Spool{
 		store:         store,
@@ -135,13 +135,13 @@ func (s *Spool) Spool(ctx context.Context, principal string, data []byte) (view 
 }
 
 // SpoolExpiring writes data, grants principal read-back, and sets a
-// time-to-live on the grant. A non-positive ttl wraps ErrInvalidExpiry
+// time-to-live on the grant. A non-positive ttl wraps ErrInvalidOptions
 // before any store write. Re-spooling an existing ref under the same
 // principal refreshes the expiry, the same way Spool refreshes
 // insertion order.
 func (s *Spool) SpoolExpiring(ctx context.Context, principal string, data []byte, ttl time.Duration) (view string, ref string, err error) {
 	if ttl <= 0 {
-		return "", "", fmt.Errorf("%w: %s", ErrInvalidExpiry, ttl)
+		return "", "", fmt.Errorf("%w: ttl: must be positive, got %s", ErrInvalidOptions, ttl)
 	}
 	if len(data) > s.maxGrantBytes {
 		return "", "", fmt.Errorf("%w: %d bytes exceeds budget %d", ErrGrantTooLarge, len(data), s.maxGrantBytes)

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -160,8 +161,11 @@ func TestNewSpoolNonPositiveBudget(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := memory.NewSpool(newFakeStore(), tt.maxGrantBytes)
-			if !errors.Is(err, memory.ErrNoGrantBudget) {
-				t.Errorf("NewSpool(%d) err = %v, want ErrNoGrantBudget", tt.maxGrantBytes, err)
+			if !errors.Is(err, memory.ErrInvalidOptions) {
+				t.Errorf("NewSpool(%d) err = %v, want ErrInvalidOptions", tt.maxGrantBytes, err)
+			}
+			if !strings.Contains(err.Error(), "maxGrantBytes") {
+				t.Errorf("NewSpool(%d) err = %v, want it to mention maxGrantBytes", tt.maxGrantBytes, err)
 			}
 		})
 	}

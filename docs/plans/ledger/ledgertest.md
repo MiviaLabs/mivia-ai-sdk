@@ -25,7 +25,7 @@ invariants; it never implements a lease store.
 
 The exported surface mirrors `api/ledger/ledgertest.txt`: `Scenario`,
 `Scenario.Validate`, `RunAll`, the seven `Check*` functions, and
-`ErrIncompleteScenario`.
+`ErrInvalidOptions`.
 
 ## Tests
 
@@ -43,5 +43,23 @@ it wires a `Scenario` against `Ledger.Claim`, `Renew`, `Release`,
 
 ## Verification
 
-`make verify` passes for `ledger/ledgertest`: gofmt, vet, the python
-gates, the Semgrep scan, and the coverage floor at 85.
+`make verify` compiles and runs the kit through `ledger`'s test
+targets. The orphan gate carries a `pending_wiring.json` entry, since
+the kit's only callers are `_test` subdirectories. `make verify`
+passes for `ledger/ledgertest`: gofmt, vet, the python gates, the
+Semgrep scan, and the coverage floor at 85.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+`Scenario.Validate` checks each function field before any check
+function runs real work against a `Scenario`. That check on a
+caller-supplied struct field, before any real work happens, is
+CONFIG, so `ErrIncompleteScenario` renames to `ErrInvalidOptions`,
+matching the `ErrInvalidOptions` shape used across this sweep.
+`Validate` still wraps the missing field's name into the message.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| ErrIncompleteScenario | CONFIG | renamed to ErrInvalidOptions |

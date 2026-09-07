@@ -5,3 +5,4 @@ package context/budget
   MaxBytes int
   MaxEvents int
 }
+  var ErrInvalidOptions

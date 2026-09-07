@@ -6,8 +6,8 @@
 // matching that signature.
 //
 // Map: schedule.go = Schedule, Every, At; scheduler.go = Scheduler,
-// New, Add, Remove, and the sentinel errors ErrBlankID,
-// ErrNilSchedule, ErrNilJob, ErrDuplicateID; run.go = Run and its
+// New, Add, Remove, and the sentinel errors ErrInvalidOptions,
+// ErrDuplicateID; run.go = Run and its
 // wake-channel sleep loop; events.go = JobFailedEvent. Scheduler holds
 // no events.Bus of its own; Run takes one as a parameter, and a nil
 // bus silently skips the emit, matching flow.Run's own precedent.

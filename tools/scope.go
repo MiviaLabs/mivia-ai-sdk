@@ -2,14 +2,8 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
-
-// ErrUnknownApprovalThreshold is ScopeOptions.Validate's error when
-// ApprovalThreshold is not one of the four declared ExecutionClass
-// values. Test with errors.Is.
-var ErrUnknownApprovalThreshold = errors.New("tools: unknown ApprovalThreshold")
 
 // ScopeOptions holds the inputs to NewScope: an allowlist, an extra
 // denylist, and an optional approval gate. Approve and
@@ -39,13 +33,13 @@ type Scope struct {
 // ExecutionClassExternal, the highest class, so RunScoped would still
 // gate every External-class tool behind approval; Validate rejects
 // the unknown value instead, for callers that want construction-time
-// enforcement rather than that fallback.
+// enforcement rather than that fallback. Wraps ErrInvalidOptions.
 func (o ScopeOptions) Validate() error {
 	switch o.ApprovalThreshold {
 	case ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite, ExecutionClassExternal:
 		return nil
 	}
-	return fmt.Errorf("%w: %q", ErrUnknownApprovalThreshold, string(o.ApprovalThreshold))
+	return fmt.Errorf("%w: ApprovalThreshold: unrecognized value %q", ErrInvalidOptions, string(o.ApprovalThreshold))
 }
 
 // NewScope builds a Scope from opts. An empty Allowlist means every

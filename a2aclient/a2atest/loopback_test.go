@@ -265,7 +265,7 @@ func TestLoopbackRequestRejectsMalformedText(t *testing.T) {
 	if err == nil {
 		t.Fatal("loopbackRequest accepted malformed text, want an error")
 	}
-	if !strings.Contains(err.Error(), "loopback: decode request") {
+	if !strings.Contains(err.Error(), "a2atest: decode request") {
 		t.Fatalf("error = %v, want the wrapped decode error", err)
 	}
 }

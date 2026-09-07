@@ -10,7 +10,7 @@ import (
 
 // FuzzAddGetRemove feeds arbitrary tool names through Add, Get, and
 // Remove. It proves no name panics the Registry, and that a blank
-// name after strings.TrimSpace always fails Add with ErrBlankName
+// name after strings.TrimSpace always fails Add with ErrInvalidOptions
 // while any other name round-trips: Add succeeds, Get finds it, and
 // Remove drops it so a later Get reports it absent.
 func FuzzAddGetRemove(f *testing.F) {
@@ -27,8 +27,11 @@ func FuzzAddGetRemove(f *testing.F) {
 		err := r.Add(&stubTool{name: name, result: "ok"})
 
 		if strings.TrimSpace(name) == "" {
-			if !errors.Is(err, tools.ErrBlankName) {
-				t.Fatalf("Add(%q) error = %v, want ErrBlankName", name, err)
+			if !errors.Is(err, tools.ErrInvalidOptions) {
+				t.Fatalf("Add(%q) error = %v, want ErrInvalidOptions", name, err)
+			}
+			if !strings.Contains(err.Error(), "Tool.Name") {
+				t.Fatalf("Add(%q) error = %v, want it to name the Tool.Name field", name, err)
 			}
 			return
 		}

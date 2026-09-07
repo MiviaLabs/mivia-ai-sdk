@@ -37,11 +37,9 @@ package memory
   var ErrBudgetExceeded
   var ErrExpired
   var ErrGrantTooLarge
-  var ErrInvalidExpiry
   var ErrInvalidLimit
+  var ErrInvalidOptions
   var ErrNilSpool
-  var ErrNoBudget
-  var ErrNoGrantBudget
   var ErrNoPrincipal
   var ErrPrincipalConflict
   var ErrUnknownGrantRef

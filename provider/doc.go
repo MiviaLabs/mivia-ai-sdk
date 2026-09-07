@@ -6,12 +6,10 @@
 // ../docs/plans/agents/phase29_provider.md for the design rationale.
 //
 // Map: accumulator.go = Accumulator, NewAccumulator, Record, Total,
-// Reset, and the sentinel error ErrNilUsageCompleter; wrap.go =
+// Reset, and the sentinel error ErrBlankSessionID; wrap.go =
 // WrapCompleter, the per-call usage recorder; registry.go = Registry,
 // NewRegistry, Register, Get, Names, and the sentinel errors
-// ErrNilCompleter, ErrBlankName, ErrDuplicateName; route.go =
-// Retryable, Route, and the sentinel errors ErrUnknownName,
-// ErrEmptyOrder, ErrAllFailed.
+// ErrInvalidOptions, ErrUnknownName, ErrEmptyOrder, ErrAllFailed.
 // Map: types.go = Role and its constants, Message, Message.Validate,
 // ToolDefinition, ToolCall, Usage, Request, Response, Chunk,
 // Chunk.Validate, and the sentinel errors ErrToolCallIDUnexpected,

@@ -15,9 +15,7 @@ package workflow
   type Agent struct {
 }
   var ErrEscalated
-  var ErrNoBus
-  var ErrNoIdentity
-  var ErrNoPlan
+  var ErrInvalidOptions
   var ErrNoThread
   var ErrNoWait
   var ErrOverBudget

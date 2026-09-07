@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -14,8 +15,8 @@ func TestNew(t *testing.T) {
 		wantErr  error
 	}{
 		{"positive budget", 1024, nil},
-		{"zero budget", 0, memory.ErrNoBudget},
-		{"negative budget", -1, memory.ErrNoBudget},
+		{"zero budget", 0, memory.ErrInvalidOptions},
+		{"negative budget", -1, memory.ErrInvalidOptions},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -23,6 +24,9 @@ func TestNew(t *testing.T) {
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("New(%d) error = %v, want %v", tt.maxBytes, err, tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), "maxBytes") {
+					t.Fatalf("New(%d) error = %v, want it to mention maxBytes", tt.maxBytes, err)
 				}
 				if s != nil {
 					t.Fatalf("New(%d) store = %v, want nil", tt.maxBytes, s)

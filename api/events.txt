@@ -26,5 +26,6 @@ package events
 }
   var ErrBlankName
   var ErrDuplicateName
+  var ErrInvalidOptions
   var ErrNilHandler
   var ErrVetoed

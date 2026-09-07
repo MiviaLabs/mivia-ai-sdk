@@ -3,6 +3,7 @@ package channel_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
@@ -16,39 +17,46 @@ import (
 // value.
 func TestQuestionValidate(t *testing.T) {
 	cases := []struct {
-		name    string
-		q       channel.Question
-		wantErr error
+		name      string
+		q         channel.Question
+		wantErr   error
+		wantField string
 	}{
 		{
-			name:    "empty id",
-			q:       channel.Question{ID: "", Recipient: "human", Payload: "hi"},
-			wantErr: channel.ErrEmptyID,
+			name:      "empty id",
+			q:         channel.Question{ID: "", Recipient: "human", Payload: "hi"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "ID",
 		},
 		{
-			name:    "whitespace only id",
-			q:       channel.Question{ID: "   ", Recipient: "human", Payload: "hi"},
-			wantErr: channel.ErrEmptyID,
+			name:      "whitespace only id",
+			q:         channel.Question{ID: "   ", Recipient: "human", Payload: "hi"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "ID",
 		},
 		{
-			name:    "empty recipient",
-			q:       channel.Question{ID: "q1", Recipient: "", Payload: "hi"},
-			wantErr: channel.ErrEmptyRecipient,
+			name:      "empty recipient",
+			q:         channel.Question{ID: "q1", Recipient: "", Payload: "hi"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "Recipient",
 		},
 		{
-			name:    "whitespace only recipient",
-			q:       channel.Question{ID: "q1", Recipient: "\t\n ", Payload: "hi"},
-			wantErr: channel.ErrEmptyRecipient,
+			name:      "whitespace only recipient",
+			q:         channel.Question{ID: "q1", Recipient: "\t\n ", Payload: "hi"},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "Recipient",
 		},
 		{
-			name:    "empty payload",
-			q:       channel.Question{ID: "q1", Recipient: "human", Payload: ""},
-			wantErr: channel.ErrEmptyPayload,
+			name:      "empty payload",
+			q:         channel.Question{ID: "q1", Recipient: "human", Payload: ""},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "Payload",
 		},
 		{
-			name:    "whitespace only payload",
-			q:       channel.Question{ID: "q1", Recipient: "human", Payload: "\t\n "},
-			wantErr: channel.ErrEmptyPayload,
+			name:      "whitespace only payload",
+			q:         channel.Question{ID: "q1", Recipient: "human", Payload: "\t\n "},
+			wantErr:   channel.ErrInvalidOptions,
+			wantField: "Payload",
 		},
 		{
 			name:    "padded but non-empty fields pass",
@@ -73,6 +81,9 @@ func TestQuestionValidate(t *testing.T) {
 			}
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("Validate() = %v, want %v", err, tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantField) {
+				t.Fatalf("Validate() = %v, want it to name field %q", err, tc.wantField)
 			}
 		})
 	}

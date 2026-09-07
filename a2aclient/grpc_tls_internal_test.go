@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,14 +12,14 @@ import (
 )
 
 // TestNewWithTLSRejectsBadInput pins the constructor's validation: an
-// empty baseURL fails ErrNoBaseURL and a nil cfg fails ErrNoTLSConfig.
-// NewWithTLS never guesses a dial mode.
+// empty baseURL and a nil cfg both fail ErrInvalidOptions. NewWithTLS
+// never guesses a dial mode.
 func TestNewWithTLSRejectsBadInput(t *testing.T) {
-	if _, err := NewWithTLS("", &tls.Config{}); !errors.Is(err, ErrNoBaseURL) {
-		t.Fatalf("empty baseURL error = %v, want errors.Is ErrNoBaseURL", err)
+	if _, err := NewWithTLS("", &tls.Config{}); !errors.Is(err, ErrInvalidOptions) || !strings.Contains(err.Error(), "baseURL") {
+		t.Fatalf("empty baseURL error = %v, want errors.Is ErrInvalidOptions mentioning baseURL", err)
 	}
-	if _, err := NewWithTLS("bufnet", nil); !errors.Is(err, ErrNoTLSConfig) {
-		t.Fatalf("nil cfg error = %v, want errors.Is ErrNoTLSConfig", err)
+	if _, err := NewWithTLS("bufnet", nil); !errors.Is(err, ErrInvalidOptions) || !strings.Contains(err.Error(), "cfg") {
+		t.Fatalf("nil cfg error = %v, want errors.Is ErrInvalidOptions mentioning cfg", err)
 	}
 }
 

@@ -1133,3 +1133,52 @@ sentinel list near line 103 gains an `ErrBlankRoot` bullet as well.
   this file cite 96; that number is stale and the JSON file is the
   authority.
 - No `policy/layers.json` diff.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+This addendum classifies every error sentinel in `workspace` as
+CONFIG or RUNTIME, and merges the CONFIG cases into one shared
+sentinel. It supersedes the earlier `ErrBlankRoot` addendum on one
+point, noted below.
+
+CONFIG means a caller-supplied `Options` field fails a one-shot
+sanity check in `Validate`, with no other caller decision besides
+fixing the call. RUNTIME means the error reacts to a live filesystem
+path or file size lookup at call time.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrEscape` | RUNTIME | Reports a live path resolving outside the root. Kept unchanged. |
+| `ErrTooLarge` | RUNTIME | Reports a live file's size against the read bound. Kept unchanged. |
+| `ErrSecretPath` | RUNTIME | Reports a live path matching the deny list. Kept unchanged. External reference: `x/envfile/envfile_test` asserts `errors.Is(err, workspace.ErrSecretPath)`, confirming the RUNTIME call stays reachable. |
+| `ErrInvalidLimit` | CONFIG | `Options.Validate`'s check on `MaxReadBytes`, a pure argument-range check. Merged into new `ErrInvalidOptions`. |
+| `ErrBlankRoot` | CONFIG | `Options.Validate`'s check on a blank `Root`, a pure argument check. Merged into new `ErrInvalidOptions`. |
+
+`ErrInvalidOptions = errors.New("workspace: invalid options")`
+replaces both `ErrInvalidLimit` and `ErrBlankRoot` in
+`workspace/workspace.go`. `Options.Validate` and `validateLimit` now
+wrap it with a field name, for example
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "Root: must not be blank")`.
+
+This supersedes the earlier addendum's `ErrBlankRoot` sentinel-list
+bullet: `docs/packages/workspace.md` now names `ErrInvalidOptions`
+instead, since `ErrBlankRoot` no longer exists.
+
+### Addendum tests
+
+- `workspace/workspace_test/read_limit_test.go`'s `TestOptionsValidate`
+  and `TestInvalidLimit` now assert `errors.Is(err, ErrInvalidOptions)`
+  plus a substring check for the field name (`Root` or
+  `MaxReadBytes`).
+- `workspace/workspace_test/workspace_test.go`'s
+  `TestOpenWithRejectsWhitespaceOnlyRoot` now asserts
+  `errors.Is(err, ErrInvalidOptions)` and a `Root` substring, instead
+  of an exact message match against the old `ErrBlankRoot` text.
+
+### Addendum verification
+
+- `go build ./...` and `go test ./workspace/...` pass.
+- No `x`, `agentloop`, or `internal` caller referenced `ErrInvalidLimit`
+  or `ErrBlankRoot`, so the merge is safe outside this package.

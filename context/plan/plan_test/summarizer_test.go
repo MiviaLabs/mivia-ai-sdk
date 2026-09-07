@@ -16,8 +16,11 @@ func TestNewSummarizerNilCompleter(t *testing.T) {
 	if s != nil {
 		t.Fatal("NewSummarizer(nil) returned a Summarizer, want nil")
 	}
-	if !errors.Is(err, plan.ErrNilCompleter) {
-		t.Fatalf("NewSummarizer(nil) error = %v, want errors.Is ErrNilCompleter", err)
+	if !errors.Is(err, plan.ErrInvalidOptions) {
+		t.Fatalf("NewSummarizer(nil) error = %v, want errors.Is ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "Completer") {
+		t.Fatalf("NewSummarizer(nil) error = %q, want it to contain %q", err.Error(), "Completer")
 	}
 }
 

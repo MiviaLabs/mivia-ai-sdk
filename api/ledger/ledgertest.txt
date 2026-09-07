@@ -16,4 +16,4 @@ package ledger/ledgertest
   IsHeld func(context.Context) (bool, error)
   IsFenced func(context.Context, string) (bool, error)
 }
-  var ErrIncompleteScenario
+  var ErrInvalidOptions

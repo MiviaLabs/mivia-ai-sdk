@@ -1293,3 +1293,36 @@ Predicted `scripts/check_test_tampering.py` findings: none. The change
 deletes no test, adds two, and edits no conformance vector. TT04
 counts assertion sites across the whole diff, and the diff adds
 assertions. The builder does not add a trailer.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This sweep classified every sentinel in `discovery_card.go` and
+`heartbeat_monitor.go` as CONFIG or RUNTIME. A CONFIG sentinel checks
+caller-supplied input inside `Validate` or a constructor. A RUNTIME
+sentinel reacts to live state at call time.
+
+Every CONFIG sentinel merged into one new sentinel,
+`ErrInvalidOptions`, defined in `discovery_card.go`. Each merged
+return site now wraps `ErrInvalidOptions` with `fmt.Errorf("%w: %s", ...)`
+and a field name plus a one-line rule. A test checks the merged error
+with `errors.Is` and a substring on the field name.
+
+RUNTIME sentinels keep their own identity and message. `ErrStaleBeat`
+stays, because `Beat` compares the caller's timestamp against
+`Monitor`'s stored last-seen time, a live-state check.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrNoTimeout` | CONFIG | Merged into `ErrInvalidOptions` (field: `Timeout`). |
+| `ErrNoID` | CONFIG | Merged into `ErrInvalidOptions` (field: `ID`). |
+| `ErrStaleBeat` | RUNTIME | Kept unchanged. `Beat` compares against `Monitor`'s stored state. |
+| name required (inline) | CONFIG | Rewritten under `ErrInvalidOptions` (field: `Name`). |
+| capabilities non-empty (inline) | CONFIG | Rewritten under `ErrInvalidOptions` (field: `Capabilities`). |
+| capability entry non-blank (inline) | CONFIG | Rewritten under `ErrInvalidOptions` (field: `Capabilities`). |
+| capability entry no padding (inline) | CONFIG | Rewritten under `ErrInvalidOptions` (field: `Capabilities`). |
+| duplicate capability entry (inline) | CONFIG | Rewritten under `ErrInvalidOptions` (field: `Capabilities`), since `Validate` checks the caller's own list, not live state. |
+
+No caller in `agentloop`, `x`, or `internal` referenced any deleted
+sentinel. `go build ./flow/...` and `go test ./flow/...` pass.

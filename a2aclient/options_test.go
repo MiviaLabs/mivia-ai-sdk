@@ -2,6 +2,7 @@ package a2aclient_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,8 +21,11 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		if ackFn != nil {
 			t.Fatal("Wait(nil) AckWait must be nil")
 		}
-		if !errors.Is(err, a2aclient.ErrNoClient) {
-			t.Fatalf("Wait(nil) error = %v, want ErrNoClient", err)
+		if !errors.Is(err, a2aclient.ErrInvalidOptions) {
+			t.Fatalf("Wait(nil) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "client") {
+			t.Fatalf("Wait(nil) error = %v, want mention of client", err)
 		}
 		if got := fake.sendCalls.Load(); got != 0 {
 			t.Fatalf("Send called %d times on the reject path, want 0", got)
@@ -34,8 +38,11 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		if ackFn != nil {
 			t.Fatal("Wait(Poll=0) AckWait must be nil")
 		}
-		if !errors.Is(err, a2aclient.ErrNoPoll) {
-			t.Fatalf("Wait(Poll=0) error = %v, want ErrNoPoll", err)
+		if !errors.Is(err, a2aclient.ErrInvalidOptions) {
+			t.Fatalf("Wait(Poll=0) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Poll") {
+			t.Fatalf("Wait(Poll=0) error = %v, want mention of Poll", err)
 		}
 		if got := fake.sendCalls.Load(); got != 0 {
 			t.Fatalf("Send called %d times on the reject path, want 0", got)
@@ -48,8 +55,11 @@ func TestOptionsFailBeforeSend(t *testing.T) {
 		if ackFn != nil {
 			t.Fatal("Wait(short timeout) AckWait must be nil")
 		}
-		if !errors.Is(err, a2aclient.ErrShortTimeout) {
-			t.Fatalf("Wait(short timeout) error = %v, want ErrShortTimeout", err)
+		if !errors.Is(err, a2aclient.ErrInvalidOptions) {
+			t.Fatalf("Wait(short timeout) error = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "Timeout") {
+			t.Fatalf("Wait(short timeout) error = %v, want mention of Timeout", err)
 		}
 		if got := fake.sendCalls.Load(); got != 0 {
 			t.Fatalf("Send called %d times on the reject path, want 0", got)

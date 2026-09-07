@@ -2165,3 +2165,45 @@ the call, such as the planted `BlockedBy` corruption, fails.
 - `go test -race ./ledger/...` passes.
 - No `api/ledger.txt` diff: no exported symbol changes.
 - No `policy/layers.json` diff. No new conformance vector.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+Every exported `var Err* = errors.New(...)` sentinel in `ledger/errors.go`
+and `ledger/taskrun.go` is now classified CONFIG or RUNTIME. A CONFIG
+sentinel checks a caller-supplied `Options` field or parameter, before
+any Store call. A RUNTIME sentinel reacts to stored record state
+inside Claim, Renew, Release, Takeover, or Complete.
+
+`Run` now returns `ErrInvalidOptions`, wrapped with the field name and
+a short rule, for an empty `Options.Owner`, `Options.Actor`, a
+non-positive `Options.Lease`, or an empty `Task.Key`. `Options.Ledger`
+keeps its own sentinel, `ErrNoLedger`, because `dispatch`'s tests
+assert against that exact identity; merging it would break a package
+outside this sweep's scope.
+
+`ErrInvalidMaxEntries`, in `ledger/errors.go`, is CONFIG by the same
+rule: `NewMemStoreWithOptions` returns it for a negative `MaxEntries`,
+before any Store call. Its only return site is in `ledger/store.go`,
+outside this sweep's file scope, so it stays as its own sentinel.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| ErrLeaseActive | RUNTIME | kept as-is |
+| ErrFenced | RUNTIME | kept as-is |
+| ErrNotStale | RUNTIME | kept as-is |
+| ErrNotClaimed | RUNTIME | kept as-is |
+| ErrNoKey | RUNTIME | kept as-is |
+| ErrUnknownStatus | RUNTIME | kept as-is |
+| ErrEmptyOwner | RUNTIME | kept as-is |
+| ErrInvalidLease | RUNTIME | kept as-is |
+| ErrInvalidMaxEntries | CONFIG | kept as-is (use site in ledger/store.go, out of scope) |
+| ErrNoLedger | CONFIG | kept as-is (dispatch tests assert this identity) |
+| ErrNoOwner | CONFIG | merged into ErrInvalidOptions ("Owner") |
+| ErrNoActor | CONFIG | merged into ErrInvalidOptions ("Actor") |
+| ErrNoLease | CONFIG | merged into ErrInvalidOptions ("Lease") |
+| ErrNoTaskKey | CONFIG | merged into ErrInvalidOptions ("Key") |
+| ErrTaskDone | RUNTIME | kept as-is |
+| ErrTaskFailed | RUNTIME | kept as-is |
+| ErrTaskBlocked | RUNTIME | kept as-is |

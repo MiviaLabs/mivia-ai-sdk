@@ -2,37 +2,28 @@ package provider
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 )
 
 // Sentinel errors for Registry operations; test with errors.Is.
 var (
-	// ErrNilCompleter is Register's error for a nil Completer
-	// interface value, the c == nil case. Register checks c == nil
-	// before it calls any method on c. A typed nil pointer that
-	// implements Completer is not nil as an interface value; Register
-	// cannot detect it without reflection, which this module forbids
-	// in packages. Passing one is caller error.
-	ErrNilCompleter = errors.New("providerregistry: completer must not be nil")
-	// ErrBlankName is Register's error when name is empty after
-	// strings.TrimSpace. A completer needs a real name to register
-	// under and to look up later.
-	ErrBlankName = errors.New("providerregistry: name must not be blank")
-	// ErrDuplicateName is Register's error for a name already
-	// registered. Register never replaces an entry.
-	ErrDuplicateName = errors.New("providerregistry: name already registered")
+	// ErrInvalidOptions is Register's error for a caller-supplied
+	// argument that fails a construction-time sanity check: a nil
+	// Completer, a blank name, or a name already registered.
+	ErrInvalidOptions = errors.New("provider: invalid options")
 	// ErrUnknownName is Route's error for a name in order that Get
 	// cannot resolve. The error's text names the missing entry.
-	ErrUnknownName = errors.New("providerregistry: unknown name")
+	ErrUnknownName = errors.New("provider: unknown name")
 	// ErrEmptyOrder is Route's error for an order with no entries.
 	// Route checks it before it calls any Completer.
-	ErrEmptyOrder = errors.New("providerregistry: order must not be empty")
+	ErrEmptyOrder = errors.New("provider: order must not be empty")
 	// ErrAllFailed is Route's error when every name in order was tried
 	// and every attempt failed the retryable check. It carries the
 	// last attempt's error; errors.Unwrap on Route's returned error
 	// yields that error.
-	ErrAllFailed = errors.New("providerregistry: every name in order failed")
+	ErrAllFailed = errors.New("provider: every name in order failed")
 )
 
 // Registry holds completers by name. Built only through New. Safe for
@@ -49,23 +40,22 @@ func NewRegistry() *Registry {
 }
 
 // Register adds c under name. Rejects a nil c (c == nil) with
-// ErrNilCompleter, before it calls any method on c. A typed nil
-// pointer that implements Completer is caller error; see
-// ErrNilCompleter. Rejects a blank name (empty after
-// strings.TrimSpace) with ErrBlankName. Rejects a name already
-// registered with ErrDuplicateName. Register never replaces an
-// existing entry.
+// ErrInvalidOptions, before it calls any method on c. A typed nil
+// pointer that implements Completer is caller error; ErrInvalidOptions
+// also covers it. Rejects a blank name (empty after strings.TrimSpace)
+// with ErrInvalidOptions. Rejects a name already registered with
+// ErrInvalidOptions. Register never replaces an existing entry.
 func (r *Registry) Register(name string, c Completer) error {
 	if c == nil {
-		return ErrNilCompleter
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Completer: must not be nil")
 	}
 	if strings.TrimSpace(name) == "" {
-		return ErrBlankName
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Name: must not be blank")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.completers[name]; ok {
-		return ErrDuplicateName
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Name: already registered")
 	}
 	r.completers[name] = c
 	return nil

@@ -43,3 +43,7 @@ var ErrInvalidMaxEntries = errors.New("ledger: MaxEntries must not be negative")
 // is not positive. A lease at or below zero closes the moment it
 // opens, so the record it would write is stale on return.
 var ErrInvalidLease = errors.New("ledger: lease must be positive")
+
+// ErrInvalidOptions is Run's error for an invalid Options field or an
+// empty Task.Key, checked before any Store call.
+var ErrInvalidOptions = errors.New("ledger: invalid options")

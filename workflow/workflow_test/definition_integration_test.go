@@ -3,6 +3,7 @@ package workflow_test
 import (
 	"errors"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -67,8 +68,9 @@ func TestFlowNewRejectsCycleBeforeAgentEverRuns(t *testing.T) {
 }
 
 // TestNewNilPlanIsErrNoPlan feeds workflow.New a nil plan directly and
-// confirms ErrNoPlan, the path a cycle-rejected flow.New call never
-// reaches because it returns before workflow.New runs.
+// confirms ErrInvalidOptions naming the plan field, the path a
+// cycle-rejected flow.New call never reaches because it returns
+// before workflow.New runs.
 func TestNewNilPlanIsErrNoPlan(t *testing.T) {
 	id, err := envelope.New()
 	if err != nil {
@@ -76,7 +78,7 @@ func TestNewNilPlanIsErrNoPlan(t *testing.T) {
 	}
 	card := flow.Card{Name: "Agent A", Capabilities: []string{"read"}}
 	_, err = workflow.New(id, card, nil)
-	if !errors.Is(err, workflow.ErrNoPlan) {
-		t.Fatalf("workflow.New() error = %v, want errors.Is match for ErrNoPlan", err)
+	if !errors.Is(err, workflow.ErrInvalidOptions) || !strings.Contains(err.Error(), "plan") {
+		t.Fatalf("workflow.New() error = %v, want ErrInvalidOptions naming plan", err)
 	}
 }

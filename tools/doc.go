@@ -4,8 +4,8 @@
 // agent. See ../docs/plans/tools.md for the rationale.
 //
 // Map: tool.go = Tool, InOut, Out; registry.go = Registry, New, Add,
-// Get, Remove, Run, RunScoped, and the sentinel errors ErrNilTool,
-// ErrBlankName, ErrDuplicateName, ErrUnknownName, ErrScopeDenied;
+// Get, Remove, Run, RunScoped, and the sentinel errors
+// ErrInvalidOptions, ErrDuplicateName, ErrUnknownName, ErrScopeDenied;
 // execution_profile.go = ExecutionClass, ExecutionProfile,
 // ProfiledTool, ResultBudgetTool, PrivilegedTool, ExecutionProfileOf,
 // ResultBudgetOf, IsPrivileged; scope.go = ScopeOptions, Scope,

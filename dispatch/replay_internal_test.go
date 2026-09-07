@@ -30,7 +30,7 @@ func TestReplayKeyDistinguishesThreadBoundary(t *testing.T) {
 // then reports that through its default terminal-status branch as
 // ledger.ErrNotClaimed, not one of the three taskrun sentinels.
 // Missing this case made isReplay's caller answer a raw, unmapped
-// error line instead of "replay:" on that race, observed directly as
+// error line instead of "dispatch: replay:" on that race, observed directly as
 // an intermittent TestReplayConcurrentDuplicates failure.
 func TestIsReplayCoversTaskrunRunOutcomes(t *testing.T) {
 	cases := []struct {

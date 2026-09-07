@@ -1,6 +1,7 @@
 package budget
 
 import (
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -57,6 +58,9 @@ func TestLimitsValidate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("Validate() = nil, want error")
+				}
+				if !errors.Is(err, ErrInvalidOptions) {
+					t.Errorf("Validate() error = %v, want errors.Is ErrInvalidOptions", err)
 				}
 				if !strings.Contains(err.Error(), tt.wantSub) {
 					t.Errorf("Validate() error %q does not contain %q", err.Error(), tt.wantSub)

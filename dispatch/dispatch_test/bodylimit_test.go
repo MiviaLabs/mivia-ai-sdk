@@ -21,8 +21,9 @@ func TestValidateRejectsNegativeMaxBodyBytes(t *testing.T) {
 		Resolve:      resolveAlways(echoHandler{}),
 		MaxBodyBytes: -1,
 	}
-	if err := opts.Validate(); !errors.Is(err, dispatch.ErrBadMaxBody) {
-		t.Fatalf("Validate() error = %v, want ErrBadMaxBody", err)
+	err := opts.Validate()
+	if !errors.Is(err, dispatch.ErrInvalidOptions) || !strings.Contains(err.Error(), "MaxBodyBytes") {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions naming MaxBodyBytes", err)
 	}
 }
 

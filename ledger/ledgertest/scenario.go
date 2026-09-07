@@ -29,12 +29,12 @@ type Scenario struct {
 	IsFenced func(context.Context, string) (bool, error)
 }
 
-// ErrIncompleteScenario is the sentinel Validate wraps around the name
-// of the first nil function field it finds.
-var ErrIncompleteScenario = errors.New("durablefence: scenario is incomplete")
+// ErrInvalidOptions is Validate's error for the first nil function
+// field it finds.
+var ErrInvalidOptions = errors.New("ledgertest: invalid options")
 
 // Validate reports the first nil function field, wrapped in
-// ErrIncompleteScenario. It returns nil when every field is set.
+// ErrInvalidOptions. It returns nil when every field is set.
 func (s Scenario) Validate() error {
 	fields := []struct {
 		name string
@@ -49,7 +49,7 @@ func (s Scenario) Validate() error {
 	}
 	for _, f := range fields {
 		if !f.set {
-			return fmt.Errorf("%w: field %s is nil", ErrIncompleteScenario, f.name)
+			return fmt.Errorf("%w: field %s is nil", ErrInvalidOptions, f.name)
 		}
 	}
 	return nil

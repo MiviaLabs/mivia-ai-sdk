@@ -51,13 +51,14 @@ func validPlan(t *testing.T) *flow.Definition {
 // newCase is one New table row. id and plan are builder funcs so a
 // case can supply a nil value without sharing state across cases.
 type newCase struct {
-	name    string
-	id      func(t *testing.T) *envelope.Identity
-	card    flow.Card
-	plan    func(t *testing.T) *flow.Definition
-	wantErr error  // checked with errors.Is when non-nil
-	errSub  string // checked with strings.Contains when wantErr is nil and wantNil is false
-	wantNil bool   // want a nil error and a non-nil Agent
+	name      string
+	id        func(t *testing.T) *envelope.Identity
+	card      flow.Card
+	plan      func(t *testing.T) *flow.Definition
+	wantErr   error  // checked with errors.Is when non-nil
+	wantField string // checked with strings.Contains when wantErr is ErrInvalidOptions
+	errSub    string // checked with strings.Contains when wantErr is nil and wantNil is false
+	wantNil   bool   // want a nil error and a non-nil Agent
 }
 
 // nilIdentity stands in for the missing-identity case.
@@ -70,16 +71,16 @@ func nilPlan(t *testing.T) *flow.Definition { return nil }
 func newCases() []newCase {
 	return []newCase{
 		{name: "valid triple builds an Agent", id: newIdentity, card: validCard(), plan: validPlan, wantNil: true},
-		{name: "nil identity is rejected", id: nilIdentity, card: validCard(), plan: validPlan, wantErr: workflow.ErrNoIdentity},
-		{name: "blank card name is rejected", id: newIdentity, card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "name is required"},
-		{name: "empty capability list is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "capabilities must not be empty"},
-		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate capability"},
-		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "capability entry must not be blank"},
-		{name: "nil plan is rejected", id: newIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrNoPlan},
+		{name: "nil identity is rejected", id: nilIdentity, card: validCard(), plan: validPlan, wantErr: workflow.ErrInvalidOptions, wantField: "identity"},
+		{name: "blank card name is rejected", id: newIdentity, card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "Name: is required"},
+		{name: "empty capability list is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "Capabilities: must not be empty"},
+		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate entry"},
+		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "Capabilities: entry must not be blank"},
+		{name: "nil plan is rejected", id: newIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrInvalidOptions, wantField: "plan"},
 		{name: "zero-value plan is accepted", id: newIdentity, card: validCard(), plan: zeroPlan, wantNil: true},
-		{name: "nil identity and nil plan: identity error wins", id: nilIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrNoIdentity},
-		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "name is required"},
-		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: workflow.ErrNoIdentity},
+		{name: "nil identity and nil plan: identity error wins", id: nilIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrInvalidOptions, wantField: "identity"},
+		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "Name: is required"},
+		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: workflow.ErrInvalidOptions, wantField: "identity"},
 	}
 }
 
@@ -112,13 +113,16 @@ func TestNew(t *testing.T) {
 				if strings.Contains(err.Error(), "invalid card") {
 					t.Fatalf("New() error = %v, want a sentinel error, not the wrapped card error", err)
 				}
+				if tt.wantField != "" && !strings.Contains(err.Error(), tt.wantField) {
+					t.Fatalf("New() error = %v, want it to name %q", err, tt.wantField)
+				}
 				return
 			}
 			if !strings.Contains(err.Error(), tt.errSub) {
 				t.Fatalf("New() error = %q, want substring %q", err.Error(), tt.errSub)
 			}
-			if errors.Is(err, workflow.ErrNoPlan) {
-				t.Fatalf("New() error = %v, want the wrapped card error, not ErrNoPlan", err)
+			if errors.Is(err, workflow.ErrInvalidOptions) {
+				t.Fatalf("New() error = %v, want the wrapped card error, not ErrInvalidOptions", err)
 			}
 		})
 	}
@@ -126,20 +130,20 @@ func TestNew(t *testing.T) {
 
 // TestNewNilIdentityBeforePlanProvesOrder proves New checks id
 // before plan: a nil identity and a nil plan together must report
-// ErrNoIdentity, not ErrNoPlan.
+// ErrInvalidOptions naming the identity field, not the plan field.
 func TestNewNilIdentityBeforePlanProvesOrder(t *testing.T) {
 	_, err := workflow.New(nil, validCard(), nil)
-	if !errors.Is(err, workflow.ErrNoIdentity) {
-		t.Fatalf("New() error = %v, want errors.Is match for ErrNoIdentity", err)
+	if !errors.Is(err, workflow.ErrInvalidOptions) || !strings.Contains(err.Error(), "identity") {
+		t.Fatalf("New() error = %v, want ErrInvalidOptions naming identity", err)
 	}
-	if errors.Is(err, workflow.ErrNoPlan) {
-		t.Fatalf("New() error = %v, want no ErrNoPlan match", err)
+	if strings.Contains(err.Error(), "plan") {
+		t.Fatalf("New() error = %v, want no plan field named", err)
 	}
 }
 
 // TestNewInvalidCardBeforePlanProvesOrder proves New checks the card
 // before the plan: an invalid card and a nil plan together must
-// report the wrapped card error, not ErrNoPlan.
+// report the wrapped card error, not ErrInvalidOptions naming plan.
 func TestNewInvalidCardBeforePlanProvesOrder(t *testing.T) {
 	id := newIdentity(t)
 	card := flow.Card{Name: "", Capabilities: []string{"read"}}
@@ -147,11 +151,11 @@ func TestNewInvalidCardBeforePlanProvesOrder(t *testing.T) {
 	if err == nil {
 		t.Fatal("New() returned a nil error, want error")
 	}
-	if errors.Is(err, workflow.ErrNoPlan) {
-		t.Fatalf("New() error = %v, want the wrapped card error, not ErrNoPlan", err)
+	if errors.Is(err, workflow.ErrInvalidOptions) {
+		t.Fatalf("New() error = %v, want the wrapped card error, not ErrInvalidOptions", err)
 	}
-	if !strings.Contains(err.Error(), "name is required") {
-		t.Fatalf("New() error = %q, want substring %q", err.Error(), "name is required")
+	if !strings.Contains(err.Error(), "Name: is required") {
+		t.Fatalf("New() error = %q, want substring %q", err.Error(), "Name: is required")
 	}
 }
 

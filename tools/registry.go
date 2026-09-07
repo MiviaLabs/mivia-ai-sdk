@@ -3,23 +3,19 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
 )
 
+// ErrInvalidOptions is the error for caller-supplied construction
+// input that fails a package Validate or argument check. Test with
+// errors.Is; the wrapped text names the field and the rule.
+var ErrInvalidOptions = errors.New("tools: invalid options")
+
 // Sentinel errors for Registry operations; test with errors.Is.
 var (
-	// ErrNilTool is Add's error for a nil Tool interface value, the
-	// t == nil case. Add checks t == nil before it calls any method
-	// on t. A typed nil pointer that implements Tool is not nil as an
-	// interface value; Add cannot detect it without reflection, which
-	// this module forbids in packages. Passing one is caller error.
-	ErrNilTool = errors.New("tools: tool must not be nil")
-	// ErrBlankName is Add's error when t.Name() is empty after
-	// strings.TrimSpace. A tool needs a real name to register under
-	// and to look up later.
-	ErrBlankName = errors.New("tools: tool name must not be blank")
 	// ErrDuplicateName is Add's error for a name already registered.
 	ErrDuplicateName = errors.New("tools: tool name already registered")
 	// ErrUnknownName is Run's error when Get reports false for name.
@@ -58,17 +54,17 @@ func New() *Registry {
 }
 
 // Add registers t under t.Name(). Rejects a nil t (t == nil) with
-// ErrNilTool, before it calls t.Name(). A typed nil pointer that
-// implements Tool is caller error; see ErrNilTool. Rejects a blank
-// name (empty after strings.TrimSpace) with ErrBlankName. Rejects a
-// duplicate name with ErrDuplicateName.
+// ErrInvalidOptions, before it calls t.Name(). A typed nil pointer
+// that implements Tool is caller error; see ErrInvalidOptions. Rejects
+// a blank name (empty after strings.TrimSpace) with ErrInvalidOptions.
+// Rejects a duplicate name with ErrDuplicateName.
 func (r *Registry) Add(t Tool) error {
 	if t == nil {
-		return ErrNilTool
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Tool: must not be nil")
 	}
 	name := t.Name()
 	if strings.TrimSpace(name) == "" {
-		return ErrBlankName
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Tool.Name: must not be blank")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -6,7 +6,7 @@
 //
 // Map: agent.go = Agent, New, Name, Capabilities. events.go =
 // MessageDeliveredEvent, MessageAckedEvent, ThreadVerifiedEvent.
-// translator.go = ErrNoBus, EmitMessageDelivered, EmitMessageAcked,
+// translator.go = ErrInvalidOptions, EmitMessageDelivered, EmitMessageAcked,
 // EmitThreadVerified. run.go = AckWait, Run, ErrEscalated, ErrNoWait,
 // ErrNoThread, ErrOverBudget, Run's optional *flow.Monitor beat
 // and forget logic, Run's optional *contextbudget.Limits budget

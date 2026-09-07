@@ -3,6 +3,7 @@ package scheduler_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
@@ -11,16 +12,16 @@ import (
 func TestAddBlankName(t *testing.T) {
 	r := scheduler.NewRegistry()
 	err := r.Add("   ", nil, func(context.Context) error { return nil })
-	if !errors.Is(err, scheduler.ErrBlankName) {
-		t.Fatalf("Add(blank) = %v, want ErrBlankName", err)
+	if !errors.Is(err, scheduler.ErrInvalidOptions) || !strings.Contains(err.Error(), "Name") {
+		t.Fatalf("Add(blank) = %v, want ErrInvalidOptions with Name substring", err)
 	}
 }
 
 func TestAddNilAction(t *testing.T) {
 	r := scheduler.NewRegistry()
 	err := r.Add("name", nil, nil)
-	if !errors.Is(err, scheduler.ErrNilAction) {
-		t.Fatalf("Add(nil action) = %v, want ErrNilAction", err)
+	if !errors.Is(err, scheduler.ErrInvalidOptions) || !strings.Contains(err.Error(), "Action") {
+		t.Fatalf("Add(nil action) = %v, want ErrInvalidOptions with Action substring", err)
 	}
 }
 
@@ -31,8 +32,8 @@ func TestAddNilAction(t *testing.T) {
 func TestAddBlankNameTakesPrecedenceOverNilAction(t *testing.T) {
 	r := scheduler.NewRegistry()
 	err := r.Add("   ", nil, nil)
-	if !errors.Is(err, scheduler.ErrBlankName) {
-		t.Fatalf("Add(blank name, nil action) = %v, want ErrBlankName", err)
+	if !errors.Is(err, scheduler.ErrInvalidOptions) || !strings.Contains(err.Error(), "Name") {
+		t.Fatalf("Add(blank name, nil action) = %v, want ErrInvalidOptions with Name substring", err)
 	}
 }
 

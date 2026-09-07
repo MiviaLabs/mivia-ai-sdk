@@ -38,13 +38,7 @@ package workflow/run
 }
   type Runner struct {
 }
-  var ErrAmbiguousWait
   var ErrArgumentDecode
   var ErrArtifactsInconsistent
-  var ErrNoAgent
-  var ErrNoMachine
-  var ErrNoRecipient
-  var ErrNoResolver
-  var ErrNoTools
-  var ErrReceiverEmpty
+  var ErrInvalidOptions
   var ErrResultNotText

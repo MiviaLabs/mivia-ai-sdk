@@ -4,7 +4,7 @@
 // package's real claim, takeover, and fence implementation.
 //
 // scenario.go defines Scenario, the caller-supplied function set under
-// test, its Validate method, and ErrIncompleteScenario. checks.go
+// test, its Validate method, and ErrInvalidOptions. checks.go
 // defines the Check* functions and RunAll, which runs every check
 // against one Scenario.
 package ledgertest

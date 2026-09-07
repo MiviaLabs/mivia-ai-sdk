@@ -22,16 +22,16 @@ const (
 // Sentinel errors for Compact; test with errors.Is.
 var (
 	// ErrNoMessages is Compact's error for an empty message list.
-	ErrNoMessages = errors.New("contextplan: no messages to compact")
+	ErrNoMessages = errors.New("plan: no messages to compact")
 	// ErrEstimateFailed is Compact's error when the token estimator
 	// fails.
-	ErrEstimateFailed = errors.New("contextplan: token estimate failed")
+	ErrEstimateFailed = errors.New("plan: token estimate failed")
 	// ErrRetentionOverflow is Compact's error when the retention set
 	// alone exceeds the window budget.
-	ErrRetentionOverflow = errors.New("contextplan: retention set alone exceeds the window")
+	ErrRetentionOverflow = errors.New("plan: retention set alone exceeds the window")
 	// ErrNoObjective is Compact's error when no user message exists to
 	// retain as the objective.
-	ErrNoObjective = errors.New("contextplan: no user message to retain as objective")
+	ErrNoObjective = errors.New("plan: no user message to retain as objective")
 )
 
 // Compaction configures compaction thresholds and retention. The zero
@@ -58,13 +58,16 @@ func (c Compaction) Validate() error {
 		return err
 	}
 	if c.TargetTokens < 0 {
-		return fmt.Errorf("contextplan: compaction target tokens %d is negative", c.TargetTokens)
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("TargetTokens: %d is negative", c.TargetTokens))
 	}
 	if c.RecentTail < 0 {
-		return fmt.Errorf("contextplan: compaction recent tail %d is negative", c.RecentTail)
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("RecentTail: %d is negative", c.RecentTail))
 	}
 	if c.RecentTail > MaxRecentTail {
-		return fmt.Errorf("contextplan: compaction recent tail %d over %d", c.RecentTail, MaxRecentTail)
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("RecentTail: %d over %d", c.RecentTail, MaxRecentTail))
 	}
 	return c.validatePreserveNames()
 }
@@ -72,14 +75,17 @@ func (c Compaction) Validate() error {
 // validatePercents bounds both percents and the two-mode target rule.
 func (c Compaction) validatePercents() error {
 	if c.TriggerPercent < 0 || c.TriggerPercent > 100 {
-		return fmt.Errorf("contextplan: trigger percent %d outside [0, 100]", c.TriggerPercent)
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("TriggerPercent: %d outside [0, 100]", c.TriggerPercent))
 	}
 	if c.TargetPercent < 0 || c.TargetPercent > 100 {
-		return fmt.Errorf("contextplan: target percent %d outside [0, 100]", c.TargetPercent)
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("TargetPercent: %d outside [0, 100]", c.TargetPercent))
 	}
 	if c.TargetTokens == 0 && c.targetPercent() >= c.triggerPercent() {
-		return fmt.Errorf("contextplan: target percent %d at or above trigger percent %d",
-			c.targetPercent(), c.triggerPercent())
+		return fmt.Errorf("%w: %s", ErrInvalidOptions,
+			fmt.Sprintf("TargetPercent: %d at or above trigger percent %d",
+				c.targetPercent(), c.triggerPercent()))
 	}
 	return nil
 }
@@ -89,10 +95,11 @@ func (c Compaction) validatePreserveNames() error {
 	seen := make(map[string]struct{}, len(c.PreserveNames))
 	for _, name := range c.PreserveNames {
 		if name == "" {
-			return errors.New("contextplan: preserve names entry is empty")
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "PreserveNames: entry is empty")
 		}
 		if _, dup := seen[name]; dup {
-			return fmt.Errorf("contextplan: preserve names entry %q is duplicated", name)
+			return fmt.Errorf("%w: %s", ErrInvalidOptions,
+				fmt.Sprintf("PreserveNames: entry %q is duplicated", name))
 		}
 		seen[name] = struct{}{}
 	}

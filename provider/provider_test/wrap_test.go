@@ -3,6 +3,7 @@ package provider_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -78,21 +79,25 @@ func TestWrapCompleterRecordsEachTurn(t *testing.T) {
 // their sentinel, rather than panicking at turn time.
 func TestWrapCompleterConstructionRejects(t *testing.T) {
 	cases := []struct {
-		name    string
-		session string
-		acc     *provider.Accumulator
-		inner   provider.Completer
-		want    error
+		name      string
+		session   string
+		acc       *provider.Accumulator
+		inner     provider.Completer
+		want      error
+		wantField string
 	}{
 		{name: "blank session", session: "  ", acc: provider.NewAccumulator(), inner: &countingCompleter{}, want: provider.ErrBlankSessionID},
-		{name: "nil accumulator", session: "s", acc: nil, inner: &countingCompleter{}, want: provider.ErrNilAccumulator},
-		{name: "nil completer", session: "s", acc: provider.NewAccumulator(), inner: nil, want: provider.ErrNilUsageCompleter},
+		{name: "nil accumulator", session: "s", acc: nil, inner: &countingCompleter{}, want: provider.ErrInvalidOptions, wantField: "Accumulator"},
+		{name: "nil completer", session: "s", acc: provider.NewAccumulator(), inner: nil, want: provider.ErrInvalidOptions, wantField: "Completer"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := provider.WrapCompleter(tc.session, tc.acc, tc.inner)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("WrapCompleter error = %v, want %v", err, tc.want)
+			}
+			if tc.wantField != "" && !strings.Contains(err.Error(), tc.wantField) {
+				t.Fatalf("WrapCompleter error = %v, want it to name %s", err, tc.wantField)
 			}
 		})
 	}

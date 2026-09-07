@@ -18,16 +18,14 @@ const SummaryTimeout = 20 * time.Second
 
 // Sentinel errors; test with errors.Is.
 var (
-	// ErrNilCompleter is NewSummarizer's error for a nil Completer.
-	ErrNilCompleter = errors.New("contextsummary: completer is required")
 	// ErrNoMessagesToSummarize is Summarize's error for an empty message list.
-	ErrNoMessagesToSummarize = errors.New("contextsummary: no messages to summarize")
+	ErrNoMessagesToSummarize = errors.New("plan: no messages to summarize")
 	// ErrInvalidReply is Summarize's error when the reply fails
 	// strict parsing or Summary.Validate.
-	ErrInvalidReply = errors.New("contextsummary: reply failed strict parsing or validation")
+	ErrInvalidReply = errors.New("plan: reply failed strict parsing or validation")
 	// ErrCallFailed is Summarize's error when the Completer call
 	// itself fails.
-	ErrCallFailed = errors.New("contextsummary: summary call failed")
+	ErrCallFailed = errors.New("plan: summary call failed")
 	// ErrSummarySkipped is the sentinel a summarize adapter returns
 	// to decline summary injection; the concrete Summarizer never
 	// returns it. An adapter may wrap it with a reason, for example
@@ -35,7 +33,7 @@ var (
 	// summarizeDropped matches the skip through errors.Is, so a
 	// wrapped sentinel still takes the skip path and the wrapping
 	// error's own message carries the reason to the caller.
-	ErrSummarySkipped = errors.New("contextsummary: summary skipped")
+	ErrSummarySkipped = errors.New("plan: summary skipped")
 )
 
 // codeFence delimits the one markdown code fence a reply may carry.
@@ -61,10 +59,10 @@ type Summarizer struct {
 }
 
 // NewSummarizer binds one Completer. A nil Completer wraps
-// ErrNilCompleter.
+// ErrInvalidOptions.
 func NewSummarizer(c provider.Completer) (*Summarizer, error) {
 	if c == nil {
-		return nil, fmt.Errorf("contextsummary: %w", ErrNilCompleter)
+		return nil, fmt.Errorf("%w: %s", ErrInvalidOptions, "Completer: is required")
 	}
 	return &Summarizer{completer: c}, nil
 }

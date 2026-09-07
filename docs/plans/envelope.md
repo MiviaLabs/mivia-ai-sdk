@@ -471,3 +471,23 @@ through `Validate`, not the helper by name.
 - `grep -rn "func isLowerHex" --include='*.go'` over the tree returns
   zero.
 - `make verify` passes.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This addendum classifies every `envelope` identity sentinel error as
+CONFIG or RUNTIME. `identity.go` declares two: `ErrKeyFormat` and
+`ErrKeyInvalid`.
+
+Both react to loaded or constructed key material, not to a
+constructor argument the caller wrote directly. `ErrKeyFormat` fires
+when `Load` reads key file bytes that fail to parse. `ErrKeyInvalid`
+fires when `Validate` finds a key pair whose derived public half does
+not match. Both classify RUNTIME: all sentinels stay unchanged, and no
+`ErrInvalidOptions` was added.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrKeyFormat` | RUNTIME | Unchanged. `Load` reacts to malformed key file content. |
+| `ErrKeyInvalid` | RUNTIME | Unchanged. `Validate` reacts to a key pair that breaks its invariant. |

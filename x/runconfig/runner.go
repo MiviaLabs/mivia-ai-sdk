@@ -15,7 +15,7 @@ import (
 // caller-built Kinds. Runner resolves each binding, builds one
 // tools.Registry keyed by step ID, sets Options.Machine and
 // Options.Tools, and passes Options to run.New. A nil Agent
-// yields run.ErrNoAgent; a missing external tool yields
+// yields run.ErrInvalidOptions; a missing external tool yields
 // ErrUnknownTool; a missing internal Kind yields ErrUnknownInternal.
 func (d *Definition) Runner() (*run.Runner, error) {
 	reg := tools.New()

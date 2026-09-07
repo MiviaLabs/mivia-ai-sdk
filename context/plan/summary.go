@@ -65,7 +65,7 @@ func (s Summary) Validate() error {
 // validateTextField bounds one required text field.
 func validateTextField(field, value string) error {
 	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("contextsummary: %s is required", field)
+		return fmt.Errorf("plan: %s is required", field)
 	}
 	return validateTextForm(field, value)
 }
@@ -73,16 +73,16 @@ func validateTextField(field, value string) error {
 // validateItemList bounds one item list.
 func validateItemList(field string, items []string) error {
 	if len(items) > MaxItems {
-		return fmt.Errorf("contextsummary: %s has %d items, max %d", field, len(items), MaxItems)
+		return fmt.Errorf("plan: %s has %d items, max %d", field, len(items), MaxItems)
 	}
 	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		trimmed := strings.TrimSpace(item)
 		if trimmed == "" {
-			return fmt.Errorf("contextsummary: %s has a blank item", field)
+			return fmt.Errorf("plan: %s has a blank item", field)
 		}
 		if _, dup := seen[trimmed]; dup {
-			return fmt.Errorf("contextsummary: %s has a duplicate item", field)
+			return fmt.Errorf("plan: %s has a duplicate item", field)
 		}
 		seen[trimmed] = struct{}{}
 		if err := validateTextForm(field, item); err != nil {
@@ -96,11 +96,11 @@ func validateItemList(field string, items []string) error {
 // a control character.
 func validateTextForm(field, value string) error {
 	if len(value) > MaxFieldBytes || !utf8.ValidString(value) {
-		return fmt.Errorf("contextsummary: %s is invalid or too long", field)
+		return fmt.Errorf("plan: %s is invalid or too long", field)
 	}
 	for _, r := range value {
 		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("contextsummary: %s contains a control character", field)
+			return fmt.Errorf("plan: %s contains a control character", field)
 		}
 	}
 	return nil

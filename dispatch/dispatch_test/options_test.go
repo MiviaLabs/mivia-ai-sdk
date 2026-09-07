@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,83 +21,90 @@ func TestNewValidation(t *testing.T) {
 	resolve := resolveAlways(echoHandler{})
 
 	cases := []struct {
-		name string
-		opts dispatch.Options
-		want error
+		name       string
+		opts       dispatch.Options
+		wantField  string
+		wantAccept bool
 	}{
 		{
-			name: "blank id",
-			opts: dispatch.Options{ID: "", Room: r, Resolve: resolve},
-			want: dispatch.ErrNoID,
+			name:      "blank id",
+			opts:      dispatch.Options{ID: "", Room: r, Resolve: resolve},
+			wantField: "ID",
 		},
 		{
-			name: "whitespace id",
-			opts: dispatch.Options{ID: "   ", Room: r, Resolve: resolve},
-			want: dispatch.ErrNoID,
+			name:      "whitespace id",
+			opts:      dispatch.Options{ID: "   ", Room: r, Resolve: resolve},
+			wantField: "ID",
 		},
 		{
-			name: "nil room",
-			opts: dispatch.Options{ID: "endpoint-1", Room: nil, Resolve: resolve},
-			want: dispatch.ErrNoRoom,
+			name:      "nil room",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: nil, Resolve: resolve},
+			wantField: "Room",
 		},
 		{
-			name: "nil resolve",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: nil},
-			want: dispatch.ErrNoResolve,
+			name:      "nil resolve",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: r, Resolve: nil},
+			wantField: "Resolve",
 		},
 		{
-			name: "id checked before room",
-			opts: dispatch.Options{ID: "", Room: nil, Resolve: nil},
-			want: dispatch.ErrNoID,
+			name:      "id checked before room",
+			opts:      dispatch.Options{ID: "", Room: nil, Resolve: nil},
+			wantField: "ID",
 		},
 		{
-			name: "room checked before resolve",
-			opts: dispatch.Options{ID: "endpoint-1", Room: nil, Resolve: nil},
-			want: dispatch.ErrNoRoom,
+			name:      "room checked before resolve",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: nil, Resolve: nil},
+			wantField: "Room",
 		},
 		{
-			name: "accept",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve},
-			want: nil,
+			name:       "accept",
+			opts:       dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve},
+			wantAccept: true,
 		},
 		{
-			name: "negative replay lease",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: -time.Second},
-			want: dispatch.ErrBadReplayLease,
+			name:      "negative replay lease",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: -time.Second},
+			wantField: "ReplayLease",
 		},
 		{
-			name: "sub-second replay lease",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: 500 * time.Millisecond},
-			want: dispatch.ErrBadReplayLease,
+			name:      "sub-second replay lease",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: 500 * time.Millisecond},
+			wantField: "ReplayLease",
 		},
 		{
-			name: "replay lease exactly one second is valid",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: time.Second},
-			want: nil,
+			name:       "replay lease exactly one second is valid",
+			opts:       dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayLease: time.Second},
+			wantAccept: true,
 		},
 		{
-			name: "negative replay capacity",
-			opts: dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayCapacity: -1},
-			want: dispatch.ErrBadReplayLease,
+			name:      "negative replay capacity",
+			opts:      dispatch.Options{ID: "endpoint-1", Room: r, Resolve: resolve, ReplayCapacity: -1},
+			wantField: "ReplayCapacity",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assertValidationCase(t, tc.opts, tc.want)
+			assertValidationCase(t, tc.opts, tc.wantField, tc.wantAccept)
 		})
 	}
 }
 
-// assertValidationCase runs opts through Options.Validate and New and
-// checks both answer want, or both succeed when want is nil.
-func assertValidationCase(t *testing.T, opts dispatch.Options, want error) {
+// assertValidationCase runs opts through Options.Validate and New. A
+// wantAccept case checks both succeed; otherwise it checks both fail
+// with dispatch.ErrInvalidOptions, naming wantField in the message.
+func assertValidationCase(t *testing.T, opts dispatch.Options, wantField string, wantAccept bool) {
 	t.Helper()
-	if err := opts.Validate(); !errors.Is(err, want) {
-		t.Fatalf("Validate() error = %v, want %v", err, want)
+	err := opts.Validate()
+	if wantAccept {
+		if err != nil {
+			t.Fatalf("Validate() error = %v, want nil", err)
+		}
+	} else if !errors.Is(err, dispatch.ErrInvalidOptions) || !strings.Contains(err.Error(), wantField) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions naming %q", err, wantField)
 	}
 	e, err := dispatch.New(opts)
-	if want == nil {
+	if wantAccept {
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
 		}
@@ -108,8 +116,8 @@ func assertValidationCase(t *testing.T, opts dispatch.Options, want error) {
 		}
 		return
 	}
-	if !errors.Is(err, want) {
-		t.Fatalf("New() error = %v, want %v", err, want)
+	if !errors.Is(err, dispatch.ErrInvalidOptions) || !strings.Contains(err.Error(), wantField) {
+		t.Fatalf("New() error = %v, want ErrInvalidOptions naming %q", err, wantField)
 	}
 	if e != nil {
 		t.Fatalf("New() endpoint = %v, want nil", e)

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
@@ -54,15 +55,16 @@ func openLimited(t *testing.T, limit int64) (*workspace.Workspace, string) {
 func TestOptionsValidate(t *testing.T) {
 	dir := t.TempDir()
 	cases := []struct {
-		name    string
-		opts    workspace.Options
-		wantErr error
-		ok      bool
+		name      string
+		opts      workspace.Options
+		wantErr   error
+		wantField string
+		ok        bool
 	}{
-		{name: "blank root", opts: workspace.Options{}, wantErr: workspace.ErrBlankRoot, ok: false},
-		{name: "blank root with valid limit", opts: workspace.Options{MaxReadBytes: 8}, wantErr: workspace.ErrBlankRoot, ok: false},
-		{name: "negative limit", opts: workspace.Options{Root: dir, MaxReadBytes: -2}, wantErr: workspace.ErrInvalidLimit},
-		{name: "limit over maxReadLimit", opts: workspace.Options{Root: dir, MaxReadBytes: math.MaxInt64}, wantErr: workspace.ErrInvalidLimit},
+		{name: "blank root", opts: workspace.Options{}, wantErr: workspace.ErrInvalidOptions, wantField: "Root", ok: false},
+		{name: "blank root with valid limit", opts: workspace.Options{MaxReadBytes: 8}, wantErr: workspace.ErrInvalidOptions, wantField: "Root", ok: false},
+		{name: "negative limit", opts: workspace.Options{Root: dir, MaxReadBytes: -2}, wantErr: workspace.ErrInvalidOptions, wantField: "MaxReadBytes"},
+		{name: "limit over maxReadLimit", opts: workspace.Options{Root: dir, MaxReadBytes: math.MaxInt64}, wantErr: workspace.ErrInvalidOptions, wantField: "MaxReadBytes"},
 		{name: "unbounded", opts: workspace.Options{Root: dir, MaxReadBytes: workspace.Unbounded}, ok: true},
 		{name: "zero selects the default", opts: workspace.Options{Root: dir}, ok: true},
 		{name: "positive limit", opts: workspace.Options{Root: dir, MaxReadBytes: 8}, ok: true},
@@ -82,6 +84,9 @@ func TestOptionsValidate(t *testing.T) {
 			}
 			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
 				t.Errorf("Validate() = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantField != "" && !strings.Contains(err.Error(), tc.wantField) {
+				t.Errorf("Validate() = %v, want it to name field %q", err, tc.wantField)
 			}
 		})
 	}
@@ -259,8 +264,11 @@ func TestInvalidLimit(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := w.ReadFileLimit(tc.path, tc.limit)
-			if !errors.Is(err, workspace.ErrInvalidLimit) {
-				t.Fatalf("ReadFileLimit(%q, %d) error = %v, want ErrInvalidLimit", tc.path, tc.limit, err)
+			if !errors.Is(err, workspace.ErrInvalidOptions) {
+				t.Fatalf("ReadFileLimit(%q, %d) error = %v, want ErrInvalidOptions", tc.path, tc.limit, err)
+			}
+			if !strings.Contains(err.Error(), "MaxReadBytes") {
+				t.Errorf("ReadFileLimit(%q, %d) error = %v, want it to name MaxReadBytes", tc.path, tc.limit, err)
 			}
 			if errors.Is(err, workspace.ErrEscape) {
 				t.Errorf("ReadFileLimit(%q, %d) error = %v, want no ErrEscape", tc.path, tc.limit, err)
@@ -278,8 +286,11 @@ func TestInvalidLimit(t *testing.T) {
 			t.Fatalf("Close: %v", err)
 		}
 		_, err := closed.ReadFileLimit("f.txt", -2)
-		if !errors.Is(err, workspace.ErrInvalidLimit) {
-			t.Fatalf("ReadFileLimit on a closed workspace = %v, want ErrInvalidLimit", err)
+		if !errors.Is(err, workspace.ErrInvalidOptions) {
+			t.Fatalf("ReadFileLimit on a closed workspace = %v, want ErrInvalidOptions", err)
+		}
+		if !strings.Contains(err.Error(), "MaxReadBytes") {
+			t.Errorf("ReadFileLimit on a closed workspace = %v, want it to name MaxReadBytes", err)
 		}
 		if errors.Is(err, fs.ErrClosed) {
 			t.Errorf("ReadFileLimit = %v: the invalid limit opened a file", err)
@@ -287,8 +298,8 @@ func TestInvalidLimit(t *testing.T) {
 	})
 
 	t.Run("OpenWith returns the sentinel unchanged", func(t *testing.T) {
-		if _, err := workspace.OpenWith(workspace.Options{Root: dir, MaxReadBytes: -2}); !errors.Is(err, workspace.ErrInvalidLimit) {
-			t.Errorf("OpenWith(MaxReadBytes: -2) error = %v, want ErrInvalidLimit", err)
+		if _, err := workspace.OpenWith(workspace.Options{Root: dir, MaxReadBytes: -2}); !errors.Is(err, workspace.ErrInvalidOptions) {
+			t.Errorf("OpenWith(MaxReadBytes: -2) error = %v, want ErrInvalidOptions", err)
 		}
 	})
 }

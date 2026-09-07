@@ -354,3 +354,30 @@ with the code, so no site keeps claiming the zero value is unusable.
 - The commit carries one `Allow-Test-Change: TT01` trailer. Its reason
   names both test replacements in the batch, because a single trailer
   waives every `TT01` finding in the commit.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+This addendum classifies every error sentinel and invalid-argument
+literal in `events` as CONFIG or RUNTIME, and merges the CONFIG cases
+into one shared sentinel.
+
+CONFIG means a caller-supplied argument fails a one-shot sanity check,
+with no other caller decision besides fixing the call. RUNTIME means
+the error reacts to live registry state or a handler's own decision.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrBlankName` | RUNTIME | `Add` runs repeatedly over a program's life, not once at construction. Kept unchanged. |
+| `ErrNilHandler` | RUNTIME | Same reasoning as `ErrBlankName`. Kept unchanged. |
+| `ErrDuplicateName` | RUNTIME | Depends on the registry's live contents at the call. Kept unchanged. |
+| `ErrVetoed` | RUNTIME | Depends on a handler's own decision at `Fire` time. Kept unchanged. |
+| `Point.Validate` invalid-point literal | CONFIG | A caller-supplied enum value with no live-state dependency. Merged into new `ErrInvalidOptions`. |
+
+`ErrInvalidOptions = errors.New("events: invalid options")` is new in
+`events/registry.go`. `Point.Validate` now wraps it:
+`fmt.Errorf("%w: Point %d is not a valid point value", ErrInvalidOptions, int(p))`.
+
+No existing test asserted the old unwrapped literal's text, so no test
+assertion needed a rewrite for this change.

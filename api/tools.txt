@@ -66,12 +66,9 @@ package tools
   In InOut
   Profile ExecutionProfile
 }
-  var ErrBlankName
   var ErrDuplicateName
-  var ErrInvalidExecutionClass
-  var ErrNilTool
+  var ErrInvalidOptions
   var ErrRunTimeout
   var ErrScopeDenied
   var ErrToolDeclined
-  var ErrUnknownApprovalThreshold
   var ErrUnknownName

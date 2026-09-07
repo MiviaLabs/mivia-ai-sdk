@@ -3,6 +3,7 @@ package ledger_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,17 +22,18 @@ func TestRunValidation(t *testing.T) {
 	}
 	bt := ledger.Task{Key: "key", Seq: 1}
 	tests := []struct {
-		name string
-		opts ledger.Options
-		task ledger.Task
-		want error
+		name  string
+		opts  ledger.Options
+		task  ledger.Task
+		want  error
+		field string
 	}{
-		{"no ledger", ledger.Options{Actor: "actor", Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrNoLedger},
-		{"no owner", ledger.Options{Ledger: l, Actor: "actor", Lease: taskrunFixedLease}, bt, ledger.ErrNoOwner},
-		{"no actor", ledger.Options{Ledger: l, Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrNoActor},
-		{"no lease", ledger.Options{Ledger: l, Actor: "actor", Owner: "owner"}, bt, ledger.ErrNoLease},
-		{"no key", runOpts(l), ledger.Task{Seq: 1}, ledger.ErrNoTaskKey},
-		{"now default", func() ledger.Options { o := runOpts(l); o.Now = nil; return o }(), bt, nil},
+		{"no ledger", ledger.Options{Actor: "actor", Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrNoLedger, ""},
+		{"no owner", ledger.Options{Ledger: l, Actor: "actor", Lease: taskrunFixedLease}, bt, ledger.ErrInvalidOptions, "Owner"},
+		{"no actor", ledger.Options{Ledger: l, Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrInvalidOptions, "Actor"},
+		{"no lease", ledger.Options{Ledger: l, Actor: "actor", Owner: "owner"}, bt, ledger.ErrInvalidOptions, "Lease"},
+		{"no key", runOpts(l), ledger.Task{Seq: 1}, ledger.ErrInvalidOptions, "Key"},
+		{"now default", func() ledger.Options { o := runOpts(l); o.Now = nil; return o }(), bt, nil, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -43,6 +45,9 @@ func TestRunValidation(t *testing.T) {
 			if tc.want != nil {
 				if !errors.Is(got, tc.want) {
 					t.Fatalf("Run = %v, want %v", got, tc.want)
+				}
+				if tc.field != "" && !strings.Contains(got.Error(), tc.field) {
+					t.Fatalf("Run = %v, want field %q in message", got, tc.field)
 				}
 				if called != 0 {
 					t.Fatalf("work ran on a validation failure (%d calls)", called)
@@ -81,8 +86,11 @@ func TestValidationEmitsNoAdmitted(t *testing.T) {
 	}
 	opts := ledger.Options{Ledger: l, Actor: "actor", Lease: time.Hour}
 	err = ledger.Run(ctx, opts, ledger.Task{Key: "key", Seq: 1}, func(context.Context) error { return nil })
-	if !errors.Is(err, ledger.ErrNoOwner) {
-		t.Fatalf("Run = %v, want ErrNoOwner", err)
+	if !errors.Is(err, ledger.ErrInvalidOptions) {
+		t.Fatalf("Run = %v, want ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "Owner") {
+		t.Fatalf("Run = %v, want field %q in message", err, "Owner")
 	}
 	if admitted != 0 {
 		t.Fatalf("AdmittedEvent fired %d times on a validation failure", admitted)

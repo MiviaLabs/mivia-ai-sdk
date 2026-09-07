@@ -403,3 +403,46 @@ None. No code changes.
 ### Addendum verification
 
 None. No code, API, docs, or policy diff.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped
+
+This addendum classifies every error sentinel in `channel` as CONFIG
+or RUNTIME, and merges the CONFIG cases into one shared sentinel.
+
+CONFIG means a caller-supplied field fails a one-shot sanity check in
+a `Validate` method, matching `provider/anthropic`'s `Options.Validate`
+shape. RUNTIME means the error reacts to live call-sequencing or
+concurrency state.
+
+| Sentinel | Classification | Disposition |
+| --- | --- | --- |
+| `ErrEmptyID` | CONFIG | `Question.Validate`'s check on a blank `ID`. Merged into new `ErrInvalidOptions`. |
+| `ErrEmptyRecipient` | CONFIG | `Question.Validate`'s check on a blank `Recipient`. Merged into new `ErrInvalidOptions`. |
+| `ErrEmptyPayload` | CONFIG | `Question.Validate`'s check on a blank `Payload`. Merged into new `ErrInvalidOptions`. |
+| `ErrEmptyQuestionID` | CONFIG | `Answer.Validate`'s check on a blank `QuestionID`. Merged into new `ErrInvalidOptions`. |
+| `ErrAnswerMismatch` | RUNTIME | Reacts to a live decoded answer line's `question_id` against the in-flight call's own ID. Kept unchanged. |
+| `ErrNotifierBusy` | RUNTIME | Reacts to the notifier closure's live lock state. Kept unchanged. |
+
+`ErrInvalidOptions = errors.New("channel: invalid options")` replaces
+all four `ErrEmpty*` sentinels in `channel/channel.go`.
+`Question.Validate` and `Answer.Validate` now wrap it with a field
+name, for example
+`fmt.Errorf("%w: %s", ErrInvalidOptions, "ID: must not be empty")`.
+
+### Addendum tests
+
+- `channel/channel_test/question_validate_test.go` and
+  `answer_validate_test.go` now assert `errors.Is(err, ErrInvalidOptions)`
+  plus a substring check for the field name.
+- `channel/channel_test/validate_fuzz_test.go`'s two fuzz targets now
+  assert `errors.Is(err, ErrInvalidOptions)` plus the same substring
+  checks.
+- `channel/channel_test/ndjson_notifier_test.go`'s
+  `TestNDJSONNotifierInvalidQuestionReleasesLock` now asserts
+  `errors.Is(err, ErrInvalidOptions)` plus an `ID` substring check.
+
+### Addendum verification
+
+- `go build ./...` and `go test ./channel/...` pass.

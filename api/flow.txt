@@ -90,6 +90,5 @@ package flow
   Retry *RetryPolicy
   Loop *LoopPolicy
 }
-  var ErrNoID
-  var ErrNoTimeout
+  var ErrInvalidOptions
   var ErrStaleBeat

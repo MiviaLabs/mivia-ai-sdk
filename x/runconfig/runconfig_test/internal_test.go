@@ -213,8 +213,8 @@ func TestLoadRejectsBadInternalConfig(t *testing.T) {
 	}{
 		{"unknown key", `{"nosuchkind": {}}`, `unknown internal "nosuchkind"`},
 		{"bad heartbeat duration", `{"heartbeat": {"timeout": "soon"}}`, `internal "heartbeat" config "timeout"`},
-		{"zero heartbeat timeout", `{"heartbeat": {"timeout": "0s"}}`, `heartbeat: timeout must be positive`},
-		{"zero memory max_bytes", `{"memory": {"max_bytes": 0}}`, `memory: maxBytes must be positive`},
+		{"zero heartbeat timeout", `{"heartbeat": {"timeout": "0s"}}`, `flow: invalid options: Timeout`},
+		{"zero memory max_bytes", `{"memory": {"max_bytes": 0}}`, `memory: invalid options: maxBytes`},
 		{"blank room id", `{"room": {"id": "", "founder": "f1", "actor": "a1"}}`, `room id is required`},
 		{"blank room founder", `{"room": {"id": "r1", "founder": "", "actor": "a1"}}`, `founder is required`},
 		{"blank room actor", `{"room": {"id": "r1", "founder": "f1", "actor": ""}}`, `internal "room": blank actor`},

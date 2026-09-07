@@ -23,12 +23,8 @@ package scheduler
 }
   type Scheduler struct {
 }
-  var ErrBlankID
-  var ErrBlankName
   var ErrConditionNotMet
   var ErrDuplicateID
   var ErrDuplicateName
-  var ErrNilAction
-  var ErrNilJob
-  var ErrNilSchedule
+  var ErrInvalidOptions
   var ErrUnknownName

@@ -1361,3 +1361,45 @@ Tampering trailers for the slice's commit:
 
 `make verify` passes, including the coverage floor at 85 for
 `a2aclient` and the mutation gate at 95.
+
+## Addendum: Error sentinel sweep
+
+Status: shipped.
+
+This sweep classifies each `a2aclient` sentinel as CONFIG or RUNTIME.
+CONFIG covers a constructor or `Options.Validate` check on
+caller-supplied construction input. RUNTIME covers a check that
+reacts to something found while talking to a remote task. Every
+CONFIG sentinel merges into one new sentinel, `ErrInvalidOptions`,
+defined in `a2aack.go` beside the `Options` type it validates. Each
+merged site now returns `fmt.Errorf("%w: %s", ErrInvalidOptions,
+"<field>: <rule>")`, so a caller can still test with `errors.Is` and
+find the failing field in the message.
+
+| Sentinel | Classification | Disposition |
+|---|---|---|
+| `ErrNoBaseURL` | CONFIG | Merged into `ErrInvalidOptions` ("baseURL: is required"). |
+| `ErrNoTransport` | CONFIG | Merged into `ErrInvalidOptions` ("transport: is required"). |
+| `ErrNoTLSConfig` | CONFIG | Merged into `ErrInvalidOptions` ("cfg: TLS config is required"). |
+| `ErrNoClient` | CONFIG | Merged into `ErrInvalidOptions` ("client: is required"). |
+| `ErrNoPoll` | CONFIG | Merged into `ErrInvalidOptions` ("Poll: must be positive"). |
+| `ErrShortTimeout` | CONFIG | Merged into `ErrInvalidOptions` ("Timeout: must cover at least one Poll interval"). |
+| `ErrUnsigned` | RUNTIME | Unchanged. Send finds this at call time, before the transport hop. |
+| `ErrNoTaskID` | RUNTIME | Unchanged. The transport returns the empty id at send time. |
+| `ErrZeroTaskHandle` | RUNTIME | Unchanged. Status and Result reject a caller's stale or unset handle, not a construction input. |
+| `ErrNotTerminal` | RUNTIME | Unchanged. Result finds this after a live State fetch. |
+| `ErrSignatureCheckFailed` | RUNTIME | Unchanged. Result finds this after the remote hop. |
+| `ErrRemoteFailed` | RUNTIME | Unchanged. The poll loop finds this in a live task state. |
+| `ErrTimeout` | RUNTIME | Unchanged. The poll loop finds this against a live deadline. |
+| `ErrSignerMismatch` | RUNTIME | Unchanged. `ackFromResult` finds this after a live signature check. |
+| `ErrNoTask` | RUNTIME | Unchanged. `grpcTransport.Send` finds this in the live remote response. |
+| `ErrNoResultMessage` | RUNTIME | Unchanged. `grpcTransport.Result` finds this in the live remote response. |
+| `ErrNoTextPart` | RUNTIME | Unchanged. `grpcTransport.Result` finds this in the live remote response. |
+
+The sentinel count for `a2aclient` moves from 17 to 12: six CONFIG
+sentinels merge into `ErrInvalidOptions`, and 11 RUNTIME sentinels
+stay as they were. `a2aclient/a2atest` carries no sentinel var and
+needs no change; its two loopback checks return anonymous
+`errors.New` values already prefixed `a2atest:` from an earlier pass.
+`go build ./...` and `go test ./a2aclient/...` both pass after the
+sweep.

@@ -118,7 +118,7 @@ package subagent
   Tracer *trace.Tracer
 }
   var ErrBadCommand
-  var ErrInvalidCapacity
+  var ErrInvalidOptions
   var ErrMailboxFull
   var ErrMaxDepth
   var ErrUnverified

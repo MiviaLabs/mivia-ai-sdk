@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,8 +91,11 @@ func TestSpoolExpiringNonPositiveTTLFailsBeforeWrite(t *testing.T) {
 	sp, _ := memory.NewSpool(store, 1024)
 	for _, ttl := range []time.Duration{0, -time.Second} {
 		_, _, err := sp.SpoolExpiring(context.Background(), "alice", []byte("payload"), ttl)
-		if !errors.Is(err, memory.ErrInvalidExpiry) {
-			t.Fatalf("SpoolExpiring(ttl %v) = %v, want errors.Is ErrInvalidExpiry", ttl, err)
+		if !errors.Is(err, memory.ErrInvalidOptions) {
+			t.Fatalf("SpoolExpiring(ttl %v) = %v, want errors.Is ErrInvalidOptions", ttl, err)
+		}
+		if !strings.Contains(err.Error(), "ttl") {
+			t.Fatalf("SpoolExpiring(ttl %v) = %v, want it to mention ttl", ttl, err)
 		}
 	}
 	if store.putCalls != 0 {

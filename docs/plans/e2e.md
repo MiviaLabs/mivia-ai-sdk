@@ -307,9 +307,9 @@ Still on the backlog:
   `a2aack` behind `AsTool`, then a `dispatch`-backed variant; the
   orchestrator step completes over the real transport.
 
-## mivia-agent parity scenarios
+## Sibling-consumer parity scenarios
 
-The mivia-agent repo drives real delivery workflows over its own
+The sibling consumer repo drives real delivery workflows over its own
 engine. These scenarios prove this SDK's composition layer can carry
 the same shapes. Four files landed:
 

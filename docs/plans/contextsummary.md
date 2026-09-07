@@ -1,7 +1,7 @@
 # Plan: contextsummary
 
-Status: shipped. Ports the summarizer half of
-`mivia-agent/internal/contextmgr`, simplified to this task's contract.
+Status: shipped. Ports the summarizer half of the sibling consumer
+repo's `internal/contextmgr`, simplified to this task's contract.
 Compaction is LLM-only; this package is the only summarizer.
 
 ## Goal

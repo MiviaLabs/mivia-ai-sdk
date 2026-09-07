@@ -21,8 +21,8 @@ disposition), so the list cannot rot. Compile-time constant multiplies
 without a time.Duration() conversion cannot overflow at runtime and are
 out of scope.
 
-Ported from mivia-agent's scripts/check_timeout_saturation.py (DC-7 in
-its defect taxonomy). Policy: policy/timeout-saturation.json.
+Ported from a sibling project's scripts/check_timeout_saturation.py
+(DC-7 in its defect taxonomy). Policy: policy/timeout-saturation.json.
 
 Modes:
   (default)   check the tree against the committed policy

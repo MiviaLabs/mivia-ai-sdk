@@ -2,8 +2,8 @@
   "comment": "Packages with zero internal, non-test callers, declared on purpose. check_orphan_packages.py fails on any orphan package missing here, or on a stale entry: one whose package no longer exists, or one that has gained a real caller. permanent=false means an internal caller is expected later, named in target. permanent=true means this package is a composition root or a test-only fixture, consumed only by application code outside this module or only from another package's _test directory, and target names that consumer.",
   "packages": {
     "envfile": {
-      "reason": "Dotenv parser leaf. Its consumer is external application code: mivia-agent imports it in internal/miviaauth/serverurl.go, internal/config/bootstrap.go, and internal/config/load.go.",
-      "target": "external application code (mivia-agent)",
+      "reason": "Dotenv parser leaf. Its consumer is external application code: the sibling consumer repo imports it in internal/miviaauth/serverurl.go, internal/config/bootstrap.go, and internal/config/load.go.",
+      "target": "external application code (the sibling consumer repo)",
       "permanent": true
     },
     "workspace": {
@@ -12,27 +12,27 @@
       "permanent": true
     },
     "longtermmemory": {
-      "reason": "Ported from mivia-agent as a leaf package. The intended SDK hook is an agentloop system-prompt hook rendering CoreFrame plus a subagent save/search tool; until then no package wires it into a running agent.",
+      "reason": "Ported from the sibling consumer repo as a leaf package. The intended SDK hook is an agentloop system-prompt hook rendering CoreFrame plus a subagent save/search tool; until then no package wires it into a running agent.",
       "target": "an agentloop system-prompt hook rendering CoreFrame, plus a subagent save/search tool",
       "permanent": false
     },
     "mcp": {
-      "reason": "MCP client leaf. Its consumer is external application code: mivia-agent imports it through internal/sdkadapter as of 2026-09-07.",
-      "target": "external application code (mivia-agent)",
+      "reason": "MCP client leaf. Its consumer is external application code: the sibling consumer repo imports it through internal/sdkadapter as of 2026-09-07.",
+      "target": "external application code (the sibling consumer repo)",
       "permanent": true
     },
     "skills": {
-      "reason": "Skill registry leaf; mivia-agent's B.0.5 internal/sdkadapter/skill.go bridges it as the first consumer, but no SDK-internal package imports it yet.",
-      "target": "external application code (mivia-agent)",
+      "reason": "Skill registry leaf; the sibling consumer repo's B.0.5 internal/sdkadapter/skill.go bridges it as the first consumer, but no SDK-internal package imports it yet.",
+      "target": "external application code (the sibling consumer repo)",
       "permanent": true
     },
     "agentloop": {
-      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. The external consumer exists: mivia-agent's internal/agent agentloop_adapter.go builds agentloop.Options and sets Model, OnToolCallError, Trim, Surface, StreamingWriter, ContinueOnStop, WorkBudget, ToolBudget, Hooks, Bus, Usage, SessionID, Budget, Bounds.MaxConsecutiveToolFailures, Tracer, Audit, HeartbeatInterval, and, for turns without a PreparationManager, Window, Summarizer, and Calibrated through EnableCompaction. Bounds.MaxTotalTokens, StartTime, and Scope stay unset: agentloop_adoption.go's own comment says MaxTotalTokens deliberately stays unset because the SDK bound counts cumulative billed tokens across the whole run, which re-bills history every iteration, so the per-prompt context ceiling is the wrong scale and would hard-fail healthy long turns. DedupWithinTurn and Conclude are deliberately unset: the SDK's same-arguments dedup contradicts the host's fresh-execution contract for read twins, and the host's wrap-up budget rides ContinueOnStop. Only OnToolError stays at its default. docs/examples/_agentloop_adoption is the positive control for the adopted row set, and verify-fast runs it. The docs/examples/_agentloop composition example is the in-repo positive control: verify-fast runs it and asserts its final output. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks.",
-      "target": "external application code; the live consumer is mivia-agent's internal/agent agentloop_adapter.go",
+      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. The external consumer exists: the sibling consumer repo's internal/agent agentloop_adapter.go builds agentloop.Options and sets Model, OnToolCallError, Trim, Surface, StreamingWriter, ContinueOnStop, WorkBudget, ToolBudget, Hooks, Bus, Usage, SessionID, Budget, Bounds.MaxConsecutiveToolFailures, Tracer, Audit, HeartbeatInterval, and, for turns without a PreparationManager, Window, Summarizer, and Calibrated through EnableCompaction. Bounds.MaxTotalTokens, StartTime, and Scope stay unset: agentloop_adoption.go's own comment says MaxTotalTokens deliberately stays unset because the SDK bound counts cumulative billed tokens across the whole run, which re-bills history every iteration, so the per-prompt context ceiling is the wrong scale and would hard-fail healthy long turns. DedupWithinTurn and Conclude are deliberately unset: the SDK's same-arguments dedup contradicts the host's fresh-execution contract for read twins, and the host's wrap-up budget rides ContinueOnStop. Only OnToolError stays at its default. docs/examples/_agentloop_adoption is the positive control for the adopted row set, and verify-fast runs it. The docs/examples/_agentloop composition example is the in-repo positive control: verify-fast runs it and asserts its final output. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that the sibling consumer repo lacks.",
+      "target": "external application code; the live consumer is the sibling consumer repo's internal/agent agentloop_adapter.go",
       "permanent": true
     },
     "a2aack": {
-      "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. No consumer today: mivia-agent has zero references to it as of 2026-09-07. Kept as SDK surface.",
+      "reason": "Edge adapter turning a remote A2A task round trip into agent.AckWait, per its AGENTS.md entry. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07. Kept as SDK surface.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
@@ -42,7 +42,7 @@
       "permanent": true
     },
     "dispatch": {
-      "reason": "NDJSON envelope HTTP endpoint. No consumer today: mivia-agent has zero references to it as of 2026-09-07; it ships its own HTTP wiring. Kept as SDK surface.",
+      "reason": "NDJSON envelope HTTP endpoint. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; it ships its own HTTP wiring. Kept as SDK surface.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
@@ -57,7 +57,7 @@
       "permanent": true
     },
     "runconfig": {
-      "reason": "JSON-config composition layer over agentrun. No consumer today: mivia-agent has zero references to it as of 2026-09-07; no deployment main package loads it yet. Kept as SDK surface.",
+      "reason": "JSON-config composition layer over agentrun. No consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; no deployment main package loads it yet. Kept as SDK surface.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
@@ -67,7 +67,7 @@
       "permanent": false
     },
     "provider/anthropic": {
-      "reason": "Anthropic Messages API adapter leaf. No external consumer today: mivia-agent has zero references to it as of 2026-09-07; it ships its own internal/provider/anthropic.go. In-repo callers are the e2e wire test and the agentloop composition example.",
+      "reason": "Anthropic Messages API adapter leaf. No external consumer today: the sibling consumer repo has zero references to it as of 2026-09-07; it ships its own internal/provider/anthropic.go. In-repo callers are the e2e wire test and the agentloop composition example.",
       "target": "no external consumer today; in-repo callers are the e2e wire test and the agentloop composition example",
       "permanent": true
     }

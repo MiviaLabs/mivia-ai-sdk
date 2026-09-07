@@ -112,7 +112,7 @@ into a `tools.Registry` through `subagent`:
 - [examples/heartbeat-liveness.md](examples/heartbeat-liveness.md) — two tracked ids, one going silent past the timeout.
 - [examples/flow-runner.md](examples/flow-runner.md) — a step graph driven end to end through the runner.
 - [examples/agent-dispatch.md](examples/agent-dispatch.md) — the full end-to-end walkthrough: an agent dispatching a plan through signed, acked messages.
-- [examples/channel-ndjson-stdio.md](examples/channel-ndjson-stdio.md) — a `channel.Notifier` speaking newline-delimited JSON over stdin and stdout, the `mivia-agent` desktop app's own wire convention.
+- [examples/channel-ndjson-stdio.md](examples/channel-ndjson-stdio.md) — a `channel.Notifier` speaking newline-delimited JSON over stdin and stdout, a sibling consumer desktop app's own wire convention.
 - [examples/flow-panel-concurrent.md](examples/flow-panel-concurrent.md) — one panel wave in depth: two steps firing the same transition row at the same time.
 - [examples/flow-branch-routing.md](examples/flow-branch-routing.md) — a branch step's `Route` keeping one of two direct dependents at run time.
 - [examples/flow-retry-policy.md](examples/flow-retry-policy.md) — a flaky step retried under a `RetryPolicy` until it succeeds.

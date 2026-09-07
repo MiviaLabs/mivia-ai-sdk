@@ -16,7 +16,7 @@ func TestCorrectiveNilErrorReturnsEmptyString(t *testing.T) {
 }
 
 // TestCorrectiveTruncatesAtRuneBoundary mirrors the rune-boundary case
-// mivia-agent's own corrective formatter guards: an oversized
+// a caller's own corrective formatter guards: an oversized
 // validation-error detail truncates to MaxCorrectiveBytes and never
 // splits a UTF-8 rune.
 func TestCorrectiveTruncatesAtRuneBoundary(t *testing.T) {

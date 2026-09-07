@@ -150,7 +150,7 @@ form wraps the fields in its own transport-specific type.
 ### NDJSON transport (phase 43, shipped): `NewNDJSONNotifier`
 
 Folded from phase 43's now-retired plan draft; this subsection states
-the shape the plan locks. `mivia-agent`'s desktop app already speaks
+the shape the plan locks. A sibling consumer's desktop app already speaks
 newline-delimited JSON (NDJSON) over stdio for its own `--json` line
 mode and its `internal/hub` process-to-process protocol.
 `NewNDJSONNotifier` ships a `channel.Notifier` that speaks that same
@@ -166,7 +166,7 @@ decode, and buffer-sizing logic.
   internal to `channel/ndjson_notifier.go`; `Question` and `Answer`
   keep zero JSON tags, unchanged. The scanner that reads the answer
   line sizes its buffer `64*1024` initial, `1024*1024` cap, matching
-  `mivia-agent`'s own `hub.connection.go` and
+  a sibling consumer's own `hub.connection.go` and
   `chat_repl_linemode.go` sizing.
 - `ErrAnswerMismatch` — returned when a decoded answer line's
   `question_id` does not match the `Question.ID` the same call sent.
@@ -341,7 +341,7 @@ counted in. `api/channel.txt` gains the three new symbols through
 `docs/packages/channel.md` gains an NDJSON transport section
 describing the wire shape, the one-caller-at-a-time contract
 (including the permanent-lockout limit and its close-`r`-or-`w`
-recourse), and the `mivia-agent` convention it mirrors. `docs/examples/
+recourse), and the sibling-consumer convention it mirrors. `docs/examples/
 channel-ndjson-stdio.md` is added, compiled and run against the real
 module, with a matching one-line entry in `docs/README.md`'s Examples
 list. No conformance vector change: `channel` still carries no signed

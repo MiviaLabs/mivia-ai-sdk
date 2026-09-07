@@ -6,7 +6,7 @@ Status: plan, not scheduled. Part of this phase is blocked on a
 ## Why this plan exists
 
 A gap analysis compared `agentloop` against `internal/agent.Loop`, a
-production caller in a separate, external repository (`mivia-agent`).
+production caller in a separate, external repository.
 It found a capability that repo's caller needs and `agentloop` lacks:
 a documented, forgery-resistant way to mark injected guidance text
 apart from real tool output or user content. This phase closes that

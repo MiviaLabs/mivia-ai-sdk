@@ -200,7 +200,7 @@ behind the `ledger_sqlite` build tag, backed by the pure-Go
 over a stdlib-only file store, first naming `go-libsql`, then
 reconsidering, once that driver's cgo requirement and missing Windows
 build were found, and naming `modernc.org/sqlite` instead, the same
-driver `mivia-agent` already uses in production. The resulting
+driver the sibling consumer repo already uses in production. The resulting
 third-party exception is authorized, scoped to the `ledger_sqlite`
 build tag; since the driver needs no cgo, the tag exists only to keep
 a `MemStore`-only caller's dependency graph free of it, not to gate a
@@ -209,7 +209,7 @@ phase 44 (provider token estimation) are plan-only; neither has gone
 through plan review yet. Each is independently buildable now, since
 phase 34 and phase 29 have both shipped. Phase 43 has shipped: an
 NDJSON-over-stdio
-transport, matching `mivia-agent`'s own wire convention, as real
+transport, matching a sibling consumer's own wire convention, as real
 `channel` package API (`NewNDJSONNotifier`), not a `docs/examples/`
 walkthrough only.
 
@@ -369,8 +369,8 @@ exception scoped to this package. Its package plan lives at
 docs/plans/schema.md.
 
 Phase 65 (`contextstate`) has shipped. It adds one leaf package, plus
-a unification inside `envelope`, ported from `mivia-agent`'s
-`internal/contextstate` and `internal/contentref`. It holds the
+a unification inside `envelope`, ported from the sibling consumer
+repo's `internal/contextstate` and `internal/contentref`. It holds the
 durable context contract and the single canonical content-reference
 minter: sessions, checkpoints, commit validation, retention classes,
 and volume `Limits`. Its package plan lives at
@@ -499,7 +499,7 @@ interruption" addendum's own text still notes it corrects one
 Result-shape statement against phase 78's now-deleted origin brief.
 A gap
 analysis compared `agentloop` against `internal/agent.Loop`, a
-production caller in a separate, external repository (`mivia-agent`),
+production caller in a separate, external repository,
 and found seven capabilities that caller needs and `agentloop` lacks.
 Each gap is its own phase: steering and interruption (78, shipped),
 graceful work-limit conclude (79, shipped), per-batch tool-result size
@@ -533,7 +533,7 @@ section.
 Phase 80 (`agentloop` per-batch tool-result size shaping) shipped,
 then was removed. It added `Options.TurnResultBudget`, capping the
 summed byte size of one turn's rendered tool results. The only
-intended consumer, mivia-agent's CLI adapter, rejected the
+intended consumer, the sibling consumer repo's CLI adapter, rejected the
 omit-over-budget semantics and ships its own degrade-with-notice
 shaping wrapper. The field, the `BatchTruncationNotice` constant, and
 the `ErrTurnResultBudget` sentinel are gone. Its

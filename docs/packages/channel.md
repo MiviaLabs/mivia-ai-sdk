@@ -85,9 +85,9 @@ below, is the one reference wire form `channel` ships.
 
 `NewNDJSONNotifier(r io.Reader, w io.Writer) Notifier` builds a
 `Notifier` that speaks newline-delimited JSON (NDJSON) over an
-`io.Reader`/`io.Writer` pair, matching the convention `mivia-agent`'s
-desktop app already uses for its own `--json` line mode and its
-`internal/hub` process-to-process protocol.
+`io.Reader`/`io.Writer` pair, matching the convention a sibling
+consumer's desktop app already uses for its own `--json` line mode and
+its `internal/hub` process-to-process protocol.
 
 ### Wire shape
 
@@ -105,7 +105,7 @@ It then blocks reading one answer line from `r`:
 
 Both wire structs are internal to `channel`; `Question` and `Answer`
 keep zero JSON tags. The scanner that reads the answer line sizes its
-buffer 64 KB initial, 1 MB cap, matching `mivia-agent`'s own
+buffer 64 KB initial, 1 MB cap, matching a sibling consumer's own
 `hub.connection.go` and `chat_repl_linemode.go` sizing exactly.
 
 ### One caller at a time

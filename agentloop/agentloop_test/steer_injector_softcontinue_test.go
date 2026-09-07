@@ -24,7 +24,7 @@ import (
 // steered" soft-continues even when the drain is empty — see
 // TestInjectorTriggeredAndEmptyInjectorSoftContinues. The split is
 // load-bearing: a host that installs an injector opts into the
-// soft-continue shape (mivia-agent's bridgeSteerSignals relies on
+// soft-continue shape (a caller's bridgeSteerSignals relies on
 // it to deliver repeated steers within one RunSteerable call); a
 // host that does not install an injector sees the original
 // single-shot StopSteered behavior every pre-injector Steer test
@@ -61,7 +61,7 @@ func TestInjectorTriggeredAndEmptyStopsSteered(t *testing.T) {
 // TestInjectorTriggeredAndEmptyInjectorSoftContinues pins the
 // soft-continue shape: a Steer WITH an installed injector and an
 // empty drain at the downgrade point continues the run. This is
-// the behavior mivia-agent's bridgeSteerSignals relies on — a
+// the behavior a caller's bridgeSteerSignals relies on — a
 // bridge that polls continuously across iterations must be able to
 // deliver repeated steers within one RunSteerable call without
 // dropping the run, so the SDK must soft-continue every steer

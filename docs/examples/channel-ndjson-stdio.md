@@ -1,8 +1,8 @@
 # Example: channel NDJSON over stdio
 
 This walkthrough wires `channel.NewNDJSONNotifier` to `os.Stdin` and
-`os.Stdout`, the same newline-delimited-JSON (NDJSON) convention
-`mivia-agent`'s desktop app already uses for its own `--json` line
+`os.Stdout`, the same newline-delimited-JSON (NDJSON) convention a
+sibling consumer's desktop app already uses for its own `--json` line
 mode and its `internal/hub` process-to-process protocol. The program
 writes one question line to stdout, blocks reading one answer line
 from stdin, then prints the result to stderr, so a peer process

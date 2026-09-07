@@ -1618,7 +1618,7 @@ scripted `Completer` and one scripted `Summarizer` per case:
 ## Addendum: graceful work-limit conclude
 
 Status: shipped. A gap analysis against `internal/agent.Loop`, a
-production caller in the separate `mivia-agent` repository, found a
+production caller in a separate, external repository, found a
 capability `agentloop` lacked: a nudge toward a usable final answer as
 `MaxIterations` approaches. This addendum closes that gap, then closes
 one bug a post-ship logic review found in the same change window. It
@@ -1844,7 +1844,7 @@ near MaxIterations" section in the same change as the code.
 ## Addendum: duplicate-call dedup within a turn
 
 Status: shipped. A gap analysis against `internal/agent.Loop`, a
-production caller in the separate `mivia-agent` repository, found a
+production caller in a separate, external repository, found a
 capability `agentloop` lacked: detection of a duplicate tool call
 within one turn, before it runs twice. This addendum closes that gap.
 It changes `options.go`, `loop.go`, and `toolcall.go`, and adds
@@ -2183,7 +2183,7 @@ for the full field list, the failure mode, and the gating rule.
 
 Status: superseded. Shipped as phase 80
 (`docs/plans/agents/PHASES.md`), then removed: the only intended
-consumer, mivia-agent's CLI adapter, rejected the omit-over-budget
+consumer, the sibling consumer repo's CLI adapter, rejected the omit-over-budget
 semantics and ships its own degrade-with-notice shaping wrapper. The
 field, the notice constant, and the sentinel are gone. See
 `docs/packages/agentloop.md` for the current `Bounds` surface.
@@ -3782,8 +3782,8 @@ Outside:
   to decide anything.
 - Any change to `Steer`, `ConcludeMargin`, `ConcludeNotice`, or
   `StopConcluded`. Each keeps its current meaning.
-- The consuming migration in `mivia-agent`, which is a separate
-  repository.
+- The consuming migration in the sibling consumer repo, which is a
+  separate repository.
 
 ### Addendum API
 
@@ -5345,7 +5345,7 @@ main.go design:
 - Full proposed reason text:
 
 ```json
-"reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against mivia-agent's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires every Options group offline, runs a scripted two-turn tool exchange through RunSteerable, and verify-fast vets it. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks. Adoption needs mivia-agent to build an adapter closing its side of that gap, not an SDK-internal caller."
+"reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. A 2026-08-20 gap analysis against the sibling consumer repo's internal/agent.Loop (the candidate first caller) found five gaps; four are now closed in code: steering (agentloop/steer.go), per-batch tool-result dedup (DedupWithinTurn), work and tool budgets (WorkBudget, ToolBudget), and graceful conclude (agentloop/conclude.go). One gap stays open: hook-injection-safe framing, still plan-only at docs/plans/agents/phase82_injection_safe_framing.md. The docs/examples/_agentloop composition example is now the in-repo positive control: it wires every Options group offline, runs a scripted two-turn tool exchange through RunSteerable, and verify-fast vets it. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that the sibling consumer repo lacks. Adoption needs the sibling consumer repo to build an adapter closing its side of that gap, not an SDK-internal caller."
 ```
 
 - The provider/anthropic row already anticipates "the agentloop

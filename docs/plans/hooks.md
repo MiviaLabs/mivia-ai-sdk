@@ -19,7 +19,7 @@ veto.
 `hooks` is a new top-level leaf package. It imports no other package
 in this module, matching `trigger`'s row in `policy/layers.json`.
 
-The sibling repo `mivia-agent` runs a deterministic PreToolUse,
+The sibling consumer repo runs a deterministic PreToolUse,
 PostToolUse, and Stop lifecycle-hook system today, in its own
 `internal/hooks` package. That system lets a caller register many
 named handlers per lifecycle point and lets each handler veto or

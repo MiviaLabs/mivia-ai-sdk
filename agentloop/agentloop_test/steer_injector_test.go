@@ -1,7 +1,7 @@
 package agentloop_test
 
-// Pull-based steer injector tests (mivia-agent blocker 2). The Steer
-// injector is the SDK-side carrier of mivia-agent's legacy BeforeStep
+// Pull-based steer injector tests (a caller's blocker 2). The Steer
+// injector is the SDK-side carrier of a caller's legacy BeforeStep
 // hook: a host installs a func that returns messages, the loop drains
 // the injector at the top of every iteration and at every steered-
 // stop decision point, and a non-empty return appends those messages

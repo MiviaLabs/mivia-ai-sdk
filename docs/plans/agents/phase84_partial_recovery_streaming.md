@@ -6,7 +6,7 @@ Depends on phase 78.
 ## Why this plan exists
 
 A gap analysis compared `agentloop` against `internal/agent.Loop`, a
-production caller in a separate, external repository (`mivia-agent`).
+production caller in a separate, external repository.
 It found a capability that repo's caller needs and `agentloop` lacks:
 keeping partial streamed text when a completion is interrupted, instead
 of discarding it. This phase closes that gap. It has no code, no plan

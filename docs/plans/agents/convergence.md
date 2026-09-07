@@ -1,4 +1,4 @@
-# Convergence: mivia-agent onto mivia-ai-sdk
+# Convergence: the sibling consumer repo onto mivia-ai-sdk
 
 Status: program plan, revision six. Every decision is answered. The
 plan is buildable.
@@ -9,8 +9,8 @@ SDK-only packages that were never a convergence target. See "Boundary
 correction (revision six)" below the resolved decisions.
 
 This plan covers two repositories. The SDK is
-`github.com/MiviaLabs/mivia-ai-sdk`. The consumer is
-`github.com/MiviaLabs/mivia-agent`. The consumer imports zero SDK
+`github.com/MiviaLabs/mivia-ai-sdk`. The consumer is a separate,
+private sibling repository. The consumer imports zero SDK
 packages today.
 
 ## Decision record
@@ -193,8 +193,8 @@ file-editing toolbox wrapping `workspace.Workspace` and `diff.Unified`.
 Apply the AGENTS.md building-block test: would a support agent, a
 research agent, or a data-pipeline agent need a bundled file-diff
 tool? No. Only a coding agent edits source files and previews the
-edit as a diff. This toolbox is `mivia-agent` product surface riding
-inside the SDK.
+edit as a diff. This toolbox is the sibling consumer repo's product
+surface riding inside the SDK.
 
 `diff/` exists to serve exactly one production caller. A repo-wide
 search for `sdk/diff"` finds three matches outside worktree copies:
@@ -241,8 +241,8 @@ import exists to sequence against.
 
 #### Addendum: `runconfig`'s `Kind` vocabulary shares the same defect
 
-The "no consumer coordination" claim above checked `mivia-agent`
-imports and `diff"` imports. It missed an in-repo consumer:
+The "no consumer coordination" claim above checked the sibling
+consumer repo's imports and `diff"` imports. It missed an in-repo consumer:
 `runconfig/blocks.go` locks `WorkspaceReadKind`, `WorkspaceWriteKind`,
 `WorkspaceListKind`, `WorkspaceStatKind`, and `DiffKind` as exported
 `Kind` constants, each existing solely to route a config document's

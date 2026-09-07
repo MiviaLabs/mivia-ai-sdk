@@ -11,7 +11,7 @@ import (
 
 // ndjsonScannerInitialBuffer and ndjsonScannerMaxBuffer size the
 // bufio.Scanner readAnswer uses to read one NDJSON line: a 64 KB
-// initial buffer, a 1 MB per-line cap, matching mivia-agent's own
+// initial buffer, a 1 MB per-line cap, matching a caller's own
 // hub.connection.go readLoop and chat_repl_linemode.go sizing.
 const (
 	ndjsonScannerInitialBuffer = 64 * 1024
@@ -19,7 +19,7 @@ const (
 )
 
 // ndjsonQuestionType and ndjsonAnswerType are the wire "type" tag
-// values NewNDJSONNotifier writes and expects, matching mivia-agent's
+// values NewNDJSONNotifier writes and expects, matching a caller's
 // snake_case wire convention.
 const (
 	ndjsonQuestionType = "question"
@@ -38,7 +38,7 @@ var ErrNotifierBusy = errors.New("channel: ndjson: notifier is busy with another
 
 // ndjsonQuestionLine is the wire form NewNDJSONNotifier writes for one
 // Question: a "type":"question" line with id, recipient, and payload
-// fields, snake_case, matching mivia-agent's own ndjsonEvent
+// fields, snake_case, matching a caller's own ndjsonEvent
 // convention. Internal to this file; Question keeps zero JSON tags.
 type ndjsonQuestionLine struct {
 	Type      string `json:"type"`
@@ -59,7 +59,7 @@ type ndjsonAnswerLine struct {
 
 // NewNDJSONNotifier builds a Notifier that writes one JSON-encoded
 // question line to w and blocks reading one JSON-encoded answer line
-// from r, in the newline-delimited-JSON shape mivia-agent's own
+// from r, in the newline-delimited-JSON shape a caller's own
 // stdio and hub protocols already use. ctx cancellation is honored
 // during both phases: a blocked Write on w and a blocked Scan on r
 // each return ctx.Err() promptly, without waiting for the underlying
@@ -163,7 +163,7 @@ func continueAfterAbandonedWrite(done <-chan error, r io.Reader, wantID string, 
 
 // encodeQuestionLine marshals q into the ndjsonQuestionLine wire form
 // and writes it to w as one JSON-encoded line, through
-// json.NewEncoder(w).Encode, matching mivia-agent's hub.connection.go
+// json.NewEncoder(w).Encode, matching a caller's hub.connection.go
 // writeLoop call shape.
 func encodeQuestionLine(w io.Writer, q Question) error {
 	line := ndjsonQuestionLine{

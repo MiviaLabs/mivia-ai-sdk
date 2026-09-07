@@ -6,7 +6,7 @@ import (
 )
 
 // jsonEncode writes v to w as one JSON-encoded line, through
-// json.NewEncoder(w).Encode, the same call shape mivia-agent's
+// json.NewEncoder(w).Encode, the same call shape a caller's
 // hub.connection.go writeLoop uses. Named in this file, matching this
 // module's convention (see envelope/message.go, machine/wire.go,
 // flow/wire.go, ledger/wire.go) that wire-bytes marshaling stays in a

@@ -95,7 +95,7 @@ behavior:
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map.
 
-- The mivia-agent parity scenarios — `bugfix_flow_test.go`,
+- The sibling-consumer parity scenarios — `bugfix_flow_test.go`,
   `panel_review_test.go`, `delivery_repair_test.go`, and
   `feature_delivery_test.go` — mirror the sibling repo's workflow
   shapes: verdict routing, refinement loops, evidence repair, panel

@@ -93,9 +93,9 @@ JSON Schema validation is a solved problem with real edge cases:
 `allOf`/`oneOf`/`anyOf` composition, `$ref` resolution, format
 validators, and draft-version differences. A hand-rolled subset
 validator would diverge from any real JSON Schema document a caller
-already owns, and would diverge from the sibling repo `mivia-agent`'s
+already owns, and would diverge from the sibling consumer repo's
 own validator, which the integration assessment that opened this phase
-named as the reference shape. `mivia-agent`'s `internal/jschema`
+named as the reference shape. The sibling consumer repo's `internal/jschema`
 package validates structured subagent output with
 `github.com/santhosh-tekuri/jsonschema/v6`, a spec-conformant,
 dependency-light JSON Schema implementation with no transitive
@@ -106,13 +106,13 @@ import `github.com/santhosh-tekuri/jsonschema/v6`, matching the
 precedent AGENTS.md already sets for `mcp` (the official MCP Go SDK),
 `ledger` (`modernc.org/sqlite`, tag-gated), and `a2aclient` (`a2a-go`
 and its gRPC dial dependency). It gives this SDK the same validation
-verdict `mivia-agent` already ships in production, on the same schema
+verdict the sibling consumer repo already ships in production, on the same schema
 documents, with no reimplementation risk.
 
 Unlike `mcp` and `ledger`, `schema` ships with no caller in this same
 phase; Scope excludes wiring into `tools.Tool` or `subagent` on
 purpose. The value this phase buys is cross-repo verdict parity:
-`mivia-agent`'s `internal/jschema` already validates structured
+The sibling consumer repo's `internal/jschema` already validates structured
 subagent output with this exact library, and a caller in this SDK that
 later needs schema-checked tool output has a seam to hold against from
 day one.
@@ -318,7 +318,7 @@ Test files live in `schema/schema_test/`, an external test package.
   - `Corrective(nil)` returns "".
   - An oversized validation-error detail truncates to
     `MaxCorrectiveBytes` and never splits a UTF-8 rune (mirrors the
-    rune-boundary case `mivia-agent`'s own corrective formatter
+    rune-boundary case the sibling consumer repo's own corrective formatter
     guards).
   - `Corrective` on a non-nil, non-`ErrValidation` error (an
     `ErrMalformedPayload` case) still returns a bounded message naming

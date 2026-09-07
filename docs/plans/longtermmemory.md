@@ -1,6 +1,6 @@
 # Plan: longtermmemory
 
-Status: shipped. Ports `mivia-agent/internal/memory`
+Status: shipped. Ports the sibling consumer repo's `internal/memory`
 as a leaf package: tiered entries, consolidation, search, and a bounded
 core-context frame. In-memory only, standard library only.
 

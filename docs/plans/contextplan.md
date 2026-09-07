@@ -67,7 +67,7 @@ Outside:
   `provider.Completer`; `contextplan` calls only
   `provider.TokenEstimator`.
 - Mivia's own prompt templates and per-workflow context bindings.
-  Those stay in `mivia-agent`.
+  Those stay in the sibling consumer repo.
 
 ## API
 
@@ -606,8 +606,8 @@ sibling under the 500-line limit:
 ## Change: compaction policy
 
 Status: shipped. Ports the structural retention
-half of `mivia-agent/internal/contextmgr/planner.go` into
-`contextplan`, under this task's changed defaults and hard rules.
+half of the sibling consumer repo's `internal/contextmgr/planner.go`
+into `contextplan`, under this task's changed defaults and hard rules.
 
 ### Change goal
 

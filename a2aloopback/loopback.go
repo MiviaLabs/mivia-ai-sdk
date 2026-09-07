@@ -96,7 +96,7 @@ func loopbackRequest(reqCtx *a2asrv.RequestContext) (envelope.Message, error) {
 			return m, nil
 		}
 	}
-	return envelope.Message{}, errors.New("loopback: request carries no payload")
+	return envelope.Message{}, errors.New("loopback: request carries no text part")
 }
 
 // Loopback starts a gRPC A2A server on a 127.0.0.1 loopback port. It

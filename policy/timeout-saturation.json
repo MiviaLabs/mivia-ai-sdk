@@ -6,6 +6,12 @@
       "operand": "cmd.EveryMs",
       "unit": "Millisecond",
       "reason": "scheduler.Every maps a non-positive interval (including an overflow-wrapped one) to neverSchedule, so a wrapped value cannot arm a hot loop; the schedule silently never fires"
+    },
+    {
+      "file": "provider/anthropic/client.go",
+      "operand": "secs",
+      "unit": "Second",
+      "reason": "secs is clamped to maxRetryAfterSeconds (24h) a few lines above the multiply when it exceeds that bound, so the value reaching the conversion can never be large enough to overflow int64 nanoseconds; the clamp is not visible to this script's regex matcher"
     }
   ]
 }

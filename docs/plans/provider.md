@@ -163,12 +163,17 @@ via `make api-update`.
 
 - `const ReasoningEventKind = "reasoning"` names the
   `contextstate.SourceEvent.Kind` value a reasoning trace carries, in
-  `reasoning.go`. `type ReasoningEffort string` with constants
-  `ReasoningEffortNone`, `ReasoningEffortLow`, `ReasoningEffortMedium`,
-  and `ReasoningEffortHigh` closes the reasoning-effort vocabulary
-  `ReasoningPolicy.ReasoningEffort()` reports as a string.
-  `type ReasoningBlock struct { Content string; Redacted bool }` is
-  one reasoning segment; it never appears on `Message` or `Response`.
+  `reasoning.go`. `type ReasoningEffort string` closes the
+  reasoning-effort vocabulary `ReasoningPolicy.ReasoningEffort()`
+  reports as a string; at this change it held four constants
+  (`ReasoningEffortNone`, `ReasoningEffortLow`, `ReasoningEffortMedium`,
+  `ReasoningEffortHigh`), later joined by `ReasoningEffortXHigh` and
+  `ReasoningEffortMax`, six in total today.
+  `type ReasoningBlock struct { Content string; Redacted bool }` was
+  one reasoning segment at this change; it never appeared on `Message`
+  or `Response` then. The block-slice carrier addendum at the end of
+  this file adds `Signature` and `Data` fields and puts it on
+  `Message.ReasoningBlocks`.
   `func RedactBlock(b ReasoningBlock) ReasoningBlock` clears `Content`
   and sets `Redacted`, idempotently. This fold ships as the companion
   change `docs/plans/contextplan.md` names: `contextplan` compares
@@ -941,9 +946,11 @@ Name `provider/anthropic` as the first concrete implementer of the
 
 ## Change: reasoning-signature replay carrier
 
-Status: shipped. One field lands on `Message`. The Anthropic adapter
-writes it on decode and reads it on replay. Code, tests, and this
-section land in one change.
+Status: superseded, see "Addendum: block-slice reasoning carrier"
+at the end of this file. The single-signature field this section
+describes is gone; `Message.ReasoningBlocks` replaced it. This
+section is kept for the design rationale (Option A over B and C),
+which still holds for the slice shape.
 
 ### Change goal
 
@@ -1171,3 +1178,80 @@ value passes `Validate` on all four roles.
   this same change.
 - No conformance vector: `envelope` owns the SDK's wire; the
   Anthropic wire contract stays pinned by the adapter tests above.
+
+## Addendum: block-slice reasoning carrier
+
+Status: shipped.
+
+### Addendum goal
+
+The "reasoning-signature replay carrier" change above shipped one
+sibling field, `ReasoningSignature string`, assuming one thinking
+block per assistant turn. Adaptive thinking can put several blocks in
+one turn, each with its own signature, and the Messages API requires
+every block echoed back exactly as received, including a
+`redacted_thinking` block with no readable text. The single-field
+carrier cannot represent either case. A review found the gap; this
+addendum replaces the carrier.
+
+### Addendum scope
+
+Inside:
+
+- Replace `Message.ReasoningContent` and `Message.ReasoningSignature`
+  with `Message.ReasoningBlocks []ReasoningBlock`, carrying every
+  thinking and redacted_thinking block from a turn in arrival order.
+- `ReasoningBlock` gains `Signature string` and `Data string` beside
+  its existing `Content` and `Redacted` fields. `Data` holds a
+  redacted block's opaque payload; `Content` stays empty on a
+  redacted block, matching `RedactBlock`'s existing rule.
+- `Message.Validate` gains a rule: a non-empty `ReasoningBlocks` is
+  legal only on `RoleAssistant`, returned as `ErrReasoningContentUnexpected`
+  wrapped, matching the pairing rule the removed `ReasoningContent`
+  field already had.
+- `provider/anthropic`: decode captures every block, independent of
+  `Options.ExposeReasoning`; `ExposeReasoning` and `OnReasoning` now
+  control what the caller sees, not whether the carrier is populated.
+  `ChatStream` captures each block's `signature_delta` event and
+  attaches it at `content_block_stop`. Replay walks the slice in
+  order, emitting a `thinking` part for a readable block and a
+  `redacted_thinking` part for a redacted one.
+- `Request.DisableProviderReplay` is read at replay time: set, it
+  suppresses reasoning replay for that request. `agentloop` sets it
+  on any iteration where `Trim` or `Window` compaction changed the
+  history prefix a reasoning block sits in, since a replayed block
+  bound to an edited prefix is rejected by the API the same way a
+  block replayed against a different `Model` is.
+
+Outside:
+
+- A guard tying a replayed block to the `Model` that minted it stays
+  the caller's responsibility, stated in the `Message.ReasoningBlocks`
+  doc comment and `provider/anthropic/doc.go`.
+
+### Addendum API
+
+`api/provider.txt` drops `ReasoningContent` and `ReasoningSignature`,
+gains `ReasoningBlocks []ReasoningBlock`, and gains the two new
+`ReasoningBlock` fields, through `make api-update` in the same change
+as the code. `api/provider/anthropic.txt` is unaffected: no exported
+symbol in that package changes shape.
+
+### Addendum tests
+
+`provider/provider_test/` pins `Message.Validate`'s new rule.
+`provider/anthropic/anthropic_test/` replaces the five tests the
+prior addendum named with versions proving: two blocks with distinct
+signatures replay in order, not merged; a `redacted_thinking` block
+round-trips in its wire form; a streamed block's signature is
+captured and replays on a later call; `DisableProviderReplay`
+suppresses replay; a plain text-only turn still carries no thinking
+part.
+
+### Addendum verification
+
+- `make api-update` produces the diff named above; `make verify`
+  passes.
+- `docs/packages/provider.md` and `docs/packages/provider/anthropic.md`
+  are updated to the block-slice shape in the same change.
+- No `policy/layers.json` change.

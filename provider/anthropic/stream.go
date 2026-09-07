@@ -307,11 +307,7 @@ func (c *Client) handleContentBlockStop(ctx context.Context, data []byte, s *str
 
 func (c *Client) handleMessageStop(ctx context.Context, s *streamState, out chan<- provider.Chunk) bool {
 	if s.stopReason == "refusal" {
-		cat := "unknown"
-		if s.stopDetails != nil && s.stopDetails.Category != "" {
-			cat = s.stopDetails.Category
-		}
-		sendChunkOrDone(ctx, out, provider.Chunk{Err: fmt.Errorf("%w: %s", ErrRefused, cat)})
+		sendChunkOrDone(ctx, out, provider.Chunk{Err: refusalError(s.stopDetails)})
 		return true
 	}
 
@@ -322,16 +318,7 @@ func (c *Client) handleMessageStop(ctx context.Context, s *streamState, out chan
 		CachedTokens:     s.cacheReadTokens,
 	}
 
-	cacheUsage := provider.CacheUsage{}
-	if s.cacheCreationTokens > 0 || s.cacheReadTokens > 0 {
-		cacheUsage = provider.CacheUsage{
-			Reported:          true,
-			Style:             provider.CacheStyleExplicit,
-			InputTokens:       s.inputTokens,
-			CachedInputTokens: s.cacheReadTokens,
-			CacheWriteTokens:  s.cacheCreationTokens,
-		}
-	}
+	cacheUsage := cacheUsageFrom(s.inputTokens, s.cacheReadTokens, s.cacheCreationTokens)
 
 	sendChunkOrDone(ctx, out, provider.Chunk{
 		Done:         true,

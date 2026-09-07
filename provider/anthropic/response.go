@@ -113,11 +113,7 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 	}
 
 	if resp.StopReason == "refusal" {
-		cat := "unknown"
-		if resp.StopDetails != nil && resp.StopDetails.Category != "" {
-			cat = resp.StopDetails.Category
-		}
-		return provider.Response{}, fmt.Errorf("%w: %s", ErrRefused, cat)
+		return provider.Response{}, refusalError(resp.StopDetails)
 	}
 
 	decoded := c.decodeContent(resp.Content)
@@ -130,16 +126,7 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 		CachedTokens:     resp.Usage.CacheReadInputTokens,
 	}
 
-	cacheUsage := provider.CacheUsage{}
-	if resp.Usage.CacheCreationInputTokens > 0 || resp.Usage.CacheReadInputTokens > 0 {
-		cacheUsage = provider.CacheUsage{
-			Reported:          true,
-			Style:             provider.CacheStyleExplicit,
-			InputTokens:       resp.Usage.InputTokens,
-			CachedInputTokens: resp.Usage.CacheReadInputTokens,
-			CacheWriteTokens:  resp.Usage.CacheCreationInputTokens,
-		}
-	}
+	cacheUsage := cacheUsageFrom(resp.Usage.InputTokens, resp.Usage.CacheReadInputTokens, resp.Usage.CacheCreationInputTokens)
 
 	return provider.Response{
 		Model: resp.Model,
@@ -154,4 +141,34 @@ func parseResponse(c *Client, data []byte) (provider.Response, error) {
 		FinishReason: resp.StopReason,
 		CacheUsage:   cacheUsage,
 	}, nil
+}
+
+// refusalError builds ErrRefused wrapped with the stop category,
+// "unknown" when details carries none. Shared by the non-streamed
+// decode and the streamed terminal chunk, so the two paths classify a
+// refusal identically.
+func refusalError(details *anthropicStopDetails) error {
+	cat := "unknown"
+	if details != nil && details.Category != "" {
+		cat = details.Category
+	}
+	return fmt.Errorf("%w: %s", ErrRefused, cat)
+}
+
+// cacheUsageFrom builds a provider.CacheUsage from the three raw
+// token counts the Messages API reports, explicit-style. Reported
+// stays false when neither cache field is set, the same "nothing to
+// report" convention CacheUsage documents. Shared by the non-streamed
+// decode and the streamed terminal chunk.
+func cacheUsageFrom(inputTokens, cacheReadTokens, cacheCreationTokens int) provider.CacheUsage {
+	if cacheCreationTokens <= 0 && cacheReadTokens <= 0 {
+		return provider.CacheUsage{}
+	}
+	return provider.CacheUsage{
+		Reported:          true,
+		Style:             provider.CacheStyleExplicit,
+		InputTokens:       inputTokens,
+		CachedInputTokens: cacheReadTokens,
+		CacheWriteTokens:  cacheCreationTokens,
+	}
 }

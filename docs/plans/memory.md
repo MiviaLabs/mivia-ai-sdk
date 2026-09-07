@@ -26,9 +26,9 @@ and only when a new `Put` would exceed the budget. Memory holds
 opaque bytes; it does not parse or validate the content itself, and
 it does not know about `envelope.Message` or any other wire type.
 
-`memory` imports `envelope` only, for `ContextRef`. No other internal
+`memory` imports `contextref` only, for `Mint`. No other internal
 import. Stdlib only beyond that: `crypto/sha256` is not needed here
-since `envelope.ContextRef` already hashes; `memory` itself needs
+since `contextref.Mint` already hashes; `memory` itself needs
 only `errors`, `fmt`, and `sync`.
 
 ## API
@@ -49,7 +49,7 @@ via `make api-update`.
 - `func New(maxBytes int) (*Store, error)` — creates a `Store` with a
   fixed byte budget. A non-positive `maxBytes` wraps `ErrNoBudget`.
 - `func (s *Store) Put(content []byte) (ref string, err error)` —
-  computes `ref` as `envelope.ContextRef(string(content))` and stores
+  computes `ref` as `contextref.Mint(content)` and stores
   `content` under it. A `content` whose length exceeds the store's
   budget wraps `ErrBudgetExceeded` and stores nothing. A `content`
   that fits evicts the oldest-inserted blobs, in insertion order,
@@ -102,7 +102,7 @@ Test files live in `memory/memory_test/`, an external test package.
     (`ErrUnknownRef`).
 - `store_integration_test.go` — put two distinct blobs into one
   `Store`, get each back by ref, and prove each ref equals
-  `envelope.ContextRef` of the original content. Put a third blob
+  `contextref.Mint` of the original content. Put a third blob
   that pushes the store over budget and prove the oldest blob is
   evicted: its `Get` now returns `ErrUnknownRef`, while the newer
   blobs still resolve. Put a blob larger than the whole budget and

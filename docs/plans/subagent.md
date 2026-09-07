@@ -231,8 +231,9 @@ Inside:
   `agentloop.Definitions` skips any tool with no published schema
   (see `AGENTS.md`'s `tools/` entry), so a schema-less file tool
   would be silently unreachable from a loop; these five tools close
-  that gap for file access the way `tools.SchemaTool` publishes a
-  schema for a tool that has none of its own.
+  that gap for file access by implementing `tools.SchemaTool`
+  themselves, the same way `tools.SchemaOf` reads a published schema
+  off any tool that declares the interface.
 - `FileToolOptions{Root string; Deny *secretpath.Matcher; MaxReadBytes int64}`
   and `(FileToolOptions) Validate() error`, in a new file
   `subagent/filetoolset.go`. `Validate` rejects a blank `Root` and a

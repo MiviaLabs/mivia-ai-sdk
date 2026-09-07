@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -266,12 +267,26 @@ func retryAfterFor(header http.Header) time.Duration {
 	return parseRetryAfter(header.Get("Retry-After"))
 }
 
+// maxRetryAfterSeconds bounds a parsed Retry-After delay-seconds
+// value before its int64-nanosecond conversion. A count above this
+// clamps to it; the cap is generous for any real rate-limit wait and
+// far below the point at which multiplying by time.Second overflows
+// time.Duration (int64 nanoseconds, max around 2.9e11 seconds).
+const maxRetryAfterSeconds = 24 * 60 * 60
+
+// parseRetryAfter parses a Retry-After value in either RFC 9110 form:
+// a non-negative integer count of seconds, or an HTTP-date. A value
+// in neither form, including one carrying a unit suffix like "1m",
+// yields no hint.
 func parseRetryAfter(value string) time.Duration {
 	if value == "" {
 		return 0
 	}
-	if d, err := time.ParseDuration(value + "s"); err == nil && d > 0 {
-		return d
+	if secs, err := strconv.Atoi(value); err == nil && secs > 0 {
+		if secs > maxRetryAfterSeconds {
+			secs = maxRetryAfterSeconds
+		}
+		return time.Duration(secs) * time.Second
 	}
 	if t, err := http.ParseTime(value); err == nil {
 		if d := time.Until(t); d > 0 {

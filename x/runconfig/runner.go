@@ -16,9 +16,17 @@ import (
 // document's internal section declares, and the caller sets the
 // caller-built Kinds. Runner resolves each binding, builds one
 // tools.Registry keyed by step ID, sets Options.Machine and
-// Options.Tools, and passes Options to run.New. A nil Agent
-// yields run.ErrInvalidOptions; a missing external tool yields
-// ErrUnknownTool; a missing internal Kind yields ErrUnknownInternal.
+// Options.Tools, and passes Options to run.New.
+//
+// Runner also registers one pass-through tool per gated step that
+// carries a child plan. Such a step has no binding, yet the runner
+// confirms it, so its identifier needs a registry entry. See
+// subParentIDs for which steps qualify.
+//
+// A nil Agent yields run.ErrInvalidOptions; a missing external tool
+// yields ErrUnknownTool; a missing internal Kind yields
+// ErrUnknownInternal. A step identifier the registry already holds
+// yields ErrBadDocument.
 func (d *Definition) Runner() (*run.Runner, error) {
 	reg := tools.New()
 	for _, b := range d.Bindings {

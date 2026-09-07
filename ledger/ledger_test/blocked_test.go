@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestBlockedDependencySkipsWork proves a task whose dependency
@@ -20,25 +19,25 @@ func TestBlockedDependencySkipsWork(t *testing.T) {
 	}
 	// Build "root" and "child" (which needs root), then fail root so
 	// the dependent scan blocks child before Run ever sees it.
-	if _, err := l.Admit(ctx, "actor", "root", 1, "root", fixedNow); err != nil {
+	if _, err := l.Admit(ctx, "actor", "root", 1, "root", taskrunFixedNow); err != nil {
 		t.Fatalf("Admit root: %v", err)
 	}
-	if _, err := l.Admit(ctx, "actor", "child", 1, "child", fixedNow, "root"); err != nil {
+	if _, err := l.Admit(ctx, "actor", "child", 1, "child", taskrunFixedNow, "root"); err != nil {
 		t.Fatalf("Admit child: %v", err)
 	}
-	rootFence, err := l.Claim(ctx, "actor", "root", "owner", fixedLease, fixedNow)
+	rootFence, err := l.Claim(ctx, "actor", "root", "owner", taskrunFixedLease, taskrunFixedNow)
 	if err != nil {
 		t.Fatalf("Claim root: %v", err)
 	}
-	if err := l.Complete(ctx, "actor", "root", "owner", rootFence, ledger.StatusFailed, fixedNow); err != nil {
+	if err := l.Complete(ctx, "actor", "root", "owner", rootFence, ledger.StatusFailed, taskrunFixedNow); err != nil {
 		t.Fatalf("Complete root: %v", err)
 	}
 	called := 0
-	err = taskrun.Run(ctx, runOpts(l), taskrun.Task{Key: "child", Seq: 1}, func(context.Context) error {
+	err = ledger.Run(ctx, runOpts(l), ledger.Task{Key: "child", Seq: 1}, func(context.Context) error {
 		called++
 		return nil
 	})
-	if err != taskrun.ErrTaskBlocked {
+	if err != ledger.ErrTaskBlocked {
 		t.Fatalf("Run = %v, want ErrTaskBlocked", err)
 	}
 	if called != 0 {
@@ -62,38 +61,38 @@ func TestBlockedEscapeeReturnsNotClaimedThenBlocked(t *testing.T) {
 	// Admit child naming a "mid" that does not exist yet, then fail
 	// root while mid is still absent, so the failure walk finds
 	// nothing. Admitting mid afterwards inserts it already blocked.
-	if _, err := l.Admit(ctx, "actor", "child", 1, "child", fixedNow, "mid"); err != nil {
+	if _, err := l.Admit(ctx, "actor", "child", 1, "child", taskrunFixedNow, "mid"); err != nil {
 		t.Fatalf("Admit child: %v", err)
 	}
-	if _, err := l.Admit(ctx, "actor", "root", 1, "root", fixedNow); err != nil {
+	if _, err := l.Admit(ctx, "actor", "root", 1, "root", taskrunFixedNow); err != nil {
 		t.Fatalf("Admit root: %v", err)
 	}
-	rootFence, err := l.Claim(ctx, "actor", "root", "owner", fixedLease, fixedNow)
+	rootFence, err := l.Claim(ctx, "actor", "root", "owner", taskrunFixedLease, taskrunFixedNow)
 	if err != nil {
 		t.Fatalf("Claim root: %v", err)
 	}
-	if err := l.Complete(ctx, "actor", "root", "owner", rootFence, ledger.StatusFailed, fixedNow); err != nil {
+	if err := l.Complete(ctx, "actor", "root", "owner", rootFence, ledger.StatusFailed, taskrunFixedNow); err != nil {
 		t.Fatalf("Complete root: %v", err)
 	}
-	if _, err := l.Admit(ctx, "actor", "mid", 1, "mid", fixedNow, "root"); err != nil {
+	if _, err := l.Admit(ctx, "actor", "mid", 1, "mid", taskrunFixedNow, "root"); err != nil {
 		t.Fatalf("Admit mid: %v", err)
 	}
 
 	called := 0
-	task := taskrun.Task{Key: "child", Seq: 1, Needs: []ledger.IdempotencyKey{"mid"}}
+	task := ledger.Task{Key: "child", Seq: 1, Needs: []ledger.IdempotencyKey{"mid"}}
 	work := func(context.Context) error {
 		called++
 		return nil
 	}
-	first := taskrun.Run(ctx, runOpts(l), task, work)
+	first := ledger.Run(ctx, runOpts(l), task, work)
 	if !errors.Is(first, ledger.ErrNotClaimed) {
 		t.Fatalf("first Run = %v, want ledger.ErrNotClaimed", first)
 	}
-	if errors.Is(first, taskrun.ErrTaskBlocked) {
+	if errors.Is(first, ledger.ErrTaskBlocked) {
 		t.Fatalf("first Run = %v, want ledger.ErrNotClaimed, not ErrTaskBlocked", first)
 	}
-	second := taskrun.Run(ctx, runOpts(l), task, work)
-	if !errors.Is(second, taskrun.ErrTaskBlocked) {
+	second := ledger.Run(ctx, runOpts(l), task, work)
+	if !errors.Is(second, ledger.ErrTaskBlocked) {
 		t.Fatalf("second Run = %v, want ErrTaskBlocked", second)
 	}
 	if called != 0 {

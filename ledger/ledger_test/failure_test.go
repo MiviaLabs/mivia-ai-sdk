@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestWorkErrorUnwrapped proves a failed work is returned unwrapped
@@ -18,8 +17,8 @@ func TestWorkErrorUnwrapped(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	workErr := errors.New("build exploded")
-	task := taskrun.Task{Key: "key", Seq: 1}
-	got := taskrun.Run(ctx, runOpts(l), task, func(context.Context) error { return workErr })
+	task := ledger.Task{Key: "key", Seq: 1}
+	got := ledger.Run(ctx, runOpts(l), task, func(context.Context) error { return workErr })
 	if !errors.Is(got, workErr) {
 		t.Fatalf("Run = %v, want the work error", got)
 	}

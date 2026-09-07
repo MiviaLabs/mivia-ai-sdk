@@ -36,6 +36,7 @@ package ledger
   func NewMemStore() (*MemStore)
   func NewMemStoreWithOptions(opts MemStoreOptions) (*MemStore, error)
   func NewSQLiteStore(path string) (*SQLiteStore, error)
+  func Run(ctx context.Context, opts Options, t Task, work func(context.Context) error) (error)
   type Actor string
   type FenceToken uint64
   type IdempotencyKey string
@@ -45,6 +46,13 @@ package ledger
 }
   type MemStoreOptions struct {
   MaxEntries int
+  Now func() time.Time
+}
+  type Options struct {
+  Ledger *Ledger
+  Actor Actor
+  Owner OwnerID
+  Lease time.Duration
   Now func() time.Time
 }
   type OwnerID string
@@ -58,6 +66,12 @@ package ledger
 	Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
 	CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
 	Range(ctx context.Context, fn func(TaskState) bool) error
+}
+  type Task struct {
+  Key IdempotencyKey
+  Seq Sequence
+  Description string
+  Needs []IdempotencyKey
 }
   type TaskState struct {
   Key IdempotencyKey
@@ -80,7 +94,15 @@ package ledger
   var ErrInvalidLease
   var ErrInvalidMaxEntries
   var ErrLeaseActive
+  var ErrNoActor
   var ErrNoKey
+  var ErrNoLease
+  var ErrNoLedger
+  var ErrNoOwner
+  var ErrNoTaskKey
   var ErrNotClaimed
   var ErrNotStale
+  var ErrTaskBlocked
+  var ErrTaskDone
+  var ErrTaskFailed
   var ErrUnknownStatus

@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestRunValidation is table-driven over every validation sentinel and
@@ -20,24 +19,24 @@ func TestRunValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	bt := taskrun.Task{Key: "key", Seq: 1}
+	bt := ledger.Task{Key: "key", Seq: 1}
 	tests := []struct {
 		name string
-		opts taskrun.Options
-		task taskrun.Task
+		opts ledger.Options
+		task ledger.Task
 		want error
 	}{
-		{"no ledger", taskrun.Options{Actor: "actor", Owner: "owner", Lease: fixedLease}, bt, taskrun.ErrNoLedger},
-		{"no owner", taskrun.Options{Ledger: l, Actor: "actor", Lease: fixedLease}, bt, taskrun.ErrNoOwner},
-		{"no actor", taskrun.Options{Ledger: l, Owner: "owner", Lease: fixedLease}, bt, taskrun.ErrNoActor},
-		{"no lease", taskrun.Options{Ledger: l, Actor: "actor", Owner: "owner"}, bt, taskrun.ErrNoLease},
-		{"no key", runOpts(l), taskrun.Task{Seq: 1}, taskrun.ErrNoKey},
-		{"now default", func() taskrun.Options { o := runOpts(l); o.Now = nil; return o }(), bt, nil},
+		{"no ledger", ledger.Options{Actor: "actor", Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrNoLedger},
+		{"no owner", ledger.Options{Ledger: l, Actor: "actor", Lease: taskrunFixedLease}, bt, ledger.ErrNoOwner},
+		{"no actor", ledger.Options{Ledger: l, Owner: "owner", Lease: taskrunFixedLease}, bt, ledger.ErrNoActor},
+		{"no lease", ledger.Options{Ledger: l, Actor: "actor", Owner: "owner"}, bt, ledger.ErrNoLease},
+		{"no key", runOpts(l), ledger.Task{Seq: 1}, ledger.ErrNoTaskKey},
+		{"now default", func() ledger.Options { o := runOpts(l); o.Now = nil; return o }(), bt, nil},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			called := 0
-			got := taskrun.Run(ctx, tc.opts, tc.task, func(context.Context) error {
+			got := ledger.Run(ctx, tc.opts, tc.task, func(context.Context) error {
 				called++
 				return nil
 			})
@@ -80,9 +79,9 @@ func TestValidationEmitsNoAdmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	opts := taskrun.Options{Ledger: l, Actor: "actor", Lease: time.Hour}
-	err = taskrun.Run(ctx, opts, taskrun.Task{Key: "key", Seq: 1}, func(context.Context) error { return nil })
-	if !errors.Is(err, taskrun.ErrNoOwner) {
+	opts := ledger.Options{Ledger: l, Actor: "actor", Lease: time.Hour}
+	err = ledger.Run(ctx, opts, ledger.Task{Key: "key", Seq: 1}, func(context.Context) error { return nil })
+	if !errors.Is(err, ledger.ErrNoOwner) {
 		t.Fatalf("Run = %v, want ErrNoOwner", err)
 	}
 	if admitted != 0 {

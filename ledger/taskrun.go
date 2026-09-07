@@ -1,29 +1,27 @@
-package taskrun
+package ledger
 
 import (
 	"context"
 	"errors"
 	"time"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 )
 
 // Options carries the ledger handle and the ceremony identity for one
 // Run call. Every field is required except Now.
 type Options struct {
-	Ledger *ledger.Ledger
-	Actor  ledger.Actor
-	Owner  ledger.OwnerID
+	Ledger *Ledger
+	Actor  Actor
+	Owner  OwnerID
 	Lease  time.Duration
 	Now    func() time.Time // defaults to time.Now
 }
 
 // Task names one idempotent submission for Run to admit and run.
 type Task struct {
-	Key         ledger.IdempotencyKey
-	Seq         ledger.Sequence
+	Key         IdempotencyKey
+	Seq         Sequence
 	Description string
-	Needs       []ledger.IdempotencyKey
+	Needs       []IdempotencyKey
 }
 
 // Sentinel errors returned by Run during validation and replay.
@@ -36,8 +34,8 @@ var (
 	ErrNoActor = errors.New("taskrun: actor is required")
 	// ErrNoLease reports a non-positive Options.Lease.
 	ErrNoLease = errors.New("taskrun: lease must be positive")
-	// ErrNoKey reports an empty Task.Key.
-	ErrNoKey = errors.New("taskrun: task key is required")
+	// ErrNoTaskKey reports an empty Task.Key.
+	ErrNoTaskKey = errors.New("taskrun: task key is required")
 	// ErrTaskDone reports a key already completed in the ledger.
 	ErrTaskDone = errors.New("taskrun: task already completed")
 	// ErrTaskFailed reports a key already failed in the ledger.
@@ -50,13 +48,13 @@ var (
 // error is the work's own error, unwrapped, when work ran. A task
 // already terminal in the ledger returns its sentinel without running
 // work. A Claim blocked by a live lease returns an error satisfying
-// errors.Is(err, ledger.ErrLeaseActive). A Complete failure joins the
+// errors.Is(err, ErrLeaseActive). A Complete failure joins the
 // returned error; the work result still leads.
 //
 // A bounded Store adds one more outcome: it can delete the record
 // between Admit and Claim, or after the lease expired while work
 // still runs, so Run returns an error satisfying errors.Is(err,
-// ledger.ErrNoKey). Do not merge that sentinel with taskrun.ErrNoKey,
+// ErrNoTaskKey). Do not merge that sentinel with ledger.ErrNoTaskKey,
 // which means an empty Task.Key and is a caller error.
 func Run(ctx context.Context, opts Options, t Task, work func(context.Context) error) error {
 	if opts.Ledger == nil {
@@ -72,7 +70,7 @@ func Run(ctx context.Context, opts Options, t Task, work func(context.Context) e
 		return ErrNoLease
 	}
 	if t.Key == "" {
-		return ErrNoKey
+		return ErrNoTaskKey
 	}
 	nowFn := opts.Now
 	if nowFn == nil {
@@ -88,11 +86,11 @@ func Run(ctx context.Context, opts Options, t Task, work func(context.Context) e
 	}
 	if found {
 		switch st.Status {
-		case ledger.StatusCompleted:
+		case StatusCompleted:
 			return ErrTaskDone
-		case ledger.StatusFailed:
+		case StatusFailed:
 			return ErrTaskFailed
-		case ledger.StatusBlocked:
+		case StatusBlocked:
 			return ErrTaskBlocked
 		}
 	}
@@ -101,9 +99,9 @@ func Run(ctx context.Context, opts Options, t Task, work func(context.Context) e
 		return err
 	}
 	bodyErr := work(ctx)
-	status := ledger.StatusCompleted
+	status := StatusCompleted
 	if bodyErr != nil {
-		status = ledger.StatusFailed
+		status = StatusFailed
 	}
 	completeErr := opts.Ledger.Complete(ctx, opts.Actor, t.Key, opts.Owner, fence, status, nowFn())
 	if bodyErr != nil {

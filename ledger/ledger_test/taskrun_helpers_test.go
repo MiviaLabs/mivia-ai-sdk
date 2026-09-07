@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,25 +6,24 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
-// fixedNow and fixedLease give deterministic tests a shared non-wall
+// taskrunFixedNow and taskrunFixedLease give deterministic tests a shared non-wall
 // clock base, matching the ledger test conventions.
-var fixedNow = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+var taskrunFixedNow = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
-const fixedLease = time.Hour
+const taskrunFixedLease = time.Hour
 
 // runOpts returns a fully valid Options set on a fixed clock, so a
 // test mutates only the field it checks.
-func runOpts(l *ledger.Ledger) taskrun.Options {
-	return taskrun.Options{
+func runOpts(l *ledger.Ledger) ledger.Options {
+	return ledger.Options{
 		Ledger: l,
 		Actor:  "actor",
 		Owner:  "owner",
-		Lease:  fixedLease,
+		Lease:  taskrunFixedLease,
 		Now: func() time.Time {
-			return fixedNow
+			return taskrunFixedNow
 		},
 	}
 }

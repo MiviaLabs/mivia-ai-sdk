@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestAdmitErrorPropagates proves a ledger Admit failure on its
@@ -18,7 +17,7 @@ func TestAdmitErrorPropagates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	err = taskrun.Run(ctx, runOpts(l), taskrun.Task{Key: "key", Seq: 1}, func(context.Context) error {
+	err = ledger.Run(ctx, runOpts(l), ledger.Task{Key: "key", Seq: 1}, func(context.Context) error {
 		return nil
 	})
 	if !errors.Is(err, errProbe) {
@@ -38,7 +37,7 @@ func TestStateErrorPropagates(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	called := 0
-	err = taskrun.Run(ctx, runOpts(l), taskrun.Task{Key: "key", Seq: 1}, func(context.Context) error {
+	err = ledger.Run(ctx, runOpts(l), ledger.Task{Key: "key", Seq: 1}, func(context.Context) error {
 		called++
 		return nil
 	})

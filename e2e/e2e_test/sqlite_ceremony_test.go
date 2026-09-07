@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // openSQLite opens one durable store over path and its ledger. The
@@ -36,15 +35,15 @@ func TestCeremonySurvivesStoreReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "e2e.db")
 	l, store := openSQLite(t, path)
-	opts := taskrun.Options{
+	opts := ledger.Options{
 		Ledger: l, Actor: "e2e-actor", Owner: "e2e-owner", Lease: time.Minute,
 	}
 
 	calls := 0
-	if err := taskrun.Run(ctx, opts,
-		taskrun.Task{Key: "compose", Seq: 1},
+	if err := ledger.Run(ctx, opts,
+		ledger.Task{Key: "compose", Seq: 1},
 		pipelineWork(t, &calls)); err != nil {
-		t.Fatalf("taskrun.Run: %v", err)
+		t.Fatalf("ledger.Run: %v", err)
 	}
 	if calls != 1 {
 		t.Fatalf("work calls = %d, want 1", calls)
@@ -65,13 +64,13 @@ func TestCeremonySurvivesStoreReopen(t *testing.T) {
 	if err != nil || !found || st.Status != ledger.StatusCompleted {
 		t.Fatalf("reopened state = %q,%v,%v, want completed", st.Status, found, err)
 	}
-	replayOpts := taskrun.Options{
+	replayOpts := ledger.Options{
 		Ledger: reopened, Actor: "e2e-actor", Owner: "e2e-owner",
 		Lease: time.Minute,
 	}
-	if err := taskrun.Run(ctx, replayOpts,
-		taskrun.Task{Key: "compose", Seq: 2},
-		pipelineWork(t, &calls)); !errors.Is(err, taskrun.ErrTaskDone) {
+	if err := ledger.Run(ctx, replayOpts,
+		ledger.Task{Key: "compose", Seq: 2},
+		pipelineWork(t, &calls)); !errors.Is(err, ledger.ErrTaskDone) {
 		t.Fatalf("replay = %v, want ErrTaskDone", err)
 	}
 	if calls != 1 {
@@ -96,10 +95,10 @@ func TestCeremonySurvivesStoreReopen(t *testing.T) {
 		t.Fatalf("Admit late: %v", err)
 	}
 	blocked := 0
-	err = taskrun.Run(ctx, replayOpts,
-		taskrun.Task{Key: "late", Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
+	err = ledger.Run(ctx, replayOpts,
+		ledger.Task{Key: "late", Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
 		pipelineWork(t, &blocked))
-	if !errors.Is(err, taskrun.ErrTaskBlocked) {
+	if !errors.Is(err, ledger.ErrTaskBlocked) {
 		t.Fatalf("dependent = %v, want ErrTaskBlocked", err)
 	}
 	if blocked != 0 {

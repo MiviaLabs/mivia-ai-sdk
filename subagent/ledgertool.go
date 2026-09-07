@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -70,20 +69,20 @@ func (t *ledgerTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
 
 // run records one completed task through the full ceremony.
 func (t *ledgerTool) run(ctx context.Context, cmd LedgerCommand) (tools.Out, error) {
-	opts := taskrun.Options{
+	opts := ledger.Options{
 		Ledger: t.ledger,
 		Actor:  t.actor,
 		Owner:  ledger.OwnerID(t.actor),
 		Lease:  t.lease,
 	}
-	task := taskrun.Task{
+	task := ledger.Task{
 		Key:         ledger.IdempotencyKey(cmd.Key),
 		Seq:         ledger.Sequence(cmd.Seq),
 		Description: cmd.Description,
 		Needs:       cmd.Needs,
 	}
 	work := func(context.Context) error { return nil }
-	if err := taskrun.Run(ctx, opts, task, work); err != nil {
+	if err := ledger.Run(ctx, opts, task, work); err != nil {
 		return tools.Out{}, err
 	}
 	return tools.Out{Value: string(ledger.StatusCompleted)}, nil

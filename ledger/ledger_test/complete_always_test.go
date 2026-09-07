@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestCompleteAlwaysLands proves a work function that fails after the
@@ -20,14 +19,14 @@ func TestCompleteAlwaysLands(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	workErr := errors.New("work broke")
-	task := taskrun.Task{Key: "key", Seq: 1}
-	got := taskrun.Run(ctx, runOpts(l), task, func(context.Context) error { return workErr })
+	task := ledger.Task{Key: "key", Seq: 1}
+	got := ledger.Run(ctx, runOpts(l), task, func(context.Context) error { return workErr })
 	if !errors.Is(got, workErr) {
 		t.Fatalf("Run = %v, want the unwrapped work error", got)
 	}
 	// The record now carries the fence Run's Complete used. A second
 	// Complete on the terminal record returns ErrNotClaimed.
-	replayErr := l.Complete(ctx, "actor", "key", "owner", ps.fence, ledger.StatusFailed, fixedNow)
+	replayErr := l.Complete(ctx, "actor", "key", "owner", ps.fence, ledger.StatusFailed, taskrunFixedNow)
 	if !errors.Is(replayErr, ledger.ErrNotClaimed) {
 		t.Fatalf("second Complete = %v, want ErrNotClaimed", replayErr)
 	}

@@ -185,7 +185,7 @@ func TestReplayDifferentMessagesBothProcess(t *testing.T) {
 // concurrent goroutines and asserts the handler ran exactly once,
 // with every reply either a confirmed ack or a "replay:" ErrReplay
 // line. A concurrent duplicate may observe ledger.ErrLeaseActive
-// (still in flight) or taskrun.ErrTaskDone (already completed); both
+// (still in flight) or ledger.ErrTaskDone (already completed); both
 // map to the same wire-visible ErrReplay line, so this test asserts
 // the counter and the reply shape, not which sentinel a given
 // duplicate saw. Run with go test -race.

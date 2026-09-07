@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestReplaySentinels proves a key already completed or failed in the
@@ -25,13 +24,13 @@ func TestReplaySentinels(t *testing.T) {
 		key  ledger.IdempotencyKey
 		want error
 	}{
-		{name: "completed", key: "done", want: taskrun.ErrTaskDone},
-		{name: "failed", key: "broke", want: taskrun.ErrTaskFailed},
+		{name: "completed", key: "done", want: ledger.ErrTaskDone},
+		{name: "failed", key: "broke", want: ledger.ErrTaskFailed},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			called := 0
-			err := taskrun.Run(ctx, runOpts(l), taskrun.Task{Key: tc.key, Seq: 2}, func(context.Context) error {
+			err := ledger.Run(ctx, runOpts(l), ledger.Task{Key: tc.key, Seq: 2}, func(context.Context) error {
 				called++
 				return nil
 			})
@@ -45,17 +44,17 @@ func TestReplaySentinels(t *testing.T) {
 	}
 }
 
-// finish admits, claims, and completes key as status at fixedNow.
+// finish admits, claims, and completes key as status at taskrunFixedNow.
 func finish(t *testing.T, l *ledger.Ledger, ctx context.Context, key ledger.IdempotencyKey, status machine.Status) {
 	t.Helper()
-	if _, err := l.Admit(ctx, "actor", key, 1, "boot", fixedNow); err != nil {
+	if _, err := l.Admit(ctx, "actor", key, 1, "boot", taskrunFixedNow); err != nil {
 		t.Fatalf("Admit %s: %v", key, err)
 	}
-	fence, err := l.Claim(ctx, "actor", key, "owner", fixedLease, fixedNow)
+	fence, err := l.Claim(ctx, "actor", key, "owner", taskrunFixedLease, taskrunFixedNow)
 	if err != nil {
 		t.Fatalf("Claim %s: %v", key, err)
 	}
-	if err := l.Complete(ctx, "actor", key, "owner", fence, status, fixedNow); err != nil {
+	if err := l.Complete(ctx, "actor", key, "owner", fence, status, taskrunFixedNow); err != nil {
 		t.Fatalf("Complete %s: %v", key, err)
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -70,7 +69,7 @@ func TestTaskrunWrapsARun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ledger.New: %v", err)
 	}
-	opts := taskrun.Options{
+	opts := ledger.Options{
 		Ledger: l,
 		Actor:  "e2e-actor",
 		Owner:  "e2e-owner",
@@ -79,10 +78,10 @@ func TestTaskrunWrapsARun(t *testing.T) {
 
 	// The composed task runs the pipeline exactly once.
 	calls := 0
-	err = taskrun.Run(ctx, opts, taskrun.Task{Key: "compose", Seq: 1},
+	err = ledger.Run(ctx, opts, ledger.Task{Key: "compose", Seq: 1},
 		pipelineWork(t, &calls))
 	if err != nil {
-		t.Fatalf("taskrun.Run: %v", err)
+		t.Fatalf("ledger.Run: %v", err)
 	}
 	if calls != 1 {
 		t.Fatalf("work calls = %d, want 1", calls)
@@ -93,9 +92,9 @@ func TestTaskrunWrapsARun(t *testing.T) {
 	}
 
 	// A replay of the completed key never re-runs the work.
-	err = taskrun.Run(ctx, opts, taskrun.Task{Key: "compose", Seq: 2},
+	err = ledger.Run(ctx, opts, ledger.Task{Key: "compose", Seq: 2},
 		pipelineWork(t, &calls))
-	if !errors.Is(err, taskrun.ErrTaskDone) {
+	if !errors.Is(err, ledger.ErrTaskDone) {
 		t.Fatalf("replay = %v, want ErrTaskDone", err)
 	}
 	if calls != 1 {
@@ -123,10 +122,10 @@ func TestTaskrunWrapsARun(t *testing.T) {
 	}
 	for _, key := range []ledger.IdempotencyKey{"child", "late"} {
 		blockedCalls := 0
-		err = taskrun.Run(ctx, opts,
-			taskrun.Task{Key: key, Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
+		err = ledger.Run(ctx, opts,
+			ledger.Task{Key: key, Seq: 1, Needs: []ledger.IdempotencyKey{"dep"}},
 			pipelineWork(t, &blockedCalls))
-		if !errors.Is(err, taskrun.ErrTaskBlocked) {
+		if !errors.Is(err, ledger.ErrTaskBlocked) {
 			t.Fatalf("dependent %s = %v, want ErrTaskBlocked", key, err)
 		}
 		if blockedCalls != 0 {

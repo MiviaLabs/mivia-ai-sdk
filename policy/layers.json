@@ -66,8 +66,7 @@
       "envelope",
       "events",
       "ledger",
-      "room",
-      "taskrun"
+      "room"
     ],
     "durablefence": [],
     "e2e": [
@@ -94,8 +93,8 @@
       "events"
     ],
     "ledger": [
-      "machine",
-      "events"
+      "events",
+      "machine"
     ],
     "longtermmemory": [],
     "machine": [
@@ -150,13 +149,9 @@
       "provider",
       "room",
       "scheduler",
-      "taskrun",
       "tools",
       "trace",
       "trigger"
-    ],
-    "taskrun": [
-      "ledger"
     ],
     "toolcallctx": [
       "provider"

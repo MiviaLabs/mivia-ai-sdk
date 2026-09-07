@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-two packages and the import edges
+The diagram shows the forty-one packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
@@ -81,7 +81,6 @@ flowchart LR
     dispatch --> events
     dispatch --> ledger
     dispatch --> room
-    dispatch --> taskrun
     agentrun --> agent
     agentrun --> channel
     agentrun --> contextbudget
@@ -93,7 +92,6 @@ flowchart LR
     agentrun --> memory
     agentrun --> tools
     agentrun --> trace
-    taskrun --> ledger
     subagent --> agent
     subagent --> agentrun
     subagent --> channel
@@ -108,7 +106,6 @@ flowchart LR
     subagent --> provider
     subagent --> room
     subagent --> scheduler
-    subagent --> taskrun
     subagent --> tools
     subagent --> trace
     subagent --> trigger
@@ -317,13 +314,11 @@ flowchart LR
   return never fails a line. `Send` posts a batch of signed messages
   as one NDJSON request and parses the reply into one `SendResult` per
   line, in order. `dispatch` imports `agent`, `envelope`, `events`,
-  `ledger`, `room`, and `taskrun`; it carries no third-party or
+  `ledger`, and `room`; it carries no third-party or
   network-transport import beyond the standard library `net/http`. See
   [packages/dispatch.md](packages/dispatch.md).
 - `agentrun/` — the config-struct composition layer over `agent.Run`.
   See [packages/agentrun.md](packages/agentrun.md).
-- `taskrun/` — the ledger admit, claim, run, complete ceremony around
-  one work func. See [packages/taskrun.md](packages/taskrun.md).
 - `subagent/` — the SDK's blocks as tools. `AsTool` wraps a built
   runner as a spawnable subagent tool behind a depth guard, `RunAll`
   joins concurrent spawns, eleven internal tools expose the blocks, and
@@ -421,7 +416,11 @@ flowchart LR
   `ledger` also provides `SQLiteStore`, `NewSQLiteStore`, and `Close`:
   a durable `Store` backed by `modernc.org/sqlite`, next to `MemStore`.
   The default build never compiles it, so a `MemStore`-only caller
-  pays no dependency cost. See [packages/ledger.md](packages/ledger.md).
+  pays no dependency cost. The package also holds the one-task
+  ceremony `Run` with `Options` and `Task`: it admits, claims, runs,
+  and completes one work func under ledger admission, maps the work
+  result onto the ledger status, and returns the work's own error.
+  See [packages/ledger.md](packages/ledger.md).
 - `durablefence/` — a test-only conformance kit. It provides
   `Scenario`, `Validate`, `ErrIncompleteScenario`, seven `Check*`
   functions, and `RunAll`. A caller wires its own claim, takeover,

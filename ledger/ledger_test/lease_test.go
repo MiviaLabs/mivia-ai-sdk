@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestPreclaimedLeaseRejected proves a key claimed under a live lease
@@ -27,14 +26,14 @@ func TestPreclaimedLeaseRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	if _, err := l.Admit(ctx, "actor", "key", 1, "boot", fixedNow); err != nil {
+	if _, err := l.Admit(ctx, "actor", "key", 1, "boot", taskrunFixedNow); err != nil {
 		t.Fatalf("Admit: %v", err)
 	}
-	if _, err := l.Claim(ctx, "actor", "key", "owner-a", fixedLease, fixedNow); err != nil {
+	if _, err := l.Claim(ctx, "actor", "key", "owner-a", taskrunFixedLease, taskrunFixedNow); err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	called := 0
-	err = taskrun.Run(ctx, runOpts(l), taskrun.Task{Key: "key", Seq: 1}, func(context.Context) error {
+	err = ledger.Run(ctx, runOpts(l), ledger.Task{Key: "key", Seq: 1}, func(context.Context) error {
 		called++
 		return nil
 	})

@@ -1,4 +1,4 @@
-package taskrun_test
+package ledger_test
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestCeremonyEmitsOrder proves a successful Run emits Admitted,
@@ -29,8 +28,8 @@ func TestCeremonyEmitsOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	task := taskrun.Task{Key: "key", Seq: 1, Description: "build"}
-	if err := taskrun.Run(ctx, runOpts(l), task, func(context.Context) error { return nil }); err != nil {
+	task := ledger.Task{Key: "key", Seq: 1, Description: "build"}
+	if err := ledger.Run(ctx, runOpts(l), task, func(context.Context) error { return nil }); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
 	want := []events.Name{ledger.AdmittedEvent, ledger.ClaimedEvent, ledger.CompletedEvent}

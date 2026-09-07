@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // echoHandler restates the message payload it receives.
@@ -78,7 +77,7 @@ func TestProcessLine_EmitIsBestEffort(t *testing.T) {
 			return echoHandler{}, nil
 		},
 		bus: events.New(),
-		taskOpts: taskrun.Options{
+		taskOpts: ledger.Options{
 			Ledger: led,
 			Actor:  ledger.Actor("endpoint-1"),
 			Owner:  ledger.OwnerID("endpoint-1"),

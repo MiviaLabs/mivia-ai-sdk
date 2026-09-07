@@ -30,7 +30,11 @@ var (
 	ErrCallFailed = errors.New("contextsummary: summary call failed")
 	// ErrSummarySkipped is the sentinel a summarize adapter returns
 	// to decline summary injection; the concrete Summarizer never
-	// returns it.
+	// returns it. An adapter may wrap it with a reason, for example
+	// fmt.Errorf("%w: %s", ErrSummarySkipped, reason); agentloop's
+	// summarizeDropped matches the skip through errors.Is, so a
+	// wrapped sentinel still takes the skip path and the wrapping
+	// error's own message carries the reason to the caller.
 	ErrSummarySkipped = errors.New("contextsummary: summary skipped")
 )
 

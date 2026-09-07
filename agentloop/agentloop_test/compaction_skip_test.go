@@ -233,11 +233,104 @@ func TestRecoverySkipWithoutPriorReturnsOriginalErr(t *testing.T) {
 	}
 }
 
+// TestHostStyleWindowMapping proves the host-style mapping the
+// summarizer addendum's "Effective thresholds for host-style
+// configs" section names: TriggerPercent 100 with TargetTokens
+// MaxTokens/2 reaches an exact 80% trigger and 50% target of
+// MaxTokens, for a MaxTokens that is a multiple of five (so Reserve
+// carries no floor rounding of its own). This is the parity anchor a
+// host wiring test mirrors: agentloop_adoption.go's own
+// TriggerPercent/TargetPercent 80/50 pair reaches only an effective
+// 64%/40% (TestDeriveWindowEffectiveThresholds pins that), so a host
+// that wants a literal 80%/50% trigger against its own context
+// ceiling must use this mapping instead.
+func TestHostStyleWindowMapping(t *testing.T) {
+	const maxTokens = 1000
+	w := plan.Window{
+		MaxTokens:  maxTokens,
+		Reserve:    maxTokens / 5,
+		Compaction: plan.Compaction{TriggerPercent: 100, TargetTokens: maxTokens / 2},
+	}
+	if err := w.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	if got, want := w.CompactTrigger(), maxTokens*80/100; got != want {
+		t.Fatalf("CompactTrigger() = %d, want %d (exactly 80%% of MaxTokens %d)", got, want, maxTokens)
+	}
+	if got, want := w.CompactTarget(), maxTokens/2; got != want {
+		t.Fatalf("CompactTarget() = %d, want %d (exactly 50%% of MaxTokens %d)", got, want, maxTokens)
+	}
+}
+
+// wrappedSkipSummarizer returns plan.ErrSummarySkipped wrapped with a
+// caller-chosen reason, the shape an adapter uses to carry a
+// classified skip reason (contextsummary.md's Option B: no SDK API
+// change, the sentinel travels wrapped).
+type wrappedSkipSummarizer struct {
+	reason string
+}
+
+func (s *wrappedSkipSummarizer) Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error) {
+	return plan.Summary{}, fmt.Errorf("%w: %s", plan.ErrSummarySkipped, s.reason)
+}
+
+// TestCompactionSkipWrappedSentinelStillSkips proves a summarizer
+// that wraps plan.ErrSummarySkipped with a reason still takes the
+// skip path: summarizeDropped matches it through errors.Is, so the
+// planning path drops the messages quietly and Run proceeds with no
+// surfaced error, exactly like the bare-sentinel case in
+// TestCompactionSkipWithoutPriorDropsQuietly.
+func TestCompactionSkipWrappedSentinelStillSkips(t *testing.T) {
+	big := strings.Repeat("a", 200)
+	msgs := []provider.Message{
+		{Role: provider.RoleSystem, Content: "s"},
+		{Role: provider.RoleUser, Content: big},
+		{Role: provider.RoleUser, Content: "final"},
+	}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	reg := tools.New()
+	sc := &scriptedCompleter{responses: []provider.Response{
+		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
+	}}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: &wrappedSkipSummarizer{reason: "summarizer disabled by policy"},
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	res, err := loop.Run(context.Background(), msgs)
+	if err != nil {
+		t.Fatalf("Run() = %v, want nil: a wrapped skip sentinel must still take the skip path", err)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
+	}
+	_, reqs := completerRequests(sc)
+	sent := reqs[0].Messages
+	if got := summaryNamed(sent); got != 0 {
+		t.Fatalf("summary messages = %d, want 0: a skip, wrapped or not, injects nothing with no prior", got)
+	}
+	for _, m := range sent {
+		if strings.Contains(m.Content, big) {
+			t.Fatalf("dropped message still in the sent history: %+v", m)
+		}
+	}
+}
+
 // TestValidateSummarizerInterfaceNilChecks proves the interface nil
-// check in Options.Validate: an untyped nil Summarizer with Window set
-// fails ErrInvalidOptions naming Summarizer, and a typed nil
-// (*plan.Summarizer)(nil) passes, documenting the typed-nil
-// warning on the Summarizer interface.
+// check in Options.Validate catches both nil shapes: an untyped nil
+// Summarizer with Window set fails ErrInvalidOptions naming
+// Summarizer, and so does a typed nil (*plan.Summarizer)(nil), which
+// Validate detects through a type assertion against that one
+// sanctioned concrete type, since it is not nil as a plain interface
+// comparison.
 func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
 	w := plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
 	opts := agentloop.Options{
@@ -257,7 +350,11 @@ func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
 	}
 	var typedNil *plan.Summarizer
 	opts.Compaction.Summarizer = typedNil
-	if err := opts.Validate(); err != nil {
-		t.Fatalf("Validate() = %v, want nil: a typed nil passes the nil check, which is the documented warning", err)
+	err = opts.Validate()
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() = %v, want ErrInvalidOptions for a typed nil Summarizer too", err)
+	}
+	if !strings.Contains(err.Error(), "Summarizer") {
+		t.Fatalf("Validate() = %v, want it to name Summarizer", err)
 	}
 }

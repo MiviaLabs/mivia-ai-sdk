@@ -1,7 +1,9 @@
 # Plan: durablefence
 
-Status: shipped. Sequenced after `ledger` (phase 34; see
-`docs/plans/ledger.md`), which wires this kit into
+Status: superseded, see docs/plans/ledger/ledgertest.md. The
+`durablefence` package folded into `ledger/ledgertest`. This plan
+stays as history. Sequenced after `ledger` (phase 34; see
+`docs/plans/ledger.md`), which wired this kit into
 `ledger/ledger_test/scenario_test.go` as its named-caller proof.
 
 ### Amendment: close the missing happy-path Mutate check

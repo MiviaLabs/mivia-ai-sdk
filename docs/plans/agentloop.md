@@ -5576,6 +5576,11 @@ Outside:
 
 Status: shipped.
 
+Note: this addendum predates the `contextplan` to `context/plan`
+rename (docs/plans/context/plan.md). Every `contextsummary.` prose
+reference below is the historical package name; the shipped code
+already uses `plan.`, the current import name for `context/plan`.
+
 ### Addendum goal
 
 Four changes land in one commit. `Options.Summarizer` becomes an
@@ -6515,6 +6520,135 @@ Changed tests, names kept, bodies flipped; the name-kept precedent is
 - No conformance vector applies; `agentloop` carries no wire format
   of its own.
 
+## Addendum: reject a typed-nil Summarizer in Validate
+
+Status: shipped.
+
+Note: this addendum was written and landed against the pre-split
+field path `Options.Summarizer`; the Options and Extensions split
+addendum above renamed it to `Options.Compaction.Summarizer` in the
+same merge. Every bullet below uses the post-split path.
+
+### Addendum goal
+
+Close the typed-nil gap the summarizer-interface addendum documented
+as a warning. `Options.Validate` now rejects `(*plan.Summarizer)(nil)`
+the same way it rejects an untyped nil `Summarizer`.
+
+### Addendum bug
+
+A caller who assigns a typed nil, `var s *plan.Summarizer; opts.Summarizer
+= s`, produces a non-nil `Summarizer` interface value: the interface
+carries a type and a nil pointer, so `opts.Summarizer == nil` is
+false. Before this addendum, `Validate` passed such an `Options`
+through, and the first `Summarize` call inside `compactHistory` ran a
+method on a nil receiver and panicked. `EnableCompaction` and
+`plan.NewSummarizer`, the two sanctioned constructors, never produce
+this value; only a caller who hand-builds the field can hit it. AGENTS.md
+requires an invariant a comment states to live in `Validate`, not the
+comment alone; the prior text stated the panic as a documented warning
+with no enforcement, which is exactly that gap.
+
+### Addendum decision: a type assertion, not reflection or a documentation-only warning
+
+Three options were weighed, mirroring the shape of the nil-schema-lookup
+addendum decision above.
+
+- Option A: reflect over the interface value inside `Validate` and
+  reject any nil pointer, whatever the concrete type.
+- Option B (chosen): assert the field against the one sanctioned
+  concrete type, `*plan.Summarizer`, and reject a nil pointer of that
+  type.
+- Option C: keep the warning as prose only, and leave the panic
+  reachable from a hand-built `Options`.
+
+Option A was tried first and reverted: `semgrep/sdk-standards.yml`'s
+`sdk.go.no-reflection-in-packages` rule blocks every `reflect.*` call
+outside a `_test.go` file, unconditionally, and `make verify` failed
+on it. `agentloop`'s own context-planning addendum already states the
+module's convention this rule enforces: "reflection in `agentloop` is
+forbidden by this module's no-third-party, no-reflection-mapping
+convention." Option C repeats the gap AGENTS.md flags: a comment
+stating a rule with no `Validate` enforcement.
+
+Option B is chosen. `EnableCompaction` and `plan.NewSummarizer` are
+the interface's only two sanctioned constructors, and both return
+`*plan.Summarizer`; the typed-nil footgun is reachable only by
+hand-assigning that one concrete type instead of using a constructor.
+A direct type assertion catches exactly that footgun with no
+reflection, at the cost of not catching a nil pointer of some other,
+unsanctioned `Summarizer` implementation the module cannot name. The
+doc comment states this narrower scope explicitly, so the check's
+limit is not overclaimed.
+
+### Addendum scope
+
+Inside:
+
+- `Options.Validate`'s `Compaction.Window` branch: after the
+  existing `o.Compaction.Summarizer == nil` check, a new check
+  asserts `p, ok := o.Compaction.Summarizer.(*plan.Summarizer); ok &&
+  p == nil`, still returning `ErrSummarizerRequired`.
+- The `Summarizer` interface doc comment (`agentloop/options.go`)
+  states the type-assertion check and its narrower scope: it catches
+  a nil `*plan.Summarizer`, not a nil pointer of an arbitrary custom
+  `Summarizer` implementation.
+- `TestValidateSummarizerInterfaceNilChecks`
+  (`agentloop/agentloop_test/compaction_skip_test.go`) flips its typed-nil
+  case from asserting `Validate() == nil` to asserting
+  `errors.Is(err, agentloop.ErrSummarizerRequired)`.
+- Every prior reference to the typed-nil case "passing" `Validate", in
+  this file and in `docs/packages/agentloop.md`, is superseded by this
+  section: a nil `*plan.Summarizer` now fails `Validate` with
+  `ErrSummarizerRequired`.
+
+Outside:
+
+- `ErrSummarizerRequired` itself: unchanged sentinel, unchanged text.
+- No change to `EnableCompaction` or `plan.NewSummarizer`; neither
+  constructor could produce a typed nil before, and neither can now.
+- No API surface change: `Validate`'s signature and documented
+  first-failure ordering are unchanged (the `Compaction.Window`
+  branch's internal check order is not part of the locked API).
+- A nil pointer of a custom `Summarizer` implementation outside
+  `*plan.Summarizer`: not caught, and not claimed to be. See the
+  decision above.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/compaction_skip_test.go`:
+
+- `TestValidateSummarizerInterfaceNilChecks` — updated: a typed nil
+  `(*plan.Summarizer)(nil)` now fails `Validate` with
+  `errors.Is(err, agentloop.ErrSummarizerRequired)`, the same
+  assertion already used for the untyped-nil case just above it.
+- `TestCompactionSkipWrappedSentinelStillSkips` — a summarizer that
+  wraps `plan.ErrSummarySkipped` with a reason
+  (`fmt.Errorf("%w: %s", ...)`) still takes the skip path: `Run`
+  proceeds with no surfaced error and the dropped message stays
+  dropped, pinning the wrapped-sentinel contract the sentinel's own
+  doc comment now states.
+- `TestHostStyleWindowMapping` — `TriggerPercent: 100` with
+  `TargetTokens: MaxTokens/2` reaches an exact 80%/50% trigger and
+  target of `MaxTokens`, the parity anchor for a host wiring its own
+  window to a literal percent of its context ceiling, not the
+  effective 64%/40% `deriveWindow` reaches with its own 80/50 pair.
+
+In `agentloop/capability_derivation_test.go`:
+
+- `TestDeriveWindowEffectiveThresholds` — for `MaxTokens` 1000 and
+  1003, `deriveWindow`'s `CompactTrigger()` and `CompactTarget()`
+  equal the floored effective 64% and 40% of `MaxTokens`, pinning the
+  percent math the doc and comment fixes above state.
+
+### Addendum verification
+
+- `make verify` passes.
+- `go test -race ./agentloop/...` passes.
+- `python3 scripts/check_prose.py` passes.
+- No `api/agentloop.txt` diff: the new check is inline inside
+  `Validate`, and `Validate`'s exported signature is unchanged.
+
 ## Addendum: collapse validation sentinels, fix Definitions order
 
 Status: shipped
@@ -6540,7 +6674,9 @@ One new sentinel, `ErrInvalidOptions`, replaces the 14 deleted ones:
 The wrapped message names the field and the rule, for example
 `"Completer: required"` or `"HeartbeatInterval: requires a non-nil
 Bus"`. Every remaining sentinel keeps a return site outside these
-three `Validate` methods and stays unchanged.
+three `Validate` methods and stays unchanged. This supersedes the
+typed-nil-Summarizer addendum above: its `ErrSummarizerRequired`
+return site now returns `ErrInvalidOptions` naming `Summarizer`.
 
 ### Definitions order
 

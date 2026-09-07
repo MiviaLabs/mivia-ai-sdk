@@ -2,9 +2,15 @@
 
 Status: superseded. Phase 86 folded this package into
 contextplan; the symbols live in contextplan now. See
-docs/plans/agents/phase86_package_consolidation.md.
-repo's `internal/contextmgr`, simplified to this task's contract.
-Compaction is LLM-only; this package is the only summarizer.
+docs/plans/agents/phase86_package_consolidation.md. This package
+ported the summarizer half of the sibling consumer repo's
+`internal/contextmgr`, simplified to this task's contract.
+Compaction is LLM-only; this package was the only summarizer.
+
+`context/plan` renamed `contextplan` after this plan shipped; see
+docs/plans/context/plan.md. Every `contextplan.` and `contextsummary.`
+symbol reference below is a historical name; the live package is
+`context/plan`.
 
 ## Goal
 

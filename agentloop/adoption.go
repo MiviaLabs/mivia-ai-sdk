@@ -5,10 +5,12 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
-// defaultWindowTrigger and defaultWindowTarget are the hysteresis the
-// derived default Window uses: compact when history crosses 80% of
-// the provider's window, rebuild at 50%. They mirror the values the
-// host-side context managers converge on.
+// defaultWindowTrigger and defaultWindowTarget are Compaction
+// percents. Window.CompactTrigger and CompactTarget price a percent
+// against Budget, not MaxTokens. Budget is 4/5 of MaxTokens here
+// (Reserve below), so 80 and 50 of Budget are an effective 64% and
+// 40% of MaxTokens. See docs/plans/agentloop.md, "Effective
+// thresholds for host-style configs".
 const (
 	defaultWindowTrigger = 80
 	defaultWindowTarget  = 50
@@ -17,8 +19,9 @@ const (
 // deriveWindow returns the default Window the completer's
 // ContextAccountant capability implies, or nil when the completer
 // does not implement the capability or reports a non-positive window.
-// Reserve holds one fifth of the window back for the model's reply,
-// matching the 80% trigger.
+// Reserve holds one fifth of the window back for the model's reply.
+// The trigger and target above price against Budget, so they fire at
+// an effective 64% and 40% of MaxTokens, not 80% and 50%.
 func deriveWindow(completer provider.Completer) *plan.Window {
 	ca, ok := completer.(provider.ContextAccountant)
 	if !ok {

@@ -43,18 +43,17 @@ rules:
       - pattern: reflect.TypeOf
       - pattern: reflect.ValueOf
 
-  - id: sdk.go.no-a2aloopback-import
+  - id: sdk.go.no-a2atest-import
     languages: [go]
     severity: ERROR
-    message: only a2aloopback's own files, a2aclient's test files, and a2aack's loopback test package may import a2aloopback; no production file may (see AGENTS.md).
+    message: only a2atest's own files and a2aclient's test files may import a2aclient/a2atest; no production file may (see AGENTS.md).
     paths:
       include: ["/**/*.go"]
       exclude:
-        - "/a2aloopback/*.go"
+        - "/a2atest/*.go"
         - "/a2aclient/*_test.go"
-        - "/a2aack/a2aack_test/*.go"
     patterns:
-      - pattern-regex: '"github\.com/MiviaLabs/mivia-ai-sdk/a2aloopback(/[^"\n]*)?"'
+      - pattern-regex: '"github\.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest(/[^"\n]*)?"'
 
   # --- Centralization: no string literals where constants exist ---
   - id: sdk.go.no-enum-string-literals

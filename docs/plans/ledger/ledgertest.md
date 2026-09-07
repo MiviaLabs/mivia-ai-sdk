@@ -1,35 +1,47 @@
 # Plan: ledger/ledgertest
 
-Status: shipped.
+Status: shipped. Relocates `durablefence` into `ledger/ledgertest`.
+See `docs/plans/durablefence.md`, marked superseded, for the original
+design history.
 
 ## Goal
 
-Run the durable ledger's claim-and-fence invariants as a conformance
-kit. The kit moved here from the top-level `durablefence` package in
-Phase 86. No production code may import it.
+Give `ledger` its own conformance kit for claim, takeover, and fence
+invariants. The kit proves these invariants against any claim-lease
+implementation, including the concurrent case a sequential test
+cannot reach.
 
 ## Scope
 
-The package stays a test kit built on `testing.TB`. A caller wires its
-own claim, takeover, mutate, release, and fence-reading calls into a
-`Scenario` literal and runs `RunAll`. The kit now lives beside the
-`ledger` package it exercises, under a `test`-style suffix, so the
-public package count stays small and the fixture cannot be mistaken
-for product surface.
+Inside: `Scenario`, `Scenario.Validate`, the seven `Check*` functions,
+and `RunAll`. The package is test-only. No production code may import
+it; it exists to run inside another package's `_test` subdirectory.
+
+Outside: any claim-lease implementation itself. `ledgertest` takes an
+implementation through `Scenario`'s function fields and asserts
+invariants; it never implements a lease store.
 
 ## API
 
-The surface is unchanged from `durablefence`: `Scenario`, `Validate`,
-`ErrIncompleteScenario`, the `Check*` functions, and `RunAll`. The
-package name changes to `ledgertest`.
+The exported surface mirrors `api/ledger/ledgertest.txt`: `Scenario`,
+`Scenario.Validate`, `RunAll`, the seven `Check*` functions, and
+`ErrIncompleteScenario`.
 
 ## Tests
 
-The kit's own tests moved with it. They cover the check functions,
-the negative paths, release on failure, and the reference scenario.
+`ledger/ledgertest/*_test.go` covers the package:
+`TestScenarioValidateComplete`, `TestScenarioValidateMissingField`,
+the `TestCheck*` happy-path set in `checks_test.go`, the
+`TestCheck*CatchesBroken*` negative set in `checks_negative_test.go`,
+the `TestCheck*PropagatesBackendErrors` set in `checks_error_test.go`,
+`TestCheckReleasesHoldOnAssertionFailure`, and
+`TestRunAllComposesOverOneScenario`.
+
+`ledger/ledger_test/scenario_test.go` is the named production caller:
+it wires a `Scenario` against `Ledger.Claim`, `Renew`, `Release`,
+`Takeover`, and `State`.
 
 ## Verification
 
-`make verify` compiles and runs the kit through `ledger`'s test
-targets. The orphan gate carries a `pending_wiring.json` entry, since
-the kit's only callers are `_test` subdirectories.
+`make verify` passes for `ledger/ledgertest`: gofmt, vet, the python
+gates, the Semgrep scan, and the coverage floor at 85.

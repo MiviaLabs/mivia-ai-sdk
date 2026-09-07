@@ -128,10 +128,14 @@ const (
 // implementation returns plan.ErrSummarySkipped to decline
 // summary generation; compactHistory then reuses the prior summary or
 // proceeds without one. Build the field's value only through
-// EnableCompaction or plan.NewSummarizer. Warning: a typed
-// nil (*plan.Summarizer)(nil) stored in the field is not
-// nil as an interface, so Validate's nil check passes and the first
-// Summarize call panics.
+// EnableCompaction or plan.NewSummarizer. A typed nil
+// (*plan.Summarizer)(nil) stored in the field is not nil as an
+// interface; Validate asserts the field against that one sanctioned
+// concrete type and returns ErrInvalidOptions when the assertion
+// finds a nil pointer, the same as an untyped nil. A custom
+// Summarizer of some other pointer type holding a nil receiver is
+// outside this check: only the sanctioned adapter's typed-nil shape
+// is guarded.
 type Summarizer interface {
 	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
 }
@@ -279,15 +283,18 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // failure: Completer required, Tools required, Bounds.Validate (each
 // cap non-negative), Usage requires a non-blank SessionID, a non-nil
 // Budget passes budget.Limits.Validate, a non-nil Compaction.Window
-// passes Window.Validate, requires Compaction.Summarizer, requires
-// Compaction.Calibrated, and excludes Trim, Conclude.Validate (Margin
-// not negative, then Deadline not negative), a positive
-// HeartbeatInterval requires a non-nil Bus, and finally WorkBudget and
-// ToolBudget each pass their own check. The three Extensions checks
-// read the pointer nil-safely; a nil Extensions means every knob at
-// its zero value. Every check in this fixed order returns
-// ErrInvalidOptions, wrapped with the failing field's name and rule;
-// test with errors.Is against ErrInvalidOptions, not message text.
+// passes Window.Validate, requires Compaction.Summarizer (rejecting
+// an untyped nil, and rejecting a nil *plan.Summarizer typed-nil
+// through a direct type assertion, since the module's reflection ban
+// rules out a general check), requires Compaction.Calibrated, and
+// excludes Trim, Conclude.Validate (Margin not negative, then
+// Deadline not negative), a positive HeartbeatInterval requires a
+// non-nil Bus, and finally WorkBudget and ToolBudget each pass their
+// own check. The three Extensions checks read the pointer nil-safely;
+// a nil Extensions means every knob at its zero value. Every check in
+// this fixed order returns ErrInvalidOptions, wrapped with the failing
+// field's name and rule; test with errors.Is against ErrInvalidOptions,
+// not message text.
 func (o Options) Validate() error {
 	if o.Completer == nil {
 		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Completer: required")
@@ -311,6 +318,9 @@ func (o Options) Validate() error {
 			return fmt.Errorf("agentloop: invalid Window: %w", err)
 		}
 		if o.Compaction.Summarizer == nil {
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Summarizer: required when Window is set")
+		}
+		if p, ok := o.Compaction.Summarizer.(*plan.Summarizer); ok && p == nil {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Summarizer: required when Window is set")
 		}
 		if o.Compaction.Calibrated == nil {

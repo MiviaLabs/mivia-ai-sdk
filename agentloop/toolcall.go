@@ -44,8 +44,7 @@ type dedupKey struct {
 // or ErrorPolicyReport-driven error, records its pair in the set once
 // its RoleTool message reaches history, so a later identical retry in
 // the same turn is deduped either way. A deduped call's
-// DuplicateCallNotice content never reaches runOneToolCall or the
-// shaping step.
+// DuplicateCallNotice content never reaches runOneToolCall.
 func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, calls []provider.ToolCall, iteration int, surface runSurface) ([]provider.Message, bool, bool, error) {
 	ordered := append([]provider.ToolCall(nil), calls...)
 	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].Index < ordered[j].Index })

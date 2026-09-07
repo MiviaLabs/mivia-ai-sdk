@@ -151,11 +151,16 @@ def commit_message(root: Path, rev: str) -> str:
 def _diff_base_and_target(cmp_args: list) -> tuple:
     """_diff_base_and_target splits one git-diff arg list into (base,
     target) revs: target None means the worktree. `--cached` diffs the
-    staged tree against HEAD or, with an extra rev, against that rev."""
+    staged tree against HEAD or, with an extra rev, against that rev.
+    An `A..B` range arg splits into base A, target B, so file texts
+    never silently resolve against the worktree."""
     revs = [a for a in cmp_args if not a.startswith("-")]
     if "--cached" in cmp_args:
         base = revs[0] if revs else "HEAD"
         return base, None
+    if revs and ".." in revs[0]:
+        left, _, right = revs[0].partition("..")
+        return left or "HEAD", right or "HEAD"
     if len(revs) >= 2:
         return revs[0], revs[1]
     return revs[0] if revs else "HEAD", None
@@ -359,20 +364,20 @@ def run_rules(diffs: list) -> list:
 
 def resolve_overrides(findings: list, message: str) -> tuple:
     """resolve_overrides splits findings into (unresolved, overridden).
-    One Allow-Test-Change trailer waives one finding. The trailer's
-    reason has no word minimum; a reason of only boilerplate filler
-    words waives nothing."""
+    One Allow-Test-Change trailer waives exactly one finding of its
+    ID: the second finding of the same ID needs a second trailer. The
+    trailer's reason has no word minimum; a reason of only boilerplate
+    filler words waives nothing."""
     waivers: dict = {}
     for kind, m in _TRAILER_RE.findall(message or ""):
         reason_words = [w for w in re.split(r"\s+", m.strip()) if w]
         significant = [w for w in reason_words if w.strip(".,;:!?").lower() not in _BOILERPLATE]
         if any(ch.isalpha() for ch in m) and significant:
             waivers.setdefault(kind, []).append(m.strip())
-    used: set = set()
     unresolved, overridden = [], []
     for f in findings:
         if waivers.get(f.id):
-            used.add((f.id, waivers[f.id][0]))
+            waivers[f.id].pop()
             overridden.append(f)
         else:
             unresolved.append(f)
@@ -469,11 +474,11 @@ def run_probe() -> bool:
     if check_vector_deleted([kept]):
         problems.append("TT09 fired on a kept vector")
 
-    findings = [Finding("TT01", "a_test.go", 1, "m"), Finding("TT04", "a_test.go", 0, "m")]
+    findings = [Finding("TT01", "a_test.go", 1, "m1"), Finding("TT01", "a_test.go", 2, "m2"), Finding("TT04", "a_test.go", 0, "m")]
     msg = "subject\n\nAllow-Test-Change: TT01 feature removed with its tests.\n"
     unresolved, overridden = resolve_overrides(findings, msg)
-    if len(overridden) != 1 or unresolved[0].id != "TT04":
-        problems.append("trailer waiver did not match one finding")
+    if len(overridden) != 1 or [f.id for f in unresolved] != ["TT01", "TT04"]:
+        problems.append("one trailer must waive exactly one finding")
     _junk, overridden2 = resolve_overrides(findings, "Allow-Test-Change: TT01 cleanup\n")
     if overridden2:
         problems.append("boilerplate-only reason waived a finding")

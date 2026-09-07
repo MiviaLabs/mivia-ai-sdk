@@ -93,6 +93,10 @@ var (
 	// ErrEstimatorRequired is Options.Validate's error when Window is
 	// set and Calibrated is nil. Test with errors.Is.
 	ErrEstimatorRequired = errors.New("agentloop: Window requires Calibrated")
+	// ErrNoTokenEstimator is EnableCompaction's error when the
+	// Completer lacks the provider.TokenEstimator capability. Test
+	// with errors.Is.
+	ErrNoTokenEstimator = errors.New("agentloop: Completer does not implement provider.TokenEstimator")
 	// ErrTrimExcluded is Options.Validate's error when both Window and
 	// Trim are set. Test with errors.Is.
 	ErrTrimExcluded = errors.New("agentloop: Window and Trim are mutually exclusive")

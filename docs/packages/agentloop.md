@@ -78,7 +78,7 @@ or a bound trips. The exported surface below mirrors
   `Options`' `Window`, `Summarizer`, and `Calibrated` fields from one
   `Completer`, in one call. The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
-  call fails with `ErrEstimatorRequired` and leaves `Options`
+  call fails with `ErrNoTokenEstimator` and leaves `Options`
   untouched. A minimal entry path is therefore: `anthropic.New`,
   `tools.New`, `Options{Completer, Tools, Bounds: DefaultBounds()}`,
   `EnableCompaction`, `agentloop.New`, `Run`. See

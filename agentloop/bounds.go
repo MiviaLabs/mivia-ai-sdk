@@ -2,7 +2,8 @@ package agentloop
 
 // Bounds groups the loop's numeric caps. Zero means uncapped or
 // serial, per the member's own doc comment.
-type Bounds struct { // MaxIterations bounds the Completer-call count of one Run.
+type Bounds struct {
+	// MaxIterations bounds the Completer-call count of one Run.
 	MaxIterations int
 	// MaxCallsPerTurn bounds one turn's model-requested tool calls.
 	// Zero means unbounded.

@@ -242,7 +242,7 @@ func messagesEqual(a, b provider.Message) bool {
 func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) error {
 	est, ok := completer.(provider.TokenEstimator)
 	if !ok {
-		return ErrEstimatorRequired
+		return ErrNoTokenEstimator
 	}
 	summarizer, err := contextsummary.NewSummarizer(completer)
 	if err != nil {

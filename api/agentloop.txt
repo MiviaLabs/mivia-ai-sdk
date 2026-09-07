@@ -143,6 +143,7 @@ package agentloop
   var ErrMaxTotalTokens
   var ErrNoCompleter
   var ErrNoSchemas
+  var ErrNoTokenEstimator
   var ErrNoTools
   var ErrOverBudget
   var ErrPlanFailed

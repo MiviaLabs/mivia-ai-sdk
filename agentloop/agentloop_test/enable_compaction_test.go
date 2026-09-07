@@ -40,14 +40,14 @@ func (estimatingCompleter) EstimateTokens(req provider.Request) (int, error) {
 }
 
 // TestEnableCompactionRequiresEstimator proves a Completer without
-// the TokenEstimator capability fails with ErrEstimatorRequired and
+// the TokenEstimator capability fails with ErrNoTokenEstimator and
 // leaves the Options untouched.
 func TestEnableCompactionRequiresEstimator(t *testing.T) {
 	var opts agentloop.Options
 	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
 	err := agentloop.EnableCompaction(&opts, minimalCompleter{}, window, 0.25)
-	if !errors.Is(err, agentloop.ErrEstimatorRequired) {
-		t.Fatalf("EnableCompaction err = %v, want ErrEstimatorRequired", err)
+	if !errors.Is(err, agentloop.ErrNoTokenEstimator) {
+		t.Fatalf("EnableCompaction err = %v, want ErrNoTokenEstimator", err)
 	}
 	if opts.Window != nil || opts.Summarizer != nil || opts.Calibrated != nil {
 		t.Fatal("EnableCompaction mutated Options on failure")

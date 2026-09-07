@@ -1,6 +1,8 @@
 package anthropic_test
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,12 +11,25 @@ import (
 )
 
 // TestEstimateTokensUsesCountTokensEndpoint proves EstimateTokens
-// returns the endpoint's exact count for a non-empty request.
+// returns the endpoint's exact count for a non-empty request, and
+// that the count path posts only the fields count_tokens accepts.
 func TestEstimateTokensUsesCountTokensEndpoint(t *testing.T) {
 	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/count_tokens" {
+		if r.URL.Path != "/v1/messages/count_tokens" {
 			http.NotFound(w, r)
 			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		for _, key := range []string{"max_tokens", "stream", "temperature", "tool_choice", "output_config"} {
+			if _, present := body[key]; present {
+				t.Errorf("count_tokens body carries rejected field %q", key)
+			}
+		}
+		if _, present := body["model"]; !present {
+			t.Error("count_tokens body lacks model")
 		}
 		writeJSON(w, http.StatusOK, map[string]int{"input_tokens": 42})
 	})
@@ -95,5 +110,36 @@ func TestEstimateTokensMakesOneAttempt(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("count_tokens endpoint called %d times, want exactly 1", calls)
+	}
+}
+
+// TestEstimateTokensPostsOnlyCountFields decodes the posted body and
+// proves it carries model and messages but no max_tokens: the
+// count_tokens endpoint rejects Messages-only fields.
+func TestEstimateTokensPostsOnlyCountFields(t *testing.T) {
+	var body map[string]json.RawMessage
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Errorf("decode count_tokens body: %v", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"input_tokens": 7})
+	})
+	est := provider.TokenEstimator(fix.client)
+	if _, err := est.EstimateTokens(provider.Request{
+		Model: "claude-test",
+		Messages: []provider.Message{
+			{Role: provider.RoleUser, Content: "hello"},
+		},
+	}); err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if _, ok := body["max_tokens"]; ok {
+		t.Fatalf("count_tokens body carries max_tokens: %s", body["max_tokens"])
+	}
+	for _, key := range []string{"model", "messages"} {
+		if _, ok := body[key]; !ok {
+			t.Fatalf("count_tokens body lacks %q", key)
+		}
 	}
 }

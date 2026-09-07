@@ -4873,6 +4873,8 @@ deletes no test and adds one. The builder does not add a trailer.
 ## Addendum: the agentloop composition example and the Conclude and Bounds groups
 
 Status: shipped. Both parts of this addendum ship as one change.
+Commit 112d0ad later removed `TurnResultBudget`; see the addendum
+"per-batch tool-result size shaping" above.
 
 ### Addendum goal
 
@@ -4911,7 +4913,6 @@ sed -n '/^type Options struct/,/^}/p' agentloop/options.go \
 | `MaxTotalTokens` | `Bounds` | `MaxTotalTokens` |
 | `MaxConcurrentTools` | `Bounds` | `MaxConcurrentTools` |
 | `MaxConsecutiveToolFailures` | `Bounds` | `MaxConsecutiveToolFailures` |
-| `TurnResultBudget` | `Bounds` | `TurnResultBudget` |
 
 ### The new types and the Validate placement
 
@@ -4965,13 +4966,10 @@ type Bounds struct {
 	// MaxConsecutiveToolFailures bounds consecutive all-failing turns.
 	// Zero means unbounded.
 	MaxConsecutiveToolFailures int
-	// TurnResultBudget caps one turn's summed tool-result bytes. Zero
-	// means uncapped.
-	TurnResultBudget int
 }
 
 // Validate checks the caps in a fixed order and returns the first
-// failure: MaxIterations, MaxTotalTokens, TurnResultBudget,
+// failure: MaxIterations, MaxTotalTokens,
 // MaxConcurrentTools, then MaxConsecutiveToolFailures, each not
 // negative.
 func (b Bounds) Validate() error {
@@ -4980,9 +4978,6 @@ func (b Bounds) Validate() error {
 	}
 	if b.MaxTotalTokens < 0 {
 		return ErrMaxTotalTokens
-	}
-	if b.TurnResultBudget < 0 {
-		return ErrTurnResultBudget
 	}
 	if b.MaxConcurrentTools < 0 {
 		return ErrMaxConcurrentTools
@@ -5015,8 +5010,8 @@ Placement decisions:
   consequence: `o.Bounds.Validate()` now runs right after the Tools
   check. `ErrMaxTotalTokens` therefore wins over an invalid Budget,
   where the flat order ran the Budget check first and reached
-  MaxTotalTokens after it. `ErrTurnResultBudget`,
-  `ErrMaxConcurrentTools`, and `ErrMaxConsecutiveToolFailures` move
+  MaxTotalTokens after it. `ErrMaxConcurrentTools` and
+  `ErrMaxConsecutiveToolFailures` move
   with it: they used to run after the Window block, and they now
   return before the SessionID, Budget, and Window checks.
   `ErrConcludeMargin` keeps its place after the Window block.
@@ -5070,10 +5065,10 @@ grep -n 'StartTime' agentloop/*.go | grep -v _test
 
 ### Sentinel preservation
 
-- Seven sentinels keep both name and wording byte-identical:
+- Six sentinels keep both name and wording byte-identical:
   `ErrMaxIterations`, `ErrMaxTotalTokens`, `ErrConcludeMargin`,
-  `ErrConcludeDeadline`, `ErrTurnResultBudget`,
-  `ErrMaxConcurrentTools`, `ErrMaxConsecutiveToolFailures`.
+  `ErrConcludeDeadline`, `ErrMaxConcurrentTools`,
+  `ErrMaxConsecutiveToolFailures`.
 - The message `agentloop: ConcludeMargin must not be negative` stays,
   although the field path becomes `Conclude.Margin`. Only the field
   path that triggers each sentinel moves.
@@ -5121,7 +5116,7 @@ grep -rnE '\b(ConcludeMargin|ConcludeDeadline|ConcludeNotice):' \
     dotted assignment form survives:
 
 ```sh
-grep -rnE '\.(MaxIterations|MaxCallsPerTurn|MaxTotalTokens|ConcludeMargin|ConcludeDeadline|ConcludeNotice|MaxConcurrentTools|MaxConsecutiveToolFailures|TurnResultBudget)[[:space:]]*=' \
+grep -rnE '\.(MaxIterations|MaxCallsPerTurn|MaxTotalTokens|ConcludeMargin|ConcludeDeadline|ConcludeNotice|MaxConcurrentTools|MaxConsecutiveToolFailures)[[:space:]]*=' \
   agentloop/agentloop_test/ e2e/ --include='*.go'
 ```
 
@@ -5285,7 +5280,7 @@ main.go design:
     []string{"upper", "shout"}})`.
   - `Bounds`: `agentloop.Bounds{MaxIterations: 4, MaxCallsPerTurn: 4,
     MaxTotalTokens: 100000, MaxConcurrentTools: 2,
-    MaxConsecutiveToolFailures: 2, TurnResultBudget: 4096}`.
+    MaxConsecutiveToolFailures: 2}`.
   - `Conclude`: `agentloop.Conclude{Margin: 1, Deadline: time.Minute,
     Notice: "Wrap up with your best answer now."}`.
   - `Window`: `&contextplan.Window{MaxTokens: 512,
@@ -5443,7 +5438,7 @@ Inside:
   `contextsummary.Summarizer` from the completer, the
   `contextplan.Calibrated` from its `provider.TokenEstimator`
   capability, and sets all three `Options` fields. A completer
-  without the estimator capability fails with `ErrEstimatorRequired`
+  without the estimator capability fails with `ErrNoTokenEstimator`
   and leaves `Options` untouched.
 - `docs/examples/_agentloop_minimal`, a runnable five-line-wiring
   example; `verify-fast` runs it and asserts its output.

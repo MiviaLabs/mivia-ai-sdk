@@ -6,11 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
-const countTokensPath = "/v1/count_tokens"
+const countTokensPath = "/v1/messages/count_tokens"
+
+// countTokensTimeout bounds one count_tokens round trip. The
+// TokenEstimator interface carries no ctx, so the estimate bounds
+// itself; on timeout the caller falls back to the ratio estimate.
+const countTokensTimeout = 30 * time.Second
 
 // fallbackCharsPerToken is the character-to-token ratio of the
 // fallback estimate. Four is the conventional rule of thumb for
@@ -43,17 +49,31 @@ func (c *Client) EstimateTokens(req provider.Request) (int, error) {
 
 // countTokens posts the request to count_tokens and returns
 // input_tokens. It makes one attempt with no retry schedule: the
-// caller's fallback covers transient failures.
+// caller's fallback covers transient failures. The payload carries
+// only the fields count_tokens accepts: model, messages, system, and
+// tools. A full Messages body would add max_tokens and friends,
+// which the endpoint may reject.
 func (c *Client) countTokens(req provider.Request) (int, error) {
-	body, err := buildRequestBody(c, req, false)
-	if err != nil {
-		return 0, err
+	model := req.Model
+	if model == "" {
+		model = c.opts.Model
 	}
-	payload, err := encodeRequestBody(body)
+	if model == "" {
+		model = DefaultModel
+	}
+	systemBlocks, msgs := convertMessages(req.Messages, false)
+	payload, err := encodeCountTokensBody(countTokensBody{
+		Model:    model,
+		Messages: msgs,
+		System:   systemBlocks,
+		Tools:    convertTools(req.Tools, false),
+	})
 	if err != nil {
 		return 0, fmt.Errorf("anthropic: marshal count_tokens request: %w", err)
 	}
-	httpReq, err := http.NewRequestWithContext(context.Background(), http.MethodPost, c.countTokensEndpoint(), bytes.NewReader(payload))
+	ctx, cancel := context.WithTimeout(context.Background(), countTokensTimeout)
+	defer cancel()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.countTokensEndpoint(), bytes.NewReader(payload))
 	if err != nil {
 		return 0, err
 	}

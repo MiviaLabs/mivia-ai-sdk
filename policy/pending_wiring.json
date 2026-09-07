@@ -27,7 +27,7 @@
       "permanent": true
     },
     "agentloop": {
-      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. The external consumer exists: mivia-agent's internal/agent agentloop_adapter.go (verified 2026-09-07) builds agentloop.Options and sets Model, OnToolCallError, Trim, Surface, StreamingWriter, and ContinueOnStop. Only OnToolError stays at its default there. The docs/examples/_agentloop composition example is the in-repo positive control: verify-fast runs it and asserts its final output. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks.",
+      "reason": "Model tool-calling loop, a composition package meant for an external agent implementation, not another SDK package. The external consumer exists: mivia-agent's internal/agent agentloop_adapter.go (verified 2026-09-07) builds agentloop.Options and sets Model, OnToolCallError, Trim, Surface, StreamingWriter, ContinueOnStop, WorkBudget, ToolBudget, Hooks, and Bus. Only OnToolError stays at its default there. The docs/examples/_agentloop composition example is the in-repo positive control: verify-fast runs it and asserts its final output. agentloop in turn has Scope-gated schema validation, a documented Result-shape contract, structured Audit, Tracer spans, and an explicit ErrorPolicy switch that mivia-agent lacks.",
       "target": "external application code; the live consumer is mivia-agent's internal/agent agentloop_adapter.go",
       "permanent": true
     },

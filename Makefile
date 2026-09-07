@@ -20,6 +20,8 @@ verify-fast:
 	go run ./docs/examples/_agentloop_adoption/ | grep -q '^final: HELLO$$'
 	go vet ./docs/examples/_quickstart/
 	go run ./docs/examples/_quickstart/ | grep -q '^final: HELLO$$'
+	go vet ./docs/examples/_sdksurface/
+	go run ./docs/examples/_sdksurface/ | grep -q '^final: OK$$'
 	go test ./...
 	python3 scripts/check_docs.py
 	python3 scripts/check_structure.py

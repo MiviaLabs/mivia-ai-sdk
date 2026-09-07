@@ -139,19 +139,22 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 		Bounds:    agentloop.Bounds{MaxIterations: 2},
 	}
 	cases := []struct {
-		name    string
-		mutate  func(o *agentloop.Options)
-		wantErr error
+		name      string
+		mutate    func(o *agentloop.Options)
+		wantErr   error
+		wantField string
 	}{
 		{
-			name:    "window without summarizer",
-			mutate:  func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Calibrated = cal },
-			wantErr: agentloop.ErrSummarizerRequired,
+			name:      "window without summarizer",
+			mutate:    func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Calibrated = cal },
+			wantErr:   agentloop.ErrInvalidOptions,
+			wantField: "Summarizer",
 		},
 		{
-			name:    "window without calibrated",
-			mutate:  func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Summarizer = sum },
-			wantErr: agentloop.ErrEstimatorRequired,
+			name:      "window without calibrated",
+			mutate:    func(o *agentloop.Options) { o.Compaction.Window = validWindow; o.Compaction.Summarizer = sum },
+			wantErr:   agentloop.ErrInvalidOptions,
+			wantField: "Calibrated",
 		},
 		{
 			name: "window with both and no trim passes",
@@ -169,7 +172,8 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 				o.Compaction.Calibrated = cal
 				o.Trim = func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) { return msgs, nil }
 			},
-			wantErr: agentloop.ErrTrimExcluded,
+			wantErr:   agentloop.ErrInvalidOptions,
+			wantField: "Trim",
 		},
 		{
 			name: "invalid window fails wrapping contextplan",
@@ -194,6 +198,9 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 			}
 			if !errors.Is(err, c.wantErr) {
 				t.Fatalf("Validate() = %v, want errors.Is %v", err, c.wantErr)
+			}
+			if c.wantField != "" && !strings.Contains(err.Error(), c.wantField) {
+				t.Fatalf("Validate() = %v, want it to name %q", err, c.wantField)
 			}
 		})
 	}

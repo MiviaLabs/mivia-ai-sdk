@@ -1,6 +1,7 @@
 package agentloop
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
@@ -22,12 +23,14 @@ type Conclude struct {
 
 // Validate checks the group in a fixed order and returns the first
 // failure: Margin is not negative, then Deadline is not negative.
+// Every failure returns ErrInvalidOptions, wrapped with the failing
+// field's name; test with errors.Is against ErrInvalidOptions.
 func (c Conclude) Validate() error {
 	if c.Margin < 0 {
-		return ErrConcludeMargin
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Margin: must not be negative")
 	}
 	if c.Deadline < 0 {
-		return ErrConcludeDeadline
+		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Deadline: must be non-negative")
 	}
 	return nil
 }

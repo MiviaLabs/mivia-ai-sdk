@@ -129,14 +129,18 @@ or a bound trips. The exported surface below mirrors
   (`Margin` not negative, then `Deadline` not negative),
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
-  `validate` check. The `Summarizer` requirement is an interface nil
-  check: an untyped nil fails `ErrSummarizerRequired`. A typed nil
+  `validate` check. Every one of these checks returns
+  `ErrInvalidOptions`, wrapped with the failing field's name and the
+  rule it failed; test with `errors.Is` against `ErrInvalidOptions`,
+  not message text. The `Summarizer` requirement is an interface nil
+  check: an untyped nil fails. A typed nil
   `(*context/plan.Summarizer)(nil)` passes the check, because a
   typed nil stored in an interface field is not nil; see the
   `Summarizer` type above for the caveat.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
-  `reg`, skipping a tool with no published schema and one `scope`
-  denies. Fails closed with `ErrNoSchemas` whenever `reg` is
+  `reg`, skipping a tool `scope` denies before its schema is ever
+  read, then failing on a scope-allowed tool with no published
+  schema. Fails closed with `ErrNoSchemas` whenever `reg` is
   non-empty and the offered set ends up empty, whatever the cause. An
   empty `reg` returns an empty set and no error.
 
@@ -144,19 +148,14 @@ or a bound trips. The exported surface below mirrors
 
 Use `errors.Is` to test these.
 
-- `ErrNoCompleter` ("agentloop: completer is required") —
-  `Options.Validate` returns it when `Completer` is nil.
-- `ErrNoTools` ("agentloop: tools registry is required") —
-  `Options.Validate` returns it when `Tools` is nil.
-- `ErrMaxIterations` ("agentloop: MaxIterations must be non-negative") —
-  `Options.Validate` returns it for a negative `Bounds.MaxIterations`.
-  `Run` never returns it; hitting `Bounds.MaxIterations` at run time is a
-  graceful `StopMaxIterations` stop, not an error.
-- `ErrMaxConcurrentTools` ("agentloop: MaxConcurrentTools must not be
-  negative") — `Options.Validate` returns it for a negative
-  `Bounds.MaxConcurrentTools`.
-- `ErrMaxConsecutiveToolFailures` — `Options.Validate` returns it
-  for a negative `Bounds.MaxConsecutiveToolFailures`.
+- `ErrInvalidOptions` ("agentloop: invalid options") —
+  `Options.Validate`, `Bounds.Validate`, and `Conclude.Validate`
+  return it for every configuration-shape check: a required field
+  left unset, or a numeric field outside its range. The wrapped
+  message names the field and the rule, for example `"Completer:
+  required"` or `"MaxIterations: must be non-negative"`. `Run` never
+  returns it; hitting `Bounds.MaxIterations` at run time is a graceful
+  `StopMaxIterations` stop, not an error.
 - `ErrIncompleteWorkBudget` ("agentloop: WorkBudget requires both Reserve and Refund") —
   `Options.Validate` returns it when `WorkBudget` is set but either
   `Reserve` or `Refund` is nil.
@@ -207,22 +206,6 @@ Use `errors.Is` to test these.
   `context/plan.ErrSummarySkipped` is a skip, not this failure; see
   the skip rules under "Context planning and prompt-too-long
   recovery" below.
-- `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
-  `Options.Validate` returns it when `Window` is set and `Summarizer`
-  is a nil interface. See the typed-nil caveat under
-  `Options.Validate` above.
-- `ErrEstimatorRequired` ("agentloop: Window requires Calibrated") —
-  `Options.Validate` returns it when `Window` is set and `Calibrated`
-  is nil.
-- `ErrTrimExcluded` ("agentloop: Window and Trim are mutually
-  exclusive") — `Options.Validate` returns it when both `Window` and
-  `Trim` are set.
-- `ErrConcludeMargin` ("agentloop: ConcludeMargin must not be
-  negative") — `Options.Validate` returns it for a negative
-  `Conclude.Margin`.
-- `ErrHeartbeatRequiresBus` ("agentloop: HeartbeatInterval requires a
-  non-nil Bus") — `Options.Validate` returns it when
-  `HeartbeatInterval` is positive and `Bus` is nil.
 
 ## Context planning and prompt-too-long recovery
 
@@ -301,8 +284,8 @@ The `opts.Summarizer != nil` gate reads an interface, since the
 `Summarizer` field holds the `Summarizer` interface type; the gate's
 behavior is unchanged.
 Derivation stands down whenever `Trim` is set, because `Validate`
-rejects `Window` and `Trim` together (`ErrTrimExcluded`); a derived
-Window must not manufacture that rejection.
+rejects `Window` and `Trim` together (`ErrInvalidOptions`, naming
+`Trim`); a derived Window must not manufacture that rejection.
 
 Default reasoning effort: `New` checks whether `opts.Completer`
 implements `provider.ReasoningPolicy`. If it does, `New` reads

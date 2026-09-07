@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,17 +25,20 @@ func validOptions() agentloop.Options {
 }
 
 // validateCase names one Options.Validate table row: mutate builds the
-// Options under test, wantErr is checked with errors.Is when
-// non-nil, and wantOK true means Validate must return nil.
+// Options under test. wantErr, when non-nil, is checked with
+// errors.Is. wantField, when non-empty, asserts the error message
+// names that field. wantOK true means Validate must return nil.
 type validateCase struct {
-	name    string
-	mutate  func(agentloop.Options) agentloop.Options
-	wantErr error
-	wantOK  bool
+	name      string
+	mutate    func(agentloop.Options) agentloop.Options
+	wantErr   error
+	wantField string
+	wantOK    bool
 }
 
 // runValidateCases runs every case in cases against validOptions,
-// mutated by c.mutate, and asserts the case's wantOK/wantErr contract.
+// mutated by c.mutate, and asserts the case's wantOK/wantErr/wantField
+// contract.
 func runValidateCases(t *testing.T, cases []validateCase) {
 	t.Helper()
 	for _, c := range cases {
@@ -50,9 +54,13 @@ func runValidateCases(t *testing.T, cases []validateCase) {
 				if !errors.Is(err, c.wantErr) {
 					t.Fatalf("Validate() error = %v, want %v", err, c.wantErr)
 				}
-				return
 			}
-			if err == nil {
+			if c.wantField != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantField) {
+					t.Fatalf("Validate() error = %v, want it to name %q", err, c.wantField)
+				}
+			}
+			if c.wantErr == nil && c.wantField == "" && err == nil {
 				t.Fatalf("Validate() error = nil, want non-nil")
 			}
 		})
@@ -71,59 +79,59 @@ func testOptionsValidateBasics(t *testing.T) {
 		{"nil Completer", func(o agentloop.Options) agentloop.Options {
 			o.Completer = nil
 			return o
-		}, agentloop.ErrNoCompleter, false},
+		}, agentloop.ErrInvalidOptions, "Completer", false},
 		{"nil Tools", func(o agentloop.Options) agentloop.Options {
 			o.Tools = nil
 			return o
-		}, agentloop.ErrNoTools, false},
+		}, agentloop.ErrInvalidOptions, "Tools", false},
 		{"zero MaxIterations passes (unbounded)", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxIterations: 0}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"negative MaxIterations", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxIterations: -1}
 			return o
-		}, agentloop.ErrMaxIterations, false},
+		}, agentloop.ErrInvalidOptions, "MaxIterations", false},
 		{"zero MaxCallsPerTurn passes (unbounded)", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: 0}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"zero MaxTotalTokens passes (unbounded)", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxTotalTokens: 0}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"negative MaxTotalTokens fails", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxTotalTokens: -1}
 			return o
-		}, agentloop.ErrMaxTotalTokens, false},
+		}, agentloop.ErrInvalidOptions, "MaxTotalTokens", false},
 		{"negative MaxCallsPerTurn fails", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: -1}
 			return o
-		}, agentloop.ErrMaxCallsPerTurn, false},
+		}, agentloop.ErrInvalidOptions, "MaxCallsPerTurn", false},
 		{"zero MaxCallsPerTurn passes", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxCallsPerTurn: 0}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"negative Budget field fails", func(o agentloop.Options) agentloop.Options {
 			o.Budget = &budget.Limits{MaxBytes: -1}
 			return o
-		}, nil, false},
+		}, nil, "", false},
 		{"valid Budget passes", func(o agentloop.Options) agentloop.Options {
 			o.Budget = &budget.Limits{MaxBytes: 100}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"Usage without SessionID fails", func(o agentloop.Options) agentloop.Options {
 			o.Usage = provider.NewAccumulator()
 			return o
-		}, agentloop.ErrSessionIDRequired, false},
+		}, agentloop.ErrInvalidOptions, "SessionID", false},
 		{"Usage with SessionID passes", func(o agentloop.Options) agentloop.Options {
 			o.Usage = provider.NewAccumulator()
 			o.SessionID = "sess-1"
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"fully valid options pass", func(o agentloop.Options) agentloop.Options {
 			return o
-		}, nil, true},
+		}, nil, "", true},
 	}
 	runValidateCases(t, cases)
 }
@@ -133,27 +141,27 @@ func testOptionsValidateConclude(t *testing.T) {
 		{"negative ConcludeMargin fails", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: -1}}
 			return o
-		}, agentloop.ErrConcludeMargin, false},
+		}, agentloop.ErrInvalidOptions, "Margin", false},
 		{"zero ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 0}}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"positive ConcludeMargin passes", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 3}}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"negative ConcludeDeadline fails", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: -time.Second}}
 			return o
-		}, agentloop.ErrConcludeDeadline, false},
+		}, agentloop.ErrInvalidOptions, "Deadline", false},
 		{"zero ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: 0}}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"positive ConcludeDeadline passes", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: time.Minute}}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 	}
 	runValidateCases(t, cases)
 }
@@ -164,16 +172,16 @@ func testOptionsValidateConclude(t *testing.T) {
 // errors.Is.
 func TestConcludeValidate(t *testing.T) {
 	cases := []struct {
-		name    string
-		concl   agentloop.Conclude
-		wantErr error
-		wantOK  bool
+		name      string
+		concl     agentloop.Conclude
+		wantField string
+		wantOK    bool
 	}{
-		{"negative Margin", agentloop.Conclude{Margin: -1}, agentloop.ErrConcludeMargin, false},
-		{"zero Margin passes", agentloop.Conclude{Margin: 0}, nil, true},
-		{"negative Deadline", agentloop.Conclude{Deadline: -time.Second}, agentloop.ErrConcludeDeadline, false},
-		{"zero Deadline passes", agentloop.Conclude{Deadline: 0}, nil, true},
-		{"valid group passes", agentloop.Conclude{Margin: 2, Deadline: time.Minute, Notice: "wrap up"}, nil, true},
+		{"negative Margin", agentloop.Conclude{Margin: -1}, "Margin", false},
+		{"zero Margin passes", agentloop.Conclude{Margin: 0}, "", true},
+		{"negative Deadline", agentloop.Conclude{Deadline: -time.Second}, "Deadline", false},
+		{"zero Deadline passes", agentloop.Conclude{Deadline: 0}, "", true},
+		{"valid group passes", agentloop.Conclude{Margin: 2, Deadline: time.Minute, Notice: "wrap up"}, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -184,8 +192,11 @@ func TestConcludeValidate(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, c.wantErr) {
-				t.Fatalf("Validate() error = %v, want %v", err, c.wantErr)
+			if !errors.Is(err, agentloop.ErrInvalidOptions) {
+				t.Fatalf("Validate() error = %v, want ErrInvalidOptions", err)
+			}
+			if !strings.Contains(err.Error(), c.wantField) {
+				t.Fatalf("Validate() error = %v, want it to name %q", err, c.wantField)
 			}
 		})
 	}
@@ -196,23 +207,23 @@ func testOptionsValidateBudgetsAndLimits(t *testing.T) {
 		{"negative MaxConcurrentTools fails", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxConcurrentTools: -1}
 			return o
-		}, agentloop.ErrMaxConcurrentTools, false},
+		}, agentloop.ErrInvalidOptions, "MaxConcurrentTools", false},
 		{"zero MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxConcurrentTools: 0}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"positive MaxConcurrentTools passes", func(o agentloop.Options) agentloop.Options {
 			o.Bounds = agentloop.Bounds{MaxConcurrentTools: 4}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"incomplete ToolBudget fails", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: nil}}
 			return o
-		}, agentloop.ErrIncompleteToolBudget, false},
+		}, agentloop.ErrIncompleteToolBudget, "", false},
 		{"valid ToolBudget passes", func(o agentloop.Options) agentloop.Options {
 			o.Extensions = &agentloop.Extensions{ToolBudget: &agentloop.ToolBudget{Reserve: func(ctx context.Context, calls int) error { return nil }}}
 			return o
-		}, nil, true},
+		}, nil, "", true},
 	}
 	runValidateCases(t, cases)
 }
@@ -225,39 +236,41 @@ func TestOptionsValidateHeartbeat(t *testing.T) {
 		{"positive HeartbeatInterval with nil Bus fails", func(o agentloop.Options) agentloop.Options {
 			o.HeartbeatInterval = 5 * time.Millisecond
 			return o
-		}, agentloop.ErrHeartbeatRequiresBus, false},
+		}, agentloop.ErrInvalidOptions, "HeartbeatInterval", false},
 		{"positive HeartbeatInterval with Bus passes", func(o agentloop.Options) agentloop.Options {
 			o.HeartbeatInterval = 5 * time.Millisecond
 			o.Bus = events.New()
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"zero HeartbeatInterval with nil Bus passes", func(o agentloop.Options) agentloop.Options {
 			o.HeartbeatInterval = 0
 			return o
-		}, nil, true},
+		}, nil, "", true},
 		{"zero HeartbeatInterval with Bus set passes", func(o agentloop.Options) agentloop.Options {
 			o.HeartbeatInterval = 0
 			o.Bus = events.New()
 			return o
-		}, nil, true},
+		}, nil, "", true},
 	}
 	runValidateCases(t, cases)
 }
 
-// TestOptionsValidateHeartbeatOrder proves the HeartbeatInterval check
-// runs before the WorkBudget and ToolBudget checks: an earlier invalid
-// field's error wins over ErrHeartbeatRequiresBus, even when
-// HeartbeatInterval is also positive with a nil Bus.
+// TestOptionsValidateHeartbeatOrder proves the Completer check runs
+// before the HeartbeatInterval check: the earlier invalid field's name
+// wins, even when HeartbeatInterval is also positive with a nil Bus.
 func TestOptionsValidateHeartbeatOrder(t *testing.T) {
 	o := validOptions()
 	o.Completer = nil
 	o.HeartbeatInterval = 5 * time.Millisecond
 	err := o.Validate()
-	if !errors.Is(err, agentloop.ErrNoCompleter) {
-		t.Fatalf("Validate() error = %v, want ErrNoCompleter (earlier in the fixed order)", err)
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions", err)
 	}
-	if errors.Is(err, agentloop.ErrHeartbeatRequiresBus) {
-		t.Fatalf("Validate() error wraps ErrHeartbeatRequiresBus, want the earlier check to win")
+	if !strings.Contains(err.Error(), "Completer") {
+		t.Fatalf("Validate() error = %v, want it to name Completer (earlier in the fixed order)", err)
+	}
+	if strings.Contains(err.Error(), "HeartbeatInterval") {
+		t.Fatalf("Validate() error = %v, want the earlier check to win over HeartbeatInterval", err)
 	}
 }
 
@@ -268,8 +281,11 @@ func TestOptionsValidateCompleterBeforeConclude(t *testing.T) {
 	o.Completer = nil
 	o.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Deadline: -time.Second}}
 	err := o.Validate()
-	if !errors.Is(err, agentloop.ErrNoCompleter) {
-		t.Fatalf("Validate() error = %v, want ErrNoCompleter", err)
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "Completer") {
+		t.Fatalf("Validate() error = %v, want it to name Completer", err)
 	}
 }
 
@@ -291,7 +307,11 @@ func TestExtensionsNilBehavesAsZero(t *testing.T) {
 	}
 	withBadConclude := valid
 	withBadConclude.Extensions = &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: -1}}
-	if err := withBadConclude.Validate(); !errors.Is(err, agentloop.ErrConcludeMargin) {
-		t.Fatalf("Validate() error = %v, want ErrConcludeMargin once Extensions is set", err)
+	err := withBadConclude.Validate()
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions once Extensions is set", err)
+	}
+	if !strings.Contains(err.Error(), "Margin") {
+		t.Fatalf("Validate() error = %v, want it to name Margin", err)
 	}
 }

@@ -18,8 +18,11 @@ import (
 // error before it ever calls Definitions.
 func TestNewPropagatesValidateError(t *testing.T) {
 	_, err := agentloop.New(agentloop.Options{})
-	if !errors.Is(err, agentloop.ErrNoCompleter) {
-		t.Fatalf("New() error = %v, want ErrNoCompleter", err)
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("New() error = %v, want ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "Completer") {
+		t.Fatalf("New() error = %v, want it to name Completer", err)
 	}
 }
 

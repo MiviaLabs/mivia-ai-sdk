@@ -235,7 +235,7 @@ func TestRecoverySkipWithoutPriorReturnsOriginalErr(t *testing.T) {
 
 // TestValidateSummarizerInterfaceNilChecks proves the interface nil
 // check in Options.Validate: an untyped nil Summarizer with Window set
-// fails ErrSummarizerRequired, and a typed nil
+// fails ErrInvalidOptions naming Summarizer, and a typed nil
 // (*plan.Summarizer)(nil) passes, documenting the typed-nil
 // warning on the Summarizer interface.
 func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
@@ -248,8 +248,12 @@ func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
 			Window:     &w,
 			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		}}
-	if err := opts.Validate(); !errors.Is(err, agentloop.ErrSummarizerRequired) {
-		t.Fatalf("Validate() = %v, want ErrSummarizerRequired for an untyped nil Summarizer", err)
+	err := opts.Validate()
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() = %v, want ErrInvalidOptions for an untyped nil Summarizer", err)
+	}
+	if !strings.Contains(err.Error(), "Summarizer") {
+		t.Fatalf("Validate() = %v, want it to name Summarizer", err)
 	}
 	var typedNil *plan.Summarizer
 	opts.Compaction.Summarizer = typedNil

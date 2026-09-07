@@ -123,8 +123,8 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	}
 
 	// Trim set: derivation must stand down, since a derived Window
-	// would otherwise reach ErrTrimExcluded's forbidden combination
-	// without ever going through Validate.
+	// would otherwise reach the Trim/Window forbidden combination
+	// (ErrInvalidOptions) without ever going through Validate.
 	trimmed := Options{
 		Completer: completer,
 		Tools:     reg,

@@ -6514,3 +6514,57 @@ Changed tests, names kept, bodies flipped; the name-kept precedent is
   `scripts/check_labels.py`, and `scripts/check_names.py` pass.
 - No conformance vector applies; `agentloop` carries no wire format
   of its own.
+
+## Addendum: collapse validation sentinels, fix Definitions order
+
+Status: shipped
+
+### Goal
+
+`Options.Validate`, `Bounds.Validate`, and `Conclude.Validate`
+returned 14 distinct sentinels for a shape error: an unset required
+field, or a numeric field outside its range. A caller cannot branch on
+these usefully; each one means "fix the Options value." `Definitions`
+also checked a tool's schema before its scope, so a schema-less tool
+the scope excluded still failed `New`, contradicting `New`'s own doc
+comment.
+
+### Sentinel table
+
+One new sentinel, `ErrInvalidOptions`, replaces the 14 deleted ones:
+`ErrNoCompleter`, `ErrNoTools`, `ErrMaxIterations`, `ErrMaxTotalTokens`,
+`ErrMaxCallsPerTurn`, `ErrMaxConcurrentTools`,
+`ErrMaxConsecutiveToolFailures`, `ErrSessionIDRequired`,
+`ErrSummarizerRequired`, `ErrEstimatorRequired`, `ErrTrimExcluded`,
+`ErrConcludeMargin`, `ErrConcludeDeadline`, `ErrHeartbeatRequiresBus`.
+The wrapped message names the field and the rule, for example
+`"Completer: required"` or `"HeartbeatInterval: requires a non-nil
+Bus"`. Every remaining sentinel keeps a return site outside these
+three `Validate` methods and stays unchanged.
+
+### Definitions order
+
+`Definitions` checked `tools.SchemaOf` before `scope.Allowed`.
+Reordered: `scope.Allowed` now runs first, so a scope-denied tool
+never reaches the schema check. `ErrNoSchema`'s doc comment now says
+"scope-allowed registered tool," matching the code.
+
+### Tests
+
+Every test asserting a deleted sentinel now asserts
+`errors.Is(err, ErrInvalidOptions)` plus `strings.Contains(err.Error(),
+"<Field>")`, in `options_test.go`, `compaction_test.go`,
+`compaction_skip_test.go`, `repeated_tool_failures_test.go`, and
+`loop_wiring_test.go`. No test function was deleted. Two new tests in
+`definitions_test.go`, `TestDefinitionsSkipsScopeDeniedSchemaFreeTool`
+and `TestNewSucceedsWithScopeDeniedSchemaFreeTool`, cover a
+schema-less tool a scope excludes.
+
+### Verification
+
+- `go build ./...` and `go vet ./...` pass.
+- `go test -race ./agentloop/... ./internal/e2e/...` passes.
+- `make api-update` ran once; the `api/agentloop.txt` diff drops 14
+  sentinel lines and adds `ErrInvalidOptions`.
+- `python3 scripts/check_symbol_wiring.py` passes with no new entry
+  needed in `policy/pending_symbols.json`.

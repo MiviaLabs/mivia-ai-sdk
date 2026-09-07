@@ -3,6 +3,7 @@ package agentloop_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
@@ -195,15 +196,20 @@ func TestRepeatedToolFailuresDefaultZeroUnbounded(t *testing.T) {
 	}
 }
 
-// TestRepeatedToolFailuresValidateNegative proves negative MaxConsecutiveToolFailures
-// fails Validate with ErrMaxConsecutiveToolFailures.
+// TestRepeatedToolFailuresValidateNegative proves negative
+// MaxConsecutiveToolFailures fails Validate with ErrInvalidOptions,
+// naming the field.
 func TestRepeatedToolFailuresValidateNegative(t *testing.T) {
 	opts := agentloop.Options{
 		Completer: &scriptedCompleter{},
 		Tools:     tools.New(),
 		Bounds:    agentloop.Bounds{MaxConsecutiveToolFailures: -1},
 	}
-	if err := opts.Validate(); !errors.Is(err, agentloop.ErrMaxConsecutiveToolFailures) {
-		t.Fatalf("Validate() error = %v, want ErrMaxConsecutiveToolFailures", err)
+	err := opts.Validate()
+	if !errors.Is(err, agentloop.ErrInvalidOptions) {
+		t.Fatalf("Validate() error = %v, want ErrInvalidOptions", err)
+	}
+	if !strings.Contains(err.Error(), "MaxConsecutiveToolFailures") {
+		t.Fatalf("Validate() error = %v, want it to name MaxConsecutiveToolFailures", err)
 	}
 }

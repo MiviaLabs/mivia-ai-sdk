@@ -321,36 +321,6 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "toolcallctx.BatchOrderFromContext": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Changed": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Dispatched": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Settled": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.ToolCallFromContext": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.UnsettledBefore": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
     "tools.NewScopeChecked": {
       "reason": "Construction-time-validating pair to NewScope (scope.go:80, added 2026-09-07). No caller yet: an external consumer's own tool-scope type is a separate, unmigrated privilege filter. Target: an external consumer wiring tools.Scope into its own dispatcher and retiring its parallel filter, a larger follow-up, not attempted here.",
       "target": "an external consumer's dispatcher, once it adopts tools.Scope over its own privilege filter",

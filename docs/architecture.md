@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the thirty-eight packages and the import edges
+The diagram shows the thirty-seven packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `durablefence`, `envfile`, `events`,
@@ -70,8 +70,6 @@ flowchart LR
     agentloop --> contextbudget
     agentloop --> schema
     agentloop --> contextplan
-    agentloop --> toolcallctx
-    toolcallctx --> provider
     scheduler --> events
     dispatch --> agent
     dispatch --> envelope
@@ -352,7 +350,7 @@ flowchart LR
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
   `trace`, `events`, `contextbudget`, `schema`,
-  `contextplan`, and `toolcallctx`; it never imports
+  `contextplan`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A

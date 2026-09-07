@@ -1,4 +1,4 @@
-package agentloop_test
+package agentloop
 
 import (
 	"context"
@@ -6,10 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/toolcallctx"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -25,7 +23,7 @@ func (c *ctxObservingTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 	return tools.InOut{Value: string(raw)}, nil
 }
 func (c *ctxObservingTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+	if call, ok := toolCallFromContext(ctx); ok {
 		c.mu.Lock()
 		c.recordedCall = call
 		c.hasCall = true
@@ -48,14 +46,14 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	var postHookFound bool
 	hookReg := events.NewRegistry()
 	_ = hookReg.Add(events.PointPreTool, "test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+		if call, ok := toolCallFromContext(ctx); ok {
 			preHookCall = call
 			preHookFound = true
 		}
 		return true, nil
 	})
 	_ = hookReg.Add(events.PointPostTool, "test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+		if call, ok := toolCallFromContext(ctx); ok {
 			postHookCall = call
 			postHookFound = true
 		}
@@ -65,32 +63,32 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	var busEventCall provider.ToolCall
 	var busEventFound bool
 	bus := events.New()
-	_ = bus.Subscribe(agentloop.EventToolCallEnd, func(ctx context.Context, _ events.Event) error {
-		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+	_ = bus.Subscribe(EventToolCallEnd, func(ctx context.Context, _ events.Event) error {
+		if call, ok := toolCallFromContext(ctx); ok {
 			busEventCall = call
 			busEventFound = true
 		}
 		return nil
 	})
 
-	completer := &scriptedCompleter{
+	completer := &batchScriptedCompleter{
 		responses: []provider.Response{
 			toolCallResponse(provider.ToolCall{ID: "call_abc", Name: "ctx_tool", Arguments: []byte(`{}`)}),
 			{Message: textMessage(provider.RoleAssistant, "Finished")},
 		},
 	}
 
-	opts := agentloop.Options{
+	opts := Options{
 		Completer: completer,
 		Tools:     reg,
 		Hooks:     hookReg,
 		Bus:       bus,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Bounds:    Bounds{MaxIterations: 5},
 	}
 
-	loop, err := agentloop.New(opts)
+	loop, err := New(opts)
 	if err != nil {
-		t.Fatalf("agentloop.New err = %v", err)
+		t.Fatalf("New err = %v", err)
 	}
 
 	_, err = loop.Run(context.Background(), []provider.Message{
@@ -131,7 +129,7 @@ func (p *parallelContextTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 }
 func (p *parallelContextTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	p.mu.Lock()
-	if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+	if call, ok := toolCallFromContext(ctx); ok {
 		p.sawCall = call
 		p.sawOK = true
 	}
@@ -154,7 +152,7 @@ func TestToolCallContext_ParallelRun(t *testing.T) {
 	_ = reg.Add(t2)
 	_ = reg.Add(t3)
 
-	completer := &scriptedCompleter{
+	completer := &batchScriptedCompleter{
 		responses: []provider.Response{
 			toolCallResponse(
 				provider.ToolCall{ID: "call_1", Name: "tool_1", Arguments: []byte(`{}`), Index: 0},
@@ -165,15 +163,15 @@ func TestToolCallContext_ParallelRun(t *testing.T) {
 		},
 	}
 
-	opts := agentloop.Options{
+	opts := Options{
 		Completer: completer,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxConcurrentTools: 3, MaxIterations: 5},
+		Bounds:    Bounds{MaxConcurrentTools: 3, MaxIterations: 5},
 	}
 
-	loop, err := agentloop.New(opts)
+	loop, err := New(opts)
 	if err != nil {
-		t.Fatalf("agentloop.New err = %v", err)
+		t.Fatalf("New err = %v", err)
 	}
 
 	runDone := make(chan struct{})
@@ -219,29 +217,29 @@ func TestToolCallContext_PreToolVeto(t *testing.T) {
 	var vetoedFound bool
 	hookReg := events.NewRegistry()
 	_ = hookReg.Add(events.PointPreTool, "veto-test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+		if call, ok := toolCallFromContext(ctx); ok {
 			vetoedCall = call
 			vetoedFound = true
 		}
 		return false, nil // Veto!
 	})
 
-	completer := &scriptedCompleter{
+	completer := &batchScriptedCompleter{
 		responses: []provider.Response{
 			toolCallResponse(provider.ToolCall{ID: "call_vetoed", Name: "ctx_tool", Arguments: []byte(`{}`)}),
 		},
 	}
 
-	opts := agentloop.Options{
+	opts := Options{
 		Completer: completer,
 		Tools:     reg,
 		Hooks:     hookReg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5},
+		Bounds:    Bounds{MaxIterations: 5},
 	}
 
-	loop, err := agentloop.New(opts)
+	loop, err := New(opts)
 	if err != nil {
-		t.Fatalf("agentloop.New err = %v", err)
+		t.Fatalf("New err = %v", err)
 	}
 
 	res, err := loop.Run(context.Background(), []provider.Message{
@@ -250,7 +248,7 @@ func TestToolCallContext_PreToolVeto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loop.Run err = %v", err)
 	}
-	if res.Stop != agentloop.StopHookVeto {
+	if res.Stop != StopHookVeto {
 		t.Fatalf("Stop = %v, want StopHookVeto", res.Stop)
 	}
 	if !vetoedFound || vetoedCall.ID != "call_vetoed" {
@@ -270,7 +268,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 	var errHookCall provider.ToolCall
 	var errHookFound bool
 
-	completer := &scriptedCompleter{
+	completer := &batchScriptedCompleter{
 		responses: []provider.Response{
 			// Invalid arguments JSON fails argument validation / decode
 			toolCallResponse(provider.ToolCall{ID: "call_bad_args", Name: "ctx_tool", Arguments: []byte(`{invalid-json`)}),
@@ -278,11 +276,11 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 		},
 	}
 
-	opts := agentloop.Options{
+	opts := Options{
 		Completer: completer,
 		Tools:     reg,
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
-			if tc, ok := toolcallctx.ToolCallFromContext(ctx); ok {
+			if tc, ok := toolCallFromContext(ctx); ok {
 				errHookCall = tc
 				errHookFound = true
 			}
@@ -293,12 +291,12 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 				Content:    fmt.Sprintf("recovered: %v", cerr),
 			}, nil
 		},
-		Bounds: agentloop.Bounds{MaxIterations: 5},
+		Bounds: Bounds{MaxIterations: 5},
 	}
 
-	loop, err := agentloop.New(opts)
+	loop, err := New(opts)
 	if err != nil {
-		t.Fatalf("agentloop.New err = %v", err)
+		t.Fatalf("New err = %v", err)
 	}
 
 	res, err := loop.Run(context.Background(), []provider.Message{
@@ -307,7 +305,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loop.Run err = %v", err)
 	}
-	if res.Stop != agentloop.StopNoToolCalls {
+	if res.Stop != StopNoToolCalls {
 		t.Fatalf("Stop = %v, want StopCompleted", res.Stop)
 	}
 	if !errHookFound || errHookCall.ID != "call_bad_args" {

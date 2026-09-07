@@ -26,8 +26,7 @@
       "events",
       "contextbudget",
       "schema",
-      "contextplan",
-      "toolcallctx"
+      "contextplan"
     ],
     "agentrun": [
       "agent",
@@ -140,9 +139,6 @@
       "scheduler",
       "tools",
       "trace"
-    ],
-    "toolcallctx": [
-      "provider"
     ],
     "tools": [],
     "trace": [],

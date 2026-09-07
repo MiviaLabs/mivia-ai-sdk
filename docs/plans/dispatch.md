@@ -286,7 +286,7 @@ HTTP requests, and nothing in `dispatch` tracks processed IDs today.
 This gap fix wraps the resolve-and-handle stage in the ledger's
 admit-claim-complete ceremony, through the `taskrun` package
 (`docs/plans/taskrun.md`), instead of calling `ledger.Ledger` methods
-directly. `taskrun.Run` already returns a named sentinel
+directly. `ledger.Run` already returns a named sentinel
 (`ErrTaskDone`, `ErrTaskFailed`, `ErrTaskBlocked`) for a key already
 terminal in the ledger, without running its work func — this is
 exactly the replay check this gap needs, built and tested already.
@@ -438,7 +438,7 @@ identity already exists and the endpoint is the only claimant.
 
 #### Response on a detected replay
 
-`taskrun.Task.Task` (the ledger's stored payload, `any`) holds only
+`ledger.Task.Task` (the ledger's stored payload, `any`) holds only
 `Description`, a caller-chosen label; `taskrun` never stores the
 original ack. Replaying the original ack line is not cheaply
 achievable without a second, dedicated ack-store, which this gap
@@ -457,28 +457,28 @@ var ErrReplay = errors.New("dispatch: message already processed")
 ```
 
 `dispatch/ladder.go` maps five ledger/taskrun outcomes to `ErrReplay`:
-`taskrun.ErrTaskDone`, `taskrun.ErrTaskFailed`, `taskrun.ErrTaskBlocked`,
+`ledger.ErrTaskDone`, `ledger.ErrTaskFailed`, `ledger.ErrTaskBlocked`,
 `ledger.ErrLeaseActive` (an in-flight duplicate: the original claim
 has not completed yet), and `ledger.ErrNotClaimed` (the race window
-between `taskrun.Run`'s own `State` check and its `Claim` call; see
+between `ledger.Run`'s own `State` check and its `Claim` call; see
 the "replay sentinel list gains ledger.ErrNotClaimed" addendum below).
-Any other error `taskrun.Run` returns is either the work func's own
+Any other error `ledger.Run` returns is either the work func's own
 error, already prefixed `"resolve: "` or `"handle: "` from inside the
 closure, or an operational ledger/store fault; both cases pass
 through `encodeErrorLine` unchanged, so existing stage-prefixed error
 text is unaffected.
 
 ```go
-// replaySentinels lists every taskrun.Run outcome that means "this
+// replaySentinels lists every ledger.Run outcome that means "this
 // key already has, or is already getting, an admitted outcome": a
 // terminal record, or a live claim held by an in-flight duplicate.
 // isReplay walks this list instead of a chained boolean expression,
 // so a mutation to one comparison cannot regroup neighboring terms
 // through operator precedence and stay undetected.
 var replaySentinels = []error{
-	taskrun.ErrTaskDone,
-	taskrun.ErrTaskFailed,
-	taskrun.ErrTaskBlocked,
+	ledger.ErrTaskDone,
+	ledger.ErrTaskFailed,
+	ledger.ErrTaskBlocked,
 	ledger.ErrLeaseActive,
 	ledger.ErrNotClaimed,
 }
@@ -514,8 +514,8 @@ work := func(ctx context.Context) error {
 	}
 	return nil
 }
-task := taskrun.Task{Key: replayKey(m), Seq: 1, Description: string(m.Intent)}
-if err := taskrun.Run(ctx, e.taskOpts, task, work); err != nil {
+task := ledger.Task{Key: replayKey(m), Seq: 1, Description: string(m.Intent)}
+if err := ledger.Run(ctx, e.taskOpts, task, work); err != nil {
 	if isReplay(err) {
 		return encodeErrorLine(fmt.Errorf("replay: %w", ErrReplay))
 	}
@@ -531,14 +531,14 @@ greater than the stored one (`ledger/ledger.go`, `admitEligible`), so
 a constant `Seq` of `1` makes every replay at the same key ineligible
 to rebase, which is the property this gap needs.
 
-`Endpoint` gains one new unexported field, `taskOpts taskrun.Options`,
+`Endpoint` gains one new unexported field, `taskOpts ledger.Options`,
 built once in `New` and reused by every `processLine` call.
 
 #### Accepted limitation: a short lease re-runs work, not only on a crash
 
 The re-run window opens whenever `ReplayLease` is shorter than
 `Handler.Handle`'s actual latency for that message. A crashed claimant
-is one case of this general rule, not the whole rule. `taskrun.Run`
+is one case of this general rule, not the whole rule. `ledger.Run`
 claims once and calls `work(ctx)` synchronously, with no lease renewal
 while `work` runs (`taskrun/taskrun.go:57-99`). So any handler slower
 than the configured lease hits this window during ordinary operation,
@@ -623,7 +623,7 @@ the case set grows:
   either a confirmed ack or a `"replay:"` `dispatch.ErrReplay` line;
   document in the test comment that a concurrent duplicate may
   observe `ledger.ErrLeaseActive` (still in flight) or
-  `taskrun.ErrTaskDone` (already completed), and both map to the same
+  `ledger.ErrTaskDone` (already completed), and both map to the same
   wire-visible `ErrReplay` line, so the test asserts the counter and
   the reply shape, not which specific sentinel a given duplicate saw.
   Run with `go test -race`.
@@ -714,11 +714,11 @@ Replay protection is now a bounded window, not a permanent guarantee.
   becomes evictable one `ReplayLease` after its claim, and eviction
   deletes it on a later write. It no longer pins memory forever.
 - A pending record can be evicted between `Admit` and `Claim` under
-  cap pressure. `taskrun.Run` then returns `ledger.ErrNoKey`, which
+  cap pressure. `ledger.Run` then returns `ledger.ErrNoKey`, which
   `isReplay` does not match, so the line answers an error, not a
   replay.
 - An expired claim can be evicted while its own handler still runs.
-  `taskrun.Run`'s `Complete` then returns `ledger.ErrNoKey` after the
+  `ledger.Run`'s `Complete` then returns `ledger.ErrNoKey` after the
   work already succeeded. `isReplay` does not match `ledger.ErrNoKey`
   (`dispatch/ladder.go:36-42`), so `processLine` falls to
   `encodeErrorLine`, discards a correctly computed ack, and returns a
@@ -781,7 +781,7 @@ unreadable.
 
   Seed the test clock at `time.Now()` and only ever advance it. Two
   clocks are in play and they must not disagree. `Endpoint` builds its
-  `taskrun.Options` internally and `dispatch.Options` exposes no `Now`
+  `ledger.Options` internally and `dispatch.Options` exposes no `Now`
   field (`dispatch/options.go:25-57`), so `Claim` stamps `LeaseUntil`
   from the wall clock. `MemStoreOptions.Now` is the only clock the test
   controls. A test clock seeded anywhere before `time.Now()` makes
@@ -872,10 +872,10 @@ Status: shipped.
 ### Addendum goal
 
 The original replay design above lists four sentinels
-(`taskrun.ErrTaskDone`, `taskrun.ErrTaskFailed`, `taskrun.ErrTaskBlocked`,
+(`ledger.ErrTaskDone`, `ledger.ErrTaskFailed`, `ledger.ErrTaskBlocked`,
 `ledger.ErrLeaseActive`) checked through a boolean-OR `isReplay`. The
 shipped code adds a fifth: `ledger.ErrNotClaimed`, which covers the
-race window between `taskrun.Run`'s own `State` check and its `Claim`
+race window between `ledger.Run`'s own `State` check and its `Claim`
 call. A concurrent duplicate can pass `State` while the record still
 reads Pending, then find it already completed by the time its own
 `Claim` runs; `Claim` reports that through its default terminal-status

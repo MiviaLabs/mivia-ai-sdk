@@ -1,0 +1,77 @@
+package context/plan
+  const CompactionAlgorithm = "context-compact-v1"
+  const DefaultRecentTail = 8
+  const DefaultSmoothingFactor = 0.3
+  const DefaultTargetPercent = 10
+  const DefaultTriggerPercent = 100
+  const MaxCorrectionFactor = 2.0
+  const MaxExcerptTotalBytes = 16 * 1024
+  const MaxFieldBytes = 2 * 1024
+  const MaxItems = 32
+  const MaxRecentTail = 64
+  const MinCorrectionFactor = 0.5
+  const SummaryMessageName = "context-summary"
+  const SummaryPreamble = "This message restates the conversation that compaction removed."
+  const SummaryTimeout = 20 * time.Second
+  func (c *Calibrated) EstimateTokens(req provider.Request) (int, error)
+  func (c *Calibrated) Observe(estimated, actual int)
+  func (c Compaction) Validate() (error)
+  func (s *Summarizer) Summarize(ctx context.Context, msgs []provider.Message) (Summary, error)
+  func (s Summary) Render() (string)
+  func (s Summary) Validate() (error)
+  func (w Window) Budget() (int)
+  func (w Window) CompactTarget() (int)
+  func (w Window) CompactTrigger() (int)
+  func (w Window) Validate() (error)
+  func Calibrate(est provider.TokenEstimator, alpha float64) (*Calibrated)
+  func Compact(msgs []provider.Message, w Window, e provider.TokenEstimator) (CompactResult, error)
+  func NewSummarizer(c provider.Completer) (*Summarizer, error)
+  func SummaryMessage(s Summary) (provider.Message)
+  func TokenEstimate(n int) (int)
+  type Calibrated struct {
+}
+  type CompactResult struct {
+  Kept []provider.Message
+  Dropped []provider.Message
+  BeforeTokens int
+  AfterTokens int
+  TriggerTokens int
+  TargetTokens int
+  Compacted bool
+  Key string
+}
+  type Compaction struct {
+  TriggerPercent int
+  TargetPercent int
+  TargetTokens int
+  RecentTail int
+  PreserveNames []string
+}
+  type Summarizer struct {
+}
+  type Summary struct {
+  Objective string `json:"objective"`
+  State string `json:"state"`
+  Decisions []string `json:"decisions,omitempty"`
+  Evidence []string `json:"evidence,omitempty"`
+  ChangedSurfaces []string `json:"changed_surfaces,omitempty"`
+  OpenWork []string `json:"open_work,omitempty"`
+  Risks []string `json:"risks,omitempty"`
+}
+  type Window struct {
+  MaxTokens int
+  Reserve int
+  Compaction Compaction
+}
+  var ErrCallFailed
+  var ErrEstimateFailed
+  var ErrInvalidReply
+  var ErrMaxTokensNotPositive
+  var ErrNilCompleter
+  var ErrNoMessages
+  var ErrNoMessagesToSummarize
+  var ErrNoObjective
+  var ErrReserveNegative
+  var ErrReserveTooLarge
+  var ErrRetentionOverflow
+  var ErrSummarySkipped

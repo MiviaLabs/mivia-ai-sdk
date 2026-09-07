@@ -1,6 +1,8 @@
 # Plan: hooks
 
-Status: shipped. One new package, `hooks`, with zero internal import
+Status: superseded. Phase 86 folded this package into events;
+the symbols live in events now. See
+docs/plans/agents/phase86_package_consolidation.md.
 edges. It depends on no unshipped phase and ships with no caller, the
 same way `tools` shipped in phase 14. This plan folded in from
 `docs/plans/agents/phase57_hooks.md` on shipping; no standalone phase
@@ -40,9 +42,9 @@ Inside:
   payload and returns an allow decision plus an error.
 - A `Registry` type holding named handlers, grouped by `Point`.
 - `Add`, `Remove`, and `Fire` methods, matching the `Add`/`Remove`/
-  `Fire` naming `trigger.Registry` already uses in this module.
+  `Fire` naming `scheduler.Registry` already uses in this module.
 - A mutex-guarded map, matching `tools.Registry` and
-  `trigger.Registry`'s concurrency shape. `Fire` releases the lock
+  `scheduler.Registry`'s concurrency shape. `Fire` releases the lock
   before it calls a handler, so a slow handler never blocks a
   concurrent `Add` or `Remove` on an unrelated point.
 
@@ -52,7 +54,7 @@ Outside:
   alone, with no caller yet, the same way phase 14 shipped `tools`
   before any agent wired it in. A later phase can let
   `tools.RunScoped` and `flow.Confirm` each optionally consult a
-  `hooks.Registry` before or after their own gate runs. That wiring
+  `events.Registry` before or after their own gate runs. That wiring
   needs its own plan review and its own `policy/layers.json` edge on
   `tools` or `flow`; this phase adds neither.
 - Async or background handler execution. `Fire` is synchronous. It
@@ -76,7 +78,7 @@ Outside:
   phase adds a point only once a real caller needs it. Shipping a
   wider point set now is speculative generality.
 
-A caller composes `hooks.Registry` with `machine.Guard` and
+A caller composes `events.Registry` with `machine.Guard` and
 `flow.Confirm` today, without a new SDK edge. A domain-specific gate,
 for example a git diff review before a step runs, is a closure a
 caller writes once and hands to `Guard`, `Confirm`, or a `hooks.
@@ -133,7 +135,7 @@ The surface below lands in `api/hooks.txt`.
   can share a label such as `"audit-log"`.
 - `func (r *Registry) Remove(point Point, name string) bool` —
   removes `name` from `point`. Returns whether it was present,
-  matching `tools.Registry.Remove` and `trigger.Registry.Remove`'s
+  matching `tools.Registry.Remove` and `scheduler.Registry.Remove`'s
   exact contract.
 - `func (r *Registry) Fire(ctx context.Context, point Point, payload any) error`
   — runs every handler registered at `point`, in registration order.

@@ -8,7 +8,10 @@
 // Blocked; claim.go = Claim, Renew, Release, Takeover; complete.go =
 // Complete and the dependency-blocking walk; snapshot.go = Snapshot,
 // Validate, Restore; wire.go = Encode, Decode; events.go = the emitted
-// event names; errors.go = the sentinel errors; sqlite_store.go (behind
+// event names; errors.go = the sentinel errors; taskrun.go = Run,
+// Options, Task, and the taskrun sentinels: Run admits, claims, and
+// completes one task around work, maps the work result onto the
+// ledger status, and returns the work's own error; sqlite_store.go (behind
 // the ledger_sqlite build tag) = SQLiteStore, NewSQLiteStore, Close,
 // the row-marshal helpers it shares with wire.go, a
 // modernc.org/sqlite-backed Store.

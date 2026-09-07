@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `provider`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: usage
 
 The usage package gives a caller a per-session running total of
@@ -45,8 +49,8 @@ Use `errors.Is` to test this.
   `Record` and `Reset` return it, wrapped, when `sessionID` is empty
   after `strings.TrimSpace`. The name and definition match the
   existing blank-identifier sentinels in this codebase:
-  `tools.ErrBlankName`, `trigger.ErrBlankName`,
-  `providerregistry.ErrBlankName`, and `scheduler.ErrBlankID`. Pinned
+  `tools.ErrBlankName`, `scheduler.ErrBlankName`,
+  `provider.ErrBlankName`, and `scheduler.ErrBlankID`. Pinned
   by `usage/usage_test/accumulator_test.go`.
 
 ## Invariants
@@ -72,12 +76,12 @@ Use `errors.Is` to test this.
 ## Wire contract
 
 `usage` defines no wire format. It carries in-process values only, the
-same as `provider` and `contextbudget`; no conformance vector applies.
+same as `provider` and `context/budget`; no conformance vector applies.
 
 ## Usage
 
 ```go
-acc := usage.New()
+acc := provider.New()
 
 _ = acc.Record("session-1", provider.Usage{
     PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120,

@@ -86,7 +86,7 @@ no new import.
 
 This closes the one real liveness gap in `Run`: the caller-supplied
 `wait` call can block forever, with no stall signal. `Run` gains one
-trailing, optional parameter, `hb *heartbeat.Monitor`. `Run` beats it
+trailing, optional parameter, `hb *flow.Monitor`. `Run` beats it
 once per gated step, right before `wait`, and forgets it once, on
 every return path. `Run` never reads `Dead` itself; an external
 caller, holding the same `Monitor`, polls `Dead` and reacts on its
@@ -145,11 +145,11 @@ row stays `["identity", "discovery", "flow", "envelope", "events",
 The surface below is the lock target. It lands in `api/agent.txt` via
 make api-update.
 
-- `type Agent struct` holds an `*identity.Identity`, a
-  `discovery.Card`, and a `*flow.Definition`. All three fields stay
+- `type Agent struct` holds an `*envelope.Identity`, a
+  `flow.Card`, and a `*flow.Definition`. All three fields stay
   unexported. A caller reaches them through `Name`, `Capabilities`,
   and `Run`, added below.
-- `func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)`
+- `func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error)`
   builds an Agent from the three parts. It checks id for nil, calls
   card.Validate(), then checks plan for nil, in that order. It returns
   the first error hit. On success it returns a populated `*Agent` and
@@ -161,19 +161,19 @@ make api-update.
 - `func (a *Agent) Capabilities() []string` returns the card's
   Capabilities slice. It returns the same backing array Parse or the
   caller set, with no defensive copy. This matches
-  discovery.Card, which carries the same caller-owned mutability.
+  flow.Card, which carries the same caller-owned mutability.
 - `var ErrNoIdentity` is the sentinel New returns when id is nil.
 - `var ErrNoPlan` is the sentinel New returns when plan is nil.
 
 ### Parameter shapes, not the phase sketch's
 
-The phase sketch proposed `New(id identity.Identity, card
-discovery.Card, plan flow.Definition) (*Agent, error)`. This plan
+The phase sketch proposed `New(id envelope.Identity, card
+flow.Card, plan flow.Definition) (*Agent, error)`. This plan
 changes two of the three parameter types after reading the real
 identity and flow surfaces.
 
-- `id` is `*identity.Identity`, not a value. identity.New and
-  identity.Load both return `*Identity`. Every identity method
+- `id` is `*envelope.Identity`, not a value. envelope.New and
+  envelope.Load both return `*Identity`. Every identity method
   (Sign, Signer, Validate) takes a pointer receiver, because Identity
   holds private key material as session state, not copyable data. A
   value parameter would force an extra copy of that key material for
@@ -184,7 +184,7 @@ identity and flow surfaces.
   exposes no field; every flow API already passes it by pointer.
   agent.New accepts the same pointer flow.New returned, with no
   dereference and no copy.
-- `card` stays `discovery.Card`, a value, matching the phase sketch.
+- `card` stays `flow.Card`, a value, matching the phase sketch.
   Card uses value receivers throughout discovery: a small value type,
   two strings and a slice header, following envelope.Message's
   convention for wire-decoded data.
@@ -204,7 +204,7 @@ Reusing card.Validate() also catches an empty capability list and a
 duplicate capability, both invariants discovery already owns. New
 does not duplicate that logic; it defers to discovery's single source
 of truth and wraps the returned error: `fmt.Errorf("agent: invalid
-card: %w", err)`. discovery.Validate exports no sentinel today, so
+card: %w", err)`. flow.Validate exports no sentinel today, so
 this wrap carries no errors.Is target beyond the wrapped error text.
 A caller checks the error for nil; it does not check a discovery
 sentinel, because none exists yet.
@@ -245,12 +245,12 @@ later.
 ### Receiver semantics: pointer, not value
 
 Agent uses pointer receivers throughout. New returns `*Agent`. This
-matches identity.Identity and events.Bus, which hold session state
-behind a pointer, not envelope.Message, room.Room, or discovery.Card,
+matches envelope.Identity and events.Bus, which hold session state
+behind a pointer, not envelope.Message, room.Room, or flow.Card,
 which are copyable data.
 
 Two reasons support the pointer choice. First, Agent holds an
-`*identity.Identity` field directly: a value receiver on Agent would
+`*envelope.Identity` field directly: a value receiver on Agent would
 still share the same underlying key material through that pointer, so
 copying Agent by value buys no isolation and only hides the shared
 state behind a false copy. Second, `Run` adds mutable execution
@@ -264,7 +264,7 @@ The expected lock content:
 package agent
   func (a *Agent) Capabilities() ([]string)
   func (a *Agent) Name() (string)
-  func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
+  func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error)
   type Agent struct {
 }
   var ErrNoIdentity
@@ -351,7 +351,7 @@ package agent
   func EmitMessageAcked(ctx context.Context, bus *events.Bus, a envelope.Ack) (error)
   func EmitMessageDelivered(ctx context.Context, bus *events.Bus, m envelope.Message) (error)
   func EmitThreadVerified(ctx context.Context, bus *events.Bus, msgs []envelope.Message) (error)
-  func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error)
+  func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error)
   type Agent struct {
 }
   var ErrNoBus
@@ -415,7 +415,7 @@ translator block above:
 
 `Run`'s signature gains one trailing parameter:
 
-`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)`
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor) (machine.Status, machine.InOut, error)`
 
 `hb == nil` skips every heartbeat call; `Run` behaves exactly as the
 run-entry-point section above describes. `hb != nil` adds, per gated step,
@@ -432,7 +432,7 @@ above:
 
 ```text
 - func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus) (machine.Status, machine.InOut, error)
-+ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor) (machine.Status, machine.InOut, error)
 ```
 
 This is a breaking change to every existing call site of `Run`. Every
@@ -442,7 +442,7 @@ call site gains a trailing `nil` argument for `hb`.
 
 `Run`'s signature gains one trailing parameter:
 
-`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)`
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor, room string) (machine.Status, machine.InOut, error)`
 
 `room == ""` skips the assignment; `Run` behaves exactly as the
 heartbeat-parameter section above describes. `room != ""` sets
@@ -456,8 +456,8 @@ The expected `api/agent.txt` diff, against the heartbeat-parameter
 block above:
 
 ```text
-- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor) (machine.Status, machine.InOut, error)
-+ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)
+- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor, room string) (machine.Status, machine.InOut, error)
 ```
 
 This is a breaking change to every existing call site of `Run`. Every
@@ -469,7 +469,7 @@ existing test supplies a room name yet.
 `Run`'s signature gains one trailing parameter, and the sentinel var
 block gains one new sentinel, `ErrOverBudget`:
 
-`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)`
+`func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)`
 
 `budget == nil` skips every budget check; `Run` behaves exactly as
 the room-parameter section above describes. `budget != nil` runs
@@ -493,8 +493,8 @@ The expected `api/agent.txt` diff, against the room-parameter block
 above:
 
 ```text
-- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string) (machine.Status, machine.InOut, error)
-+ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *heartbeat.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)
+- func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor, room string) (machine.Status, machine.InOut, error)
++ func (a *Agent) Run(ctx context.Context, threadID string, m *machine.Definition, in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor, room string, budget *contextbudget.Limits) (machine.Status, machine.InOut, error)
 ```
 
 ```text
@@ -563,7 +563,7 @@ Test files live in `agent/agent_test/`:
   slice's first element and asserts the source card's Capabilities
   slice changed too.
 - `definition_integration_test.go` — build a real Identity with
-  identity.New, a real Card by struct literal, and a real Definition
+  envelope.New, a real Card by struct literal, and a real Definition
   with flow.New over a two-step, no-panel plan. Prove agent.New
   accepts the triple and Name and Capabilities resolve to the card's
   values. Feed the same Definition-building call a step pair that
@@ -606,7 +606,7 @@ Test files land in `agent/agent_test/`, alongside the definition files:
   - No subscriber registered for the event name: expect a nil error;
     Emit treats an unobserved name as a no-op.
 - `translator_integration_test.go` — build a real events.Bus with
-  events.New. Sign a real Message with a real identity.Identity. Call
+  events.New. Sign a real Message with a real envelope.Identity. Call
   EmitMessageDelivered; prove the event arrives exactly once. Build a
   real Ack with envelope.NewAck; call EmitMessageAcked; prove it
   arrives once. Build a real two-message thread; call
@@ -913,7 +913,7 @@ value.
 `agent/agent_test/exchange_integration_test.go` and
 `exchange_bench_test.go` prove every shipped block composes into one
 real two-agent exchange, with no mock at the trust boundary: two real
-`identity.Identity` values, a real `room.Room`, a real
+`envelope.Identity` values, a real `room.Room`, a real
 `tools.Registry`, a real `memory.Store`, and a real `events.Bus`. The
 request routes through `a2a.ToPart`/`a2a.FromPart` once, standing in
 for a transport hop. `TestExchangeSignedRequestConfirmedAck` runs the

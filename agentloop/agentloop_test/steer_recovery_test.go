@@ -12,8 +12,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -31,20 +30,25 @@ func TestSteerTriggerMidPromptTooLongRecovery(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`), result: "ok"})
 	recovered := toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")})
 	c := &recoveryBlockCompleter{recovered: recovered, entered: make(chan struct{}), release: make(chan struct{})}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: c,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5}, Compaction: agentloop.Compaction{Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
-	})
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -109,18 +113,23 @@ func TestSteerTriggeredDuringFailingRecoveryRetry(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	reg := tools.New()
 	c := &recoveryFailCompleter{entered: make(chan struct{}), release: make(chan struct{})}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: c,
 		Tools:     reg,
-		Bounds:    agentloop.Bounds{MaxIterations: 5}, Compaction: agentloop.Compaction{Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
-	})
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

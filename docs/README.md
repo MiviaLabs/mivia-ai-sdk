@@ -1,14 +1,14 @@
 # Documentation
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
-agent-to-agent messaging: envelope, room, machine, flow, events,
-heartbeat, identity, discovery, a2a, a2aclient, a2aack, a2aloopback,
-dispatch, tools, hooks, contextbudget, contextstate, schema, mcp,
-ledger, durablefence, memory, provider, provider/anthropic, providerregistry, toolcallctx,
-usage, contextplan, contextsession, channel, trigger, trace, skills, scheduler, agent,
-agentrun, agentloop, runconfig, subagent, taskrun, e2e, envfile,
-secretpath, workspace, spool, contextsummary, contextref, and longtermmemory. Each
-package covers one concern and composes through its exported API.
+agent-to-agent messaging: envelope, room, machine, flow, events, a2a,
+a2aclient, dispatch, tools, context/budget, schema, mcp, ledger, memory,
+provider, provider/anthropic, context/plan, context/ref, channel, trace,
+scheduler, agent, agentrun, agentloop, subagent, tools, workspace, and
+context/ref. Each package covers one concern and composes through its
+exported API. Phase 86 folded single-consumer peers into their
+targets, moved test fixtures beside the packages they exercise, and
+quarantined six orphaned packages into the `x/` sub-module.
 This doc tree covers the module map, the wire-protocol rationale,
 every package's exported surface, and runnable-style walkthroughs.
 
@@ -32,7 +32,7 @@ The composition stack, bottom to top:
   parallel behind a depth guard, and a signed-message mailbox
   carries both directions.
 - [packages/dispatch.md](packages/dispatch.md) and
-  [packages/a2aack.md](packages/a2aack.md) — the receive and remote
+  [packages/a2aclient.md](packages/a2aclient.md) — the receive and remote
   halves: an HTTP envelope endpoint, and a remote A2A task as one
   step's ack.
 
@@ -54,54 +54,37 @@ into a `tools.Registry` through `subagent`:
 
 ## Package reference
 
-- [packages/envelope.md](packages/envelope.md) — the wire unit: the message, its metadata types, the semantic ack, and signing.
-- [packages/events.md](packages/events.md) — the in-process reaction bus. A caller emits a typed event; a subscriber runs one callback per event.
+- [packages/envelope.md](packages/envelope.md) — the wire unit: the message, its metadata types, the semantic ack, signing, and the agent key (`Identity`, `New`, `Load`).
+- [packages/events.md](packages/events.md) — the in-process reaction bus and the hook registry: typed events, one subscription set, and vetoable lifecycle hooks.
 - [packages/machine.md](packages/machine.md) — the state-machine building block: the status model and the move dispatch.
-- [packages/identity.md](packages/identity.md) — one agent key: an ed25519 pair, the key-file load, the invariant check, and the hex signer string.
-- [packages/discovery.md](packages/discovery.md) — the capability card: a name, an optional description, and a capability list.
-- [packages/hooks.md](packages/hooks.md) — the named, multi-handler lifecycle-point registry.
-- [packages/heartbeat.md](packages/heartbeat.md) — liveness tracking by time: the last beat per id, and which ids have gone silent.
-- [packages/providerregistry.md](packages/providerregistry.md) — the named-provider collection with ordered fallback routing.
 - [packages/room.md](packages/room.md) — standing groups for messages: the roster, the roles, and message admission.
-- [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, and the runner.
+- [packages/flow.md](packages/flow.md) — the declarative workflow building block: the step graph, the cycle check, the runner, the capability card, and the liveness monitor.
 - [packages/a2a.md](packages/a2a.md) — the A2A v1.0 mapping: a message part shape, and the functions that map an envelope message onto it and back.
-- [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter: send a message as a remote task, poll its status, and fetch its result.
-- [packages/a2aack.md](packages/a2aack.md) — the remote step ack: turn a remote A2A task round trip into an `agent.AckWait` through one send, poll, result, verify, and ack loop.
+- [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter plus the remote step ack: send a message as a remote task, and resolve one gated step through send, poll, result, verify, and ack.
 - [packages/dispatch.md](packages/dispatch.md) — the NDJSON envelope endpoint: an `http.Handler` that runs the receive ladder per line and answers with confirmed acks, plus `Send`, the client-side counterpart.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
-- [packages/spool.md](packages/spool.md) — the principal-scoped grant store for oversized content: a bounded view, a reference, and `SpoolTool` for wrapping any tool.
-- [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
-- [packages/contextstate.md](packages/contextstate.md) — the durable context contract: sessions, checkpoints, commit validation, retention classes, volume `Limits`, and the in-memory store.
-- [packages/contextref.md](packages/contextref.md) — the canonical content-reference minter and parser: `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
+- [packages/budget.md](packages/budget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
+- [packages/ref.md](packages/ref.md) — the canonical content-reference minter and parser: `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
 - [packages/schema.md](packages/schema.md) — the JSON Schema compile/validate/corrective-message primitive: `Compile` admits and compiles a schema, `Validate` checks a payload against it, and `Corrective` renders a bounded, model-facing correction message.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
-- [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive: idempotency-keyed admission, a leased claim with a fence, and dependency blocking on failure.
-- [packages/durablefence.md](packages/durablefence.md) — a leaf, test-only conformance kit that proves claim, takeover, and fence invariants against any implementation.
-- [packages/a2aloopback.md](packages/a2aloopback.md) — a leaf, test-only gRPC A2A server fixture: `Loopback` completes every task with a freshly signed envelope restating the request payload.
-- [packages/memory.md](packages/memory.md) — the content-addressed context store: put a blob by its `sha256:` ref, get it back, evict the oldest under a byte budget.
-- [packages/provider.md](packages/provider.md) — the model provider interface: the `Completer` contract, `RunTurn`'s dispatch and aggregation, the request and response types, and the reasoning vocabulary.
+- [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive plus the one-task ceremony: idempotency-keyed admission, a leased claim with a fence, dependency blocking, and admit-claim-run-complete in one call.
+- [packages/memory.md](packages/memory.md) — the content-addressed context store plus the principal-scoped spool: content refs, byte-budget eviction, grant-scoped oversized content, and tool wrappers.
+- [packages/provider.md](packages/provider.md) — the model provider interface plus usage accounting and the routing registry: the `Completer` contract, per-session usage totals, and ordered named-provider fallback.
 - [packages/provider/anthropic.md](packages/provider/anthropic.md) — the Anthropic Messages API adapter: concrete `Completer`, `ContextAccountant`, and `ReasoningPolicy` implementation.
-- [packages/toolcallctx.md](packages/toolcallctx.md) — the tool-call context carrier: `WithToolCall` attaches a `provider.ToolCall` to a `context.Context`, and `ToolCallFromContext` reads it back.
-- [packages/usage.md](packages/usage.md) — the per-session usage accounting package: `Record` sums one `provider.Usage` call onto a running total keyed by session id, and `Total` reads the current sum.
-- [packages/contextplan.md](packages/contextplan.md) — manages token budget windows and history compaction: a token `Window`, compaction thresholds, atomic units, and an EWMA-calibrated estimator.
-- [packages/contextsession.md](packages/contextsession.md) — fits one durable session into a bounded provider request: `Planner`, per-payload elision decisions, retention rules, and overflow spooling.
-- [packages/contextsummary.md](packages/contextsummary.md) — the LLM summarizer for compaction: one bounded `provider.Completer` call turns dropped messages into one validated, bounded `Summary`, injected as a named user message.
+- [packages/plan.md](packages/plan.md) — manages token budget windows and history compaction, plus the summarizer: a token `Window`, compaction thresholds, an EWMA-calibrated estimator, and one bounded summary call.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
-- [packages/trigger.md](packages/trigger.md) — the shared "condition fired, so run this" vocabulary: `Condition`, `Action`, and a `Registry` that maps a name to one of each.
 - [packages/trace.md](packages/trace.md) — the structured-trace primitive: a `Span` records one named operation, a `Tracer` links spans through `ctx`, and `SpanFrom` reads the current span back.
-- [packages/skills.md](packages/skills.md) — the reusable instruction bundle: a `Skill` a caller registers under a name and finds again by trigger phrase or by name.
-- [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive: a `Job`, a `Schedule`, and a `Scheduler` that fires each due job on its own timer.
+- [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive plus the trigger registry: due-job firing, and the `Condition`/`Action` vocabulary that maps one name to a guarded call.
 - [packages/agent.md](packages/agent.md) — the composition layer: one identity, one capability card, and one step plan, driven through signed, acked, hash-chained messages.
 - [packages/agentrun.md](packages/agentrun.md) — the config-struct composition layer: one `Options` value validated and wired into a `Runner` that drives `agent.Run`.
-- [packages/taskrun.md](packages/taskrun.md) — the ledger ceremony as one call: admit, claim, run, and complete one task under a lease.
-- [packages/e2e.md](packages/e2e.md) — the end-to-end scenario suite: real high-level blocks wired together, one full run per scenario, outputs asserted across the handoffs.
 - [packages/subagent.md](packages/subagent.md) — the SDK's blocks as tools: a runner becomes a spawnable subagent, `RunAll` runs several at once, internal tools expose the blocks, and a signed-message mailbox carries both directions.
-- [packages/runconfig.md](packages/runconfig.md) — the JSON-document loader that binds a step graph to `agentrun.Options`: parse, validate, and wire a flow, its machine, its tools, and its subagents from one config file.
-- [packages/envfile.md](packages/envfile.md) — dotenv loading: `Load` and `LoadBytes` parse `KEY=VALUE` lines into a map without leaking values into errors.
-- [packages/secretpath.md](packages/secretpath.md) — glob-style secret path matching: a `Matcher` reports whether a path matches a configured pattern list.
-- [packages/workspace.md](packages/workspace.md) — filesystem confinement: `Open` binds a handle to a root directory and rejects traversal or symlink escapes.
+- [packages/workspace.md](packages/workspace.md) — filesystem confinement plus secret path matching: `Open` binds a handle to a root, rejects traversal or symlink escapes, and a `Matcher` flags configured secret paths.
 - [packages/agentloop.md](packages/agentloop.md) — a tool-calling loop over a `provider.Completer` and a `tools.Registry`: offer tools, run model-requested calls, repeat until the model stops asking or a bound trips.
-- [packages/longtermmemory.md](packages/longtermmemory.md) — the tiered long-term memory: core and archive entries per scope, consolidation near capacity, keyword search, and a bounded, neutralized `CoreFrame` for the system prompt.
+
+The core module also ships `x/`, a nested sub-module of orphaned
+packages — `contextstate`, `contextsession`, `longtermmemory`,
+`skills`, `envfile`, and `runconfig` — kept alive for the consumers
+that import them but not advertised as SDK surface.
 
 ## Examples
 
@@ -125,13 +108,13 @@ into a `tools.Registry` through `subagent`:
 - [examples/ledger-admission-lifecycle.md](examples/ledger-admission-lifecycle.md) — admit, claim, renew, a stale-lease takeover, complete as failed, and a blocked dependent.
 - [examples/agent-composition.md](examples/agent-composition.md) — `agent.Run` composed with `provider`, `tools`, `mcp`, `ledger`, and `memory`, shipped as both a Markdown fence and a committed, runnable package under `docs/examples/`.
 - [examples/scheduler-recurring-jobs.md](examples/scheduler-recurring-jobs.md) — two recurring jobs on one `Scheduler`, one of them failing, observed through an `events.Bus`.
-- [examples/trigger-condition-action.md](examples/trigger-condition-action.md) — a named `Condition`/`Action` pair on a `trigger.Registry`, fired once unmet and once met.
+- [examples/trigger-condition-action.md](examples/trigger-condition-action.md) — a named `Condition`/`Action` pair on a `scheduler.Registry`, fired once unmet and once met.
 - [examples/discovery-capability-match.md](examples/discovery-capability-match.md) — a parsed capability card checked against a matching and a non-matching request.
 - [examples/identity-agent-key.md](examples/identity-agent-key.md) — a generated agent key signing an envelope message and matching its own hex signer.
 - [examples/a2a-mapping-roundtrip.md](examples/a2a-mapping-roundtrip.md) — a signed message mapped to an A2A `Part` and back, verified bit-for-bit.
 - [examples/agentrun.md](examples/agentrun.md) — a two-step plan run through the `agentrun` composition layer with a tool, an artifact, and a store.
 - [examples/taskrun.md](examples/taskrun.md) — the `taskrun` ledger ceremony: a successful build, a failed build, and a replay sentinel.
-- [examples/a2aack.md](examples/a2aack.md) — one gated step resolved through a remote A2A task via `a2aack.Wait`, confirmed by the caller's own key.
+- [examples/a2aack.md](examples/a2aack.md) — one gated step resolved through a remote A2A task via `a2aclient.Wait`, confirmed by the caller's own key.
 - [examples/dispatch.md](examples/dispatch.md) — one signed message posted to a live `dispatch.Endpoint`, admitted, handled, and confirmed over NDJSON.
 
 ## Internal records

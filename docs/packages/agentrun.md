@@ -16,7 +16,7 @@ mirrors `api/agentrun.txt`.
   `Artifacts` each need `Tools`. `Ask` needs a non-empty `AskTo`.
 - `Runner` — the composed pipeline `New` returns. Build it with `New`;
   the fields stay unexported.
-- `Options.Hooks` — a `*hooks.Registry`, defined by the `hooks`
+- `Options.Hooks` — a `*events.Registry`, defined by the `hooks`
   package, that gates the run: PointPreTool vetoes before the tool,
   PointPostTool observes the confirmed ack; a veto fails the step,
   PointStop reports the final status. The pre and post points fire

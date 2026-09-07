@@ -1,6 +1,8 @@
 # Plan: contextref
 
-Status: shipped.
+Status: superseded by `docs/plans/context/ref.md`. The rename pass
+moves the package to `context/ref`. This file is a historical record
+of the shipped work.
 
 ## Goal
 

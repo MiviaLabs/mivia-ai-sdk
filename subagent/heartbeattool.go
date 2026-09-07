@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -28,14 +28,14 @@ const (
 )
 
 // HeartbeatTool returns a tool bound to one monitor.
-func HeartbeatTool(name string, m *heartbeat.Monitor) tools.Tool {
+func HeartbeatTool(name string, m *flow.Monitor) tools.Tool {
 	return &heartbeatTool{name: name, monitor: m}
 }
 
 // heartbeatTool adapts one monitor to the tools.Tool interface.
 type heartbeatTool struct {
 	name    string
-	monitor *heartbeat.Monitor
+	monitor *flow.Monitor
 }
 
 // Name returns the registry name.

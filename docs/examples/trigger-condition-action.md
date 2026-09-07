@@ -1,6 +1,6 @@
 # Example: trigger condition and action
 
-This walkthrough registers one named trigger on a `trigger.Registry`:
+This walkthrough registers one named trigger on a `scheduler.Registry`:
 a `Condition` that checks a caller-side counter, and an `Action` that
 prints a line. The first `Fire` call finds the condition false and
 reports `ErrConditionNotMet`; the action never runs. The caller then
@@ -29,11 +29,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 )
 
 func main() {
-	r := trigger.New()
+	r := scheduler.New()
 
 	// releases counts how many builds have finished. The condition
 	// only turns true once three builds finish.
@@ -70,7 +70,7 @@ func main() {
 
 	// Fire on an unregistered name reports ErrUnknownName.
 	err = r.Fire(ctx, "rollback")
-	fmt.Println("unknown fire:", errors.Is(err, trigger.ErrUnknownName))
+	fmt.Println("unknown fire:", errors.Is(err, scheduler.ErrUnknownName))
 }
 ```
 

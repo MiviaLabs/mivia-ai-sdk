@@ -28,6 +28,11 @@ package agentloop
   const StopRepeatedToolFailures = "repeated_tool_failures"
   const StopSteered = "steered"
   const ToolErrorPrefix = provider.ToolErrorPrefix
+  func (b *BatchOrder) Changed() (<-chan struct{})
+  func (b *BatchOrder) Dispatched() ([]int)
+  func (b *BatchOrder) Settle(index int)
+  func (b *BatchOrder) Settled(index int) (bool)
+  func (b *BatchOrder) UnsettledBefore(limit int) (bool)
   func (b Bounds) Validate() (error)
   func (c Conclude) Validate() (error)
   func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
@@ -36,11 +41,16 @@ package agentloop
   func (s *Steer) HasActiveCall() (bool)
   func (s *Steer) SetInjector(f func() []provider.Message)
   func (s *Steer) Trigger()
+  func BatchOrderFromContext(ctx context.Context) (*BatchOrder, bool)
   func DefaultBounds() (Bounds)
   func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, error)
-  func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) (error)
+  func EnableCompaction(o *Options, completer provider.Completer, window plan.Window, alpha float64) (error)
   func New(opts Options) (*Loop, error)
+  func NewBatchOrder(dispatched []int) (*BatchOrder)
   func NewSteer() (*Steer)
+  func ToolCallFromContext(ctx context.Context) (provider.ToolCall, bool)
+  func WithBatchOrder(ctx context.Context, order *BatchOrder) (context.Context)
+  func WithToolCall(ctx context.Context, call provider.ToolCall) (context.Context)
   type AuditFunc func(ctx context.Context, rec AuditRecord) error
   type AuditKind string
   type AuditRecord struct {
@@ -54,6 +64,8 @@ package agentloop
   ThinkingContent string
   CacheUsage provider.CacheUsage
 }
+  type BatchOrder struct {
+}
   type Bounds struct {
   MaxIterations int
   MaxCallsPerTurn int
@@ -62,9 +74,9 @@ package agentloop
   MaxConsecutiveToolFailures int
 }
   type Compaction struct {
-  Window *contextplan.Window
-  Summarizer *contextsummary.Summarizer
-  Calibrated *contextplan.Calibrated
+  Window *plan.Window
+  Summarizer Summarizer
+  Calibrated *plan.Calibrated
 }
   type Conclude struct {
   Margin int
@@ -93,16 +105,17 @@ package agentloop
   Model string
   Bounds Bounds
   OnToolError ErrorPolicy
-  Hooks *hooks.Registry
+  Hooks *events.Registry
   Tracer *trace.Tracer
-  Usage *usage.Accumulator
+  Usage *provider.Accumulator
   SessionID string
   Bus *events.Bus
-  HeartbeatInterval time.Duration
-  Budget *contextbudget.Limits
+  Budget *budget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
   Audit AuditFunc
   Compaction Compaction
+  ObserveRequest func(ctx context.Context, req provider.Request) error
+  HeartbeatInterval time.Duration
   Extensions *Extensions
 }
   type Result struct {
@@ -121,6 +134,9 @@ package agentloop
   History []provider.Message
 }
   type StopReason string
+  type Summarizer interface {
+	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
+}
   type Surface struct {
   Advertised []provider.ToolDefinition
   Registry *tools.Registry

@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -158,14 +158,14 @@ func TestRunDefinitionsCachedOnce(t *testing.T) {
 // TestRunPreToolNonVetoErrorFails proves a PointPreTool handler
 // returning a non-veto error fails the run with the wrapped handler
 // error, distinguished from a veto by errors.Is against
-// hooks.ErrVetoed, and that the returned Result carries the
+// events.ErrVetoed, and that the returned Result carries the
 // accumulated state at the point of failure.
 func TestRunPreToolNonVetoErrorFails(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
 		t.Fatalf("hooks.Add error = %v, want nil", err)
@@ -181,8 +181,8 @@ func TestRunPreToolNonVetoErrorFails(t *testing.T) {
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("Run() error = %v, want errBoom", err)
 	}
-	if errors.Is(err, hooks.ErrVetoed) {
-		t.Fatalf("Run() error wraps hooks.ErrVetoed, want a plain non-veto handler error")
+	if errors.Is(err, events.ErrVetoed) {
+		t.Fatalf("Run() error wraps events.ErrVetoed, want a plain non-veto handler error")
 	}
 	if res.Iterations != 1 {
 		t.Fatalf("Iterations = %d, want 1: the assistant turn that requested the call already completed", res.Iterations)
@@ -321,7 +321,7 @@ func TestRunBudgetExceededLaterIteration(t *testing.T) {
 	}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		Budget: &contextbudget.Limits{MaxEvents: 2},
+		Budget: &budget.Limits{MaxEvents: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -348,8 +348,8 @@ func TestRunMidTurnVetoPreservesPriorCall(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, allowed)
 	mustAdd(t, reg, vetoed)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "selective-veto", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "selective-veto", func(ctx context.Context, payload any) (bool, error) {
 		call, ok := payload.(provider.ToolCall)
 		if !ok {
 			return true, nil

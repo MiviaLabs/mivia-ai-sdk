@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `memory`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: spool
 
 The spool package stores oversized content under a principal-scoped
@@ -148,17 +152,17 @@ refs happen to be `envelope.ContextRef` values today. See
 
 ```go
 store, _ := memory.New(1 << 20)
-sp, err := spool.NewSpool(store, 1<<20)
+sp, err := memory.NewSpool(store, 1<<20)
 if err != nil {
     // maxGrantBytes was zero or negative
 }
 
-wrapped, err := spool.SpoolTool("big-tool", 4096, sp, myTool)
+wrapped, err := memory.SpoolTool("big-tool", 4096, sp, myTool)
 if err != nil {
     // sp was nil
 }
 
-readBack, err := spool.ReadOutputTool(sp, 2048)
+readBack, err := memory.ReadOutputTool(sp, 2048)
 if err != nil {
     // sp was nil, or maxPageBytes was non-positive
 }
@@ -167,7 +171,7 @@ registry := tools.New()
 registry.Add(wrapped)
 registry.Add(readBack)
 
-ctx := spool.WithPrincipal(context.Background(), "agent-a")
+ctx := memory.WithPrincipal(context.Background(), "agent-a")
 out, err := wrapped.Run(ctx, in)
 // out.Value truncates and appends a ref when myTool's result exceeds
 // 4096 bytes. A model reads that ref from the text and calls

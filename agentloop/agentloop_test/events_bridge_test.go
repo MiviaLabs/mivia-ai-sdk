@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -33,7 +33,7 @@ func TestEventsBridgeThinkingCacheCalibration(t *testing.T) {
 		agentloop.EventAssistant,
 	)
 	est := &fixedEstimator{n: 50}
-	cal := contextplan.Calibrate(est, 0.5)
+	cal := plan.Calibrate(est, 0.5)
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{
 			Role:            provider.RoleAssistant,
@@ -249,7 +249,7 @@ func TestEventsBridgeAuditCompletionCarriesThinkingAndCache(t *testing.T) {
 	}
 }
 
-// fixedEstimator returns n from EstimateTokens; contextplan.Calibrate
+// fixedEstimator returns n from EstimateTokens; plan.Calibrate
 // multiplies it by the correction factor, so test cases pick n so the
 // scaled estimate stays distinct from the actual Usage.TotalTokens the
 // test script supplies.

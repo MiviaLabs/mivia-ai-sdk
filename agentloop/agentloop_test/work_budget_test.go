@@ -1,7 +1,7 @@
 package agentloop_test
 
 // WorkBudget hook tests: reserve-before-call and refund-after-usage on
-// a successful turn, no hook calls when Options.Extensions.WorkBudget is nil,
+// a successful turn, no hook calls when Options.WorkBudget is nil,
 // hard-fail before the Completer call when Reserve errors, full refund
 // on a zero-usage error path, and Validate rejecting a half-wired
 // WorkBudget.
@@ -13,8 +13,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -53,8 +52,11 @@ func TestWorkBudgetReserveThenRefundOnSuccessfulTurn(t *testing.T) {
 	log := &budgetLog{}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
-		Tools:     reg, Extensions: &agentloop.Extensions{WorkBudget: log.hook()},
-	})
+		Tools:     reg,
+
+		Extensions: &agentloop.Extensions{
+			WorkBudget: log.hook(),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -102,7 +104,10 @@ func TestWorkBudgetReserveErrorFailsClosed(t *testing.T) {
 	log := &budgetLog{}
 	budget := log.hook()
 	budget.Reserve = func(ctx context.Context, req provider.Request) error { return errRefused }
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Extensions: &agentloop.Extensions{WorkBudget: budget}})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg,
+		Extensions: &agentloop.Extensions{
+			WorkBudget: budget,
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -125,7 +130,10 @@ func TestWorkBudgetRefundsZeroUsageOnChatError(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
 	log := &budgetLog{}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Extensions: &agentloop.Extensions{WorkBudget: log.hook()}})
+	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg,
+		Extensions: &agentloop.Extensions{
+			WorkBudget: log.hook(),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -182,16 +190,24 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
 	log := &budgetLog{}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
-		Tools:     reg, Extensions: &agentloop.Extensions{WorkBudget: log.hook()}, Compaction: agentloop.Compaction{Window: &w, Summarizer: summarizer, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
-	})
+		Tools:     reg,
+
+		Extensions: &agentloop.Extensions{
+			WorkBudget: log.hook(),
+		},
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -226,8 +242,11 @@ func TestWorkBudgetSettleSkipsZeroUsageRefund(t *testing.T) {
 	log := &budgetLog{}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer,
-		Tools:     reg, Extensions: &agentloop.Extensions{WorkBudget: log.hook()},
-	})
+		Tools:     reg,
+
+		Extensions: &agentloop.Extensions{
+			WorkBudget: log.hook(),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -291,8 +310,11 @@ func TestWorkBudgetSettleUsageTable(t *testing.T) {
 			log := &budgetLog{}
 			loop, err := agentloop.New(agentloop.Options{
 				Completer: completer,
-				Tools:     reg, Extensions: &agentloop.Extensions{WorkBudget: log.hook()},
-			})
+				Tools:     reg,
+
+				Extensions: &agentloop.Extensions{
+					WorkBudget: log.hook(),
+				}})
 			if err != nil {
 				t.Fatalf("New() error = %v, want nil", err)
 			}

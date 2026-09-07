@@ -1,9 +1,9 @@
 # Plan: contextplan
 
-Status: shipped. Built on the shipped `contextstate` and `provider`
-interfaces, under the phase 66 contract. Companion change: a fold of
-reasoning vocabulary types into `provider`, documented in
-`docs/plans/provider.md`.
+Status: superseded by `docs/plans/context/plan.md`. Phase 86 folded
+`contextsummary` into this package; the rename pass moves it to
+`context/plan`. This file is a historical record of the shipped
+work.
 
 ## Goal
 
@@ -1228,7 +1228,7 @@ no standalone phase 73 plan file remains for this contract.
 
 ### Fix goal
 
-Wire `Planner` to `spool.Spool`, so a payload `Plan` elides for a
+Wire `Planner` to `memory.Spool`, so a payload `Plan` elides for a
 budget reason lands in durable, principal-scoped storage instead of
 only a `contextstate.MemStore` ref that can itself evict. Both this
 file and `docs/plans/spool.md` already named `contextplan` as
@@ -1240,7 +1240,7 @@ Inside:
 
 - `contextplan` gains one import edge to `spool` in
   `policy/layers.json`.
-- `NewPlanner` gains a third parameter, `spooler *spool.Spool`. A nil
+- `NewPlanner` gains a third parameter, `spooler *memory.Spool`. A nil
   `spooler` is valid: `Plan` never calls `Spool.Spool` and behaves
   exactly as it did before this fix.
 - `Plan` writes a dropped or stubbed payload's full `record.Data` to
@@ -1248,7 +1248,7 @@ Inside:
   `ElisionReasonRetentionExpired` only. Every other reason skips the
   write.
 - `Elision` gains one field, `SpoolRef string`, the
-  `spool.Spool.Spool` reference on a successful write. Empty when no
+  `memory.Spool.Spool` reference on a successful write. Empty when no
   write was attempted or the write failed.
 - The spool principal is `record.Ref.SubjectID`, the field
   `contextstate.ContentRef` already carries for this ownership
@@ -1281,7 +1281,7 @@ Outside:
 `api/contextplan.txt` gains the changes below, via `make api-update`.
 No `api/spool.txt` change.
 
-- `func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *spool.Spool) (*Planner, error)`
+- `func NewPlanner(store *contextstate.MemStore, cache *memory.Store, spooler *memory.Spool) (*Planner, error)`
   — breaking change to the locked two-parameter form. A nil `store`
   or nil `cache` is an error, unchanged. A nil `spooler` is valid.
 - `type Elision struct { Ref contextstate.ContentRef; Reason ElisionReason; Kept int; SpoolRef string }`
@@ -1312,12 +1312,12 @@ No other exported symbol changes.
   own error nil.
 - Two payloads with different `SubjectID` values spool under separate
   principals: `Spool.Load` with the wrong payload's `SubjectID`
-  fails `spool.ErrWrongPrincipal`.
+  fails `memory.ErrWrongPrincipal`.
 - A concurrency case extends the existing N-goroutine, one-shared-
-  `*Planner` case with a shared `*spool.Spool`, run under
+  `*Planner` case with a shared `*memory.Spool`, run under
   `go test -race`.
 - `plan_spool_integration_test.go` round-trips a real
-  `*memory.Store`-backed `*spool.Spool` against a session that
+  `*memory.Store`-backed `*memory.Spool` against a session that
   overflows a small `Window`.
 
 ### Fix verification
@@ -1347,7 +1347,7 @@ The Planner half is `NewPlanner`, `Planner`, `Plan`, `PlanResult`,
 `Elision`, `ElisionReason`, `StubContent`, and `IsReasoningEvent`.
 Its backing machinery serves no other caller: the `contextstate`
 `MemStore`, `CommitRequest`, `Session`, checkpoint, and revoke
-surface, and the `spool.Spool` write path. Of `contextstate`'s 36
+surface, and the `memory.Spool` write path. Of `contextstate`'s 36
 locked symbols, 34 serve only this half; `Mint` and `HashPrefix` are
 the two exceptions, and `envelope` uses them. `memory.Store` appears
 here only in its role as the Planner's decode cache; the type itself

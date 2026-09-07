@@ -2,9 +2,8 @@
 // control: it sets every agentloop Options row an external consumer
 // is expected to adopt, one commented line per row of the adoption
 // table (Usage, Budget, MaxTotalTokens, MaxConsecutiveToolFailures,
-// Tracer, Audit, HeartbeatInterval + Bus, the Window/Summarizer/
-// Calibrated compaction triple, and the Extensions group: DedupWithinTurn,
-// Conclude, and StartTime). A canned
+// Tracer, DedupWithinTurn, Audit, Conclude, HeartbeatInterval + Bus,
+// and the Window/Summarizer/Calibrated compaction triple). A canned
 // provider.Completer stands in for a model, so the run is offline and
 // deterministic. verify-fast runs it and asserts its final output.
 package main
@@ -18,14 +17,12 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // cannedCompleter implements provider.Completer and
@@ -99,7 +96,7 @@ func (upperTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 
 // buildAdoptionOptions sets one commented line per adoption row. The
 // completer also supplies the estimator and the summarizer.
-func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *events.Bus, accum *usage.Accumulator) (agentloop.Options, error) {
+func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *events.Bus, accum *provider.Accumulator) (agentloop.Options, error) {
 	opts := agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
@@ -107,7 +104,7 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		Usage:     accum,
 		SessionID: "agentloop-adoption",
 		// Row: Budget. Per-session byte and event caps.
-		Budget: &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
+		Budget: &budget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		// Rows: Bounds.MaxTotalTokens and MaxConsecutiveToolFailures.
 		// The per-run billing ceiling and the failure tripwire.
 		Bounds: agentloop.Bounds{
@@ -119,36 +116,35 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		},
 		// Row: Tracer. Spans for the host's session sink.
 		Tracer: trace.New(),
+		// Row: DedupWithinTurn. The SDK dedups identical calls per turn.
 		// Row: Audit. One structured record per tool call.
 		Audit: func(ctx context.Context, rec agentloop.AuditRecord) error {
 			return nil
 		},
+		// Row: Conclude. The graceful wrap-up budget.
 		// Row: HeartbeatInterval + Bus. The host subscribes to this bus.
 		Bus:               bus,
 		HeartbeatInterval: time.Hour,
-		// Row: Extensions. The host-mirror knobs: DedupWithinTurn and
-		// the Conclude group with its StartTime anchor.
+
 		Extensions: &agentloop.Extensions{
 			DedupWithinTurn: true,
-			StartTime:       time.Now(),
 			Conclude:        agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		},
-	}
-	// Row: Compaction (Window + Summarizer + Calibrated). The
-	// planning triple; the completer must implement
-	// provider.TokenEstimator.
-	window := contextplan.Window{
+			StartTime:       time.Now(),
+		}}
+	// Row: Window + Summarizer + Calibrated. The compaction triple;
+	// the completer must implement provider.TokenEstimator.
+	window := plan.Window{
 		MaxTokens:  2048,
 		Reserve:    512,
-		Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50},
+		Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}
 	opts.Compaction.Window = &window
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := plan.NewSummarizer(completer)
 	if err != nil {
 		return opts, err
 	}
 	opts.Compaction.Summarizer = summarizer
-	opts.Compaction.Calibrated = contextplan.Calibrate(completer, 0.25)
+	opts.Compaction.Calibrated = plan.Calibrate(completer, 0.25)
 	return opts, nil
 }
 
@@ -178,7 +174,7 @@ func main() {
 		return
 	}
 
-	opts, err := buildAdoptionOptions(completer, reg, events.New(), usage.New())
+	opts, err := buildAdoptionOptions(completer, reg, events.New(), provider.NewAccumulator())
 	if err != nil {
 		fmt.Println("options:", err)
 		return

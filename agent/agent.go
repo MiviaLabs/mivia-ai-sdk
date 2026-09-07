@@ -3,10 +3,9 @@ package agent
 import (
 	"errors"
 	"fmt"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
 // Sentinel errors for New and Run; test with errors.Is. A card
@@ -21,8 +20,8 @@ var (
 // into a single declarative value. Build it with New; the fields
 // stay unexported.
 type Agent struct {
-	id   *identity.Identity
-	card discovery.Card
+	id   *envelope.Identity
+	card flow.Card
 	plan *flow.Definition
 }
 
@@ -32,7 +31,7 @@ type Agent struct {
 // hit. New does not re-run flow's cycle check: a plan built through
 // flow.New already passed it, and a zero-value plan carries no step
 // for the check to reject.
-func New(id *identity.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error) {
+func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error) {
 	if id == nil {
 		return nil, ErrNoIdentity
 	}
@@ -54,7 +53,7 @@ func (a *Agent) Name() string {
 
 // Capabilities returns the card's Capabilities slice: the same
 // backing array Parse or the caller set, with no defensive copy.
-// This matches discovery.Card, which carries the same caller-owned
+// This matches flow.Card, which carries the same caller-owned
 // mutability.
 func (a *Agent) Capabilities() []string {
 	return a.card.Capabilities
@@ -68,7 +67,7 @@ func (a *Agent) Plan() *flow.Definition {
 }
 
 // Signer returns the hex signer string of the identity New bound to
-// a. It matches identity.Signer exactly. A nil Agent, or one bound to
+// a. It matches envelope.Signer exactly. A nil Agent, or one bound to
 // a nil identity, returns "".
 func (a *Agent) Signer() string {
 	if a == nil || a.id == nil {

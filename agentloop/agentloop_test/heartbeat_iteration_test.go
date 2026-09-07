@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -173,7 +171,7 @@ func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, c
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
-		Budget: &contextbudget.Limits{MaxBytes: 1},
+		Budget: &budget.Limits{MaxBytes: 1},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -184,14 +182,19 @@ func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, c
 // buildHardFailPlanHistoryError triggers ErrPlanFailed through a
 // Window whose Calibrated estimator always errors.
 func buildHardFailPlanHistoryError(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour, Compaction: agentloop.Compaction{Window: &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}, Summarizer: sum, Calibrated: contextplan.Calibrate(errEstimator{}, 1.0)},
-	})
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
+
+		Compaction: agentloop.Compaction{
+			Window:     &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}},
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(errEstimator{}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}
@@ -232,11 +235,11 @@ func buildHardFailToolCallError(t *testing.T, bus *events.Bus) (*agentloop.Loop,
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
@@ -366,8 +369,8 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}
@@ -380,9 +383,14 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 	ch, handler := eventChan()
 	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4}, Compaction: agentloop.Compaction{Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)},
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4},
 		Bus: bus, HeartbeatInterval: heartbeatTestInterval,
-	})
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: sum,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
 	}

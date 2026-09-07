@@ -1,6 +1,7 @@
 package workspace
   const DefaultMaxReadBytes = 10 << 20
   const Unbounded = -1
+  func (m *Matcher) Matches(input string) (bool)
   func (o Options) Validate() (error)
   func (w *Workspace) Close() (error)
   func (w *Workspace) List(path string) ([]os.DirEntry, error)
@@ -9,12 +10,15 @@ package workspace
   func (w *Workspace) Root() (string)
   func (w *Workspace) Stat(path string) (os.FileInfo, error)
   func (w *Workspace) WriteFile(path string, data []byte) (error)
+  func NewMatcher(patterns []string) (*Matcher, error)
   func Open(root string) (*Workspace, error)
   func OpenWith(opts Options) (*Workspace, error)
+  type Matcher struct {
+}
   type Options struct {
   Root string
   MaxReadBytes int64
-  Deny *secretpath.Matcher
+  Deny *Matcher
 }
   type Workspace struct {
 }

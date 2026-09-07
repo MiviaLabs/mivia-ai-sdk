@@ -1,6 +1,8 @@
 # Plan: contextsession
 
-Status: shipped. Carves the durable session planner out of `contextplan` into `contextsession`.
+Status: superseded. Phase 86 quarantined this package into the
+x/ sub-module, which stops advertising it from the core module.
+See docs/plans/agents/phase86_package_consolidation.md.
 
 ## Goal
 
@@ -42,7 +44,7 @@ const (
     StubContentBytes                             = 256
 )
 
-func NewPlanner(store *contextstate.MemStore, spooler *spool.Spool) (*Planner, error)
+func NewPlanner(store *contextstate.MemStore, spooler *memory.Spool) (*Planner, error)
 func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contextplan.Window, e provider.TokenEstimator) (PlanResult, error)
 func StubContent(content []byte) []byte
 func IsReasoningEvent(e contextstate.SourceEvent) bool

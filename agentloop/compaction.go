@@ -2,10 +2,10 @@ package agentloop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -29,12 +29,16 @@ func (l *Loop) planHistory(ctx context.Context, history []provider.Message, iter
 // anything. notice appends one CompactionNotice message after the
 // summary injection, the recovery path's addition; under notice, an
 // uncompacted result returns early and unchanged, so the caller can
-// treat it as unrecoverable. A failure returns a nil history;
-// history itself never changes on failure.
-func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w contextplan.Window, iteration int, notice bool) ([]provider.Message, bool, error) {
+// treat it as unrecoverable. A summarizer skip reuses the prior
+// summary when one was held aside; with no prior, the planning path
+// proceeds without a summary and the recovery path returns an
+// uncompacted nil history. Every path passes checkCompactedBudget
+// before returning a rebuilt history. A failure returns a nil
+// history; history itself never changes on failure.
+func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w plan.Window, iteration int, notice bool) ([]provider.Message, bool, error) {
 	adjusted := preserveSummaryName(w)
 	prior, rest := splitSummary(history)
-	res, err := contextplan.Compact(rest, adjusted, l.calibrated)
+	res, err := plan.Compact(rest, adjusted, l.calibrated)
 	if err != nil {
 		return nil, false, fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, err)
 	}
@@ -44,12 +48,29 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 	rebuilt := append([]provider.Message(nil), res.Kept...)
 	injected := false
 	if len(res.Dropped) > 0 || prior != nil {
-		summary, err := l.summarizeDropped(ctx, prior, res.Dropped)
+		summary, skipped, err := l.summarizeDropped(ctx, prior, res.Dropped)
 		if err != nil {
 			return nil, false, err
 		}
-		rebuilt = injectAfterSystem(rebuilt, contextsummary.SummaryMessage(summary))
-		injected = true
+		switch {
+		case !skipped:
+			rebuilt = injectAfterSystem(rebuilt, plan.SummaryMessage(summary))
+			injected = true
+		case prior != nil:
+			// Skip with a prior: re-inject the prior summary
+			// unchanged. It keeps SummaryMessageName, so a
+			// recovery notice lands directly after it.
+			rebuilt = injectAfterSystem(rebuilt, *prior)
+			injected = true
+		case notice:
+			// Skip with no prior, recovery path: no summary to
+			// reuse, so a retry would resend the same oversized
+			// prompt. Unrecoverable, like the !compacted case.
+			return nil, false, nil
+		}
+		// Skip with no prior, planning path: inject nothing. The
+		// dropped messages stay dropped and the run proceeds with
+		// the kept history.
 	}
 	if notice {
 		rebuilt = injectNotice(rebuilt, injected)
@@ -61,28 +82,35 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 }
 
 // summarizeDropped prepends the held-aside prior summary, when one
-// exists, to the dropped messages and runs one summarizer call.
-func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextsummary.Summary, error) {
+// exists, to the dropped messages and runs one summarizer call. The
+// bool reports a skip: the summarizer returned
+// plan.ErrSummarySkipped, so no summary exists and the
+// caller reuses the prior or proceeds without one. Any other error
+// keeps the ErrCompactionFailed wrap.
+func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (plan.Summary, bool, error) {
 	input := dropped
 	if prior != nil {
 		input = append([]provider.Message{*prior}, dropped...)
 	}
 	summary, err := l.summarizer.Summarize(ctx, input)
-	if err != nil {
-		return contextsummary.Summary{}, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+	if errors.Is(err, plan.ErrSummarySkipped) {
+		return plan.Summary{}, true, nil
 	}
-	return summary, nil
+	if err != nil {
+		return plan.Summary{}, false, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+	}
+	return summary, false, nil
 }
 
 // checkCompactedBudget re-estimates the rebuilt history and fails
 // closed above the effective window's budget.
-func (l *Loop) checkCompactedBudget(rebuilt []provider.Message, w contextplan.Window, iteration int) error {
+func (l *Loop) checkCompactedBudget(rebuilt []provider.Message, w plan.Window, iteration int) error {
 	est, err := l.calibrated.EstimateTokens(provider.Request{Messages: rebuilt})
 	if err != nil {
 		return fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, err)
 	}
 	if est > w.Budget() {
-		return fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, contextplan.ErrRetentionOverflow)
+		return fmt.Errorf("agentloop: iteration %d: %w: %w", iteration, ErrCompactionFailed, plan.ErrRetentionOverflow)
 	}
 	return nil
 }
@@ -90,7 +118,7 @@ func (l *Loop) checkCompactedBudget(rebuilt []provider.Message, w contextplan.Wi
 // recoveryWindow builds the prompt-too-long recovery window: the
 // caller's window with the trigger at one percent and the target at
 // max(1, min(RecoveryTargetTokens, Budget over four)).
-func recoveryWindow(w contextplan.Window) contextplan.Window {
+func recoveryWindow(w plan.Window) plan.Window {
 	rw := w
 	rw.Compaction.TriggerPercent = 1
 	rw.Compaction.TargetTokens = max(1, min(RecoveryTargetTokens, w.Budget()/4))
@@ -100,15 +128,15 @@ func recoveryWindow(w contextplan.Window) contextplan.Window {
 // preserveSummaryName copies w and appends the summary message name
 // to the copy's PreserveNames only when absent, into a freshly
 // allocated slice. The caller's backing array never changes.
-func preserveSummaryName(w contextplan.Window) contextplan.Window {
+func preserveSummaryName(w plan.Window) plan.Window {
 	for _, name := range w.Compaction.PreserveNames {
-		if name == contextsummary.SummaryMessageName {
+		if name == plan.SummaryMessageName {
 			return w
 		}
 	}
 	fresh := make([]string, 0, len(w.Compaction.PreserveNames)+1)
 	fresh = append(fresh, w.Compaction.PreserveNames...)
-	w.Compaction.PreserveNames = append(fresh, contextsummary.SummaryMessageName)
+	w.Compaction.PreserveNames = append(fresh, plan.SummaryMessageName)
 	return w
 }
 
@@ -118,7 +146,7 @@ func splitSummary(msgs []provider.Message) (*provider.Message, []provider.Messag
 	var prior *provider.Message
 	rest := make([]provider.Message, 0, len(msgs))
 	for i := range msgs {
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == plan.SummaryMessageName {
 			if prior == nil {
 				prior = &msgs[i]
 			}
@@ -153,7 +181,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 	out := make([]provider.Message, 0, len(msgs)+1)
 	for i := range msgs {
 		out = append(out, msgs[i])
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == plan.SummaryMessageName {
 			out = append(out, provider.Message{Role: provider.RoleUser, Content: CompactionNotice})
 		}
 	}
@@ -167,7 +195,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 // budget, so orig returns unchanged with no retry and no notice. Any
 // retry error, including a second rejection, propagates. An invalid
 // recovery window (a Budget of one token) fails closed inside
-// compactHistory's own contextplan.Compact call, wrapping the same
+// compactHistory's own plan.Compact call, wrapping the same
 // window error recoverPromptTooLong would have; no separate check is
 // needed here.
 func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []provider.Message, iteration int, surface runSurface) (provider.Response, []provider.Message, provider.Request, error) {
@@ -184,6 +212,10 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 	req.DisableProviderReplay = true
 	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {
 		return provider.Response{}, nil, provider.Request{}, rerr
+	}
+	if oerr := l.observeRequest(ctx, req, iteration+1); oerr != nil {
+		l.refundWork(ctx, req)
+		return provider.Response{}, nil, provider.Request{}, oerr
 	}
 	resp, err := l.completer.Chat(ctx, req)
 	if err != nil {
@@ -239,33 +271,38 @@ type Compaction struct {
 	// Window plans every iteration against a token budget. Nil asks
 	// for derivation at New. Requires Summarizer and Calibrated, and
 	// excludes Options.Trim.
-	Window *contextplan.Window
+	Window *plan.Window
 	// Summarizer runs the LLM summary every compaction requires.
-	// Required when Window is set.
-	Summarizer *contextsummary.Summarizer
-	// Calibrated estimates tokens and receives one Observe call after
-	// every Chat. Required when Window is set.
-	Calibrated *contextplan.Calibrated
+	// Required when Window is set. See the Summarizer interface for
+	// the sanctioned constructors and the typed-nil warning.
+	Summarizer Summarizer
+	// Calibrated estimates tokens for planning and receives one Observe
+	// call after every Chat. Required when Window is set.
+	Calibrated *plan.Calibrated
 }
 
-// EnableCompaction fills an Options' Compaction group from one
+// EnableCompaction fills a Options' Compaction group from one
 // Completer, in one call. The Completer must also implement
-// provider.TokenEstimator; anthropic.Client does. alpha is the
-// calibration factor passed to contextplan.Calibrate. A window with a
-// positive MaxTokens lands in Compaction.Window as given. A zero or
-// negative MaxTokens leaves Compaction.Window nil, so New derives the
-// window from the Completer's ContextAccountant capability:
-// contextplan.Window.Validate rejects MaxTokens <= 0, so such a value
-// can never be an explicit window, and derive is the only sensible
-// reading. The Options must not already carry Trim;
+// provider.TokenEstimator; anthropic.Client does. A window with a
+// positive MaxTokens keeps the caller's configured trigger and target
+// percentages and lands in Compaction.Window. A window with MaxTokens
+// at or below zero means derive: Compaction.Window stays nil and New
+// derives 80/50 of the Completer's ContextWindow with one fifth held
+// back as reserve. A negative value takes the derive path too, not an
+// error: plan.Window.Validate rejects MaxTokens <= 0, so such a value
+// is never a usable explicit window. alpha is the calibration factor
+// passed to plan.Calibrate. The Options must not already carry Trim;
 // Compaction.Window and Trim are mutually exclusive, and Validate
-// rejects the pair.
-func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) error {
+// rejects the pair. EnableCompaction and plan.NewSummarizer are the
+// only sanctioned constructors for Compaction.Summarizer. A typed nil
+// stored by hand is not nil as an interface; see the Summarizer
+// interface for the warning.
+func EnableCompaction(o *Options, completer provider.Completer, window plan.Window, alpha float64) error {
 	est, ok := completer.(provider.TokenEstimator)
 	if !ok {
 		return ErrNoTokenEstimator
 	}
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := plan.NewSummarizer(completer)
 	if err != nil {
 		return err
 	}
@@ -274,7 +311,7 @@ func EnableCompaction(o *Options, completer provider.Completer, window contextpl
 		o.Compaction.Window = &w
 	}
 	o.Compaction.Summarizer = summarizer
-	o.Compaction.Calibrated = contextplan.Calibrate(est, alpha)
+	o.Compaction.Calibrated = plan.Calibrate(est, alpha)
 	return nil
 }
 

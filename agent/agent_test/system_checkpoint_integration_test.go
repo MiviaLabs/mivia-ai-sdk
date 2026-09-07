@@ -13,7 +13,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -73,7 +72,7 @@ func checkpointMachine(t testing.TB) *machine.Definition {
 // previous message with PrevHash, sign it with a real identity, and
 // verify the signature. built accumulates every signed message so the
 // caller can verify the thread.
-func signingConfirm(t testing.TB, id *identity.Identity, threadID string, built *[]envelope.Message) flow.Confirm {
+func signingConfirm(t testing.TB, id *envelope.Identity, threadID string, built *[]envelope.Message) flow.Confirm {
 	t.Helper()
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{
@@ -116,9 +115,9 @@ func checkpointBus(t testing.TB) *events.Bus {
 // holds on it. flow's own unit tests build such a Checkpoint by hand;
 // this test earns one from a real graph.
 func TestSystemCheckpointCarriesAllThreeOutcomeLists(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	var built []envelope.Message
 	var seen []flow.Checkpoint
@@ -163,9 +162,9 @@ func TestSystemCheckpointCarriesAllThreeOutcomeLists(t *testing.T) {
 // a captured mid-run Checkpoint reaches the same outcomes an
 // uninterrupted run reaches, and re-runs no step already done.
 func TestSystemCheckpointResumeMatchesUninterruptedRun(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	var baselineBuilt []envelope.Message
 	baseline, err := flow.Run(context.Background(), checkpointPlan(t), checkpointMachine(t),

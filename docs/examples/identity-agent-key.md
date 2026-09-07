@@ -1,6 +1,6 @@
 # Example: identity agent key
 
-This walkthrough generates a fresh agent key with `identity.New`,
+This walkthrough generates a fresh agent key with `envelope.New`,
 signs an `envelope.Message` with `Identity.Sign`, and compares the
 signed message's `Signer` field against `Identity.Signer`'s hex
 string. `Identity.Sign` validates the key, then wraps `envelope.Sign`;
@@ -12,7 +12,7 @@ against the module.
 ```mermaid
 sequenceDiagram
     participant Caller
-    participant Identity as identity.Identity
+    participant Identity as envelope.Identity
     participant Envelope as envelope.Sign
     Caller->>Identity: New()
     Identity-->>Caller: id (fresh key pair)
@@ -36,11 +36,11 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
 func main() {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		fmt.Println("new:", err)
 		return
@@ -71,7 +71,7 @@ func main() {
 
 ## What the program shows
 
-`identity.New` generates a fresh ed25519 key pair. `id.Sign` validates
+`envelope.New` generates a fresh ed25519 key pair. `id.Sign` validates
 the key, then calls `envelope.Sign`, which stamps `Message.Signer`
 with the hex-encoded public key and writes the signature. `id.Signer`
 derives the same hex string straight from the private key, so it

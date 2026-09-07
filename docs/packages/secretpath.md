@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `workspace`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: secretpath
 
 `secretpath` matches a filesystem path against a configured list of
@@ -47,7 +51,7 @@ touches the filesystem. The exported surface below mirrors
 
 ## Cross-references
 
-- `workspace` — `workspace.Options.Deny` is a `*secretpath.Matcher`.
+- `workspace` — `workspace.Options.Deny` is a `*workspace.Matcher`.
   `workspace` consults it before every filesystem call and returns
   `workspace.ErrSecretPath` on a match.
 
@@ -66,11 +70,11 @@ package main
 import (
     "fmt"
 
-    "github.com/MiviaLabs/mivia-ai-sdk/secretpath"
+    "github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
 func main() {
-    m, err := secretpath.NewMatcher([]string{"secrets/", "!secrets/readme.txt"})
+    m, err := workspace.NewMatcher([]string{"secrets/", "!secrets/readme.txt"})
     if err != nil {
         panic(err)
     }

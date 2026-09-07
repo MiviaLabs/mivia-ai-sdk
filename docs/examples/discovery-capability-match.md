@@ -12,7 +12,7 @@ does not. The program builds and runs against the module.
 ```mermaid
 flowchart LR
     data[JSON card data] --> parse[Parse]
-    parse --> card[discovery.Card]
+    parse --> card[flow.Card]
     card --> matchA["Match(Invoice.Review)"]
     card --> matchB["Match(invoice.pay)"]
     matchA --> hit["invoice.review, true"]
@@ -27,7 +27,6 @@ package main
 import (
 	"fmt"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 )
 
 func main() {
@@ -37,7 +36,7 @@ func main() {
 		"capabilities": ["invoice.review", "invoice.approve"]
 	}`)
 
-	card, err := discovery.Parse(data)
+	card, err := flow.Parse(data)
 	if err != nil {
 		fmt.Println("parse:", err)
 		return

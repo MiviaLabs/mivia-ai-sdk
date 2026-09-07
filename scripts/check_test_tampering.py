@@ -134,7 +134,10 @@ def _has_head_commit(root: Path) -> bool:
 
 
 def _head_parents(root: Path) -> list:
-    return _git(root, "rev-parse", "HEAD", "--parents").decode().split()[1:]
+    # rev-parse has no parents flag: an unrecognized flag is echoed
+    # verbatim. rev-list --parents -n 1 prints "commit parent...".
+    out = _git(root, "rev-list", "--parents", "-n", "1", "HEAD").decode().split()
+    return out[1:]
 
 
 def _tip_commit(root: Path, rev_range: str) -> str:

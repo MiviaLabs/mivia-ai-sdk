@@ -4,118 +4,64 @@
     "a2a": [
       "envelope"
     ],
-    "a2aack": [
-      "a2aclient",
-      "envelope"
-    ],
     "a2aclient": [
       "a2a",
       "envelope"
     ],
-    "a2aloopback": [
-      "a2a",
-      "envelope"
-    ],
     "agent": [
-      "identity",
-      "discovery",
-      "flow",
+      "context/budget",
       "envelope",
       "events",
-      "machine",
-      "heartbeat",
-      "contextbudget"
+      "flow",
+      "machine"
     ],
     "agentloop": [
-      "provider",
-      "tools",
-      "trace",
-      "hooks",
-      "usage",
+      "context/budget",
+      "context/plan",
       "events",
-      "contextbudget",
+      "provider",
       "schema",
-      "contextplan",
-      "contextsummary",
-      "toolcallctx"
+      "tools",
+      "trace"
     ],
     "agentrun": [
       "agent",
       "channel",
-      "contextbudget",
+      "context/budget",
       "envelope",
       "events",
       "flow",
-      "heartbeat",
-      "hooks",
-      "identity",
       "machine",
       "memory",
       "tools",
       "trace"
     ],
     "channel": [],
-    "contextbudget": [],
-    "contextplan": [
-      "contextref",
+    "context/budget": [],
+    "context/plan": [
+      "context/ref",
       "provider"
     ],
-    "contextref": [],
-    "contextsession": [
-      "contextplan",
-      "contextstate",
-      "provider",
-      "spool"
-    ],
-    "contextstate": [
-      "contextref"
-    ],
-    "contextsummary": [
-      "provider"
-    ],
-    "discovery": [],
+    "context/ref": [],
     "dispatch": [
       "agent",
       "envelope",
       "events",
       "ledger",
-      "room",
-      "taskrun"
-    ],
-    "durablefence": [],
-    "e2e": [
-      "agent",
-      "channel",
-      "discovery",
-      "envelope",
-      "events",
-      "flow",
-      "identity",
-      "ledger",
-      "provider",
-      "tools"
+      "room"
     ],
     "envelope": [
-      "contextref"
+      "context/ref"
     ],
-    "envfile": [],
     "events": [],
     "flow": [
       "events",
       "machine"
     ],
-    "heartbeat": [
-      "events"
-    ],
-    "hooks": [],
-    "identity": [
-      "envelope"
-    ],
     "ledger": [
-      "machine",
-      "events"
+      "events",
+      "machine"
     ],
-    "longtermmemory": [],
     "machine": [
       "events"
     ],
@@ -123,76 +69,53 @@
       "tools"
     ],
     "memory": [
-      "contextref"
+      "context/ref",
+      "tools"
     ],
     "provider": [],
     "provider/anthropic": [
       "provider"
     ],
-    "providerregistry": [
-      "provider"
-    ],
     "room": [
       "envelope"
-    ],
-    "runconfig": [
-      "agentrun",
-      "contextbudget",
-      "flow",
-      "heartbeat",
-      "ledger",
-      "machine",
-      "memory",
-      "room",
-      "subagent",
-      "tools",
-      "trace"
     ],
     "scheduler": [
       "events"
     ],
     "schema": [],
-    "secretpath": [],
-    "skills": [],
-    "spool": [
-      "tools"
-    ],
     "subagent": [
       "agent",
       "agentrun",
       "channel",
-      "discovery",
       "envelope",
       "events",
       "flow",
-      "heartbeat",
-      "identity",
       "ledger",
       "machine",
       "memory",
       "provider",
-      "providerregistry",
       "room",
       "scheduler",
-      "taskrun",
       "tools",
-      "trace",
-      "trigger"
-    ],
-    "taskrun": [
-      "ledger"
-    ],
-    "toolcallctx": [
-      "provider"
+      "trace"
     ],
     "tools": [],
     "trace": [],
-    "trigger": [],
-    "usage": [
-      "provider"
+    "workspace": [],
+    "ledger/ledgertest": [],
+    "a2aclient/a2atest": [
+      "a2a",
+      "envelope"
     ],
-    "workspace": [
-      "secretpath"
+    "internal/e2e": [
+      "agent",
+      "channel",
+      "envelope",
+      "events",
+      "flow",
+      "ledger",
+      "provider",
+      "tools"
     ]
   }
 }

@@ -59,7 +59,7 @@ fail-fast:
    "room-admitted": it fires here, before the next stage.
 4. `Room.Accepts` — a message naming the wrong room, or a signer or
    recipient outside the roster, fails here.
-5. Replay check, through `taskrun.Run` — a message already admitted at
+5. Replay check, through `ledger.Run` — a message already admitted at
    its `ThreadID`/`ID` key, terminal or still in flight, fails here
    with `ErrReplay`. See "Replay protection" below.
 6. `Options.Resolve` — a lookup failure for the message fails here.
@@ -75,7 +75,7 @@ still runs the full ladder.
 ## Replay protection
 
 `Endpoint.Handler` wraps resolve, handle, and ack construction in the
-ledger's admit-claim-complete ceremony, through `taskrun.Run`, keyed
+ledger's admit-claim-complete ceremony, through `ledger.Run`, keyed
 by a length-prefixed encoding of `ThreadID` and `ID`. A message
 already admitted at that key, whether completed, failed, blocked, or
 still claimed by an in-flight duplicate, answers `ErrReplay` instead
@@ -102,7 +102,7 @@ proxy. The aborted term is not: its size is the abort rate times
 `ReplayLease`, so bounding it needs a request-rate limit.
 
 Two line shapes follow from the cap. A pending record evicted between
-`Admit` and `Claim` makes `taskrun.Run` return `ledger.ErrNoKey`,
+`Admit` and `Claim` makes `ledger.Run` return `ledger.ErrNoKey`,
 which `isReplay` does not match, so the line answers an error, not a
 replay. An expired claim evicted while its own handler still runs
 makes `Complete` return `ledger.ErrNoKey` after the work succeeded,
@@ -115,7 +115,7 @@ Sizing `ReplayLease` above handler p99 latency keeps the window shut.
 
 `Options.ReplayLease` bounds one line's claim (`DefaultReplayLease`,
 30 seconds, when zero). Size it above `Handler.Handle`'s expected p99
-latency, not as a crash-detection timeout: `taskrun.Run` claims once
+latency, not as a crash-detection timeout: `ledger.Run` claims once
 and calls `Handle` synchronously, with no lease renewal while `Handle`
 runs. A handler slower than the lease re-runs `Handle` on an ordinary
 slow call, not only after a crash. A claim past its lease is eligible
@@ -157,13 +157,13 @@ default during normal operation.
   `dispatch/dispatch_test/client_test.go`.
 - `ErrReplay` ("dispatch: message already processed") —
   `Endpoint.Handler` answers this as a `"replay:"` error line when
-  `taskrun.Run` reports `taskrun.ErrTaskDone`, `taskrun.ErrTaskFailed`,
-  `taskrun.ErrTaskBlocked`, or `ledger.ErrLeaseActive` for the
+  `ledger.Run` reports `ledger.ErrTaskDone`, `ledger.ErrTaskFailed`,
+  `ledger.ErrTaskBlocked`, or `ledger.ErrLeaseActive` for the
   message's replay key. Pinned by
   `dispatch_test/replay_test.go:TestReplayHandlerRunsOnce`.
 - `ledger.ErrNotClaimed` — answered as a `"replay:"` error line like
   the sentinels above. It covers the race window between
-  `taskrun.Run`'s State check and its Claim call: a concurrent
+  `ledger.Run`'s State check and its Claim call: a concurrent
   duplicate can pass the State check while the record still reads
   Pending, then find it already Completed when its own Claim runs,
   which Claim reports as `ErrNotClaimed`.

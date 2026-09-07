@@ -7,7 +7,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -36,7 +36,7 @@ func TestBudgetTripsSecondStep(t *testing.T) {
 		Machine:   m,
 		Tools:     reg,
 		Artifacts: artifacts,
-		Budget:    &contextbudget.Limits{MaxBytes: 10},
+		Budget:    &budget.Limits{MaxBytes: 10},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -70,7 +70,7 @@ func TestRunValidBudget(t *testing.T) {
 		Agent:   mustAgent(t, plan),
 		Machine: oneStepMachine(t),
 		Tools:   oneStepRegistry(t),
-		Budget:  &contextbudget.Limits{MaxBytes: 1024},
+		Budget:  &budget.Limits{MaxBytes: 1024},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

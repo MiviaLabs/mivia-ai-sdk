@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `ledger`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: taskrun
 
 The taskrun package is the ledger ceremony as one call. A caller runs
@@ -55,7 +59,7 @@ The package declares eight sentinels. Each is an `errors.New` value.
   when a bounded `Store` deleted the record. The deletion happens
   between `Admit` and `Claim`, or after the lease expired while work
   still runs. See `docs/packages/ledger.md`, `MemStoreOptions`. This
-  sentinel is not `taskrun.ErrNoKey`: that one means an empty
+  sentinel is not `ledger.ErrNoKey`: that one means an empty
   `Task.Key`, a caller error. Do not merge the two.
 
 ## Run order

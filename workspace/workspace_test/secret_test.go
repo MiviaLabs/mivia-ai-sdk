@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/secretpath"
 	"github.com/MiviaLabs/mivia-ai-sdk/workspace"
 )
 
@@ -16,9 +15,9 @@ import (
 var denyPatterns = []string{".env", "secrets/"}
 
 // newMatcher compiles patterns or fails the test.
-func newMatcher(t *testing.T, patterns []string) *secretpath.Matcher {
+func newMatcher(t *testing.T, patterns []string) *workspace.Matcher {
 	t.Helper()
-	m, err := secretpath.NewMatcher(patterns)
+	m, err := workspace.NewMatcher(patterns)
 	if err != nil {
 		t.Fatalf("NewMatcher(%v): %v", patterns, err)
 	}

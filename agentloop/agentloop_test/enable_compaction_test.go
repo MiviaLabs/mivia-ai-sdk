@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -44,7 +44,7 @@ func (estimatingCompleter) EstimateTokens(req provider.Request) (int, error) {
 // leaves the Options untouched.
 func TestEnableCompactionRequiresEstimator(t *testing.T) {
 	var opts agentloop.Options
-	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	err := agentloop.EnableCompaction(&opts, minimalCompleter{}, window, 0.25)
 	if !errors.Is(err, agentloop.ErrNoTokenEstimator) {
 		t.Fatalf("EnableCompaction err = %v, want ErrNoTokenEstimator", err)
@@ -58,7 +58,7 @@ func TestEnableCompactionRequiresEstimator(t *testing.T) {
 // populated and the Options pass Validate.
 func TestEnableCompactionSetsTriple(t *testing.T) {
 	opts := agentloop.Options{}
-	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
 		t.Fatalf("EnableCompaction: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestEnableCompactionSetsTriple(t *testing.T) {
 // TestEnableCompactionZeroWindowLeavesWindowNil proves a zero or
 // negative MaxTokens leaves Compaction.Window nil for New's
 // derivation, while Summarizer and Calibrated land and the Options
-// pass Validate. contextplan.Window.Validate rejects MaxTokens <= 0,
+// pass Validate. plan.Window.Validate rejects MaxTokens <= 0,
 // so such a value can never be an explicit window; derive is the only
 // sensible reading.
 func TestEnableCompactionZeroWindowLeavesWindowNil(t *testing.T) {
@@ -95,7 +95,7 @@ func TestEnableCompactionZeroWindowLeavesWindowNil(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			opts := agentloop.Options{}
-			window := contextplan.Window{MaxTokens: tc.maxTokens, Reserve: 128}
+			window := plan.Window{MaxTokens: tc.maxTokens, Reserve: 128}
 			if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
 				t.Fatalf("EnableCompaction: %v", err)
 			}
@@ -122,7 +122,7 @@ func TestEnableCompactionZeroWindowLeavesWindowNil(t *testing.T) {
 // it.
 func TestEnableCompactionExplicitWindowStillWins(t *testing.T) {
 	opts := agentloop.Options{}
-	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
 		t.Fatalf("EnableCompaction: %v", err)
 	}

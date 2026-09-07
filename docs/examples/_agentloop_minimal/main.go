@@ -1,10 +1,6 @@
 // Command agentloop_minimal shows the smallest useful agentloop
 // entry: one completer, one tool, DefaultBounds, and EnableCompaction
-// build the whole Options. The canned provider.Completer reports its
-// context window through the ContextAccountant capability, and the
-// zero Window passed to EnableCompaction asks New to derive the
-// planning window from it: 2048 tokens with a 409 reserve at an 80/50
-// trigger and target. A canned provider.Completer stands in for
+// build the whole Options. A canned provider.Completer stands in for
 // a model, so the run is offline and deterministic. Compare
 // docs/examples/_agentloop, which wires every Options group.
 package main
@@ -18,16 +14,15 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// cannedCompleter implements provider.Completer,
-// provider.TokenEstimator, and provider.ContextAccountant over a
-// fixed script. Turn one requests one upper call; turn two returns
-// the final answer. EstimateTokens is a bytes-over-four count.
-// ContextWindow reports the model's window size New derives from.
+// cannedCompleter implements provider.Completer and
+// provider.TokenEstimator over a fixed script. Turn one requests one
+// upper call; turn two returns the final answer. EstimateTokens is a
+// bytes-over-four count.
 type cannedCompleter struct {
 	responses []provider.Response
 	calls     int
@@ -50,9 +45,6 @@ func (c *cannedCompleter) Chat(ctx context.Context, req provider.Request) (provi
 func (c *cannedCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	return nil, errors.New("cannedCompleter: ChatStream not supported")
 }
-
-// ContextWindow reports the canned model's 2048-token window.
-func (c *cannedCompleter) ContextWindow() int { return 2048 }
 
 // EstimateTokens sums the request's message content bytes over four.
 func (c *cannedCompleter) EstimateTokens(req provider.Request) (int, error) {
@@ -120,9 +112,11 @@ func main() {
 		Tools:     reg,
 		Bounds:    agentloop.DefaultBounds(),
 	}
-	// A zero Window asks New to derive the planning window from the
-	// completer's ContextAccountant capability.
-	if err := agentloop.EnableCompaction(&opts, completer, contextplan.Window{}, 0.25); err != nil {
+	if err := agentloop.EnableCompaction(&opts, completer, plan.Window{
+		MaxTokens:  2048,
+		Reserve:    512,
+		Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50},
+	}, 0.25); err != nil {
 		fmt.Println("EnableCompaction:", err)
 		return
 	}

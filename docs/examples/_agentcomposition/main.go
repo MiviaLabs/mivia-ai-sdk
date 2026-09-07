@@ -6,11 +6,9 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -88,17 +86,17 @@ func generatePayload(ctx context.Context, store *memory.Store) (string, error) {
 // into an *agent.Agent under a freshly generated identity. It also
 // returns a second identity, the one the AckWait closure signs the
 // confirmed Ack with.
-func buildAgent(payload string) (*agent.Agent, *identity.Identity, error) {
-	id, err := identity.New()
+func buildAgent(payload string) (*agent.Agent, *envelope.Identity, error) {
+	id, err := envelope.New()
 	if err != nil {
 		return nil, nil, err
 	}
-	receiver, err := identity.New()
+	receiver, err := envelope.New()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "composition-agent",
 		Capabilities: []string{"invoice.review"},
 	}
@@ -139,7 +137,7 @@ func admitAndClaim(led *ledger.Ledger, key ledger.IdempotencyKey, now time.Time)
 // tool against the signed step's payload, stores the tool's result in
 // store under a second Put, records that ref into resultRef, and
 // confirms the ack.
-func buildWait(reg *tools.Registry, store *memory.Store, id *identity.Identity, resultRef *string) agent.AckWait {
+func buildWait(reg *tools.Registry, store *memory.Store, id *envelope.Identity, resultRef *string) agent.AckWait {
 	return func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
 		out, err := reg.RunScoped(ctx, "review", tools.InOut{Value: msg.Payload}, nil)
 		if err != nil {

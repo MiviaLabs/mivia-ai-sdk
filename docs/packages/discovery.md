@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `flow`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: discovery
 
 The discovery package answers whether an agent can do a task. It
@@ -89,7 +93,7 @@ data := []byte(`{
     "name": "invoice-agent",
     "capabilities": ["invoice.review", "invoice.approve"]
 }`)
-card, err := discovery.Parse(data)
+card, err := flow.Parse(data)
 if err != nil {
     // the JSON was malformed, or the card failed Validate
 }

@@ -83,7 +83,7 @@ supply its own concrete type. The exported surface below mirrors
 ## Reasoning fold
 
 `provider` carries the reasoning vocabulary alongside the completer
-interface, so a caller and `contextplan` share one set of types
+interface, so a caller and `context/plan` share one set of types
 without either importing the other.
 
 - `RedactBlock(b ReasoningBlock) ReasoningBlock` — returns `b` with

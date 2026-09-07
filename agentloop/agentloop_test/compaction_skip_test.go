@@ -324,7 +324,8 @@ func TestCompactionSkipWrappedSentinelStillSkips(t *testing.T) {
 // check in Options.Validate catches both nil shapes: an untyped nil
 // Summarizer with Window set fails ErrSummarizerRequired, and so does
 // a typed nil (*plan.Summarizer)(nil), which Validate detects through
-// reflection since it is not nil as a plain interface comparison.
+// a type assertion against that one sanctioned concrete type, since
+// it is not nil as a plain interface comparison.
 func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
 	w := plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
 	opts := agentloop.Options{

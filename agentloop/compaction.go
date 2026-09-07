@@ -179,7 +179,7 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 	if !compacted {
 		return provider.Response{}, nil, provider.Request{}, orig
 	}
-	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: surface.defs}
+	req := provider.Request{Model: l.model, Messages: rebuilt, Tools: surface.defs, ReasoningEffort: l.defaultEffort}
 	// The rebuilt history lost the dropped turns' blocks.
 	req.DisableProviderReplay = true
 	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {

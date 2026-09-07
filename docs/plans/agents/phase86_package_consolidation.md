@@ -96,3 +96,21 @@ package count and map, `docs/README.md`, `AGENTS.md`'s layout list,
 and the `docs/packages/` reference pages in the same change. An
 adversarial review pass runs over the whole diff before the final
 commit.
+
+## Renames
+
+A fold that lands inside a target package with an existing name of
+the same shape renames the incoming symbol. Nine renames from this
+phase:
+
+| Old name | New name |
+| --- | --- |
+| `hooks.Handler` | `events.HookHandler` |
+| `hooks.New` | `events.NewRegistry` |
+| `contextsummary.ErrNoMessages` | `contextplan.ErrNoMessagesToSummarize` |
+| `usage.New` | `provider.NewAccumulator` |
+| `providerregistry.New` | `provider.NewRegistry` |
+| `taskrun.ErrNoKey` | `ledger.ErrNoTaskKey` |
+| `trigger.New` | `scheduler.NewRegistry` |
+| `heartbeat.New` | `flow.NewMonitor` |
+| `spool.ErrNoBudget` | `memory.ErrNoGrantBudget` |

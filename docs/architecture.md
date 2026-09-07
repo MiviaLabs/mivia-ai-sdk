@@ -763,7 +763,7 @@ writers.
 
 Deliberately omitted, because these belong to other layers, not the
 message envelope: capability discovery (a registry concern — the
-`discovery` package defines its own minimal card shape instead of the
+`flow` package defines its own minimal card shape instead of the
 A2A Agent Card format); streaming, push, and task lifecycle (transport
 and session concerns — `a2a` maps an envelope message onto an A2A v1.0
 message part and back with no task-lifecycle or transport claim, and

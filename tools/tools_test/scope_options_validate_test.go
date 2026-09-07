@@ -9,8 +9,8 @@ import (
 
 // TestScopeOptionsValidate pins the approval-threshold invariant: the
 // four declared classes pass, anything else fails with
-// ErrUnknownApprovalThreshold, because RunScoped would silently treat
-// an unknown class as "never approve".
+// ErrUnknownApprovalThreshold, since RunScoped would otherwise fall
+// back to ranking the unknown class the same as ExecutionClassExternal.
 func TestScopeOptionsValidate(t *testing.T) {
 	for _, class := range []tools.ExecutionClass{
 		tools.ExecutionClassUnclassified,

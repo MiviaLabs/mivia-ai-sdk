@@ -35,10 +35,11 @@ type Scope struct {
 }
 
 // Validate checks opts: ApprovalThreshold must be one of the four
-// declared ExecutionClass values. An unknown class has no rank, so
-// RunScoped would silently treat it as "never approve"; Validate
-// rejects it instead, for callers that want construction-time
-// enforcement.
+// declared ExecutionClass values. An unknown class ranks the same as
+// ExecutionClassExternal, the highest class, so RunScoped would still
+// gate every External-class tool behind approval; Validate rejects
+// the unknown value instead, for callers that want construction-time
+// enforcement rather than that fallback.
 func (o ScopeOptions) Validate() error {
 	switch o.ApprovalThreshold {
 	case ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite, ExecutionClassExternal:

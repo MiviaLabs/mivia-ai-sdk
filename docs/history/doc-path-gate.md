@@ -100,21 +100,38 @@ A broader trigger would undo the reason for the tracked listing. The
 repository root holds untracked working copies carrying 847 files with
 the retired prefix. A walk of the root reports every one of them.
 
-### An older rule has the same enumeration weakness
+### An older rule had the same enumeration weakness
 
-The doc-comment rule in the same file walks the root for Go files. It
-reads 1667 files, and 1437 of them sit inside those untracked working
-copies. The rule passes today only because those copies happen to hold
-no violation.
+Status: shipped.
 
-The consequence is a false positive waiting to happen. A stale copy
-with one undocumented exported symbol fails the gate for a tree that
-does not contain the file.
+The doc-comment rule in the same file walked the root for Go files, so
+it read every untracked working copy under the tree. The rule passed
+only because those copies happened to hold no violation. A stale copy
+with one undocumented exported symbol would have failed the gate for a
+tree that does not hold the file, naming a path nobody edited.
 
-This change does not fix that rule. The fix is a one-line enumerator
-swap, but it changes which files an existing gate judges, so it needs
-its own before-and-after evidence rather than a ride on this change.
-It is recorded here so the next reader finds it.
+The rule now shares the enumerator described above. `source_files`
+lists tracked files inside a checkout and walks only when no git
+directory is discoverable at or above the root. `read_source` returns
+nothing for a path that holds no readable UTF-8 text.
+
+The measured effect is a strict removal. The walk enumerated 1437
+non-test Go files and the tracked listing enumerates 230. Every one of
+the 1207 dropped paths sits inside an untracked working copy, and the
+change adds no path. The violation set was empty before and after, so
+the file set is the evidence, not the violation count.
+
+The counts moved while this was being written, which is the defect
+restated. An earlier measurement of the same walk gave 1667 files with
+1437 inside those copies. The real checkout stayed at 230 throughout.
+A gate whose judged set changes with untracked scratch state is the
+thing being fixed.
+
+Three deliberate mutants prove the probes are controls rather than
+decoration. Forcing the walk leaks the untracked copy into the result.
+Dropping the read guard ends in the decoding error the guard exists to
+prevent. Removing the fallback fails in a tree with no repository,
+which is the pre-commit hook's exact condition.
 
 The rule carries no exemption list. An exemption is a hole, and this
 gate exists because a previous repoint left holes.

@@ -185,6 +185,54 @@ def _probe_stale_package_doc_superseded_passes(root: Path) -> list[str]:
     return []
 
 
+def _probe_source_files_walks_without_repo(root: Path) -> list[str]:
+    go_packages.write_file(root, "a/a.go", "package a\n")
+    go_packages.write_file(root, "a/a_test.go", "package a\n")
+    got = {p.relative_to(root).as_posix() for p in source_files(root)}
+    if got != {"a/a.go"}:
+        return [f"probe_source_files_walks_without_repo: got {sorted(got)}"]
+    return []
+
+
+def _probe_source_files_lists_tracked_only(root: Path) -> list[str]:
+    """A tracked file is judged and an untracked copy beside it is not.
+    This is the positive control for the enumerator: without a real
+    repository the tracked branch never runs and the probe would pass
+    for the wrong reason."""
+    go_packages.write_file(root, "a/a.go", "package a\n")
+    go_packages.write_file(root, "worktrees/copy/a.go", "package a\n")
+    for args in (["init", "-q"], ["add", "a/a.go"]):
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args], capture_output=True
+        )
+        if proc.returncode != 0:
+            return [
+                "probe_source_files_lists_tracked_only: git "
+                f"{args[0]} failed: {proc.stderr.decode(errors='replace').strip()}"
+            ]
+    if repo_root(root) is None:
+        return ["probe_source_files_lists_tracked_only: fixture is not a repo"]
+    got = {p.relative_to(root).as_posix() for p in source_files(root)}
+    if got != {"a/a.go"}:
+        return [f"probe_source_files_lists_tracked_only: got {sorted(got)}"]
+    return []
+
+
+def _probe_read_source_skips_unreadable(root: Path) -> list[str]:
+    binary = root / "logo.go"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n\x00")
+    if read_source(binary) is not None:
+        return ["probe_read_source_skips_unreadable: read undecodable bytes"]
+    link = root / "link.go"
+    link.symlink_to(root)
+    if read_source(link) is not None:
+        return ["probe_read_source_skips_unreadable: read a directory link"]
+    go_packages.write_file(root, "real.go", "package p\n")
+    if read_source(root / "real.go") != ["package p"]:
+        return ["probe_read_source_skips_unreadable: skipped a real file"]
+    return []
+
+
 def run_probe() -> bool:
     """run_probe exercises the count parser against fixed strings,
     following check_plan.py's --probe convention. The go-list
@@ -219,6 +267,9 @@ def run_probe() -> bool:
             _probe_live_package_doc_passes,
             _probe_stale_package_doc_without_status_fails,
             _probe_stale_package_doc_superseded_passes,
+            _probe_source_files_walks_without_repo,
+            _probe_source_files_lists_tracked_only,
+            _probe_read_source_skips_unreadable,
         ):
             sub = Path(tmp) / fn.__name__
             sub.mkdir()
@@ -229,15 +280,61 @@ def run_probe() -> bool:
     return True
 
 
+def repo_root(start: Path):
+    """repo_root walks up to the checkout root; None outside a repo."""
+    for candidate in [start, *start.parents]:
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def source_files(root: Path) -> list[Path]:
+    """source_files returns the non-test Go files the doc-comment rule
+    judges. Inside a checkout it lists tracked files, so an untracked
+    working copy under the tree is never judged: a stale copy must not
+    fail the gate for a tree that does not hold the file. Outside a
+    checkout it walks the tree, which the pre-commit hook needs, since
+    the hook runs gates on an archive of the staged tree that carries
+    no repository and holds tracked files only. Any other listing
+    failure is an error, never a silent downgrade to the walk."""
+    if repo_root(root) is None:
+        return sorted(
+            p for p in root.rglob("*.go") if not p.name.endswith("_test.go")
+        )
+    out = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    )
+    names = out.stdout.decode("utf-8", errors="surrogateescape").split("\0")
+    return sorted(
+        root / name
+        for name in names
+        if name.endswith(".go") and not name.endswith("_test.go")
+    )
+
+
+def read_source(path: Path):
+    """read_source returns the file's lines, or None when the path holds
+    no readable UTF-8 text. A tracked symlink to a directory and a
+    tracked binary both reach this rule through the tracked listing;
+    neither can carry a Go declaration, so skipping them drops no
+    coverage."""
+    try:
+        return path.read_text().splitlines()
+    except (UnicodeDecodeError, OSError):
+        return None
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     if "--probe" in sys.argv:
         return 0 if run_probe() else 1
     violations: list[str] = []
-    for path in sorted(root.rglob("*.go")):
-        if path.name.endswith("_test.go"):
+    for path in source_files(root):
+        lines = read_source(path)
+        if lines is None:
             continue
-        lines = path.read_text().splitlines()
         for i, line in enumerate(lines):
             m = DECL.match(line)
             if not m:

@@ -10,7 +10,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -34,7 +34,7 @@ type Runner struct {
 	askTo     string
 	artifacts *Artifacts
 	room      string
-	budget    *contextbudget.Limits
+	budget    *budget.Limits
 	monitor   *flow.Monitor
 	hooks     *events.Registry
 	tracer    *trace.Tracer

@@ -9,7 +9,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
+	contextref "github.com/MiviaLabs/mivia-ai-sdk/context/ref"
 )
 
 // Version is the only supported schema version. Decode rejects others.

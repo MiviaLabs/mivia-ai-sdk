@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/ref"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
 
@@ -66,7 +66,7 @@ func TestStorePutGet(t *testing.T) {
 		t.Fatal("repeat Put did not overwrite in place")
 	}
 	unknown := record.Ref
-	unknown.Ref = contextref.Mint([]byte("unknown-payload"))
+	unknown.Ref = ref.Mint([]byte("unknown-payload"))
 	if _, err := store.Get(unknown); !errors.Is(err, contextstate.ErrPayloadNotFound) {
 		t.Fatalf("Get of unknown ref: %v, want ErrPayloadNotFound", err)
 	}

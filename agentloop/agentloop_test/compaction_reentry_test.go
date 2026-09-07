@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -48,10 +48,10 @@ func TestRunBudgetWindowMaxTotalTokensCombined(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sum := &summaryScript{}
-	summarizer, err := contextplan.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -62,10 +62,10 @@ func TestRunBudgetWindowMaxTotalTokensCombined(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Bounds:     agentloop.Bounds{MaxIterations: 3, MaxTotalTokens: 1},
-		Budget:     &contextbudget.Limits{MaxBytes: 200},
+		Budget:     &budget.Limits{MaxBytes: 200},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -99,7 +99,7 @@ func TestRunBudgetWindowMaxTotalTokensCombined(t *testing.T) {
 func TestRunCtxCanceledDuringCompactionSummarizer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &cancelDuringChat{}
-	summarizer, err := contextplan.NewSummarizer(fake)
+	summarizer, err := plan.NewSummarizer(fake)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -111,17 +111,17 @@ func TestRunCtxCanceledDuringCompactionSummarizer(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	completer := &scriptedCompleter{}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer:  completer,
 		Tools:      reg,
 		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &contextbudget.Limits{MaxBytes: 200},
+		Budget:     &budget.Limits{MaxBytes: 200},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -176,11 +176,11 @@ func TestRunBudgetWindowSecondCompactionAcrossIterations(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 500, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 500, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`), result: strings.Repeat("z", 80)})
 	sum := &summaryScript{}
-	summarizer, err := contextplan.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -192,10 +192,10 @@ func TestRunBudgetWindowSecondCompactionAcrossIterations(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Budget:     &contextbudget.Limits{MaxBytes: 350},
+		Budget:     &budget.Limits{MaxBytes: 350},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -262,10 +262,10 @@ func TestRunPlanHistoryFailureLaterIterationPreservesPartialResult(t *testing.T)
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 500, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 500, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`), result: strings.Repeat("z", 80)})
-	summarizer, err := contextplan.NewSummarizer(&summaryFailsOnSecondCall{})
+	summarizer, err := plan.NewSummarizer(&summaryFailsOnSecondCall{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestRunPlanHistoryFailureLaterIterationPreservesPartialResult(t *testing.T)
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -287,7 +287,7 @@ func TestRunPlanHistoryFailureLaterIterationPreservesPartialResult(t *testing.T)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrCallFailed) {
+	if !errors.Is(err, plan.ErrCallFailed) {
 		t.Fatalf("Run() error = %v, want the contextsummary sentinel wrapped", err)
 	}
 	if got := completer.callCount(); got != 1 {

@@ -22,7 +22,7 @@ or a bound trips. The exported surface below mirrors
   `ContinueOnStop`.
   `Completer` and `Tools` are required; the rest are optional.
   The `Summarizer` field's type is the `Summarizer` interface below,
-  not the concrete `*contextplan.Summarizer`.
+  not the concrete `*context/plan.Summarizer`.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Bounds` — the loop's numeric caps group: `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
@@ -51,14 +51,14 @@ or a bound trips. The exported surface below mirrors
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
 - `Summarizer` — the one-method interface `Options.Summarizer` takes:
-  `Summarize(ctx, msgs) (contextplan.Summary, error)`.
-  `*contextplan.Summarizer` satisfies it. An implementation returns
-  `contextplan.ErrSummarySkipped` to decline summary generation;
+  `Summarize(ctx, msgs) (context/plan.Summary, error)`.
+  `*context/plan.Summarizer` satisfies it. An implementation returns
+  `context/plan.ErrSummarySkipped` to decline summary generation;
   compactHistory then reuses the prior summary or proceeds without
   one. See "Context planning and prompt-too-long recovery" below.
-  `EnableCompaction` and `contextplan.NewSummarizer` are the only
+  `EnableCompaction` and `context/plan.NewSummarizer` are the only
   sanctioned constructors for the field's value. A typed nil
-  `(*contextplan.Summarizer)(nil)` stored by hand is not nil as an
+  `(*context/plan.Summarizer)(nil)` stored by hand is not nil as an
   interface: `Validate` passes it and the first `Summarize` call
   panics.
 - `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
@@ -92,7 +92,7 @@ or a bound trips. The exported surface below mirrors
   `Completer`, in one call. The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
   call fails with `ErrNoTokenEstimator` and leaves `Options`
-  untouched. `EnableCompaction` and `contextplan.NewSummarizer`
+  untouched. `EnableCompaction` and `context/plan.NewSummarizer`
   are the only sanctioned constructors for `Options.Summarizer`. A
   typed nil stored by hand is not nil as an interface; see the
   `Summarizer` type above for the warning. A minimal entry path is
@@ -122,7 +122,7 @@ or a bound trips. The exported surface below mirrors
 - `Options.Validate()` — checks, in order: `Completer` and `Tools` are
   set, `Bounds.Validate` passes (each cap non-negative), `Usage`
   requires a non-blank `SessionID`, a non-nil `Budget` passes
-  `contextbudget.Limits.
+  `context/budget.Limits.
   Validate`, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
   `Calibrated`, and excludes `Trim`, `Conclude.Validate` passes
@@ -131,7 +131,7 @@ or a bound trips. The exported surface below mirrors
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
   `validate` check. The `Summarizer` requirement is an interface nil
   check: an untyped nil fails `ErrSummarizerRequired`. A typed nil
-  `(*contextplan.Summarizer)(nil)` passes the check, because a
+  `(*context/plan.Summarizer)(nil)` passes the check, because a
   typed nil stored in an interface field is not nil; see the
   `Summarizer` type above for the caveat.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
@@ -199,12 +199,12 @@ Use `errors.Is` to test these.
   error when the per-iteration estimate fails.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
   error when a required compaction cannot complete: a
-  `contextplan.Compact` failure (wrapping its sentinel), a summarizer
+  `context/plan.Compact` failure (wrapping its sentinel), a summarizer
   failure (wrapping the `contextplan` sentinel), or a rebuilt
   history still over `Window.Budget` (wrapping
-  `contextplan.ErrRetentionOverflow`). Nothing is sent for that
+  `context/plan.ErrRetentionOverflow`). Nothing is sent for that
   iteration. A summarizer that returns
-  `contextplan.ErrSummarySkipped` is a skip, not this failure; see
+  `context/plan.ErrSummarySkipped` is a skip, not this failure; see
   the skip rules under "Context planning and prompt-too-long
   recovery" below.
 - `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
@@ -232,9 +232,9 @@ budget. `Window` requires `Summarizer` and `Calibrated`, and excludes
 
 Before each `Completer.Chat`, `Run` estimates the history through
 `Calibrated` and passes through under `Window.CompactTrigger`. At or
-above the trigger it runs the compaction sequence: `contextplan.
+above the trigger it runs the compaction sequence: `context/plan.
 Compact` under a copy of the caller's `Window` whose
-`Compaction.PreserveNames` gained `contextplan.
+`Compaction.PreserveNames` gained `context/plan.
 SummaryMessageName` when absent, the prior summary message held aside
 as summarizer input, the dropped messages summarized through
 `contextplan`, the fresh summary injected after the leading system
@@ -264,7 +264,7 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
-A summarizer that returns `contextplan.ErrSummarySkipped` is a
+A summarizer that returns `context/plan.ErrSummarySkipped` is a
 skip, not a compaction failure. The rules differ by path and by
 prior-summary state:
 
@@ -272,7 +272,7 @@ prior-summary state:
   re-injected unchanged after the leading system message, in the
   fresh summary's placement. Both paths proceed. On the recovery
   path the notice lands directly after the re-injected prior, since
-  the prior keeps `contextplan.SummaryMessageName`.
+  the prior keeps `context/plan.SummaryMessageName`.
 - Skip with no prior, planning path: nothing is injected. The
   dropped messages stay dropped, and the run proceeds with the kept
   history.
@@ -294,7 +294,7 @@ per-request wiring from the caller.
 `opts.Summarizer` and `opts.Calibrated` are both set, `New` checks
 whether `opts.Completer` implements `provider.ContextAccountant`. If
 it does, and `ContextAccountant.ContextWindow()` returns a positive
-value, `New` builds a default `contextplan.Window`: `MaxTokens` is the
+value, `New` builds a default `context/plan.Window`: `MaxTokens` is the
 reported window, `Reserve` is one fifth of it, and `Compaction`
 triggers at 80% and targets 50%, matching the 80%-trigger reserve.
 The `opts.Summarizer != nil` gate reads an interface, since the
@@ -653,8 +653,8 @@ calls `Registry.RunScoped`, never `Registry.Run`, so a model-chosen
 call always passes through the caller's `Scope`, matching
 `agentrun.Runner.chain`'s precedent of never letting a model bypass
 scoping. `Options.Trim`'s signature stays type-compatible with a
-closure over `contextplan.Planner.Plan`, so a caller can bind context
-trimming without `agentloop` importing `contextplan` itself. See
+closure over `context/plan.Planner.Plan`, so a caller can bind context
+trimming without `agentloop` importing `context/plan` itself. See
 [../plans/agentloop.md](../plans/agentloop.md).
 
 ## Cross-references
@@ -670,7 +670,7 @@ trimming without `agentloop` importing `contextplan` itself. See
   iteration and one per tool call.
 - [events.md](events.md) — `Bus.Subscribe` and `Bus.Emit` back the
   progress events. See "Events" above.
-- [contextbudget.md](contextbudget.md) — a wired `Budget` caps one
+- [context/budget.md](context/budget.md) — a wired `Budget` caps one
   `Completer` call's message history.
 
 ## Usage

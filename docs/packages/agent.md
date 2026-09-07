@@ -139,7 +139,7 @@ Use `errors.Is` to test these.
 
 ### The optional budget parameter
 
-- `budget` is an optional `*contextbudget.Limits`. A nil `budget`
+- `budget` is an optional `*context/budget.Limits`. A nil `budget`
   skips every budget check; `Run`'s behavior is otherwise unchanged.
 - A non-nil `budget` runs `budget.Validate()` once, at the same point
   `Run` checks `wait`, `bus`, and `threadID`; an invalid budget
@@ -165,7 +165,7 @@ Use `errors.Is` to test these.
 
 `agent` is the composition layer. It imports seven other packages:
 `identity`, `discovery`, `flow`, `envelope`, `events`, `heartbeat`,
-and `contextbudget`. None of those seven packages imports `agent`
+and `context/budget`. None of those seven packages imports `agent`
 back. Dependency direction flows inward, from the leaf building
 blocks toward the package that wires them together, so `agent`
 composes signing, workflow stepping, event emission, liveness

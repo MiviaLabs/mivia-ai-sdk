@@ -7,8 +7,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
@@ -52,15 +52,15 @@ type Loop struct {
 	usageAcc        *provider.Accumulator
 	sessionID       string
 	bus             *events.Bus
-	budget          *contextbudget.Limits
+	budget          *budget.Limits
 	trim            func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
 	surfaceFn       func() *Surface
 	defs            []provider.ToolDefinition
 	schemas         map[string]*schema.Compiled
 	audit           AuditFunc
-	window          *contextplan.Window
+	window          *plan.Window
 	summarizer      Summarizer
-	calibrated      *contextplan.Calibrated
+	calibrated      *plan.Calibrated
 	// observe is the caller's Options.ObserveRequest, nil when unset.
 	// The observeRequest helper in agentloop/budget.go runs it after
 	// reserveWork and before every Completer.Chat call.

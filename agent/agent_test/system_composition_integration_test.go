@@ -13,7 +13,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -392,7 +392,7 @@ func assertSystemEvents(t *testing.T, rec *lifecycleRecorder) {
 func TestSystemCompositionBudgetStopsTheRun(t *testing.T) {
 	t.Run("generous budget completes", func(t *testing.T) {
 		fx := newSystemFixture(t)
-		budget := &contextbudget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
+		budget := &budget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
 		status, _, err := fx.a.Run(context.Background(), "budget-thread-ok", fx.m, machine.InOut{},
 			systemWait(t, fx, "budget-thread-ok"), fx.bus, fx.hb, fx.r.ID(), budget)
 		if err != nil {
@@ -407,7 +407,7 @@ func TestSystemCompositionBudgetStopsTheRun(t *testing.T) {
 		fx := newSystemFixture(t)
 		rec := &lifecycleRecorder{}
 		rec.subscribe(t, fx.bus, agent.MessageDeliveredEvent, agent.MessageAckedEvent)
-		budget := &contextbudget.Limits{MaxBytes: 4, MaxEvents: 1_000}
+		budget := &budget.Limits{MaxBytes: 4, MaxEvents: 1_000}
 		_, _, err := fx.a.Run(context.Background(), "budget-thread-tight", fx.m, machine.InOut{},
 			systemWait(t, fx, "budget-thread-tight"), fx.bus, fx.hb, fx.r.ID(), budget)
 		if !errors.Is(err, agent.ErrOverBudget) {

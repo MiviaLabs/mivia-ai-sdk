@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -93,7 +93,7 @@ var (
 func (a *Agent) Run(
 	ctx context.Context, threadID string, m *machine.Definition,
 	in machine.InOut, wait AckWait, bus *events.Bus, hb *flow.Monitor,
-	room string, budget *contextbudget.Limits,
+	room string, budget *budget.Limits,
 ) (machine.Status, machine.InOut, error) {
 	if a == nil || a.id == nil {
 		return machine.Status(""), in, ErrNoIdentity
@@ -149,7 +149,7 @@ func (a *Agent) Run(
 // before hb.Beat and wait. The closure's seen map mints one unique
 // message ID per confirmed step, suffixing repeats; see
 // uniqueStepID.
-func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *flow.Monitor, hbID string, room string, budget *contextbudget.Limits, runningBytes *int) flow.Confirm {
+func (a *Agent) confirmStep(threadID string, wait AckWait, bus *events.Bus, built *[]envelope.Message, hb *flow.Monitor, hbID string, room string, budget *budget.Limits, runningBytes *int) flow.Confirm {
 	seen := map[string]bool{}
 	return func(ctx context.Context, step flow.Step) error {
 		msg := envelope.Message{

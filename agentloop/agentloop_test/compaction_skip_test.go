@@ -1,7 +1,7 @@
 package agentloop_test
 
 // Summarizer-skip tests: a summarizer that returns
-// contextplan.ErrSummarySkipped declines summary generation, and
+// plan.ErrSummarySkipped declines summary generation, and
 // compactHistory reuses the prior summary or proceeds without one.
 // Covers the planning path and the recovery path, each with and
 // without a prior summary held aside, plus the interface nil checks
@@ -16,24 +16,24 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // skipSummarizer implements agentloop.Summarizer directly, with no
-// contextplan adapter, and returns contextplan.ErrSummarySkipped
+// concrete adapter, and returns plan.ErrSummarySkipped
 // from every Summarize call.
 type skipSummarizer struct {
 	mu    sync.Mutex
 	calls int
 }
 
-func (s *skipSummarizer) Summarize(ctx context.Context, msgs []provider.Message) (contextplan.Summary, error) {
+func (s *skipSummarizer) Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
-	return contextplan.Summary{}, contextplan.ErrSummarySkipped
+	return plan.Summary{}, plan.ErrSummarySkipped
 }
 
 func (s *skipSummarizer) callCount() int {
@@ -43,7 +43,7 @@ func (s *skipSummarizer) callCount() int {
 }
 
 // newSkipFixture wires one Loop whose Summarizer is a skipSummarizer.
-func newSkipFixture(t *testing.T, w contextplan.Window, errs []error, responses []provider.Response) (*agentloop.Loop, *scriptedCompleter, *skipSummarizer) {
+func newSkipFixture(t *testing.T, w plan.Window, errs []error, responses []provider.Response) (*agentloop.Loop, *scriptedCompleter, *skipSummarizer) {
 	t.Helper()
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
@@ -55,7 +55,7 @@ func newSkipFixture(t *testing.T, w contextplan.Window, errs []error, responses 
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: skip,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -66,7 +66,7 @@ func newSkipFixture(t *testing.T, w contextplan.Window, errs []error, responses 
 // priorSummaryMessage builds the summary-named message a prior
 // compaction left in history.
 func priorSummaryMessage(content string) provider.Message {
-	return provider.Message{Role: provider.RoleUser, Name: contextplan.SummaryMessageName, Content: content}
+	return provider.Message{Role: provider.RoleUser, Name: plan.SummaryMessageName, Content: content}
 }
 
 // TestCompactionSkipWithPriorReinjectsPrior proves the planning path
@@ -81,7 +81,7 @@ func TestCompactionSkipWithPriorReinjectsPrior(t *testing.T) {
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "final"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
 	loop, sc, skip := newSkipFixture(t, w, nil, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	})
@@ -103,7 +103,7 @@ func TestCompactionSkipWithPriorReinjectsPrior(t *testing.T) {
 	if sent[0].Role != provider.RoleSystem {
 		t.Fatalf("system message not first: %+v", sent[0])
 	}
-	if sent[1].Name != contextplan.SummaryMessageName || sent[1].Content != "prior summary" {
+	if sent[1].Name != plan.SummaryMessageName || sent[1].Content != "prior summary" {
 		t.Fatalf("prior not re-injected unchanged after the system message: %+v", sent[1])
 	}
 	for _, m := range sent {
@@ -126,7 +126,7 @@ func TestCompactionSkipWithoutPriorDropsQuietly(t *testing.T) {
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "final"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
 	loop, sc, skip := newSkipFixture(t, w, nil, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	})
@@ -166,7 +166,7 @@ func TestRecoverySkipWithPriorRetriesWithNotice(t *testing.T) {
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	loop, sc, skip := newSkipFixture(t, w, []error{provider.ErrPromptTooLong}, []provider.Response{
 		provider.Response{},
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
@@ -189,7 +189,7 @@ func TestRecoverySkipWithPriorRetriesWithNotice(t *testing.T) {
 	if retried[0].Role != provider.RoleSystem {
 		t.Fatalf("system message not first: %+v", retried[0])
 	}
-	if retried[1].Name != contextplan.SummaryMessageName || retried[1].Content != "prior summary" {
+	if retried[1].Name != plan.SummaryMessageName || retried[1].Content != "prior summary" {
 		t.Fatalf("prior not re-injected unchanged after the system message: %+v", retried[1])
 	}
 	if retried[2].Content != agentloop.CompactionNotice {
@@ -210,7 +210,7 @@ func TestRecoverySkipWithoutPriorReturnsOriginalErr(t *testing.T) {
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	rejection := fmt.Errorf("vendor: %w", provider.ErrPromptTooLong)
 	loop, sc, skip := newSkipFixture(t, w, []error{rejection}, []provider.Response{provider.Response{}})
 	res, err := loop.Run(context.Background(), msgs)
@@ -234,20 +234,20 @@ func TestRecoverySkipWithoutPriorReturnsOriginalErr(t *testing.T) {
 // TestValidateSummarizerInterfaceNilChecks proves the interface nil
 // check in Options.Validate: an untyped nil Summarizer with Window set
 // fails ErrSummarizerRequired, and a typed nil
-// (*contextplan.Summarizer)(nil) passes, documenting the typed-nil
+// (*plan.Summarizer)(nil) passes, documenting the typed-nil
 // warning on the Summarizer interface.
 func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
-	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
+	w := plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
 	opts := agentloop.Options{
 		Completer:  &scriptedCompleter{},
 		Tools:      tools.New(),
 		Window:     &w,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	}
 	if err := opts.Validate(); !errors.Is(err, agentloop.ErrSummarizerRequired) {
 		t.Fatalf("Validate() = %v, want ErrSummarizerRequired for an untyped nil Summarizer", err)
 	}
-	var typedNil *contextplan.Summarizer
+	var typedNil *plan.Summarizer
 	opts.Summarizer = typedNil
 	if err := opts.Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want nil: a typed nil passes the nil check, which is the documented warning", err)

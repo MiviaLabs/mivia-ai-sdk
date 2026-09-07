@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -104,7 +104,7 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		Usage:     accum,
 		SessionID: "agentloop-adoption",
 		// Row: Budget. Per-session byte and event caps.
-		Budget: &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
+		Budget: &budget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		// Rows: Bounds.MaxTotalTokens and MaxConsecutiveToolFailures.
 		// The per-run billing ceiling and the failure tripwire.
 		Bounds: agentloop.Bounds{
@@ -131,18 +131,18 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 	}
 	// Row: Window + Summarizer + Calibrated. The compaction triple;
 	// the completer must implement provider.TokenEstimator.
-	window := contextplan.Window{
+	window := plan.Window{
 		MaxTokens:  2048,
 		Reserve:    512,
-		Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50},
+		Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}
 	opts.Window = &window
-	summarizer, err := contextplan.NewSummarizer(completer)
+	summarizer, err := plan.NewSummarizer(completer)
 	if err != nil {
 		return opts, err
 	}
 	opts.Summarizer = summarizer
-	opts.Calibrated = contextplan.Calibrate(completer, 0.25)
+	opts.Calibrated = plan.Calibrate(completer, 0.25)
 	return opts, nil
 }
 

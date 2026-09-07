@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/runconfig"
@@ -257,7 +257,7 @@ func TestLoadOptionsBudget(t *testing.T) {
 			"options": {"budget": {"max_bytes": 200000, "max_events": 500}},
 			"tools": []
 		}`)
-		want := &contextbudget.Limits{MaxBytes: 200000, MaxEvents: 500}
+		want := &budget.Limits{MaxBytes: 200000, MaxEvents: 500}
 		if d.Options.Budget == nil || *d.Options.Budget != *want {
 			t.Fatalf("budget = %+v, want %+v", d.Options.Budget, want)
 		}

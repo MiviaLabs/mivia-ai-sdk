@@ -12,7 +12,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
@@ -86,7 +86,7 @@ func TestPlanNilSpoolerLeavesSpoolRefEmpty(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestPlanSpoolsWindowOverflow(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestPlanSpoolsRetentionExpired(t *testing.T) {
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refOldest, len(oldestData)),
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refNewest, len(newest)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 270}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 270}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestPlanSpoolsRetentionCompliantStubOverBudget(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 5}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 5}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestPlanReasoningRedactedNeverSpools(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, provider.ReasoningEventKind, string(provider.RoleAssistant), ref, len(reasoning)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestPlanRevokedNeverSpools(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestPlanSpoolWriteFailureDoesNotFailPlan(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v, want nil error even when the spool write fails", err)
 	}
@@ -335,7 +335,7 @@ func TestPlanSpoolBudgetDoesNotFailPlan(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v, want nil error on a grant-too-large spool write", err)
 	}

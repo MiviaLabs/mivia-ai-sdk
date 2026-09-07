@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -65,7 +65,7 @@ func TestConfirmStepFitsFailureNeverBeats(t *testing.T) {
 
 	// "do the thing" is 12 bytes; a cap of 1 is below it, so Fits
 	// fails on the run's single step, before wait would ever run.
-	budget := &contextbudget.Limits{MaxBytes: 1}
+	budget := &budget.Limits{MaxBytes: 1}
 	var built []envelope.Message
 	var runningBytes int
 	confirm := a.confirmStep("thread-1", wait, bus, &built, hb, hbID, "", budget, &runningBytes)

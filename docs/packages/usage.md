@@ -76,7 +76,7 @@ Use `errors.Is` to test this.
 ## Wire contract
 
 `usage` defines no wire format. It carries in-process values only, the
-same as `provider` and `contextbudget`; no conformance vector applies.
+same as `provider` and `context/budget`; no conformance vector applies.
 
 ## Usage
 

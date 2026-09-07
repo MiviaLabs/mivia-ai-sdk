@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -119,7 +119,7 @@ type Definition struct {
 // invalid internal section config, and a negative budget field. It
 // also wraps any rejection from machine.New, flow.New, or an internal
 // builder. It wraps every failure in ErrBadDocument. A present
-// options.budget maps onto Options.Budget as a *contextbudget.Limits
+// options.budget maps onto Options.Budget as a *budget.Limits
 // and must pass Limits.Validate. The loader never reads the
 // environment.
 func Load(data []byte) (*Definition, error) {
@@ -148,7 +148,7 @@ func Load(data []byte) (*Definition, error) {
 		def.Options.Room = doc.Options.Room
 		def.Options.AskTo = doc.Options.AskTo
 		if doc.Options.Budget != nil {
-			def.Options.Budget = &contextbudget.Limits{
+			def.Options.Budget = &budget.Limits{
 				MaxBytes:  doc.Options.Budget.MaxBytes,
 				MaxEvents: doc.Options.Budget.MaxEvents,
 			}

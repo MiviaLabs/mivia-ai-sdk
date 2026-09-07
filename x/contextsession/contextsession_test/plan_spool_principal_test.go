@@ -8,7 +8,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
@@ -38,7 +38,7 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 	sessA := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refA, len(data)),
 	}}
-	resultA, err := plannerA.Plan(context.Background(), sessA, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	resultA, err := plannerA.Plan(context.Background(), sessA, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan (store A): %v", err)
 	}
@@ -55,7 +55,7 @@ func TestPlanPrincipalConflictDoesNotFailPlan(t *testing.T) {
 	sessB := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-b", 1, "message", string(provider.RoleUser), refB, len(data)),
 	}}
-	resultB, err := plannerB.Plan(context.Background(), sessB, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	resultB, err := plannerB.Plan(context.Background(), sessB, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan (store B): %v, want nil error on a principal conflict", err)
 	}
@@ -89,7 +89,7 @@ func TestPlanSpoolPrincipalIsContentSubject(t *testing.T) {
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refFirst, len(dataFirst)),
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refSecond, len(dataSecond)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 10}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 10}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestPlanConcurrentUseWithSpool(t *testing.T) {
 	done := make(chan int, n)
 	for i := 0; i < n; i++ {
 		go func(idx int) {
-			results[idx], errs[idx] = planner.Plan(context.Background(), sessions[idx], contextplan.Window{MaxTokens: 10}, byteEstimator{})
+			results[idx], errs[idx] = planner.Plan(context.Background(), sessions[idx], plan.Window{MaxTokens: 10}, byteEstimator{})
 			done <- idx
 		}(i)
 	}

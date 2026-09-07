@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -54,13 +54,13 @@ func (o *observeLog) stats() (int, []provider.Request) {
 // working summarizer, so the recovery path can compact before the
 // retry's observer call. errAt is the 1-based observer call that
 // fails; zero never fails.
-func newObserveFixture(t *testing.T, w contextplan.Window, errs []error, responses []provider.Response, errAt int, budget *agentloop.WorkBudget) (*agentloop.Loop, *scriptedCompleter, *observeLog) {
+func newObserveFixture(t *testing.T, w plan.Window, errs []error, responses []provider.Response, errAt int, budget *agentloop.WorkBudget) (*agentloop.Loop, *scriptedCompleter, *observeLog) {
 	t.Helper()
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{errs: errs, responses: responses}
 	sum := &summaryScript{}
-	summarizer, err := contextplan.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -71,7 +71,7 @@ func newObserveFixture(t *testing.T, w contextplan.Window, errs []error, respons
 		Bounds:         agentloop.Bounds{MaxIterations: 4},
 		Window:         &w,
 		Summarizer:     summarizer,
-		Calibrated:     contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated:     plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		ObserveRequest: log.hook,
 		WorkBudget:     budget,
 	})
@@ -133,7 +133,7 @@ func TestObserveRequestErrorFailsBeforeChat(t *testing.T) {
 			{Role: provider.RoleUser, Content: big},
 			{Role: provider.RoleUser, Content: "l"},
 		}
-		w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+		w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 		log := &budgetLog{}
 		// errAt 2: the first observed request is the primary one, the
 		// second is the recovery retry, which fails.
@@ -176,7 +176,7 @@ func TestObserveRequestSeesRetryRequest(t *testing.T) {
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	loop, sc, obs := newObserveFixture(t, w,
 		[]error{provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, {Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}},

@@ -11,7 +11,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
@@ -42,7 +42,7 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
 	est := byteEstimator{}
-	win := contextplan.Window{MaxTokens: len(data)}
+	win := plan.Window{MaxTokens: len(data)}
 
 	first, err := planner.Plan(context.Background(), sess, win, est)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
 	// Between the stub's estimate (StubContentBytes) and the full
 	// content's estimate (len(data)): the full insert overflows, so
 	// only a still-protected payload earns a stub instead of a drop.
-	stubWin := contextplan.Window{MaxTokens: contextsession.StubContentBytes}
+	stubWin := plan.Window{MaxTokens: contextsession.StubContentBytes}
 	second, err := planner.Plan(context.Background(), sess, stubWin, est)
 	if err != nil {
 		t.Fatalf("second Plan: %v", err)
@@ -92,7 +92,7 @@ func TestPlanResolutionConcurrentSameRef(t *testing.T) {
 		sourceEvent("sess-shared", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
 	est := byteEstimator{}
-	win := contextplan.Window{MaxTokens: 100}
+	win := plan.Window{MaxTokens: 100}
 
 	const n = 8
 	results := make([]contextsession.PlanResult, n)
@@ -162,7 +162,7 @@ func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
 	// admit; failAt=1 lets that call succeed and fails only the
 	// second, final call Plan makes after the walk.
 	est := countingEstimator{calls: &calls, failAt: 1}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 100}, est)
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 100}, est)
 	if err != nil {
 		t.Fatalf("Plan: %v, want no error even though the final estimate failed", err)
 	}
@@ -194,7 +194,7 @@ func TestPlanStubStaysValidUTF8(t *testing.T) {
 	}}
 	// The budget sits between the stub's byte count and the full
 	// payload's, so the payload earns a stub rather than a full fit.
-	win := contextplan.Window{MaxTokens: contextsession.StubContentBytes}
+	win := plan.Window{MaxTokens: contextsession.StubContentBytes}
 	result, err := planner.Plan(context.Background(), sess, win, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -245,7 +245,7 @@ func TestPlanOverheadEstimatorExceedsBudget(t *testing.T) {
 		events = append(events, sourceEvent("sess-a", uint64(i), "message", string(provider.RoleUser), ref, len(data)))
 	}
 	sess := &contextstate.Session{Source: events}
-	win := contextplan.Window{MaxTokens: 100}
+	win := plan.Window{MaxTokens: 100}
 	result, err := planner.Plan(context.Background(), sess, win, overheadEstimator{overhead: win.Budget() + 1})
 	if err != nil {
 		t.Fatalf("Plan: %v, want no error", err)

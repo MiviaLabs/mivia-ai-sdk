@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -44,7 +44,7 @@ func (estimatingCompleter) EstimateTokens(req provider.Request) (int, error) {
 // leaves the Options untouched.
 func TestEnableCompactionRequiresEstimator(t *testing.T) {
 	var opts agentloop.Options
-	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	err := agentloop.EnableCompaction(&opts, minimalCompleter{}, window, 0.25)
 	if !errors.Is(err, agentloop.ErrNoTokenEstimator) {
 		t.Fatalf("EnableCompaction err = %v, want ErrNoTokenEstimator", err)
@@ -58,7 +58,7 @@ func TestEnableCompactionRequiresEstimator(t *testing.T) {
 // Calibrated fields land populated and the Options pass Validate.
 func TestEnableCompactionSetsTriple(t *testing.T) {
 	opts := agentloop.Options{}
-	window := contextplan.Window{MaxTokens: 512, Reserve: 128}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
 		t.Fatalf("EnableCompaction: %v", err)
 	}

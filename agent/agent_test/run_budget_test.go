@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -40,7 +40,7 @@ func TestRunNilBudgetUnchanged(t *testing.T) {
 func TestRunGenerousBudgetSucceeds(t *testing.T) {
 	a, m := oneStepFixture(t)
 	bus := newRunBus(t)
-	budget := &contextbudget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
+	budget := &budget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
 	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", budget)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
@@ -63,7 +63,7 @@ func TestRunInvalidBudgetSurfacesValidateError(t *testing.T) {
 		return confirmingWait(ctx, msg)
 	}
 	in := machine.InOut{Input: "keep me"}
-	budget := &contextbudget.Limits{MaxBytes: -1}
+	budget := &budget.Limits{MaxBytes: -1}
 	status, rec, err := a.Run(context.Background(), "thread-1", m, in, wait, bus, nil, "", budget)
 	if err == nil {
 		t.Fatal("Run() returned a nil error, want a non-nil error for an invalid budget")
@@ -110,7 +110,7 @@ func TestRunMaxEventsExceededMidPlan(t *testing.T) {
 		t.Fatalf("Subscribe(ThreadVerifiedEvent) unexpected error: %v", err)
 	}
 
-	budget := &contextbudget.Limits{MaxEvents: 1}
+	budget := &budget.Limits{MaxEvents: 1}
 	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", budget)
 	if !errors.Is(err, agent.ErrOverBudget) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrOverBudget", err)
@@ -138,7 +138,7 @@ func TestRunMaxBytesExceededCumulative(t *testing.T) {
 	// Each step's payload ("step a payload" / "step b payload") is 14
 	// bytes; one step alone fits under 20, but the cumulative sum of
 	// both (28) does not.
-	budget := &contextbudget.Limits{MaxEvents: 1_000, MaxBytes: 20}
+	budget := &budget.Limits{MaxEvents: 1_000, MaxBytes: 20}
 	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", budget)
 	if !errors.Is(err, agent.ErrOverBudget) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrOverBudget", err)
@@ -165,7 +165,7 @@ func TestRunMaxBytesExceededFirstStepAlone(t *testing.T) {
 	}
 
 	// "do the thing" is 12 bytes; a cap of 5 is below it.
-	budget := &contextbudget.Limits{MaxBytes: 5}
+	budget := &budget.Limits{MaxBytes: 5}
 	_, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", budget)
 	if !errors.Is(err, agent.ErrOverBudget) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrOverBudget", err)
@@ -190,7 +190,7 @@ func TestRunBudgetFitsFailureNeverBeats(t *testing.T) {
 	wantID := id.Signer() + ":thread-1"
 
 	// "do the thing" is 12 bytes; a cap of 1 is below it.
-	budget := &contextbudget.Limits{MaxBytes: 1}
+	budget := &budget.Limits{MaxBytes: 1}
 	_, _, runErr := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "", budget)
 	if !errors.Is(runErr, agent.ErrOverBudget) {
 		t.Fatalf("Run() error = %v, want errors.Is match for ErrOverBudget", runErr)

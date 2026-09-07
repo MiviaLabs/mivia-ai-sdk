@@ -44,7 +44,7 @@ package agentloop
   func BatchOrderFromContext(ctx context.Context) (*BatchOrder, bool)
   func DefaultBounds() (Bounds)
   func Definitions(reg *tools.Registry, scope *tools.Scope) ([]provider.ToolDefinition, error)
-  func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) (error)
+  func EnableCompaction(o *Options, completer provider.Completer, window plan.Window, alpha float64) (error)
   func New(opts Options) (*Loop, error)
   func NewBatchOrder(dispatched []int) (*BatchOrder)
   func NewSteer() (*Steer)
@@ -95,14 +95,14 @@ package agentloop
   Usage *provider.Accumulator
   SessionID string
   Bus *events.Bus
-  Budget *contextbudget.Limits
+  Budget *budget.Limits
   Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
   Surface func() *Surface
   StreamingWriter io.Writer
   Audit AuditFunc
-  Window *contextplan.Window
+  Window *plan.Window
   Summarizer Summarizer
-  Calibrated *contextplan.Calibrated
+  Calibrated *plan.Calibrated
   ObserveRequest func(ctx context.Context, req provider.Request) error
   Conclude Conclude
   StartTime time.Time
@@ -129,7 +129,7 @@ package agentloop
 }
   type StopReason string
   type Summarizer interface {
-	Summarize(ctx context.Context, msgs []provider.Message) (contextplan.Summary, error)
+	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
 }
   type Surface struct {
   Advertised []provider.ToolDefinition

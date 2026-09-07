@@ -7,7 +7,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
@@ -40,7 +40,7 @@ func TestPlanIntegrationFullSession(t *testing.T) {
 		sourceEvent("sess-int", 4, "message", string(provider.RoleUser), refRecent, len(recent)),
 	}}
 
-	w := contextplan.Window{MaxTokens: 300, Reserve: 10}
+	w := plan.Window{MaxTokens: 300, Reserve: 10}
 	result, err := planner.Plan(context.Background(), sess, w, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)

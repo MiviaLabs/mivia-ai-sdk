@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -171,7 +171,7 @@ func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, c
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
-		Budget: &contextbudget.Limits{MaxBytes: 1},
+		Budget: &budget.Limits{MaxBytes: 1},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -182,16 +182,16 @@ func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, c
 // buildHardFailPlanHistoryError triggers ErrPlanFailed through a
 // Window whose Calibrated estimator always errors.
 func buildHardFailPlanHistoryError(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
-	sum, err := contextplan.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: textMessage(provider.RoleAssistant, "hi")}}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Bus: bus, HeartbeatInterval: time.Hour,
-		Window:     &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}},
+		Window:     &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}},
 		Summarizer: sum,
-		Calibrated: contextplan.Calibrate(errEstimator{}, 1.0),
+		Calibrated: plan.Calibrate(errEstimator{}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -367,8 +367,8 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
-	sum, err := contextplan.NewSummarizer(&summaryScript{})
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}
@@ -382,7 +382,7 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 	subscribeEvents(t, bus, handler, agentloop.EventCompletionHeartbeat)
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 4},
-		Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Window: &w, Summarizer: sum, Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 		Bus: bus, HeartbeatInterval: heartbeatTestInterval,
 	})
 	if err != nil {

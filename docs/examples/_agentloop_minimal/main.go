@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -112,10 +112,10 @@ func main() {
 		Tools:     reg,
 		Bounds:    agentloop.DefaultBounds(),
 	}
-	if err := agentloop.EnableCompaction(&opts, completer, contextplan.Window{
+	if err := agentloop.EnableCompaction(&opts, completer, plan.Window{
 		MaxTokens:  2048,
 		Reserve:    512,
-		Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50},
+		Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}, 0.25); err != nil {
 		fmt.Println("EnableCompaction:", err)
 		return

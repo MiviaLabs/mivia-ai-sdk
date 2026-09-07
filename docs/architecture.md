@@ -13,19 +13,19 @@ enforces. It is the single design reference for this SDK. See
 [packages/ledger.md](packages/ledger.md),
 [packages/memory.md](packages/memory.md),
 [packages/provider.md](packages/provider.md), and
-[packages/contextplan.md](packages/contextplan.md) for the exported
+[packages/plan.md](packages/plan.md) for the exported
 API references.
 
 ## Package map
 
 The diagram shows the thirty packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextref`,
+imports. `channel`, `context/budget`, `context/ref`,
 `events`,
 `provider`, `schema`,
 `tools`, and `trace` are leaves: they import no other
-package in this module. `envelope` imports `contextref` alone.
-`contextplan` imports `contextref` and `provider`.
+package in this module. `envelope` imports `context/ref` alone.
+`context/plan` imports `context/ref` and `provider`.
 The spool half of `memory` imports `tools` alone.
 The `a2aclient/a2atest` fixture imports `a2a` and `envelope`, the
 same two internal packages `a2aclient` imports. `workspace` imports no other package in this module.
@@ -39,16 +39,16 @@ flowchart LR
     agent --> envelope
     agent --> events
     agent --> machine
-    agent --> contextbudget
-    envelope --> contextref
-    contextplan --> contextref
-    contextplan --> provider
+    agent --> context/budget
+    envelope --> context/ref
+    context/plan --> context/ref
+    context/plan --> provider
     flow --> events
     flow --> machine
     machine --> events
     ledger --> machine
     ledger --> events
-    memory --> contextref
+    memory --> context/ref
     room --> envelope
     a2a --> envelope
     a2aclient --> a2a
@@ -58,9 +58,9 @@ flowchart LR
     agentloop --> tools
     agentloop --> trace
     agentloop --> events
-    agentloop --> contextbudget
+    agentloop --> context/budget
     agentloop --> schema
-    agentloop --> contextplan
+    agentloop --> context/plan
     scheduler --> events
     dispatch --> agent
     dispatch --> envelope
@@ -69,7 +69,7 @@ flowchart LR
     dispatch --> room
     agentrun --> agent
     agentrun --> channel
-    agentrun --> contextbudget
+    agentrun --> context/budget
     agentrun --> envelope
     agentrun --> events
     agentrun --> flow
@@ -100,17 +100,17 @@ flowchart LR
     internal_e2e["internal/e2e"] --> provider
     internal_e2e["internal/e2e"] --> tools
     anthropic["provider/anthropic"] --> provider
-    contextbudget[contextbudget]
+    context/budget[context/budget]
     schema[schema]
     envelope[envelope]
     events[events]
     provider[provider]
     tools[tools]
-    contextref[contextref]
+    context/ref[context/ref]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. It also holds `Identity`, the one agent key. `ContextRef` delegates to `contextref.Mint`, so
+  VerifyThread. It also holds `Identity`, the one agent key. `ContextRef` delegates to `context/ref.Mint`, so
   every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
@@ -210,7 +210,7 @@ flowchart LR
   parameter. A non-empty `room` makes `Run` stamp it onto
   `Message.Room` before it signs each gated step's message; an empty
   `room` leaves `Message.Room` at the zero value. `Run` also takes one
-  trailing, optional `*contextbudget.Limits` parameter. A non-nil
+  trailing, optional `*context/budget.Limits` parameter. A non-nil
   `budget` runs `budget.Validate()` once, at the same point `Run`
   checks `wait`, `bus`, and `threadID`; an invalid budget returns its
   wrapped `Validate` error. A non-nil, valid `budget` makes
@@ -220,7 +220,7 @@ flowchart LR
   A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
   without beating, waiting, or emitting `MessageAckedEvent` for that
   step. A panel step reaches no `Fits` check either. `agent` imports
-  `envelope`, `events`, `machine`, `flow`, and `contextbudget`;
+  `envelope`, `events`, `machine`, `flow`, and `context/budget`;
   none of those five packages imports `agent` or any of the other
   four. `provider`, `tools`, `mcp`, `ledger`, and `memory` compose
   around `Run` through `AckWait` and plan construction, not through a
@@ -306,7 +306,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   records, outside the block, the way `agent.confirmStep` signs `flow`
   steps. A non-nil `Options.Window` plans every iteration against a
   token budget: under the trigger the history passes through; at or
-  above it, one `contextplan.Compact` call plus one `Summarize` call
+  above it, one `context/plan.Compact` call plus one `Summarize` call
   rebuild the history around an injected summary message, and one
   `Calibrated.Observe` after every turn keeps the estimate honest. A
   `provider.ErrPromptTooLong` rejection recovers once through a
@@ -327,8 +327,8 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   on whether a `Completer.Chat` is currently in flight, closing the
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
-  `trace`, `events`, `contextbudget`, `schema`,
-  `contextplan`; it never imports
+  `trace`, `events`, `context/budget`, `schema`,
+  `context/plan`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A
@@ -381,10 +381,10 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
 - `memory/` — the content-addressed context store. It provides
   `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's
-  ref with `contextref.Mint` and stores it under a fixed byte
+  ref with `context/ref.Mint` and stores it under a fixed byte
   budget; a blob that would exceed the budget evicts the
   oldest-inserted blobs, in insertion order, until it fits. `memory`
-  imports `contextref`, for `Mint`, and `tools`, for the spool tool
+  imports `context/ref`, for `Mint`, and `tools`, for the spool tool
   wrappers. The package also holds the principal-scoped spool:
   `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`, `ContentStore`,
   `WithPrincipal`, `PrincipalFrom`, `SpoolTool`, `ReadOutputTool`,
@@ -424,18 +424,18 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   module; it is the fourth package, after `a2aclient`, `mcp`, and
   `ledger`, allowed to carry a third-party import:
   `github.com/santhosh-tekuri/jsonschema/v6`.
-- `contextbudget/` — a leaf primitive. It provides `Limits`,
+- `context/budget/` — a leaf primitive. It provides `Limits`,
   `Validate`, and `Fits`. `Limits` caps one model call's context by
   byte count and event count; a zero field means no cap for that
   dimension. `Validate` rejects a negative `MaxBytes` or `MaxEvents`.
   `Fits` reports whether a candidate byte and event total both stay
   at or under their caps; it keeps no running total of its own.
-  `contextbudget` imports no other package in this module; `agent`
+  `context/budget` imports no other package in this module; `agent`
   imports it for `Run`'s optional budget check.
-- `contextref/` — the canonical content-reference minter and parser.
+- `context/ref/` — the canonical content-reference minter and parser.
   It provides `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
-  `envelope` and `contextplan` import it, so every ref in
-  this SDK has one form. See [packages/contextref.md](packages/contextref.md).
+  `envelope` and `context/plan` import it, so every ref in
+  this SDK has one form. See [packages/ref.md](packages/ref.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Request.Validate`,
@@ -484,7 +484,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   through `RunTurn` and falls through to the next name only when the
   caller's `Retryable` predicate approves the failure.
   See [packages/provider.md](packages/provider.md).
-- `contextplan/` — manages token budget windows and compaction. It
+- `context/plan/` — manages token budget windows and compaction. It
   provides `Window` with `Validate` and `Budget`, `Compaction` with
   `Validate`, `Compact`, `CompactResult`, `CompactTrigger` and
   `CompactTarget`, `Calibrate` and `Calibrated`, `IsReasoningEvent`, the
@@ -494,7 +494,7 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `ErrNoObjective`. `Compact` applies the trigger check and a fixed
   retention set over one message list, pure, with no LLM call, and
   mints the `context-compact-v1` idempotency key through
-  `contextref.Mint`. The package also holds the compaction
+  `context/ref.Mint`. The package also holds the compaction
   summarizer: `Summary` with `Validate` and `Render`,
   `SummaryMessage` with `SummaryPreamble`, `TokenEstimate`,
   `Summarizer` with `NewSummarizer` and `Summarize`, the bounds
@@ -506,8 +506,8 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   timeout caps the duration, and strict decoding plus
   `Summary.Validate` cap the accepted output. A summary failure is a
   caller-visible error; no structural fallback exists.
-  `contextplan` imports `contextref` and
-  `provider`. See [packages/contextplan.md](packages/contextplan.md).
+  `context/plan` imports `context/ref` and
+  `provider`. See [packages/plan.md](packages/plan.md).
 - `provider/anthropic/` — the Anthropic Messages API adapter. It provides
   `Client`, `New`, `Options`, `Options.Validate`, default constants, and
   the sentinels `ErrAPIKeyRequired`, `ErrInvalidOptions`, `ErrAuth`,

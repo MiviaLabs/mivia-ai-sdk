@@ -1,7 +1,0 @@
-package contextbudget
-  func (l Limits) Fits(bytes, events int) (bool)
-  func (l Limits) Validate() (error)
-  type Limits struct {
-  MaxBytes int
-  MaxEvents int
-}

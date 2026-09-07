@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider/anthropic"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -109,15 +109,15 @@ func buildControlLoop(t *testing.T, serverURL string, client *http.Client) *agen
 	if err := reg.Add(&echoTool{name: "search", schema: []byte(`{"type":"object"}`), result: strings.Repeat("r", 20)}); err != nil {
 		t.Fatalf("reg.Add: %v", err)
 	}
-	summarizer, err := contextplan.NewSummarizer(fixedSummaryCompleter{})
+	summarizer, err := plan.NewSummarizer(fixedSummaryCompleter{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
 
-	window := &contextplan.Window{
+	window := &plan.Window{
 		MaxTokens: 800,
 		Reserve:   100,
-		Compaction: contextplan.Compaction{
+		Compaction: plan.Compaction{
 			TriggerPercent: 35,
 			TargetPercent:  20,
 		},
@@ -129,7 +129,7 @@ func buildControlLoop(t *testing.T, serverURL string, client *http.Client) *agen
 		Bounds:     agentloop.Bounds{MaxIterations: 5},
 		Window:     window,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("agentloop.New: %v", err)
@@ -160,7 +160,7 @@ func TestAnthropicAgentLoopCompactionControl(t *testing.T) {
 
 	foundSummary := false
 	for _, m := range res.History {
-		if m.Name == contextplan.SummaryMessageName {
+		if m.Name == plan.SummaryMessageName {
 			foundSummary = true
 			break
 		}

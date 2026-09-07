@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
@@ -55,7 +55,7 @@ func TestLoopIntegrationTwoToolThreeIteration(t *testing.T) {
 
 // TestLoopIntegrationTrimBindsToContextPlanPlan proves Options.Trim's
 // signature is type-compatible with a closure over
-// contextplan.Planner.Plan: the closure discards msgs and reads from a
+// plan.Planner.Plan: the closure discards msgs and reads from a
 // Session the test seeds once, and its ctx and error returns pass
 // straight through Trim's call site.
 func TestLoopIntegrationTrimBindsToContextPlanPlan(t *testing.T) {
@@ -85,7 +85,7 @@ func TestLoopIntegrationTrimBindsToContextPlanPlan(t *testing.T) {
 		RedactionStatus: "none",
 		Size:            len(data),
 	}}}
-	window := contextplan.Window{MaxTokens: 1000}
+	window := plan.Window{MaxTokens: 1000}
 	estimator := loopByteEstimator{}
 
 	trim := func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {

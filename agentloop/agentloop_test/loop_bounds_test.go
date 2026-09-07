@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -321,7 +321,7 @@ func TestRunBudgetExceededLaterIteration(t *testing.T) {
 	}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5},
-		Budget: &contextbudget.Limits{MaxEvents: 2},
+		Budget: &budget.Limits{MaxEvents: 2},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

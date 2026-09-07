@@ -277,3 +277,239 @@ In `contextsummary/contextsummary_test/summary_test.go`:
 - `docs/packages/contextsummary.md` line 44's `Summary.Validate()`
   entry needs no wording change: "no duplicate items" already matches
   the corrected code.
+
+## Addendum: host-schema keys, evidence fields, preamble, and skip sentinel
+
+Status: shipped.
+
+### Addendum goal
+
+Align `Summary` with the host durable schema in the sibling consumer
+repo (`internal/contextmgr/contracts.go` lines 188-198). The SDK
+document and the host document then share one JSON key set. Four
+additions ship together: two fields, tagged keys, a preamble, and a
+sentinel.
+
+`Summary` stays a data-only document. The SDK does not port the host
+keys `version` and `source_range`. The caller owns durability and
+provenance, so those two fields stay with the caller's storage.
+
+### Addendum scope
+
+Inside:
+
+- `Summary` grows `Evidence []string` and `ChangedSurfaces []string`.
+  All seven fields gain json tags: `objective`, `state`, `decisions`,
+  `evidence`, `changed_surfaces`, `open_work`, `risks`. The five
+  lists carry `omitempty`; `objective` and `state` do not.
+- `Validate` runs `validateItemList` over both new lists with the
+  same bounds: `MaxItems`, `MaxFieldBytes`, no duplicates, no
+  blanks. Check order follows field order: Objective, State,
+  Decisions, Evidence, ChangedSurfaces, OpenWork, Risks.
+- `Render` writes both new sections through `writeItems`, with the
+  labels `Evidence:` and `ChangedSurfaces:` and `- ` bullets. Field
+  order: Objective, State, Decisions, Evidence, ChangedSurfaces,
+  OpenWork, Risks.
+- `systemPrompt` states the tagged snake_case keys, pinned under
+  Addendum API.
+- `SummaryPreamble` and the `SummaryMessage` join, pinned under
+  Addendum API. `SummaryPreamble` lives in `summary.go` beside
+  `SummaryMessage`.
+- `ErrSummarySkipped`, the skip sentinel, pinned under Addendum API.
+  It lives in `summarizer.go` with the other sentinels.
+- The reply-fixture updates listed under Addendum tests: the complete
+  set, verified by grep for the capitalized key across every `*.go`
+  file.
+- `docs/packages/contextsummary.md`: the `Summary` bullet, the
+  `SummaryPreamble` constant entry, the `SummaryMessage` bullet, and
+  one `ErrSummarySkipped` failure-mode entry.
+- `docs/architecture.md`: the `contextsummary` module-map bullet
+  gains `SummaryPreamble` and `ErrSummarySkipped` in the same commit.
+
+Outside:
+
+- The host keys `version` and `source_range`. The document stays
+  data-only and the caller owns durability.
+- Any `agentloop.compactHistory` change that consumes
+  `ErrSummarySkipped`. A follow-up addendum to
+  `docs/plans/agentloop.md`, later in this same session, lands that
+  consumer and removes the pending-symbols entry.
+- Any strictness change to `decodeReply`. `DisallowUnknownFields`
+  stays and the function stays byte-identical. Capitalized replies
+  fail through the tags alone.
+- `policy/layers.json`: no change. `contextsummary` still imports
+  only `provider`.
+- Timeouts, retry behavior, `TokenEstimate`, and excerpt caps: no
+  change.
+
+### Addendum API
+
+The surface below is the lock target, landed through
+`make api-update` in the same commit as the code.
+
+```go
+// Summary is one validated summary document. Data only: no tool,
+// policy, or credential fields. The json tags pin the host durable
+// schema keys; version and source_range stay with the caller.
+type Summary struct {
+    Objective       string   `json:"objective"`
+    State           string   `json:"state"`
+    Decisions       []string `json:"decisions,omitempty"`
+    Evidence        []string `json:"evidence,omitempty"`
+    ChangedSurfaces []string `json:"changed_surfaces,omitempty"`
+    OpenWork        []string `json:"open_work,omitempty"`
+    Risks           []string `json:"risks,omitempty"`
+}
+
+// SummaryPreamble is the framing line SummaryMessage places before
+// Render output; Render itself carries no preamble.
+const SummaryPreamble = "This message restates the conversation that compaction removed."
+
+// ErrSummarySkipped is the sentinel a summarize adapter returns to
+// decline summary injection; the concrete Summarizer never returns it.
+var ErrSummarySkipped = errors.New("contextsummary: summary skipped")
+```
+
+`SummaryMessage` sets `Content` to exactly `SummaryPreamble + "\n" +
+s.Render()`. No other join exists. An adapter that cannot summarize
+returns `ErrSummarySkipped`; the caller then declines injection. The
+concrete `*Summarizer` never returns this sentinel.
+
+`systemPrompt` becomes:
+
+```go
+const systemPrompt = "Summarize the conversation excerpt for an agent. " +
+	"Reply with one JSON object and nothing else. The object keys are " +
+	"\"objective\" (string), \"state\" (string), \"decisions\" (array of " +
+	"strings), \"evidence\" (array of strings), \"changed_surfaces\" " +
+	"(array of strings), \"open_work\" (array of strings), and \"risks\" " +
+	"(array of strings). No other keys. One markdown code fence around " +
+	"the object is allowed. Objective and State are non-empty. Every " +
+	"list item is non-blank and unique."
+```
+
+Why capitalized replies fail with no `decodeReply` change:
+`encoding/json` folds case after the exact-tag miss, so `Objective`
+still decodes into `objective`. `OpenWork` and `ChangedSurfaces`
+cannot fold onto `open_work` and `changed_surfaces`; the underscore
+breaks the fold. `DisallowUnknownFields` then rejects the key with
+`ErrInvalidReply`. A reply keyed only `Objective`, `State`,
+`Decisions`, and `Risks` still decodes through that fold. After the
+edits above, one capitalized reply fixture remains in the tree: the
+new rejection-test literal. It carries `OpenWork`, which is what
+makes it fail.
+
+### Addendum tests
+
+All in `contextsummary/contextsummary_test/`, table-driven where the
+case set grows.
+
+- `TestSummaryJSONRoundTrip` — marshal one full `Summary`, decode the
+  bytes back, every field equals. The same document with empty lists
+  marshals to bytes without the five list keys; the `objective` and
+  `state` keys always appear.
+- The existing tables extend over both new lists, same shape as the
+  three shipped lists. `TestSummaryValidateValidShapes` gains one
+  valid case per new list. `TestSummaryValidateFieldBounds` gains one
+  oversized item per new list. `TestSummaryValidateListRules` gains,
+  per new list, one over-full list, one duplicate, and one blank
+  item.
+- `TestSummarizeRejectsCapitalizedKeyReply` — the old capitalized
+  reply shape, kept as one local literal carrying `OpenWork`, fails
+  `Summarize` with `ErrInvalidReply`.
+- `TestSummaryMessagePreamble` — `SummaryMessage` content starts
+  with `SummaryPreamble`, then one `\n`, then exactly the `Render`
+  output. The `Render` output alone contains no preamble.
+- The content equality in `TestSummaryMessage` becomes
+  `SummaryPreamble + "\n" + s.Render()`.
+- `TestRenderShowsEveryField` gains the `Evidence:` and
+  `ChangedSurfaces:` labels with one bullet each, and the order chain
+  extends to Decisions, Evidence, ChangedSurfaces, OpenWork.
+
+Reply-fixture updates, the complete set. A grep for `"Objective"`
+across every `*.go` file found the reply literals. A byte-boundary
+pass over the budget tests found three more sites:
+
+- `contextsummary/contextsummary_test/helper_test.go:65` —
+  `validReply` becomes snake_case and gains `evidence` and
+  `changed_surfaces`.
+- `contextsummary/contextsummary_test/summarizer_test.go:101-119` —
+  every reply literal in the invalid-reply table and the fenced
+  cases becomes snake_case.
+- `contextsummary/contextsummary_test/render_test.go` — the
+  `TestSummaryMessage` equality above.
+- `e2e/e2e_test/anthropic_compaction_test.go:54` — the `summaryJSON`
+  reply.
+- `agentloop/agentloop_test/compaction_test.go:72` —
+  `summaryReplyJSON`.
+- `agentloop/agentloop_test/compaction_budget_test.go:221` —
+  `hugeReply`; snake_case keys, no new keys. The test expects
+  failure, and the preamble only enlarges the reply; the boundary
+  arithmetic below does not touch it.
+- `agentloop/agentloop_test/compaction_budget_test.go:262-307` —
+  `TestRunCompactedHistoryExactlyAtBudgetPasses` pins an exact-byte
+  boundary. Today: empty system, the 50-byte rendered summary at
+  line 280, one user byte, total 51. The change adds 91 bytes per
+  rendered summary: 64 for `SummaryPreamble` plus its join newline,
+  27 for the two new label lines. `Render` writes a label line for
+  every section, empty list included, so the 27 bytes apply to every
+  summary. Raise `MaxTokens` 51 to 142, and update the comment's
+  arithmetic. Keep the sent-bytes equality assertion.
+- `agentloop/agentloop_test/compaction_budget_test.go:382-414` —
+  `TestCheckCompactedBudgetAtBudgetPasses` pins "1 + 81 + 1 = 83" in
+  its comment. The same 91 bytes make it "1 + 172 + 1 = 174". Raise
+  `MaxTokens` 83 to 174, and update the comment.
+- `agentloop/agentloop_test/compaction_budget_test.go:416-444` —
+  `TestCheckCompactedBudgetOverBudgetFails` shares that window. At
+  `MaxTokens` 174, its "uu" user message totals 175, one byte over.
+  Keep "uu", and update the comment. Without the window bump the
+  test still fails, but the Budget()+1 boundary goes vacuous.
+- `agentloop/agentloop_test/compaction_recovery_test.go:44` — the
+  prefix check becomes `strings.HasPrefix(excerpts, "[user] " +
+  contextsummary.SummaryPreamble)` plus one `Contains` on
+  `Objective:`. The preamble now leads the summary message.
+- `agentloop/agentloop_test/compaction_reentry_test.go:30` — the
+  `Contains(m.Content, "Objective: Ship")` check still matches,
+  because `Render` keeps its labels. Verify by running the test;
+  change nothing blindly.
+
+Pin for the `agentloop` and `e2e` reply fixtures: keep the five
+existing keys, snake_cased. Do not add `evidence` or
+`changed_surfaces` there. The key choice changes no byte counts:
+`Render` writes both new label lines for every summary, empty lists
+included. The pin keeps those fixtures minimal; `validReply` in
+`contextsummary` alone exercises the new keys. A preamble rewording
+re-derives the two boundary totals.
+
+Fixture edits must not drop an assertion. The test-tampering gate
+stays green with no trailer.
+
+### Addendum verification
+
+- `make verify` passes; `contextsummary` and the total hold the 85
+  coverage floor.
+- `make api-update` runs and `api/contextsummary.txt` gains
+  `SummaryPreamble`, `ErrSummarySkipped`, and the two tagged
+  `Summary` fields. The lock diff lands in the same commit as the
+  code.
+- `policy/pending_symbols.json` gains the entry below, in the same
+  commit as the code. It cannot land earlier: the symbol-wiring gate
+  reports a pending symbol that appears in no api lock as stale. The
+  follow-up `agentloop` change removes the entry.
+
+```json
+"contextsummary.ErrSummarySkipped": {
+  "reason": "Sentinel an adapter returns to decline summary injection; the concrete Summarizer never returns it. No caller yet: agentloop.compactHistory learns skip-not-fail handling in a follow-up addendum.",
+  "target": "agentloop compaction addendum (docs/plans/agentloop.md), next change in this session",
+  "permanent": false
+}
+```
+
+- `SummaryPreamble` needs no entry. Its declaration plus the
+  `SummaryMessage` use give two non-test occurrences in the module.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`,
+  `scripts/check_prose.py`, `scripts/check_api.py`, and
+  `scripts/check_symbol_wiring.py` pass.
+- `policy/layers.json` carries no diff.
+- No envelope conformance vector: `contextsummary` defines no wire
+  format, so the schema change adds none.

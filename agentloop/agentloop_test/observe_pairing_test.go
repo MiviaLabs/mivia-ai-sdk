@@ -9,13 +9,12 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// referenceObserve computes the same formula contextplan.Calibrated.Observe
+// referenceObserve computes the same formula plan.Calibrated.Observe
 // applies: sample := actual/estimated, then next := factor *
 // ((1-alpha) + alpha*sample), clamped to [MinCorrectionFactor,
 // MaxCorrectionFactor]. Tests in this file check agentloop's call
@@ -26,11 +25,11 @@ func referenceObserve(factor, alpha float64, estimated, actual int) float64 {
 	}
 	sample := float64(actual) / float64(estimated)
 	next := factor * ((1 - alpha) + alpha*sample)
-	if next < contextplan.MinCorrectionFactor {
-		next = contextplan.MinCorrectionFactor
+	if next < plan.MinCorrectionFactor {
+		next = plan.MinCorrectionFactor
 	}
-	if next > contextplan.MaxCorrectionFactor {
-		next = contextplan.MaxCorrectionFactor
+	if next > plan.MaxCorrectionFactor {
+		next = plan.MaxCorrectionFactor
 	}
 	return next
 }
@@ -49,18 +48,18 @@ func TestRunRecoveryObservePairsWithRecoveryEstimate(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	const actual = 500
 	final := provider.Response{
 		Message: provider.Message{Role: provider.RoleAssistant, Content: "done"},
 		Usage:   provider.Usage{TotalTokens: actual},
 	}
 	sc := &scriptedCompleter{responses: []provider.Response{{}, final}, errs: []error{provider.ErrPromptTooLong}}
-	summarizer, err := contextsummary.NewSummarizer(&summaryScript{})
+	summarizer, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
-	cal := contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)
+	cal := plan.Calibrate(scaleEstimator{div: 1}, 1.0)
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	loop, err := agentloop.New(agentloop.Options{
@@ -115,7 +114,7 @@ func TestRunRecoveryObservePairsWithRecoveryEstimate(t *testing.T) {
 // fix, so the correction factor never moved off its 1.0 starting
 // value.
 func TestRunCalibratedWithoutWindowEstimates(t *testing.T) {
-	cal := contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)
+	cal := plan.Calibrate(scaleEstimator{div: 1}, 1.0)
 	reg := tools.New()
 	final := provider.Response{
 		Message: provider.Message{Role: provider.RoleAssistant, Content: "done"},
@@ -150,7 +149,7 @@ func TestRunCalibratedWithoutWindowEstimates(t *testing.T) {
 // fails the run: Chat still runs, estimatedTokens stays zero, and the
 // later Observe call sees a non-positive estimated value and no-ops.
 func TestRunEstimatorFailureNonFatal(t *testing.T) {
-	cal := contextplan.Calibrate(errEstimator{}, 0.5)
+	cal := plan.Calibrate(errEstimator{}, 0.5)
 	reg := tools.New()
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	sc := &scriptedCompleter{responses: []provider.Response{final}}
@@ -225,7 +224,7 @@ func (c *checkpointCompleter) ChatStream(ctx context.Context, req provider.Reque
 // retention-overflow risk exists for the message sizes this test
 // picks.
 func TestRunConcurrentSharedLoopWithPlanning(t *testing.T) {
-	cal := contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)
+	cal := plan.Calibrate(scaleEstimator{div: 1}, 1.0)
 	reg := tools.New()
 
 	sizes := [4]int{100, 200, 300, 400}

@@ -7,12 +7,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/dispatch"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
@@ -64,9 +62,9 @@ func countingBus(t testing.TB, extra ...events.Name) (*events.Bus, *deliveredAck
 // client's opened loop and that both sides' buses see
 // MessageDeliveredEvent and MessageAckedEvent.
 func TestIntegrationSendClosesTheLoop(t *testing.T) {
-	senderID, err := identity.New()
+	senderID, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() error: %v", err)
+		t.Fatalf("envelope.New() error: %v", err)
 	}
 	roomID := "integration-room"
 	r, err := room.New(roomID, senderID.Signer())
@@ -110,7 +108,7 @@ func TestIntegrationSendClosesTheLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New() error: %v", err)
 	}
-	a, err := workflow.New(senderID, discovery.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
+	a, err := workflow.New(senderID, flow.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
 	if err != nil {
 		t.Fatalf("workflow.New() error: %v", err)
 	}

@@ -1,7 +1,7 @@
 package agentloop
 
 import (
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -19,7 +19,7 @@ const (
 // does not implement the capability or reports a non-positive window.
 // Reserve holds one fifth of the window back for the model's reply,
 // matching the 80% trigger.
-func deriveWindow(completer provider.Completer) *contextplan.Window {
+func deriveWindow(completer provider.Completer) *plan.Window {
 	ca, ok := completer.(provider.ContextAccountant)
 	if !ok {
 		return nil
@@ -28,10 +28,10 @@ func deriveWindow(completer provider.Completer) *contextplan.Window {
 	if max <= 0 {
 		return nil
 	}
-	return &contextplan.Window{
+	return &plan.Window{
 		MaxTokens:  max,
 		Reserve:    max / 5,
-		Compaction: contextplan.Compaction{TriggerPercent: defaultWindowTrigger, TargetPercent: defaultWindowTarget},
+		Compaction: plan.Compaction{TriggerPercent: defaultWindowTrigger, TargetPercent: defaultWindowTarget},
 	}
 }
 

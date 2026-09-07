@@ -12,10 +12,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -54,11 +53,11 @@ func buildPlan(artifacts *run.Artifacts) (*flow.Definition, error) {
 // buildAgent builds an Agent over plan under a freshly generated
 // identity and a capability card.
 func buildAgent(plan *flow.Definition) (*workflow.Agent, error) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		return nil, err
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "pipeline-agent",
 		Capabilities: []string{"invoice.review"},
 	}

@@ -15,7 +15,7 @@ import (
 )
 
 // TestEmitMessageDeliveredCrossesEnvelopeAndEvents signs a real
-// Message with a real identity.Identity, then proves
+// Message with a real envelope.Identity, then proves
 // EmitMessageDelivered delivers exactly one event on a real bus.
 func TestEmitMessageDeliveredCrossesEnvelopeAndEvents(t *testing.T) {
 	t.Parallel()

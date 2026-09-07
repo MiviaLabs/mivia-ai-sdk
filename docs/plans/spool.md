@@ -1,6 +1,8 @@
 # spool
 
-Status: shipped. One new leaf package plus a `tools.Tool` wrapper,
+Status: superseded. Phase 86 folded this package into memory;
+the symbols live in memory now. See
+docs/plans/agents/phase86_package_consolidation.md.
 implementing `docs/plans/agents/phase67_truncation_spool.md` under
 the phase 65 `contextstate` contract. No standalone phase 67 plan
 file remains.
@@ -17,7 +19,7 @@ The ref's format is a `ContentStore` implementation's own choice.
 `memory.Store`'s refs happen to match `contextref.Mint`'s output
 today, since `Put` calls it directly, but a caller using a different
 `ContentStore` may mint refs some other way. `contextsession` consumes `spool` today: `Planner` writes a
-budget-driven elision's full payload to a wired `*spool.Spool`, keyed
+budget-driven elision's full payload to a wired `*memory.Spool`, keyed
 to the payload's `SubjectID`. See `docs/plans/contextsession.md`.
 `e2e/e2e_test/spool_test.go` proves a caller-driven
 `SpoolTool`/`ReadOutputTool` pairing runs through a live `agentrun`
@@ -596,7 +598,7 @@ Inside:
   pairing with the full one: one `NewSpool` call feeds both
   `SpoolTool` and `ReadOutputTool`.
 - `docs/plans/subagent.md`'s "Deliberate non-goals" prose quotes the
-  old four-argument call shape (`spool.SpoolTool(name, maxBytes,
+  old four-argument call shape (`memory.SpoolTool(name, maxBytes,
   store, ...)`). Update that line to the new shape in the same
   commit; a stale signature in a plan is documentation drift.
 
@@ -751,17 +753,17 @@ change from the single unpaired call to the full pairing:
 
 ```go
 store, _ := memory.New(1 << 20)
-sp, err := spool.NewSpool(store, 1<<20)
+sp, err := memory.NewSpool(store, 1<<20)
 if err != nil {
     // maxGrantBytes was zero or negative
 }
 
-wrapped, err := spool.SpoolTool("big-tool", 4096, sp, myTool)
+wrapped, err := memory.SpoolTool("big-tool", 4096, sp, myTool)
 if err != nil {
     // sp was nil
 }
 
-readBack, err := spool.ReadOutputTool(sp, 2048)
+readBack, err := memory.ReadOutputTool(sp, 2048)
 if err != nil {
     // sp was nil, or maxPageBytes was non-positive
 }
@@ -770,7 +772,7 @@ registry := tools.New()
 registry.Add(wrapped)
 registry.Add(readBack)
 
-ctx := spool.WithPrincipal(context.Background(), "agent-a")
+ctx := memory.WithPrincipal(context.Background(), "agent-a")
 out, err := wrapped.Run(ctx, in)
 // out.Value truncates and appends a ref when myTool's result exceeds
 // 4096 bytes. A model reads that ref from the text and calls
@@ -797,7 +799,7 @@ Show that `ReadOutputTool` is present, schema-typed, and resolvable
 by name and scope in the same `*tools.Registry` object
 `agentrun.New` validates and wires for a chain, not only through
 `spool`'s own tests. Today no test outside `spool/spool_test/` calls
-`spool.ReadOutputTool`. The one e2e test that wires `SpoolTool` into
+`memory.ReadOutputTool`. The one e2e test that wires `SpoolTool` into
 a live `agentrun.Options.Tools` registry
 (`e2e/e2e_test/spool_test.go`) never registers `ReadOutputTool` and
 never resolves it through that registry. It resolves the spooled body
@@ -848,7 +850,7 @@ Inside:
 
 - Extend `e2e/e2e_test/spool_test.go`,
   `TestSpoolToolTruncatesLargeStepResult`: register a
-  `spool.ReadOutputTool` built over the same `sp` into the same `reg`
+  `memory.ReadOutputTool` built over the same `sp` into the same `reg`
   used by `agentrun.Options.Tools`, alongside the existing
   `SpoolTool`-wrapped tool.
 - Build a `*tools.Scope` with `tools.NewScope` naming both tool names
@@ -1246,7 +1248,7 @@ in a new file.
 New file `spool/spool_test/definitions_guard_test.go`:
 
 - `TestSpoolToolOverSchemalessInnerStaysUnoffered` is the regression
-  guard for the defect this plan avoids. Build a `*spool.Spool` over
+  guard for the defect this plan avoids. Build a `*memory.Spool` over
   the package's fake store. Wrap a `stringTool` that implements no
   optional interface. Add the wrapper to a `tools.New()` registry
   with `tools.Registry.Add`; see `tools/registry.go:74`. Call `agentloop.Definitions(reg, nil)`.

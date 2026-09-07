@@ -3,10 +3,10 @@ package run_test
 import (
 	"context"
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
@@ -107,9 +107,9 @@ func TestNewRequiresGatedTailTool(t *testing.T) {
 // From; the branch is exercised here even though From is not observable
 // through the public surface.
 func TestNewReceiverOverride(t *testing.T) {
-	receiver, err := identity.New()
+	receiver, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	runner, err := run.New(run.Options{
 		Agent:    mustAgent(t, oneStepPlan(t)),

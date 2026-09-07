@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // sqliteScenarioKey is the fixed idempotency key the durablefence
@@ -58,12 +58,12 @@ func (c *sqliteScenarioClock) staleNow() time.Time {
 }
 
 // sqliteFenceToToken converts a FenceToken to the opaque string token
-// durablefence.Scenario carries.
+// ledgertest.Scenario carries.
 func sqliteFenceToToken(f FenceToken) string {
 	return strconv.FormatUint(uint64(f), 10)
 }
 
-// sqliteTokenToFence parses a durablefence.Scenario token back into a
+// sqliteTokenToFence parses a ledgertest.Scenario token back into a
 // FenceToken.
 func sqliteTokenToFence(token string) (FenceToken, error) {
 	v, err := strconv.ParseUint(token, 10, 64)
@@ -74,17 +74,17 @@ func sqliteTokenToFence(token string) (FenceToken, error) {
 }
 
 // buildSQLiteLedgerScenario admits sqliteScenarioKey against l and
-// wires a durablefence.Scenario over Ledger.Claim, Takeover, Renew,
+// wires a ledgertest.Scenario over Ledger.Claim, Takeover, Renew,
 // Release, and State, the same shape ledger_test/scenario_test.go
 // builds against a MemStore-backed Ledger.
-func buildSQLiteLedgerScenario(t *testing.T, l *Ledger, ctx context.Context) durablefence.Scenario {
+func buildSQLiteLedgerScenario(t *testing.T, l *Ledger, ctx context.Context) ledgertest.Scenario {
 	t.Helper()
 	if ok, err := l.Admit(ctx, sqliteScenarioActor, sqliteScenarioKey, 1, nil, sqliteScenarioClockBase); err != nil || !ok {
 		t.Fatalf("Admit: ok=%v err=%v", ok, err)
 	}
 	clk := &sqliteScenarioClock{}
 
-	return durablefence.Scenario{
+	return ledgertest.Scenario{
 		Claim: func(ctx context.Context) (string, error) {
 			fence, err := l.Claim(ctx, sqliteScenarioActor, sqliteScenarioKey, sqliteScenarioOwner, sqliteScenarioLease, clk.now())
 			if err != nil {
@@ -156,5 +156,5 @@ func TestSQLiteStoreLedgerScenarioConformance(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	s := buildSQLiteLedgerScenario(t, l, ctx)
-	durablefence.RunAll(t, ctx, s)
+	ledgertest.RunAll(t, ctx, s)
 }

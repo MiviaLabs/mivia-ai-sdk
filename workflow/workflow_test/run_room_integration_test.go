@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 )
@@ -20,9 +19,9 @@ import (
 // real room.Room admits that identity's signer, and Accepts returns
 // nil once Run stamps the matching room ID before signing.
 func TestRunRoomStampedAdmitsIntoRealRoom(t *testing.T) {
-	founder, err := identity.New()
+	founder, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	rm, err := room.New("room-1", founder.Signer())
 	if err != nil {
@@ -58,9 +57,9 @@ func TestRunRoomStampedAdmitsIntoRealRoom(t *testing.T) {
 // the gap this phase closes as a regression check, not only a
 // new-behavior check.
 func TestRunRoomEmptyRejectedByRealRoom(t *testing.T) {
-	founder, err := identity.New()
+	founder, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	rm, err := room.New("room-1", founder.Signer())
 	if err != nil {

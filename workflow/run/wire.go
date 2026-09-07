@@ -9,12 +9,10 @@ import (
 	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -36,9 +34,9 @@ type Runner struct {
 	askTo     string
 	artifacts *Artifacts
 	room      string
-	budget    *contextbudget.Limits
-	monitor   *heartbeat.Monitor
-	hooks     *hooks.Registry
+	budget    *budget.Limits
+	monitor   *flow.Monitor
+	hooks     *events.Registry
 	tracer    *trace.Tracer
 	wait      workflow.AckWait
 }
@@ -68,7 +66,7 @@ func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (ma
 	}
 	status, rec, err := r.agent.Run(ctx, threadID, r.machine, in, wait, r.bus, r.monitor, r.room, r.budget)
 	if r.hooks != nil {
-		if ferr := r.hooks.Fire(ctx, hooks.PointStop, status); ferr != nil {
+		if ferr := r.hooks.Fire(ctx, events.PointStop, status); ferr != nil {
 			herr := fmt.Errorf("run: stop hook: %w", ferr)
 			if err != nil {
 				err = errors.Join(err, herr)
@@ -110,7 +108,7 @@ func (r *Runner) chain() workflow.AckWait {
 		}
 		name := toolNameFor(r.tools, msg.ID)
 		if r.hooks != nil {
-			if err := r.hooks.Fire(ctx, hooks.PointPreTool, msg); err != nil {
+			if err := r.hooks.Fire(ctx, events.PointPreTool, msg); err != nil {
 				return envelope.Ack{}, fmt.Errorf("run: step %q: pre-tool hook: %w", msg.ID, err)
 			}
 		}
@@ -199,7 +197,7 @@ func (r *Runner) askRoundTrip(ctx context.Context, msg envelope.Message) (envelo
 
 // firePostTool runs the PointPostTool handlers for one confirmed ack.
 func (r *Runner) firePostTool(ctx context.Context, msg envelope.Message, ack envelope.Ack) error {
-	if err := r.hooks.Fire(ctx, hooks.PointPostTool, ack); err != nil {
+	if err := r.hooks.Fire(ctx, events.PointPostTool, ack); err != nil {
 		return fmt.Errorf("run: step %q: post-tool hook: %w", msg.ID, err)
 	}
 	return nil

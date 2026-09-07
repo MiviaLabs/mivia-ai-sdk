@@ -17,15 +17,29 @@ package a2aclient
   func (g *grpcTransport) Result(ctx context.Context, taskID string) (a2a.Mapped, State, error)
   func (g *grpcTransport) Send(ctx context.Context, mapped a2a.Mapped) (string, error)
   func (g *grpcTransport) State(ctx context.Context, taskID string) (State, error)
+  func (o Options) Validate() (error)
   func (s State) String() (string)
   func New(baseURL string) (*Client, error)
   func NewWithTLS(baseURL string, cfg *tls.Config) (*Client, error)
+  func Wait(c Remote, opts Options) (func(context.Context, envelope.Message) (envelope.Ack, error), error)
   type Client struct {
+}
+  type Options struct {
+  Poll time.Duration
+  Timeout time.Duration
+  ExpectSigner string
+}
+  type Remote interface {
+	Send(ctx context.Context, msg envelope.Message) (TaskHandle, error)
+	Status(ctx context.Context, h TaskHandle) (State, error)
+	Result(ctx context.Context, h TaskHandle) (envelope.Message, error)
 }
   type State int
   type TaskHandle struct {
 }
   var ErrNoBaseURL
+  var ErrNoClient
+  var ErrNoPoll
   var ErrNoResultMessage
   var ErrNoTLSConfig
   var ErrNoTask
@@ -33,6 +47,10 @@ package a2aclient
   var ErrNoTextPart
   var ErrNoTransport
   var ErrNotTerminal
+  var ErrRemoteFailed
+  var ErrShortTimeout
   var ErrSignatureCheckFailed
+  var ErrSignerMismatch
+  var ErrTimeout
   var ErrUnsigned
   var ErrZeroTaskHandle

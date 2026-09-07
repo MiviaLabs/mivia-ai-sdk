@@ -1,7 +1,8 @@
 # Plan: contextbudget
 
-Status: shipped. A new leaf package with no internal imports. `agent`
-imports it in the same change, as `Run`'s optional budget parameter.
+Status: superseded by `docs/plans/context/budget.md`. The rename
+pass moves the package to `context/budget`. This file is a
+historical record of the shipped work.
 
 ## Goal
 

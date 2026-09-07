@@ -105,7 +105,7 @@ or a bound trips. The exported surface below mirrors
 - `Options.Validate()` — checks, in order: `Completer` and `Tools` are
   set, `Bounds.Validate` passes (each cap non-negative), `Usage`
   requires a non-blank `SessionID`, a non-nil `Budget` passes
-  `contextbudget.Limits.
+  `context/budget.Limits.
   Validate`, a non-nil `Window`
   passes `Window.Validate` and requires `Summarizer`, requires
   `Calibrated`, and excludes `Trim`, `Conclude.Validate` passes
@@ -178,10 +178,10 @@ Use `errors.Is` to test these.
   error when the per-iteration estimate fails.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
   error when a required compaction cannot complete: a
-  `contextplan.Compact` failure (wrapping its sentinel), a summarizer
+  `context/plan.Compact` failure (wrapping its sentinel), a summarizer
   failure (wrapping the `contextsummary` sentinel), or a rebuilt
   history still over `Window.Budget` (wrapping
-  `contextplan.ErrRetentionOverflow`). Nothing is sent for that
+  `context/plan.ErrRetentionOverflow`). Nothing is sent for that
   iteration.
 - `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
   `Options.Validate` returns it when `Window` is set and `Summarizer`
@@ -207,7 +207,7 @@ budget. `Window` requires `Summarizer` and `Calibrated`, and excludes
 
 Before each `Completer.Chat`, `Run` estimates the history through
 `Calibrated` and passes through under `Window.CompactTrigger`. At or
-above the trigger it runs the compaction sequence: `contextplan.
+above the trigger it runs the compaction sequence: `context/plan.
 Compact` under a copy of the caller's `Window` whose
 `Compaction.PreserveNames` gained `contextsummary.
 SummaryMessageName` when absent, the prior summary message held aside
@@ -248,7 +248,7 @@ per-request wiring from the caller.
 `opts.Summarizer` and `opts.Calibrated` are both set, `New` checks
 whether `opts.Completer` implements `provider.ContextAccountant`. If
 it does, and `ContextAccountant.ContextWindow()` returns a positive
-value, `New` builds a default `contextplan.Window`: `MaxTokens` is the
+value, `New` builds a default `context/plan.Window`: `MaxTokens` is the
 reported window, `Reserve` is one fifth of it, and `Compaction`
 triggers at 80% and targets 50%, matching the 80%-trigger reserve.
 Derivation stands down whenever `Trim` is set, because `Validate`
@@ -342,7 +342,7 @@ On every hard-fail error return — a canceled ctx, a `Completer.Chat`
 error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
 `ErrCallsPerTurnExceeded`, a `Trim` error, a post-`Trim`
 `provider.Message.Validate` error, a tool error under
-`ErrorPolicyFail`, a non-veto `hooks.Fire` error, or a non-nil
+`ErrorPolicyFail`, a non-veto `events.Fire` error, or a non-nil
 `Options.Audit` return — `Run` also
 returns the partial `Result` alongside the error, not the zero value,
 once at least one iteration has completed. `Final` and `Stop` stay
@@ -534,7 +534,7 @@ path exactly.
 
 - `New` calls `Definitions` once; a tool registered after `New` but
   before `Run` is never offered to the model.
-- A `PointPreTool` veto (`errors.Is(err, hooks.ErrVetoed)`) stops the
+- A `PointPreTool` veto (`errors.Is(err, events.ErrVetoed)`) stops the
   run with `StopHookVeto` and does not run the tool. Any other
   `PointPreTool` handler error is a hard failure.
 - A wired `Hooks` registry fires `PointPreTool` before each tool
@@ -561,8 +561,8 @@ calls `Registry.RunScoped`, never `Registry.Run`, so a model-chosen
 call always passes through the caller's `Scope`, matching
 `run.Runner.chain`'s precedent of never letting a model bypass
 scoping. `Options.Trim`'s signature stays type-compatible with a
-closure over `contextplan.Planner.Plan`, so a caller can bind context
-trimming without `agentloop` importing `contextplan` itself. See
+closure over `context/plan.Planner.Plan`, so a caller can bind context
+trimming without `agentloop` importing `context/plan` itself. See
 [../plans/agentloop.md](../plans/agentloop.md).
 
 ## Cross-references
@@ -578,7 +578,7 @@ trimming without `agentloop` importing `contextplan` itself. See
   iteration and one per tool call.
 - [events.md](events.md) — `Bus.Subscribe` and `Bus.Emit` back the
   progress events. See "Events" above.
-- [contextbudget.md](contextbudget.md) — a wired `Budget` caps one
+- [context/budget.md](context/budget.md) — a wired `Budget` caps one
   `Completer` call's message history.
 
 ## Usage

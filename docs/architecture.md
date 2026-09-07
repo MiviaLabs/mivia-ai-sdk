@@ -7,167 +7,110 @@ enforces. It is the single design reference for this SDK. See
 [packages/room.md](packages/room.md),
 [packages/machine.md](packages/machine.md),
 [packages/flow.md](packages/flow.md),
-[packages/identity.md](packages/identity.md),
 [packages/events.md](packages/events.md),
 [packages/a2a.md](packages/a2a.md),
 [packages/a2aclient.md](packages/a2aclient.md),
 [packages/ledger.md](packages/ledger.md),
 [packages/memory.md](packages/memory.md),
 [packages/provider.md](packages/provider.md), and
-[packages/contextplan.md](packages/contextplan.md) for the exported
+[packages/plan.md](packages/plan.md) for the exported
 API references.
 
 ## Package map
 
-The diagram shows the forty-nine packages and the import edges
+The diagram shows the thirty packages and the import edges
 between them. An arrow points from an importer to the package it
-imports. `channel`, `contextbudget`, `contextref`,
-`discovery`, `durablefence`, `envfile`, `events`, `hooks`,
-`longtermmemory`, `provider`, `schema`, `secretpath`, `skills`,
-`tools`, `trace`, and `trigger` are leaves: they import no other
-package in this module. `envelope` imports `contextref` alone.
-`contextstate` imports `contextref` alone.
-`contextplan` imports `contextref` and `provider`.
-`contextsession` imports `contextplan`, `contextstate`,
-`provider`, and `spool`. `spool` imports `tools` alone.
-`a2aloopback` imports `a2a` and `envelope`, the same two internal
-packages `a2aclient` imports. `workspace` imports `secretpath` alone.
-`runconfig` imports `workflow/run`, `contextbudget`, `flow`, `heartbeat`,
-`ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
+imports. `channel`, `context/budget`, `context/ref`,
+`events`,
+`provider`, `schema`,
+`tools`, and `trace` are leaves: they import no other
+package in this module. `envelope` imports `context/ref` alone.
+`context/plan` imports `context/ref` and `provider`.
+The spool half of `memory` imports `tools` alone.
+The `a2aclient/a2atest` fixture imports `a2a` and `envelope`, the
+same two internal packages `a2aclient` imports. `workspace` imports no other package in this module.
+Six orphaned packages — `contextstate`, `contextsession`,
+`longtermmemory`, `skills`, `envfile`, and `runconfig` — live in the
+`x/` sub-module and are outside the package count and diagram above.
 
 ```mermaid
 flowchart LR
-    workflow --> identity
-    workflow --> discovery
     workflow --> flow
     workflow --> envelope
     workflow --> events
     workflow --> machine
-    workflow --> heartbeat
-    workflow --> contextbudget
-    envelope --> contextref
-    contextstate --> contextref
-    contextplan --> contextref
-    contextplan --> provider
-    contextsession --> contextplan
-    contextsession --> contextstate
-    contextsession --> provider
-    contextsession --> spool
+    workflow --> context/budget
+    envelope --> context/ref
+    context/plan --> context/ref
+    context/plan --> provider
     flow --> events
     flow --> machine
-    heartbeat --> events
-    identity --> envelope
     machine --> events
     ledger --> machine
     ledger --> events
-    memory --> contextref
+    memory --> context/ref
     room --> envelope
     a2a --> envelope
     a2aclient --> a2a
     a2aclient --> envelope
-    a2aloopback --> a2a
-    a2aloopback --> envelope
     mcp --> tools
-    spool --> tools
     agentloop --> provider
     agentloop --> tools
     agentloop --> trace
-    agentloop --> hooks
-    agentloop --> usage
     agentloop --> events
-    agentloop --> contextbudget
+    agentloop --> context/budget
     agentloop --> schema
-    agentloop --> contextplan
-    agentloop --> contextsummary
-    agentloop --> toolcallctx
-    contextsummary --> provider
-    toolcallctx --> provider
-    usage --> provider
-    providerregistry --> provider
+    agentloop --> context/plan
     scheduler --> events
-    a2aack --> a2aclient
-    a2aack --> envelope
     dispatch --> workflow
     dispatch --> envelope
     dispatch --> events
     dispatch --> ledger
     dispatch --> room
-    dispatch --> taskrun
-    run["workflow/run"] --> workflow
-    run["workflow/run"] --> channel
-    run["workflow/run"] --> contextbudget
-    run["workflow/run"] --> envelope
-    run["workflow/run"] --> events
-    run["workflow/run"] --> flow
-    run["workflow/run"] --> heartbeat
-    run["workflow/run"] --> hooks
-    run["workflow/run"] --> identity
-    run["workflow/run"] --> machine
-    run["workflow/run"] --> memory
-    run["workflow/run"] --> tools
-    run["workflow/run"] --> trace
-    taskrun --> ledger
-    subagent --> workflow
-    subagent --> run["workflow/run"]
+    workflow/run --> agent
+    workflow/run --> channel
+    workflow/run --> context/budget
+    workflow/run --> envelope
+    workflow/run --> events
+    workflow/run --> flow
+    workflow/run --> machine
+    workflow/run --> memory
+    workflow/run --> tools
+    workflow/run --> trace
+    subagent --> agent
+    subagent --> workflow/run
     subagent --> channel
-    subagent --> discovery
     subagent --> envelope
     subagent --> events
     subagent --> flow
-    subagent --> heartbeat
-    subagent --> identity
     subagent --> ledger
     subagent --> machine
     subagent --> memory
     subagent --> provider
-    subagent --> providerregistry
     subagent --> room
     subagent --> scheduler
-    subagent --> taskrun
     subagent --> tools
     subagent --> trace
-    subagent --> trigger
-    workspace --> secretpath
-    runconfig --> run["workflow/run"]
-    runconfig --> contextbudget
-    runconfig --> flow
-    runconfig --> heartbeat
-    runconfig --> ledger
-    runconfig --> machine
-    runconfig --> memory
-    runconfig --> room
-    runconfig --> subagent
-    runconfig --> tools
-    runconfig --> trace
-    e2e --> workflow
-    e2e --> channel
-    e2e --> discovery
-    e2e --> envelope
-    e2e --> events
-    e2e --> flow
-    e2e --> identity
-    e2e --> ledger
-    e2e --> provider
-    e2e --> tools
+    internal_e2e["internal/e2e"] --> workflow
+    internal_e2e["internal/e2e"] --> channel
+    internal_e2e["internal/e2e"] --> envelope
+    internal_e2e["internal/e2e"] --> events
+    internal_e2e["internal/e2e"] --> flow
+    internal_e2e["internal/e2e"] --> ledger
+    internal_e2e["internal/e2e"] --> provider
+    internal_e2e["internal/e2e"] --> tools
     anthropic["provider/anthropic"] --> provider
-    contextbudget[contextbudget]
+    context/budget[context/budget]
     schema[schema]
-    discovery[discovery]
-    durablefence[durablefence]
     envelope[envelope]
     events[events]
     provider[provider]
-    skills[skills]
     tools[tools]
-    trigger[trigger]
-    usage[usage]
-    envfile[envfile]
-    longtermmemory[longtermmemory]
-    contextref[contextref]
+    context/ref[context/ref]
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. `ContextRef` delegates to `contextref.Mint`, so
+  VerifyThread. It also holds `Identity`, the one agent key. `ContextRef` delegates to `context/ref.Mint`, so
   every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
@@ -218,26 +161,33 @@ flowchart LR
   later from the last checkpoint through `Resume`. `Checkpoint`'s
   `Failed` field preserves an already-caught failure's outcome across
   the pause, but a still-pending fallback's handler bookkeeping does
-  not survive the round trip. See [packages/flow.md](packages/flow.md).
-- `events/` — the in-process reaction bus. It provides `Name`,
-  `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and `Emit`. The
-  caller owns the bus; the module has no shared bus. Event names are
-  typed `Name` constants owned by each domain. See
+  not survive the round trip. The package also holds the capability
+  card: `Card`, `Parse`, `Validate`, and `Match`. `Parse` reads a
+  card from JSON and validates it. `Validate` rejects a blank name,
+  an empty capability list, and a duplicate capability. `Match`
+  compares a capability request against the card, case-insensitive
+  and exact. It also holds the liveness monitor: `Monitor`,
+  `NewMonitor`, `Beat`, `Alive`, `Dead`, `Forget`, and the typed
+  event name `MissedEvent`. `Monitor` tracks liveness by time: it
+  records the last beat per id and reports which ids have gone silent
+  past a fixed timeout; it never emits `MissedEvent` itself.
+  See [packages/flow.md](packages/flow.md).
+- `events/` — the in-process reaction bus and the hook registry. It
+  provides `Name`, `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and
+  `Emit`. It also provides the hook surface: `Point`, `PointPreTool`,
+  `PointPostTool`, `PointStop`, `HookHandler`, `Registry`,
+  `NewRegistry`, `Add`, `Remove`, `Fire`, and the sentinels
+  `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and
+  `ErrVetoed`. The caller owns the bus; the module has no shared bus.
+  Event names are typed `Name` constants owned by each domain. A
+  `Registry` groups named hook handlers by `Point`; `Fire` runs them
+  in registration order and stops at the first veto. Unlike
+  `Bus`, `Fire` propagates the decision: a veto or a handler error
+  short-circuits the chain and returns to the caller. See
   [packages/events.md](packages/events.md).
-- `identity/` — one agent key. It provides `Identity`, `New`, `Load`,
-  `Validate`, `Sign`, `Signer`, and the sentinels `ErrKeyFormat` and
-  `ErrKeyInvalid`. `Sign` wraps `envelope.Sign`; `Signer` derives the
-  hex public key from the private key. See
-  [packages/identity.md](packages/identity.md).
-- `discovery/` — the capability card. It provides `Card`, `Parse`,
-  `Validate`, and `Match`. `Parse` reads a card from JSON and validates
-  it. `Validate` rejects a blank name, an empty capability list, and a
-  duplicate capability. `Match` compares a capability request against
-  the card, case-insensitive and exact. See
-  [packages/discovery.md](packages/discovery.md).
 - `workflow/` — the composition layer. It provides `Agent`, `New`,
-  `Name`, and `Capabilities`. `New` wires an `identity.Identity`, a
-  `discovery.Card`, and a `flow.Definition` into one agent. It rejects
+  `Name`, and `Capabilities`. `New` wires an `envelope.Identity`, a
+  `flow.Card`, and a `flow.Definition` into one workflow. It rejects
   a nil identity, an invalid card, and a nil plan, in that order. It
   also provides the envelope-to-events translator:
   `EmitMessageDelivered`, `EmitMessageAcked`, and `EmitThreadVerified`.
@@ -251,7 +201,7 @@ flowchart LR
   caller-supplied `AckWait`, and emits `MessageAckedEvent` once the
   ack confirms. An `AckWait` that wraps `ErrEscalated` routes the step
   back to the caller. `Run` takes one trailing, optional
-  `*heartbeat.Monitor` parameter. A non-nil `Monitor` beats one id,
+  `*flow.Monitor` parameter. A non-nil `Monitor` beats one id,
   `a.id.Signer()+":"+threadID`, right before each gated step's
   `AckWait` call, and forgets it once, on every return path. A panel
   step reaches no beat call. `Run` never reads `Dead` itself; an
@@ -260,29 +210,22 @@ flowchart LR
   parameter. A non-empty `room` makes `Run` stamp it onto
   `Message.Room` before it signs each gated step's message; an empty
   `room` leaves `Message.Room` at the zero value. `Run` also takes one
-  trailing, optional `*contextbudget.Limits` parameter. A non-nil
+  trailing, optional `*context/budget.Limits` parameter. A non-nil
   `budget` runs `budget.Validate()` once, at the same point `Run`
   checks `wait`, `bus`, and `threadID`; an invalid budget returns its
   wrapped `Validate` error. A non-nil, valid `budget` makes
   `confirmStep` check `budget.Fits`, right before each gated step's
-  `AckWait` call and before the heartbeat beat, against the cumulative
+  `AckWait` call and before the liveness beat, against the cumulative
   byte total of every message built so far plus the step about to run.
   A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
   without beating, waiting, or emitting `MessageAckedEvent` for that
   step. A panel step reaches no `Fits` check either. `workflow` imports
-  `envelope`, `events`, `machine`, `heartbeat`, and `contextbudget`;
+  `envelope`, `events`, `machine`, `flow`, and `context/budget`;
   none of those five packages imports `workflow` or any of the other
   four. `provider`, `tools`, `mcp`, `ledger`, and `memory` compose
   around `Run` through `AckWait` and plan construction, not through a
   direct import edge; the flowchart above draws no new arrow for them.
   See [packages/workflow.md](packages/workflow.md).
-- `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
-  `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
-  `MissedEvent`. `Monitor` tracks liveness by time: it records the
-  last beat per id and reports which ids have gone silent past a
-  fixed timeout. `workflow`, `workflow/run`, `runconfig`, and `subagent`
-  import it. It imports `events` only, for the `MissedEvent`
-  constant. See [packages/heartbeat.md](packages/heartbeat.md).
 - `a2a/` — the A2A v1.0 mapping. It provides `Part`, `Mapped`,
   `ToPart`, and `FromPart`. `ToPart` validates an `envelope.Message`
   and encodes it into a `Part`. `FromPart` decodes a `Part` back into
@@ -300,28 +243,26 @@ flowchart LR
   two packages in this module allowed to import the third-party
   `github.com/a2aproject/a2a-go` and `google.golang.org/grpc`, the
   dial dependency `a2a-go`'s gRPC transport needs; this is the
-  module's first external network call. `a2aloopback` is the other.
+  module's first external network call. `a2aclient/a2atest` is the other.
+  The package also holds the remote step ack: `Options`,
+  `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait`
+  returns a func matching `workflow.AckWait`'s signature,
+  `func(context.Context, envelope.Message) (envelope.Ack, error)`,
+  that sends a gated step as a remote task, polls `Status`, fetches
+  `Result`, re-verifies its signature, and builds a confirmed ack
+  keyed off the sent message. A failed, canceled, or rejected task
+  ends the poll with `ErrRemoteFailed`, and so does a state the loop
+  cannot resolve. The ack returns an unnamed func rather than
+  importing `workflow` for the `AckWait` name, and carries no a2a-go
+  import of its own.
   See [packages/a2aclient.md](packages/a2aclient.md).
-- `a2aloopback/` — a gRPC A2A loopback test fixture. It provides
-  `Loopback`, which starts a real A2A server on a 127.0.0.1 port and
-  returns the address and a stop function. `a2aloopback` imports `a2a`
-  and `envelope`, plus the same third-party `a2a-go`/`grpc` exception
-  `a2aclient` carries, scoped to the server-side packages a production
-  client never needs. It follows `durablefence`'s convention: no
-  production package may import it; only `a2aclient`'s own tests and
-  `a2aack`'s tests do.
-- `a2aack/` — the remote step ack. It provides `Options`,
-  `Options.Validate`, `Remote`, `Wait`, and sentinels. `Wait` returns
-  a func matching `workflow.AckWait`'s signature, `func(context.Context,
-  envelope.Message) (envelope.Ack, error)`, that sends a gated step as
-  a remote task, polls `Status`, fetches `Result`, re-verifies its
-  signature, and builds a confirmed ack keyed off the sent message. A
-  failed, canceled, or rejected task ends the poll with
-  `ErrRemoteFailed`, and so does a state the loop cannot resolve.
-  `a2aack` imports `a2aclient` and `envelope`; it returns an unnamed
-  func rather than importing `workflow` for the `AckWait` name. It
-  carries no a2a-go import of its own. See
-  [packages/a2aack.md](packages/a2aack.md).
+  The package also holds the `a2aclient/a2atest` fixture: `Loopback`
+  starts a real A2A server on a 127.0.0.1 port and returns the
+  address and a stop function. The fixture carries the same
+  third-party `a2a-go`/`grpc` exception scoped to the server-side
+  packages a production client never needs. It follows the fixture
+  convention: no production package may import it; only
+  `a2aclient`'s own tests do.
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
   `Send`, `SendResult`, and sentinels. `Endpoint.Handler` answers POST
@@ -334,20 +275,19 @@ flowchart LR
   return never fails a line. `Send` posts a batch of signed messages
   as one NDJSON request and parses the reply into one `SendResult` per
   line, in order. `dispatch` imports `workflow`, `envelope`, `events`,
-  `ledger`, `room`, and `taskrun`; it carries no third-party or
+  `ledger`, and `room`; it carries no third-party or
   network-transport import beyond the standard library `net/http`. See
   [packages/dispatch.md](packages/dispatch.md).
 - `workflow/run/` — the config-struct composition layer over `workflow.Run`.
   See [packages/workflow/run.md](packages/workflow/run.md).
-- `taskrun/` — the ledger admit, claim, run, complete ceremony around
-  one work func. See [packages/taskrun.md](packages/taskrun.md).
 - `subagent/` — the SDK's blocks as tools. `AsTool` wraps a built
   runner as a spawnable subagent tool behind a depth guard, `RunAll`
   joins concurrent spawns, eleven internal tools expose the blocks, and
   a signed-message mailbox carries both directions between
   orchestrators, subagents, and humans. See
   [packages/subagent.md](packages/subagent.md).
-- `e2e/` — the end-to-end scenario harness and suite. Each scenario
+The end-to-end scenario harness and suite live in `internal/e2e`,
+  outside the public package count of the diagram above: each scenario
   wires real high-level blocks together and asserts one full run's
   outputs. See [packages/e2e.md](packages/e2e.md).
 - `agentloop/` — a second composition path beside `flow`: a
@@ -366,7 +306,7 @@ flowchart LR
   records, outside the block, the way `workflow.confirmStep` signs `flow`
   steps. A non-nil `Options.Window` plans every iteration against a
   token budget: under the trigger the history passes through; at or
-  above it, `contextplan.Compact` plus one `contextsummary` call
+  above it, one `context/plan.Compact` call plus one `Summarize` call
   rebuild the history around an injected summary message, and one
   `Calibrated.Observe` after every turn keeps the estimate honest. A
   `provider.ErrPromptTooLong` rejection recovers once through a
@@ -387,8 +327,8 @@ flowchart LR
   on whether a `Completer.Chat` is currently in flight, closing the
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
-  `trace`, `hooks`, `usage`, `events`, `contextbudget`, `schema`,
-  `contextplan`, `contextsummary`, and `toolcallctx`; it never imports
+  `trace`, `events`, `context/budget`, `schema`,
+  `context/plan`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A
@@ -407,22 +347,8 @@ flowchart LR
   add a synchronous approval gate: `RunScoped` calls `Approve` with a
   `ToolCall` after `Allowed` passes and before it runs the tool,
   returning `ErrToolDeclined` for a decline. `tools` imports no other
-  package in this module; `mcp`, `spool`, and `agentloop` import
+  package in this module; `mcp`, `memory`, and `agentloop` import
   `tools`. See [packages/tools.md](packages/tools.md).
-- `spool/` — a principal-scoped grant store for oversized content. It
-  provides `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`,
-  `ContentStore`, `WithPrincipal`, `PrincipalFrom`, and `SpoolTool`.
-  `Spool.Spool` writes content to a caller-supplied `ContentStore`,
-  grants one principal the right to read it back, and returns a
-  bounded view plus a reference. `NewSpool`'s `maxGrantBytes` budget
-  evicts the oldest grants, by insertion order, once a new grant would
-  exceed it. `SpoolTool` wraps a `tools.Tool`: a string result over
-  `maxBytes` spools instead of returning in full, and the wrapper
-  always forwards `ExecutionProfile`, `MaxResultBytes`,
-  `Privileged`, and `SchemaTool` through the `tools` helpers.
-  `tools.SchemaOf` fails closed: a schema-less wrapper reports
-  `nil, false`, and `agentloop.Definitions` skips it.
-  `spool` imports `tools` only. See [packages/spool.md](packages/spool.md).
 - `ledger/` — the durable-task-admission primitive. It provides
   `Ledger`, `New`, `Admit`, `Claim`, `Renew`, `Release`, `Takeover`,
   `Complete`, `State`, `Blocked`, `Snapshot`, `Encode`, `Decode`,
@@ -438,24 +364,42 @@ flowchart LR
   `ledger` also provides `SQLiteStore`, `NewSQLiteStore`, and `Close`:
   a durable `Store` backed by `modernc.org/sqlite`, next to `MemStore`.
   The default build never compiles it, so a `MemStore`-only caller
-  pays no dependency cost. See [packages/ledger.md](packages/ledger.md).
-- `durablefence/` — a test-only conformance kit. It provides
-  `Scenario`, `Validate`, `ErrIncompleteScenario`, seven `Check*`
-  functions, and `RunAll`. A caller wires its own claim, takeover,
-  mutate, release, and fence-reading calls into a `Scenario` literal
-  and runs `RunAll` to prove the claim-and-fence invariants hold,
-  including a concurrent takeover-versus-mutate race a sequential test
-  cannot reach. `durablefence` is a leaf with no import edge to or
-  from any other package in this module; no production code may import
-  it. `ledger/ledger_test/scenario_test.go` wires it against `Ledger`.
+  pays no dependency cost. The package also holds the one-task
+  ceremony `Run` with `Options` and `Task`: it admits, claims, runs,
+  and completes one work func under ledger admission, maps the work
+  result onto the ledger status, and returns the work's own error.
+  The `ledger/ledgertest` conformance kit lives beside the package:
+  it provides `Scenario`, `Validate`, `ErrIncompleteScenario`, seven
+  `Check*` functions, and `RunAll`. A caller wires its own claim,
+  takeover, mutate, release, and fence-reading calls into a
+  `Scenario` literal and runs `RunAll` to prove the claim-and-fence
+  invariants hold, including a concurrent takeover-versus-mutate
+  race a sequential test cannot reach. No production code may
+  import it; `ledger/ledger_test/scenario_test.go` wires it against
+  `Ledger`.
+  See [packages/ledger.md](packages/ledger.md).
 - `memory/` — the content-addressed context store. It provides
   `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's
-  ref with `contextref.Mint` and stores it under a fixed byte
+  ref with `context/ref.Mint` and stores it under a fixed byte
   budget; a blob that would exceed the budget evicts the
   oldest-inserted blobs, in insertion order, until it fits. `memory`
-  imports `contextref` only, for `Mint`. See
-  [packages/memory.md](packages/memory.md).
+  imports `context/ref`, for `Mint`, and `tools`, for the spool tool
+  wrappers. The package also holds the principal-scoped spool:
+  `Spool`, `NewSpool`, `Spool.Spool`, `Spool.Load`, `ContentStore`,
+  `WithPrincipal`, `PrincipalFrom`, `SpoolTool`, `ReadOutputTool`,
+  and `MoreMarker`. `Spool.Spool` writes content to a
+  caller-supplied `ContentStore`, grants one principal the right to
+  read it back, and returns a bounded view plus a reference.
+  `NewSpool`'s `maxGrantBytes` budget evicts the oldest grants, by
+  insertion order, once a new grant would exceed it. `SpoolTool`
+  wraps a `tools.Tool`: a string result over `maxBytes` spools
+  instead of returning in full, and the wrapper always forwards
+  `ExecutionProfile`, `MaxResultBytes`, `Privileged`, and
+  `SchemaTool` through the `tools` helpers. `tools.SchemaOf` fails
+  closed: a schema-less wrapper reports `nil, false`, and
+  `agentloop.Definitions` skips it.
+  See [packages/memory.md](packages/memory.md).
 - `mcp/` — the MCP tool-calling client. It provides `Transport`,
   `NewStdioTransport`, `NewStreamableHTTPTransport`, `ClientInfo`,
   `ProgressHandler`, `ClientOptions`, `Client`, `Connect`, `Close`,
@@ -480,28 +424,18 @@ flowchart LR
   module; it is the fourth package, after `a2aclient`, `mcp`, and
   `ledger`, allowed to carry a third-party import:
   `github.com/santhosh-tekuri/jsonschema/v6`.
-- `contextbudget/` — a leaf primitive. It provides `Limits`,
+- `context/budget/` — a leaf primitive. It provides `Limits`,
   `Validate`, and `Fits`. `Limits` caps one model call's context by
   byte count and event count; a zero field means no cap for that
   dimension. `Validate` rejects a negative `MaxBytes` or `MaxEvents`.
   `Fits` reports whether a candidate byte and event total both stay
   at or under their caps; it keeps no running total of its own.
-  `contextbudget` imports no other package in this module; `workflow`
+  `context/budget` imports no other package in this module; `workflow`
   imports it for `Run`'s optional budget check.
-- `contextstate/` — the durable context contract. It provides the contract
-  types (`ContentRef`, `NewContentRef`, `PayloadRecord`, `Reassemble`,
-  `SourceID`, `SourceRange`, `SourceEvent`, `Revision`, `BindingRevision`,
-  `CheckpointID`, `Checkpoint`, `Session`), `CommitRequest` with
-  `NewCommitRequest` and `Validate`, `Limits` with `Validate`, and
-  the `MemStore` with `New`, `Put`, `Get`, `Checkpoint`, and
-  `Session`. It uses `contextref` for content address minting and
-  validation. A reused `OperationID` with an equal request is a
-  no-op success, and with a different request it wraps
-  `ErrCheckpointConflict`. See [packages/contextstate.md](packages/contextstate.md).
-- `contextref/` — the canonical content-reference minter and parser.
+- `context/ref/` — the canonical content-reference minter and parser.
   It provides `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
-  `envelope`, `contextstate`, and `contextplan` import it, so every ref in
-  this SDK has one form. See [packages/contextref.md](packages/contextref.md).
+  `envelope` and `context/plan` import it, so every ref in
+  this SDK has one form. See [packages/ref.md](packages/ref.md).
 - `provider/` — the model provider interface. It provides `Completer`,
   `RunTurn`, `Role` and its constants, `Message`, `Message.Validate`,
   `ToolDefinition`, `ToolCall`, `Usage`, `Request`, `Request.Validate`,
@@ -531,11 +465,26 @@ flowchart LR
   `RunTurn` validates `Request` once, then validates every message,
   dispatches on `Request.Stream`, and aggregates a streamed `Chunk`
   sequence into one `Response`. `ReasoningEventKind` is the
-  `contextstate.SourceEvent.Kind` value a reasoning trace carries;
+  source-event kind value a reasoning trace carries;
   `RedactBlock` clears a `ReasoningBlock`'s content and marks it
-  redacted. `provider` imports no other package in this module. See
-  [packages/provider.md](packages/provider.md).
-- `contextplan/` — manages token budget windows and compaction. It
+  redacted. `provider` imports no other package in this module.
+  The package also holds the per-session usage accounting:
+  `Accumulator`, `NewAccumulator`, `Record`, `Total`, `Reset`,
+  `WrapCompleter`, and the sentinels `ErrBlankSessionID`,
+  `ErrNilAccumulator`, and `ErrNilUsageCompleter`. `Record` sums one
+  `Usage` call's four fields onto the running total keyed by a
+  caller-supplied session identifier, guarded for concurrent access;
+  `Total` reads the current sum, and `Reset` clears it. It also holds
+  the multi-provider routing registry: `Registry`, `NewRegistry`,
+  `Register`, `Get`, `Names`, `Retryable`, `Route`, and the sentinels
+  `ErrNilCompleter`, `ErrBlankName`, `ErrDuplicateName`,
+  `ErrUnknownName`, `ErrEmptyOrder`, and `ErrAllFailed`. `Registry`
+  holds named `Completer` values behind the same mutex shape
+  `tools.Registry` uses. `Route` walks a caller-chosen order of names
+  through `RunTurn` and falls through to the next name only when the
+  caller's `Retryable` predicate approves the failure.
+  See [packages/provider.md](packages/provider.md).
+- `context/plan/` — manages token budget windows and compaction. It
   provides `Window` with `Validate` and `Budget`, `Compaction` with
   `Validate`, `Compact`, `CompactResult`, `CompactTrigger` and
   `CompactTarget`, `Calibrate` and `Calibrated`, `IsReasoningEvent`, the
@@ -545,8 +494,20 @@ flowchart LR
   `ErrNoObjective`. `Compact` applies the trigger check and a fixed
   retention set over one message list, pure, with no LLM call, and
   mints the `context-compact-v1` idempotency key through
-  `contextref.Mint`. `contextplan` imports `contextref` and
-  `provider`. See [packages/contextplan.md](packages/contextplan.md).
+  `context/ref.Mint`. The package also holds the compaction
+  summarizer: `Summary` with `Validate` and `Render`,
+  `SummaryMessage` with `SummaryPreamble`, `TokenEstimate`,
+  `Summarizer` with `NewSummarizer` and `Summarize`, the bounds
+  `MaxFieldBytes`, `MaxItems`, `MaxExcerptTotalBytes`, and
+  `SummaryTimeout`, the injected message name `SummaryMessageName`,
+  and the sentinels `ErrNilCompleter`, `ErrNoMessagesToSummarize`,
+  `ErrInvalidReply`, `ErrSummarySkipped`, and `ErrCallFailed`. One summarizer call is one bounded
+  `provider.Completer` call: excerpts cap the input, a 20 second
+  timeout caps the duration, and strict decoding plus
+  `Summary.Validate` cap the accepted output. A summary failure is a
+  caller-visible error; no structural fallback exists.
+  `context/plan` imports `context/ref` and
+  `provider`. See [packages/plan.md](packages/plan.md).
 - `provider/anthropic/` — the Anthropic Messages API adapter. It provides
   `Client`, `New`, `Options`, `Options.Validate`, default constants, and
   the sentinels `ErrAPIKeyRequired`, `ErrInvalidOptions`, `ErrAuth`,
@@ -555,70 +516,6 @@ flowchart LR
   `ReasoningPolicy`. It maps streaming events, tool calls, thinking
   blocks, cache usage, and model refusals. See
   [packages/provider/anthropic.md](packages/provider/anthropic.md).
-- `contextsession/` — fits one durable session into a bounded provider
-  request. It provides `Planner` with `NewPlanner` and `Plan`,
-  `PlanResult`, `Elision`, `ElisionReason` and its four constants,
-  `StubContent`, and the sentinels `ErrNilStore` and `ErrNilSession`.
-  `Plan` walks a `contextstate.Session`'s source events newest to
-  oldest, keeping each one until `Window.Budget` fills, then stubs or
-  drops the rest. A reasoning event, per `contextplan.IsReasoningEvent`,
-  never enters the built `provider.Request`. A wired `Spool` receives
-  the full payload behind every window-overflow and retention-expired
-  `Elision`, keyed to the payload's own `SubjectID`. `contextsession`
-  imports `contextplan`, `contextstate`, `provider`, and
-  `spool`. See [packages/contextsession.md](packages/contextsession.md).
-- `contextsummary/` — the LLM summarizer for compaction. It provides
-  `Summary` with `Validate` and `Render`, `SummaryMessage`,
-  `TokenEstimate`, `Summarizer` with `NewSummarizer` and `Summarize`,
-  the bounds `MaxFieldBytes`, `MaxItems`, `MaxExcerptTotalBytes`, and
-  `SummaryTimeout`, the injected message name `SummaryMessageName`,
-  and the sentinels `ErrNilCompleter`, `ErrNoMessages`,
-  `ErrInvalidReply`, and `ErrCallFailed`. One summarizer call is one
-  bounded `provider.Completer` call: excerpts cap the input, a 20
-  second timeout caps the duration, and strict decoding plus
-  `Summary.Validate` cap the accepted output. A summary failure is a
-  caller-visible error; no structural fallback exists. `contextsummary`
-  imports `provider` only. See
-  [packages/contextsummary.md](packages/contextsummary.md).
-- `longtermmemory/` — the tiered long-term memory store. It
-  provides `Entry` with `Validate`, the `Verdict` set, `Result`,
-  `Query`, `Store` with `New`, `Save`, `Search`, `Count`,
-  `PromoteToCore`, `CoreEntries`, `Delete`, and `CoreFrame`, the
-  bounds `CoreTierCap` (24), `DefaultMaxEntries` (500),
-  `DefaultMaxSearchResults` (8), `DefaultFrameBytes` (4 KiB), and
-  `ConsolidateLoadFactor` (0.8), the frame constants `FrameAdvisory`,
-  `FrameOpenTag`, and `FrameCloseTag`, and the sentinels
-  `ErrEntryNotFound`, `ErrCoreTierFull`, `ErrStoreFull`,
-  `ErrQueryRequired`, and `ErrScopeRequired`. Entry ids are
-  content-addressed over every field, so a merge survivor takes a new
-  id; consolidation at the load factor runs one near-duplicate merge
-  pass (Jaccard at or above 0.82), which caps the merged tag union at
-  eight tags, and then oldest-archive eviction, never evicting a core
-  row;
-  `CoreFrame` renders the core tier as a bounded block whose entry
-  text is HTML-escaped against the frame tags, so agent-writable text
-  cannot close the block early. A leaf: no internal imports, standard
-  library only. See
-  [packages/longtermmemory.md](packages/longtermmemory.md).
-- `providerregistry/` — the multi-provider routing package. It
-  provides `Registry`, `New`, `Register`, `Get`, `Names`, `Retryable`,
-  `Route`, and the sentinels `ErrNilCompleter`, `ErrBlankName`,
-  `ErrDuplicateName`, `ErrUnknownName`, `ErrEmptyOrder`, and
-  `ErrAllFailed`. `Registry` holds named `Completer` values behind the
-  same mutex shape `tools.Registry` uses. `Route` walks a
-  caller-chosen order of names through `provider.RunTurn` and falls
-  through to the next name only when the caller's `Retryable`
-  predicate approves the failure. `providerregistry` imports
-  `provider` only. See
-  [packages/providerregistry.md](packages/providerregistry.md).
-- `usage/` — the per-session usage accounting package. It provides
-  `Accumulator`, `New`, `Record`, `Total`, `Reset`, `WrapCompleter`,
-  and the sentinels `ErrBlankSessionID`, `ErrNilAccumulator`, and
-  `ErrNilCompleter`. `Record` sums one `provider.Usage` call's four
-  fields onto the running total keyed by a caller-supplied session
-  identifier, guarded for concurrent access; `Total` reads the current
-  sum, and `Reset` clears it. `usage` imports `provider` only, for the
-  `Usage` type. See [packages/usage.md](packages/usage.md).
 - `channel/` — a leaf primitive. It provides `Question`,
   `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
   the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,
@@ -626,48 +523,26 @@ flowchart LR
   type that asks a question and returns a typed `Answer`; `channel`
   ships no concrete transport. `channel` imports no other package in
   this module. See [packages/channel.md](packages/channel.md).
-- `trigger/` — a leaf primitive. It provides `Condition`, `Action`,
-  `Registry`, `New`, `Add`, `Remove`, `Fire`, and the sentinels
-  `ErrBlankName`, `ErrNilAction`, `ErrDuplicateName`, `ErrUnknownName`,
-  and `ErrConditionNotMet`. A `Registry` maps a name to one `Condition`
-  and one `Action`; `Fire` evaluates the named `Condition` and, when
-  true, calls the `Action`. `Condition` matches `machine.Guard`'s
-  signature; `Action` is shaped to match `scheduler.Job`'s signature.
-  `trigger` imports no other package in this module. See
-  [packages/trigger.md](packages/trigger.md).
-- `hooks/` — a leaf primitive. It provides `Point`, `PointPreTool`,
-  `PointPostTool`, `PointStop`, `Point.Validate`, `Point.String`,
-  `Handler`, `Registry`, `New`, `Add`, `Remove`, `Fire`, and the
-  sentinels `ErrBlankName`, `ErrNilHandler`, `ErrDuplicateName`, and
-  `ErrVetoed`. A `Registry` groups named handlers by `Point`;
-  `Fire` runs them in registration order and stops at the first
-  veto. Unlike `events.Bus`, `Fire` propagates the decision: a veto
-  or a handler error short-circuits the chain and returns to the
-  caller. `hooks` imports no other package in this module. See
-  [packages/hooks.md](packages/hooks.md).
-- `skills/` — a leaf primitive. It provides `Skill`, `Skill.Validate`,
-  `Registry`, `New`, `Add`, `Get`, `Remove`, `Names`, `Match`, and the
-  sentinels `ErrBlankName`, `ErrBlankInstructions`, `ErrBlankTrigger`,
-  `ErrDuplicateTrigger`, and `ErrDuplicateName`. A `Skill` is read, not
-  called: it carries instructions text, a trigger-phrase list, and the
-  tool names it expects available. `Match` compares a query against
-  every registered skill's `Triggers`, case-insensitively. `skills`
-  imports no other package in this module. See
-  [packages/skills.md](packages/skills.md).
 - `scheduler/` — the invoke-on-schedule primitive. It provides `Job`,
   `Schedule`, `Every`, `At`, `Scheduler`, `New`, `Add`, `Remove`,
   `Run`, `JobFailedEvent`, and the sentinels `ErrBlankID`,
   `ErrNilSchedule`, `ErrNilJob`, and `ErrDuplicateID`. `Run` fires each
   due `Job` in its own goroutine on a wake-channel sleep loop and
   emits `JobFailedEvent` on a caller-supplied `*events.Bus` when a
-  `Job` fails. `scheduler` imports `events`. See
+  `Job` fails. The package also holds the trigger registry:
+  `Condition`, `Action`, `Registry`, `NewRegistry`, `Add`, `Remove`,
+  `Fire`, and the sentinels `ErrBlankName`, `ErrNilAction`,
+  `ErrDuplicateName`, `ErrUnknownName`, and `ErrConditionNotMet`. A
+  `Registry` maps a name to one `Condition` and one `Action`; `Fire`
+  evaluates the named `Condition` and, when true, calls the `Action`.
+  `Condition` matches `machine.Guard`'s signature; `Action` is shaped
+  to match `Job`'s signature. `scheduler` imports `events`. See
   [packages/scheduler.md](packages/scheduler.md).
 
 The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
 package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
-The identity package imports envelope only; it wraps `envelope.Sign`.
 The a2a package imports envelope only; it holds no other edge.
 The a2aclient package imports a2a and envelope. It also imports the
 third-party github.com/a2aproject/a2a-go, the one exception to this

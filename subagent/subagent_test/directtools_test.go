@@ -7,8 +7,8 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // stubCompleter answers every chat turn with one fixed reply.
@@ -95,7 +95,7 @@ func TestChannelToolDeclineFails(t *testing.T) {
 // tool reports fired.
 func TestTriggerToolFires(t *testing.T) {
 	ctx := context.Background()
-	reg := trigger.New()
+	reg := scheduler.NewRegistry()
 	fired := false
 	cond := func(context.Context) (bool, error) { return true, nil }
 	act := func(context.Context) error { fired = true; return nil }

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
 )
 
 // TestNewWithTLSRejectsBadInput pins the constructor's validation: an
@@ -40,11 +40,11 @@ func TestNewWithTLSOpensLazyTransport(t *testing.T) {
 
 // TestNewLiveLoopbackRoundTrip drives the full sign, send, poll,
 // verify round trip through New(addr) against the plaintext loopback.
-// This is the live TLS-free path test. a2aloopback.Loopback serves no
+// This is the live TLS-free path test. a2atest.Loopback serves no
 // TLS, so a TLS handshake stays untested; a TLS-serving fixture is
 // its own future scope.
 func TestNewLiveLoopbackRoundTrip(t *testing.T) {
-	addr, stop, err := a2aloopback.Loopback()
+	addr, stop, err := a2atest.Loopback()
 	if err != nil {
 		t.Fatalf("Loopback: %v", err)
 	}

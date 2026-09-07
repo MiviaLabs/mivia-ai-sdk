@@ -1,0 +1,267 @@
+package contextsession_test
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+	"unicode/utf8"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
+)
+
+// TestPlanResolutionSecondCallReflectsStoreMutation pins the current
+// design: resolvePayload drops its cache-hit fast path, so every Plan
+// call re-reads the store. A store-side mutation issued between two
+// Plan calls on the same Planner is visible on the very next call.
+// This replaces the removed TestPlanResolutionCacheHitSkipsStore,
+// whose assertion (a second call must not see an intervening Put)
+// pinned the fast path this change deletes and is now false.
+func TestPlanResolutionSecondCallReflectsStoreMutation(t *testing.T) {
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+	// Longer than StubContentBytes so the stub (truncated) estimates
+	// smaller than the full content, distinguishing a stub decision
+	// from a full-fit decision under byteEstimator's byte-per-token
+	// count.
+	data := make([]byte, contextsession.StubContentBytes+50)
+	for i := range data {
+		data[i] = 'a'
+	}
+	ref := putPayload(t, store, "sess-a", contextstate.RetentionCompliance, data)
+	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
+	}}
+	est := byteEstimator{}
+	win := plan.Window{MaxTokens: len(data)}
+
+	first, err := planner.Plan(context.Background(), sess, win, est)
+	if err != nil {
+		t.Fatalf("first Plan: %v", err)
+	}
+	if len(first.Request.Messages) != 1 {
+		t.Fatalf("first Messages = %d, want 1", len(first.Request.Messages))
+	}
+
+	// Overwrite the stored record under the same ref with
+	// RetentionSession. Every Plan call re-reads the store, so the
+	// second call must see this and stop protecting the payload with
+	// a stub once it no longer fits.
+	if err := store.Put(contextstate.PayloadRecord{Ref: ref, Retention: contextstate.RetentionSession, Data: data}); err != nil {
+		t.Fatalf("overwrite Put: %v", err)
+	}
+
+	// Between the stub's estimate (StubContentBytes) and the full
+	// content's estimate (len(data)): the full insert overflows, so
+	// only a still-protected payload earns a stub instead of a drop.
+	stubWin := plan.Window{MaxTokens: contextsession.StubContentBytes}
+	second, err := planner.Plan(context.Background(), sess, stubWin, est)
+	if err != nil {
+		t.Fatalf("second Plan: %v", err)
+	}
+	if len(second.Elisions) != 1 || second.Elisions[0].Reason != contextsession.ElisionReasonWindowOverflow || second.Elisions[0].Kept != 0 {
+		t.Fatalf("second Elisions = %+v, want one WindowOverflow full drop: the mutated RetentionSession record no longer earns a stub", second.Elisions)
+	}
+}
+
+// TestPlanResolutionConcurrentSameRef pins that two goroutines
+// resolving the same new ref at the same time never corrupt the meta
+// cache or the decode cache: both calls must see the real content,
+// and neither may observe a torn or partially written cache entry.
+// go test -race exercises the mutex and the two dependencies' own
+// concurrency guarantees together.
+func TestPlanResolutionConcurrentSameRef(t *testing.T) {
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+
+	data := []byte("shared-ref-content")
+	ref := putPayload(t, store, "sess-shared", contextstate.RetentionSession, data)
+	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-shared", 1, "message", string(provider.RoleUser), ref, len(data)),
+	}}
+	est := byteEstimator{}
+	win := plan.Window{MaxTokens: 100}
+
+	const n = 8
+	results := make([]contextsession.PlanResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = planner.Plan(context.Background(), sess, win, est)
+		}(i)
+	}
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("goroutine %d: Plan: %v", i, errs[i])
+		}
+		if len(results[i].Request.Messages) != 1 || results[i].Request.Messages[0].Content != string(data) {
+			t.Fatalf("goroutine %d: Messages = %+v, want one message with content %q", i, results[i].Request.Messages, data)
+		}
+	}
+}
+
+// countingEstimator fails from the (failAt+1)th call onward, letting
+// a test target one specific EstimateTokens call in Plan's sequence:
+// every per-event admission trial succeeds, but the final aggregate
+// estimate over the built Request fails.
+type countingEstimator struct {
+	calls  *int
+	failAt int
+}
+
+// EstimateTokens sums message content bytes until the call budget
+// runs out, then fails every call after.
+func (c countingEstimator) EstimateTokens(req provider.Request) (int, error) {
+	*c.calls++
+	if *c.calls > c.failAt {
+		return 0, errors.New("countingEstimator: exhausted")
+	}
+	total := 0
+	for _, m := range req.Messages {
+		total += len(m.Content)
+	}
+	return total, nil
+}
+
+// TestPlanFinalEstimateFailureYieldsZero pins Plan's behavior when
+// the aggregate EstimateTokens call after the walk fails: Plan does
+// not fail the whole call, and EstimatedTokens reports 0, matching
+// the admit-trial fallback ("does not fit," never a Plan failure)
+// applied to the one estimator call outside admit.
+func TestPlanFinalEstimateFailureYieldsZero(t *testing.T) {
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+	data := []byte("0123456789")
+	ref := putPayload(t, store, "sess-a", contextstate.RetentionSession, data)
+	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
+	}}
+
+	calls := 0
+	// One event admits with exactly one EstimateTokens call inside
+	// admit; failAt=1 lets that call succeed and fails only the
+	// second, final call Plan makes after the walk.
+	est := countingEstimator{calls: &calls, failAt: 1}
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 100}, est)
+	if err != nil {
+		t.Fatalf("Plan: %v, want no error even though the final estimate failed", err)
+	}
+	if len(result.Request.Messages) != 1 {
+		t.Fatalf("Messages = %d, want 1: the walk's own estimate succeeded", len(result.Request.Messages))
+	}
+	if result.EstimatedTokens != 0 {
+		t.Fatalf("EstimatedTokens = %d, want 0 when the final estimate call fails", result.EstimatedTokens)
+	}
+	if calls < 2 {
+		t.Fatalf("calls = %d, want at least 2: one admit trial plus the final estimate", calls)
+	}
+}
+
+// TestPlanStubStaysValidUTF8 checks the rune-safe stub through Plan: a
+// RetentionCompliance payload of multi-byte runes, too large to fit in
+// full, enters Request.Messages as a stub whose Content is valid
+// UTF-8.
+func TestPlanStubStaysValidUTF8(t *testing.T) {
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+	data := []byte(strings.Repeat("é", contextsession.StubContentBytes))
+	ref := putPayload(t, store, "sess-a", contextstate.RetentionCompliance, data)
+	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
+		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
+	}}
+	// The budget sits between the stub's byte count and the full
+	// payload's, so the payload earns a stub rather than a full fit.
+	win := plan.Window{MaxTokens: contextsession.StubContentBytes}
+	result, err := planner.Plan(context.Background(), sess, win, byteEstimator{})
+	if err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if len(result.Request.Messages) != 1 {
+		t.Fatalf("Messages = %d, want 1 stub message", len(result.Request.Messages))
+	}
+	content := result.Request.Messages[0].Content
+	if content == string(data) {
+		t.Fatal("message holds the full payload, want the stub")
+	}
+	if !utf8.ValidString(content) {
+		t.Fatalf("stub content = %q, want valid UTF-8", content)
+	}
+	if len(result.Elisions) != 1 || result.Elisions[0].Reason != contextsession.ElisionReasonRetentionExpired {
+		t.Fatalf("Elisions = %+v, want one retention_expired entry", result.Elisions)
+	}
+}
+
+// overheadEstimator charges a fixed per-request overhead on top of the
+// message bytes, so its total for an empty message list is overhead.
+type overheadEstimator struct{ overhead int }
+
+// EstimateTokens returns overhead plus the byte length of every
+// message's Content.
+func (o overheadEstimator) EstimateTokens(req provider.Request) (int, error) {
+	total := o.overhead
+	for _, m := range req.Messages {
+		total += len(m.Content)
+	}
+	return total, nil
+}
+
+// TestPlanOverheadEstimatorExceedsBudget pins the documented limit of
+// the EstimatedTokens bound: an estimator whose empty-list total
+// already exceeds the budget drops every event and still reports that
+// overhead.
+func TestPlanOverheadEstimatorExceedsBudget(t *testing.T) {
+	store := newStore(t)
+	planner, err := contextsession.NewPlanner(store, nil)
+	if err != nil {
+		t.Fatalf("NewPlanner: %v", err)
+	}
+	var events []contextstate.SourceEvent
+	for i := 1; i <= 3; i++ {
+		data := []byte(fmt.Sprintf("payload %d", i))
+		ref := putPayload(t, store, "sess-a", contextstate.RetentionCompliance, data)
+		events = append(events, sourceEvent("sess-a", uint64(i), "message", string(provider.RoleUser), ref, len(data)))
+	}
+	sess := &contextstate.Session{Source: events}
+	win := plan.Window{MaxTokens: 100}
+	result, err := planner.Plan(context.Background(), sess, win, overheadEstimator{overhead: win.Budget() + 1})
+	if err != nil {
+		t.Fatalf("Plan: %v, want no error", err)
+	}
+	if len(result.Request.Messages) != 0 {
+		t.Fatalf("Messages = %d, want none: no candidate fits", len(result.Request.Messages))
+	}
+	if len(result.Elisions) != len(events) {
+		t.Fatalf("Elisions = %d, want one per source event", len(result.Elisions))
+	}
+	for _, e := range result.Elisions {
+		if e.Reason != contextsession.ElisionReasonWindowOverflow {
+			t.Fatalf("Elision reason = %q, want window_overflow", e.Reason)
+		}
+	}
+	if result.EstimatedTokens <= win.Budget() {
+		t.Fatalf("EstimatedTokens = %d, want above the budget %d", result.EstimatedTokens, win.Budget())
+	}
+}

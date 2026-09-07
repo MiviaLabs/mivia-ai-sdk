@@ -9,7 +9,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -228,15 +227,15 @@ func TestRunStorePutExceedsBudget(t *testing.T) {
 	}
 }
 
-// TestRunWithMonitor proves a real heartbeat.Monitor flows through
-// workflow/run into workflow.Run without breaking the run. It exercises the
-// workflow/run-to-heartbeat edge declared in policy/layers.json.
+// TestRunWithMonitor proves a real flow.Monitor flows through
+// run into workflow.Run without breaking the run. It exercises the
+// run-to-heartbeat edge declared in policy/layers.json.
 func TestRunWithMonitor(t *testing.T) {
 	ctx := context.Background()
 	plan := mustFlow(t, []flow.Step{{ID: "t1", To: "resolved", Payload: "seed"}}, nil)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New: %v", err)
+		t.Fatalf("flow.New: %v", err)
 	}
 	runner, err := run.New(run.Options{
 		Agent:   mustAgent(t, plan),

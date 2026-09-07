@@ -17,15 +17,12 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // cannedCompleter implements provider.Completer over a script. Each
@@ -76,7 +73,7 @@ func newCannedCompleter() *cannedCompleter {
 
 // cannedEstimator implements provider.TokenEstimator as a
 // bytes-over-four count over the request's message contents. It feeds
-// contextplan.Calibrate for planning and calibration.
+// plan.Calibrate for planning and calibration.
 type cannedEstimator struct{}
 
 // EstimateTokens sums the request's message content bytes over four.
@@ -147,9 +144,9 @@ func buildRegistry() *tools.Registry {
 // buildHooks returns a hooks registry with one handler at
 // PointPostTool. The handler prints the call's ID and name and returns
 // true, nil, so Fire continues.
-func buildHooks() *hooks.Registry {
-	hr := hooks.New()
-	_ = hr.Add(hooks.PointPostTool, "print-post-tool", func(ctx context.Context, payload any) (bool, error) {
+func buildHooks() *events.Registry {
+	hr := events.NewRegistry()
+	_ = hr.Add(events.PointPostTool, "print-post-tool", func(ctx context.Context, payload any) (bool, error) {
 		if call, ok := payload.(provider.ToolCall); ok {
 			fmt.Printf("post-tool hook: id=%s name=%s\n", call.ID, call.Name)
 		}
@@ -168,9 +165,9 @@ func auditPrinter(ctx context.Context, rec agentloop.AuditRecord) error {
 func main() {
 	ctx := context.Background()
 	canned := newCannedCompleter()
-	summarizer, err := contextsummary.NewSummarizer(canned)
+	summarizer, err := plan.NewSummarizer(canned)
 	if err != nil {
-		fmt.Println("contextsummary.NewSummarizer:", err)
+		fmt.Println("plan.NewSummarizer:", err)
 		return
 	}
 
@@ -186,7 +183,7 @@ func main() {
 		HeartbeatInterval: time.Hour,
 		DedupWithinTurn:   true,
 		StartTime:         time.Now(),
-		Budget:            &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
+		Budget:            &budget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		Completer:         canned,
 		Tools:             buildRegistry(),
 		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
@@ -198,12 +195,12 @@ func main() {
 			MaxConsecutiveToolFailures: 2,
 		},
 		Conclude:   agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		Window:     &contextplan.Window{MaxTokens: 512, Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
+		Window:     &plan.Window{MaxTokens: 512, Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(cannedEstimator{}, 0.25),
+		Calibrated: plan.Calibrate(cannedEstimator{}, 0.25),
 		Tracer:     trace.New(),
 		Hooks:      buildHooks(),
-		Usage:      usage.New(),
+		Usage:      provider.NewAccumulator(),
 		SessionID:  "agentloop-example",
 		WorkBudget: &agentloop.WorkBudget{
 			Reserve: func(ctx context.Context, req provider.Request) error { return nil },

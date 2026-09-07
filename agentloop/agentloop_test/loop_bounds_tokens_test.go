@@ -8,7 +8,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // TestRunMaxTotalTokens proves a scripted Completer whose responses'
@@ -33,7 +32,7 @@ func TestRunMaxTotalTokens(t *testing.T) {
 		}(),
 	}
 	completer := &scriptedCompleter{responses: responses}
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxTotalTokens: 100},
 		Usage: acc, SessionID: "sess-1",

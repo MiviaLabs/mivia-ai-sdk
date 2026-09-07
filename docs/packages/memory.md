@@ -1,7 +1,7 @@
 # Package reference: memory
 
 The memory package stores and fetches context blobs by content
-address. `Put` computes the `sha256:` ref with `contextref.Mint` and
+address. `Put` computes the `sha256:` ref with `context/ref.Mint` and
 returns it. `Get` fetches a blob by that ref. A size budget bounds
 the store. The exported surface below mirrors `api/memory.txt`.
 
@@ -38,7 +38,7 @@ Use `errors.Is` to test these.
 ## Invariants
 
 - `New` rejects a non-positive `maxBytes` with `ErrNoBudget`.
-- `Put` computes `ref` as `contextref.Mint(content)`. A
+- `Put` computes `ref` as `context/ref.Mint(content)`. A
   `content` whose length exceeds the budget wraps `ErrBudgetExceeded`
   and stores nothing; the store stays as it was before the call.
 - A `content` that fits evicts the oldest-inserted blobs, in
@@ -60,19 +60,19 @@ Use `errors.Is` to test these.
 
 `memory` holds opaque bytes. It does not parse or validate the
 content, and it does not know about `envelope.Message` or any other
-wire type. It reuses `contextref.Mint` for addressing, so a ref
+wire type. It reuses `context/ref.Mint` for addressing, so a ref
 computed by `memory.Store.Put` is the same ref a caller would embed in
-`Message.ContextRefs` (which itself mints through `contextref` too).
+`Message.ContextRefs` (which itself mints through `context/ref` too).
 Insertion-order eviction is the chosen policy; policy-based eviction
 and eviction by use are out of scope for this package. See
 [../plans/memory.md](../plans/memory.md).
 
 ## Cross-references
 
-- [contextref.md](contextref.md) — `Mint` is the addressing scheme
+- [context/ref.md](context/ref.md) — `Mint` is the addressing scheme
   `Put` reuses.
 - [envelope.md](envelope.md) — `ContextRef` mints through the same
-  `contextref` package, so a `memory` ref and an `envelope.Message`
+  `context/ref` package, so a `memory` ref and an `envelope.Message`
   ref have one form.
 
 ## Usage

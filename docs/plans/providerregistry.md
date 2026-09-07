@@ -1,6 +1,8 @@
 # Plan: providerregistry
 
-Status: shipped. One composition package over the shipped `provider`
+Status: superseded. Phase 86 folded this package into provider;
+the symbols live in provider now. See
+docs/plans/agents/phase86_package_consolidation.md.
 contract (docs/plans/provider.md). It imports `provider` only, plus
 stdlib; no third-party import.
 

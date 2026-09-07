@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/longtermmemory`. The core module no longer
+> ships it.
+
 # Package reference: longtermmemory
 
 `longtermmemory` holds durable-feeling learnings an agent wants

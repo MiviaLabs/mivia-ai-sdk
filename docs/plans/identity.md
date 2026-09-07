@@ -1,6 +1,10 @@
 # Plan: identity
 
-Status: shipped. This package depends on envelope, which is shipped.
+Status: superseded. Phase 86 folded this package into envelope;
+the symbols live in envelope now. See
+docs/plans/agents/phase86_package_consolidation.md. The history
+below stays for reference. This package depended on envelope,
+which is shipped.
 The agent card, the trust policy, and the registry live elsewhere. A
 Validate hardening follows below to reject split-brain key files.
 

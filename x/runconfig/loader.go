@@ -1,0 +1,337 @@
+package runconfig
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
+	"github.com/MiviaLabs/mivia-ai-sdk/machine"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
+	"github.com/MiviaLabs/mivia-ai-sdk/trace"
+	"github.com/MiviaLabs/mivia-ai-sdk/workflow/run"
+)
+
+// wireMachine is the JSON form of the machine section.
+type wireMachine struct {
+	Initial     string    `json:"initial"`
+	Transitions []wireRow `json:"transitions"`
+}
+
+// wireRow is one transition row: {from, to, trigger}.
+type wireRow struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Trigger string `json:"trigger"`
+}
+
+// wirePlan is the JSON form of the plan section.
+type wirePlan struct {
+	Steps  []wireStep `json:"steps"`
+	Panels [][]string `json:"panels"`
+}
+
+// wireStep is one plan step. Unknown JSON fields are ignored.
+type wireStep struct {
+	ID       string     `json:"id"`
+	Needs    []string   `json:"needs"`
+	To       string     `json:"to"`
+	When     string     `json:"when"`
+	Payload  string     `json:"payload"`
+	Tool     string     `json:"tool"`
+	Internal string     `json:"internal"`
+	Retry    *wireRetry `json:"retry"`
+	Loop     *wireLoop  `json:"loop"`
+	Sub      *wirePlan  `json:"sub"`
+}
+
+// wireRetry is the JSON form of a flow.RetryPolicy.
+type wireRetry struct {
+	MaxAttempts int    `json:"max_attempts"`
+	BaseDelay   string `json:"base_delay"`
+	MaxDelay    string `json:"max_delay"`
+}
+
+// wireLoop is the JSON form of a flow.LoopPolicy.
+type wireLoop struct {
+	Max int `json:"max"`
+}
+
+// wireOptions is the JSON form of the options section.
+type wireOptions struct {
+	Room   string      `json:"room"`
+	AskTo  string      `json:"ask_to"`
+	Budget *wireBudget `json:"budget"`
+	Trace  bool        `json:"trace"`
+}
+
+// wireBudget is the JSON form of a run.Options.Budget cap.
+type wireBudget struct {
+	MaxBytes  int `json:"max_bytes"`
+	MaxEvents int `json:"max_events"`
+}
+
+// wireDocument is the whole JSON document. Internal maps one Kind
+// name to one config entry; a duplicate key follows encoding/json map
+// semantics, so the last value wins.
+type wireDocument struct {
+	Machine  *wireMachine            `json:"machine"`
+	Plan     *wirePlan               `json:"plan"`
+	Options  *wireOptions            `json:"options"`
+	Tools    []string                `json:"tools"`
+	Internal map[string]wireInternal `json:"internal"`
+}
+
+// Definition is the resolved document: the machine, the plan, the
+// options, the tool set, the step bindings, and the document-built
+// internal tools. Load fills Plan, Machine, Options, Tools,
+// Bindings, and Blocks' wireable Kinds. Before Runner, the caller
+// sets Options.Agent, registers the external tools on External, and
+// adds the caller-built Kinds on Blocks. Every field is exported for
+// inspection.
+type Definition struct {
+	// Plan is the resolved step graph.
+	Plan *flow.Definition
+	// Machine is the resolved status model.
+	Machine *machine.Definition
+	// Options carries the string scalars and the caller-set Agent.
+	Options run.Options
+	// Tools lists the document's external tool names.
+	Tools []string
+	// Bindings holds one entry per bound step, in plan order.
+	Bindings []Binding
+	// Blocks holds the internal tool sources: the document-built
+	// wireable Kinds plus caller-set entries.
+	Blocks *Blocks
+	// External holds the caller-set external tools by name.
+	External *tools.Registry
+}
+
+// Load resolves one JSON document into a Definition. It rejects
+// malformed JSON, a non-object root, a step with both bindings, a step
+// that sets sub beside tool or internal, a step with no tool, internal,
+// or sub binding outside a two-or-more-member panel, an empty step ID,
+// an undeclared external tool, a blank or duplicate tool name, an
+// unknown internal kind, an unknown when value, an internal section
+// key a Kind constant does not name or a caller-built Kind names, an
+// invalid internal section config, and a negative budget field. It
+// also wraps any rejection from machine.New, flow.New, or an internal
+// builder. It wraps every failure in ErrBadDocument. A present
+// options.budget maps onto Options.Budget as a *budget.Limits
+// and must pass Limits.Validate. The loader never reads the
+// environment.
+func Load(data []byte) (*Definition, error) {
+	var doc wireDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
+	}
+	if doc.Machine == nil || doc.Plan == nil {
+		return nil, fmt.Errorf("%w: machine and plan sections are required", ErrBadDocument)
+	}
+	declared, err := declaredTools(doc.Tools)
+	if err != nil {
+		return nil, err
+	}
+	m, err := buildMachine(doc.Machine)
+	if err != nil {
+		return nil, err
+	}
+	def := &Definition{
+		Machine:  m,
+		Tools:    append([]string(nil), doc.Tools...),
+		Blocks:   NewBlocks(),
+		External: tools.New(),
+	}
+	if doc.Options != nil {
+		def.Options.Room = doc.Options.Room
+		def.Options.AskTo = doc.Options.AskTo
+		if doc.Options.Budget != nil {
+			def.Options.Budget = &budget.Limits{
+				MaxBytes:  doc.Options.Budget.MaxBytes,
+				MaxEvents: doc.Options.Budget.MaxEvents,
+			}
+			if err := def.Options.Budget.Validate(); err != nil {
+				return nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
+			}
+		}
+		if doc.Options.Trace {
+			def.Options.Tracer = trace.New()
+		}
+	}
+	plan, bindings, err := buildPlan(doc.Plan, declared)
+	if err != nil {
+		return nil, err
+	}
+	def.Plan = plan
+	def.Bindings = bindings
+	if err := buildInternal(def, doc.Internal); err != nil {
+		return nil, err
+	}
+	return def, nil
+}
+
+// declaredTools validates the tools array: no blank or duplicate name.
+func declaredTools(names []string) (map[string]bool, error) {
+	declared := make(map[string]bool, len(names))
+	for _, n := range names {
+		if strings.TrimSpace(n) == "" {
+			return nil, fmt.Errorf("%w: blank tool name", ErrBadDocument)
+		}
+		if declared[n] {
+			return nil, fmt.Errorf("%w: duplicate tool %q", ErrBadDocument, n)
+		}
+		declared[n] = true
+	}
+	return declared, nil
+}
+
+// buildMachine feeds the wire rows into machine.New.
+func buildMachine(w *wireMachine) (*machine.Definition, error) {
+	rows := make([]machine.Transition, 0, len(w.Transitions))
+	for _, r := range w.Transitions {
+		rows = append(rows, machine.Transition{
+			From:    machine.Status(r.From),
+			To:      machine.Status(r.To),
+			Trigger: machine.Trigger(r.Trigger),
+		})
+	}
+	m, err := machine.New(machine.Status(w.Initial), rows...)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
+	}
+	return m, nil
+}
+
+// buildPlan feeds the wire steps and panels into flow.New. It
+// recurses over sub plans and collects one Binding per bound step.
+// After flow.New succeeds it enforces the binding rule: a step with no
+// tool, internal, or sub binding must sit in a two-or-more-member
+// panel.
+func buildPlan(w *wirePlan, declared map[string]bool) (*flow.Definition, []Binding, error) {
+	steps := make([]flow.Step, 0, len(w.Steps))
+	var bindings []Binding
+	for i := range w.Steps {
+		s, b, err := buildStep(&w.Steps[i], declared)
+		if err != nil {
+			return nil, nil, err
+		}
+		steps = append(steps, s)
+		bindings = append(bindings, b...)
+	}
+	panels := make([]flow.Panel, 0, len(w.Panels))
+	for _, ids := range w.Panels {
+		panels = append(panels, flow.Panel(append([]string(nil), ids...)))
+	}
+	plan, err := flow.New(steps, panels)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s", ErrBadDocument, err.Error())
+	}
+	panelled := make(map[string]bool)
+	for _, ids := range w.Panels {
+		if len(ids) < 2 {
+			continue
+		}
+		for _, id := range ids {
+			panelled[id] = true
+		}
+	}
+	for i := range w.Steps {
+		s := &w.Steps[i]
+		if s.Tool == "" && s.Internal == "" && s.Sub == nil && !panelled[s.ID] {
+			return nil, nil, fmt.Errorf("%w: step %q has no tool, internal, or sub binding", ErrBadDocument, s.ID)
+		}
+	}
+	return plan, bindings, nil
+}
+
+// buildStep resolves one wire step into a flow.Step and its binding.
+func buildStep(w *wireStep, declared map[string]bool) (flow.Step, []Binding, error) {
+	if w.ID == "" {
+		return flow.Step{}, nil, fmt.Errorf("%w: empty step id", ErrBadDocument)
+	}
+	if w.Tool != "" && w.Internal != "" {
+		return flow.Step{}, nil, fmt.Errorf("%w: step %q sets both tool and internal", ErrBadDocument, w.ID)
+	}
+	if w.Sub != nil && (w.Tool != "" || w.Internal != "") {
+		return flow.Step{}, nil, fmt.Errorf("%w: step %q sets sub beside tool or internal", ErrBadDocument, w.ID)
+	}
+	step := flow.Step{ID: w.ID, Needs: w.Needs, To: w.To, Payload: w.Payload}
+	if w.When != "" {
+		rule, ok := admissions[w.When]
+		if !ok {
+			return flow.Step{}, nil, fmt.Errorf("%w: step %q has unknown when %q", ErrBadDocument, w.ID, w.When)
+		}
+		step.When = rule
+	}
+	if w.Retry != nil {
+		rp, err := w.Retry.policy(w.ID)
+		if err != nil {
+			return flow.Step{}, nil, err
+		}
+		step.Retry = rp
+	}
+	if w.Loop != nil {
+		step.Loop = &flow.LoopPolicy{Max: w.Loop.Max}
+	}
+	if w.Sub != nil {
+		sub, subBindings, err := buildPlan(w.Sub, declared)
+		if err != nil {
+			return flow.Step{}, nil, err
+		}
+		step.Sub = sub
+		return step, subBindings, nil
+	}
+	if w.Tool != "" {
+		if !declared[w.Tool] {
+			return flow.Step{}, nil, fmt.Errorf("%w: step %q names undeclared tool %q", ErrBadDocument, w.ID, w.Tool)
+		}
+		return step, []Binding{{Step: w.ID, Tool: w.Tool}}, nil
+	}
+	if w.Internal != "" {
+		k := Kind(w.Internal)
+		if !kinds[k] {
+			return flow.Step{}, nil, fmt.Errorf("%w: step %q names unknown internal %q", ErrBadDocument, w.ID, w.Internal)
+		}
+		return step, []Binding{{Step: w.ID, Kind: k, Internal: true}}, nil
+	}
+	return step, nil, nil
+}
+
+// policy resolves the wire retry into a flow.RetryPolicy. Delay
+// strings parse through time.ParseDuration; a bad string is
+// ErrBadDocument naming the step and field.
+func (w *wireRetry) policy(step string) (*flow.RetryPolicy, error) {
+	base, err := parseDuration(w.BaseDelay, step, "base_delay")
+	if err != nil {
+		return nil, err
+	}
+	max, err := parseDuration(w.MaxDelay, step, "max_delay")
+	if err != nil {
+		return nil, err
+	}
+	return &flow.RetryPolicy{
+		MaxAttempts: w.MaxAttempts,
+		BaseDelay:   base,
+		MaxDelay:    max,
+	}, nil
+}
+
+// parseDuration parses one delay string, wrapping a parse failure in
+// ErrBadDocument.
+func parseDuration(s, step, field string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("%w: step %q retry %q: %s", ErrBadDocument, step, field, err.Error())
+	}
+	return d, nil
+}
+
+// admissions maps the document's when values onto flow admission
+// rules.
+var admissions = map[string]flow.Admission{
+	"on_succeeded": flow.AdmissionOnSucceeded,
+	"on_finished":  flow.AdmissionOnFinished,
+	"on_failed":    flow.AdmissionOnFailed,
+}

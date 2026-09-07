@@ -12,11 +12,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
@@ -32,11 +30,11 @@ func newRunBus(t *testing.T) *events.Bus {
 // card, and plan.
 func newRunAgent(t testing.TB, plan *flow.Definition) *workflow.Agent {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Runner", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Runner", Capabilities: []string{"run"}}
 	a, err := workflow.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("workflow.New() unexpected error: %v", err)
@@ -296,7 +294,7 @@ func TestRunOneStepWaitErrorWithValidAck(t *testing.T) {
 }
 
 // TestRunOneStepSignFailure proves a one-step plan whose Agent holds a
-// broken identity (a zero-value *identity.Identity, non-nil but
+// broken identity (a zero-value *envelope.Identity, non-nil but
 // invalid) returns a non-nil error from the Sign call inside Run's
 // Confirm closure, before wait ever runs.
 func TestRunOneStepSignFailure(t *testing.T) {
@@ -310,8 +308,8 @@ func TestRunOneStepSignFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Broken", Capabilities: []string{"run"}}
-	a, err := workflow.New(&identity.Identity{}, card, plan)
+	card := flow.Card{Name: "Broken", Capabilities: []string{"run"}}
+	a, err := workflow.New(&envelope.Identity{}, card, plan)
 	if err != nil {
 		t.Fatalf("workflow.New() unexpected error: %v", err)
 	}

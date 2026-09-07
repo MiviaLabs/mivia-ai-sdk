@@ -7,7 +7,7 @@ tags: concurrency, correctness
 ---
 
 The largest single fix of one session was a bug in `Calibrated.Observe`
-(`contextplan`/`agentloop`): an estimate/actual pairing that was protected
+(`context/plan`/`agentloop`): an estimate/actual pairing that was protected
 by a mutex, so `go test -race` and normal execution never flagged it, but
 the *values* being paired under that lock were still the wrong ones from a
 concurrent caller's perspective — a logic race, not a data race.

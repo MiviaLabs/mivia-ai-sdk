@@ -17,7 +17,7 @@ package workflow/run
   type Options struct {
   Agent *workflow.Agent
   Machine *machine.Definition
-  Receiver *identity.Identity
+  Receiver *envelope.Identity
   Bus *events.Bus
   Tools *tools.Registry
   Scope *tools.Scope
@@ -26,9 +26,9 @@ package workflow/run
   AskTo string
   Artifacts *Artifacts
   Room string
-  Budget *contextbudget.Limits
-  Monitor *heartbeat.Monitor
-  Hooks *hooks.Registry
+  Budget *budget.Limits
+  Monitor *flow.Monitor
+  Hooks *events.Registry
   Tracer *trace.Tracer
   Wait workflow.AckWait
 }

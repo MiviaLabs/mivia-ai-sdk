@@ -5,29 +5,28 @@ package workflow_test
 
 import (
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
 
 // newIdentity builds a fresh Identity for a test case; a nil id
 // stands in for the missing-identity case.
-func newIdentity(t *testing.T) *identity.Identity {
+func newIdentity(t *testing.T) *envelope.Identity {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	return id
 }
 
 // validCard returns a Card that passes Validate.
-func validCard() discovery.Card {
-	return discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+func validCard() flow.Card {
+	return flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 }
 
 // zeroPlan returns a zero-value Definition, never built through
@@ -53,8 +52,8 @@ func validPlan(t *testing.T) *flow.Definition {
 // case can supply a nil value without sharing state across cases.
 type newCase struct {
 	name    string
-	id      func(t *testing.T) *identity.Identity
-	card    discovery.Card
+	id      func(t *testing.T) *envelope.Identity
+	card    flow.Card
 	plan    func(t *testing.T) *flow.Definition
 	wantErr error  // checked with errors.Is when non-nil
 	errSub  string // checked with strings.Contains when wantErr is nil and wantNil is false
@@ -62,7 +61,7 @@ type newCase struct {
 }
 
 // nilIdentity stands in for the missing-identity case.
-func nilIdentity(t *testing.T) *identity.Identity { return nil }
+func nilIdentity(t *testing.T) *envelope.Identity { return nil }
 
 // nilPlan stands in for the missing-plan case.
 func nilPlan(t *testing.T) *flow.Definition { return nil }
@@ -72,15 +71,15 @@ func newCases() []newCase {
 	return []newCase{
 		{name: "valid triple builds an Agent", id: newIdentity, card: validCard(), plan: validPlan, wantNil: true},
 		{name: "nil identity is rejected", id: nilIdentity, card: validCard(), plan: validPlan, wantErr: workflow.ErrNoIdentity},
-		{name: "blank card name is rejected", id: newIdentity, card: discovery.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "name is required"},
-		{name: "empty capability list is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "capabilities must not be empty"},
-		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate capability"},
-		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "capability entry must not be blank"},
+		{name: "blank card name is rejected", id: newIdentity, card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "name is required"},
+		{name: "empty capability list is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "capabilities must not be empty"},
+		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate capability"},
+		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "capability entry must not be blank"},
 		{name: "nil plan is rejected", id: newIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrNoPlan},
 		{name: "zero-value plan is accepted", id: newIdentity, card: validCard(), plan: zeroPlan, wantNil: true},
 		{name: "nil identity and nil plan: identity error wins", id: nilIdentity, card: validCard(), plan: nilPlan, wantErr: workflow.ErrNoIdentity},
-		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: discovery.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "name is required"},
-		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: discovery.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: workflow.ErrNoIdentity},
+		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "name is required"},
+		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: workflow.ErrNoIdentity},
 	}
 }
 
@@ -143,7 +142,7 @@ func TestNewNilIdentityBeforePlanProvesOrder(t *testing.T) {
 // report the wrapped card error, not ErrNoPlan.
 func TestNewInvalidCardBeforePlanProvesOrder(t *testing.T) {
 	id := newIdentity(t)
-	card := discovery.Card{Name: "", Capabilities: []string{"read"}}
+	card := flow.Card{Name: "", Capabilities: []string{"read"}}
 	_, err := workflow.New(id, card, nil)
 	if err == nil {
 		t.Fatal("New() returned a nil error, want error")
@@ -172,7 +171,7 @@ func TestName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := newIdentity(t)
-			card := discovery.Card{Name: tt.cardName, Capabilities: []string{"read"}}
+			card := flow.Card{Name: tt.cardName, Capabilities: []string{"read"}}
 			a, err := workflow.New(id, card, validPlan(t))
 			if err != nil {
 				t.Fatalf("New() unexpected error: %v", err)
@@ -190,7 +189,7 @@ func TestName(t *testing.T) {
 // and confirms the source card observed the same change.
 func TestCapabilitiesAliasesTheCard(t *testing.T) {
 	id := newIdentity(t)
-	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+	card := flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	a, err := workflow.New(id, card, validPlan(t))
 	if err != nil {
 		t.Fatalf("New() unexpected error: %v", err)

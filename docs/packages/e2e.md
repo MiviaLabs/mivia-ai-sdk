@@ -89,8 +89,8 @@ behavior:
 - `faults_store_panic_test.go` — a panicking ledger store on a
   one-step, non-panel plan; the panic propagates out of `Run` uncaught
   and the test's own `recover` sees a value matching `ErrFault`.
-- `spool_test.go` — a `spool.SpoolTool` wired around an oversized-
-  result tool inside a `workflow/run` step; the spooled view names a ref
+- `spool_test.go` — a `memory.SpoolTool` wired around an oversized-
+  result tool inside an `workflow/run` step; the spooled view names a ref
   a follow-up `Spool.Load` call resolves back to the full result.
 
 See [../plans/e2e.md](../plans/e2e.md) for the scenario map.

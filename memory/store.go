@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
+	contextref "github.com/MiviaLabs/mivia-ai-sdk/context/ref"
 )
 
 // Sentinel errors for Store operations; test with errors.Is.

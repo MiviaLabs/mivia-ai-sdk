@@ -9,8 +9,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -46,9 +45,9 @@ var errEstimateBoom = errors.New("agentloop_test: estimate boom")
 
 // failOnSummaryEstimator prices one token per content byte, like
 // scaleEstimator, except it fails with err whenever req carries a
-// message named contextsummary.SummaryMessageName. Only
+// message named plan.SummaryMessageName. Only
 // checkCompactedBudget's post-injection re-check ever estimates a
-// history carrying that message: contextplan.Compact's own internal
+// history carrying that message: plan.Compact's own internal
 // estimates (before, mandatory, tail-fill, after) all run over the
 // summary-stripped rest, and planHistory's own first estimate runs
 // before any injection. This isolates checkCompactedBudget's own
@@ -59,7 +58,7 @@ type failOnSummaryEstimator struct{ err error }
 func (e failOnSummaryEstimator) EstimateTokens(req provider.Request) (int, error) {
 	total := 0
 	for _, m := range req.Messages {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == plan.SummaryMessageName {
 			return 0, e.err
 		}
 		total += len(m.Content)
@@ -76,11 +75,11 @@ func (e failOnSummaryEstimator) EstimateTokens(req provider.Request) (int, error
 // TestRunPlanHistoryFailureLaterIterationPreservesPartialResult for
 // the case where a completed prior iteration's state survives.
 func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
-	w := &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
+	w := &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
@@ -90,7 +89,7 @@ func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
 		Bounds:     agentloop.Bounds{MaxIterations: 3},
 		Window:     w,
 		Summarizer: sum,
-		Calibrated: contextplan.Calibrate(erroringEstimator{err: errEstimateBoom}, 1.0),
+		Calibrated: plan.Calibrate(erroringEstimator{err: errEstimateBoom}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -123,13 +122,13 @@ func TestRunCompactedBudgetExceededAfterSummaryInjection(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "final"},
 	}
-	w := contextplan.Window{MaxTokens: 50, Compaction: contextplan.Compaction{TriggerPercent: 10, TargetTokens: 5}}
+	w := plan.Window{MaxTokens: 50, Compaction: plan.Compaction{TriggerPercent: 10, TargetTokens: 5}}
 	loop, f := newPlanningFixture(t, w, nil, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+	if !errors.Is(err, plan.ErrRetentionOverflow) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
 	}
 	sumCalls, _ := f.summary.stats()
@@ -154,8 +153,8 @@ func TestRunCompactedBudgetEstimateFailure(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "final"},
 	}
-	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 10, TargetTokens: 5}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	w := plan.Window{MaxTokens: 200, Compaction: plan.Compaction{TriggerPercent: 10, TargetTokens: 5}}
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -165,7 +164,7 @@ func TestRunCompactedBudgetEstimateFailure(t *testing.T) {
 	}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 3},
-		Window: &w, Summarizer: sum, Calibrated: contextplan.Calibrate(est, 1.0),
+		Window: &w, Summarizer: sum, Calibrated: plan.Calibrate(est, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -188,7 +187,7 @@ func TestRunCompactedBudgetEstimateFailure(t *testing.T) {
 // ErrCompactionFailed instead of retrying the Completer.
 func TestRunRecoveryWindowValidateFailureFailsIteration(t *testing.T) {
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: ""}}
-	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100}}
+	w := plan.Window{MaxTokens: 1, Compaction: plan.Compaction{TriggerPercent: 100}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{{}}, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
@@ -203,7 +202,7 @@ func TestRunRecoveryWindowValidateFailureFailsIteration(t *testing.T) {
 // checkCompactedBudget's documented fail-closed invariant: when the
 // rebuilt history, summary included, still estimates over the
 // window's budget after a successful compaction, Run fails with
-// ErrCompactionFailed wrapping contextplan.ErrRetentionOverflow,
+// ErrCompactionFailed wrapping plan.ErrRetentionOverflow,
 // distinct from Compact's own overflow on the retained set alone
 // (TestRunRetentionOverflowFailsBeforeRequest). The oversized
 // summarizer reply is what pushes the rebuilt total over budget: the
@@ -216,16 +215,16 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 200, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
 	hugeField := strings.Repeat("x", 1024)
-	hugeReply := fmt.Sprintf(`{"Objective":%q,"State":%q,"Decisions":[],"OpenWork":[],"Risks":[]}`, hugeField, hugeField)
+	hugeReply := fmt.Sprintf(`{"objective":%q,"state":%q,"decisions":[],"open_work":[],"risks":[]}`, hugeField, hugeField)
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	sum := &summaryScript{reply: hugeReply}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -235,7 +234,7 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -244,7 +243,7 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+	if !errors.Is(err, plan.ErrRetentionOverflow) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow: the post-injection re-check must fail closed", err)
 	}
 	if got := sc.callCount(); got != 0 {
@@ -264,21 +263,25 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 // lands exactly on the window's Budget() passes, since the check
 // fails only strictly above it (est > w.Budget()), not at or under.
 // The empty system message, the fixed-content summary, and the
-// single-byte mandatory user message sum to exactly 51 bytes; Budget
-// is set to 51 to land the estimate exactly on the boundary.
+// single-byte mandatory user message sum to exactly 142 bytes; Budget
+// is set to 142 to land the estimate exactly on the boundary. The
+// rendered summary is 141 bytes: 50 document bytes, 64 for
+// SummaryPreamble plus its join newline, and 27 for the Evidence and
+// ChangedSurfaces label lines, which Render writes for every summary,
+// empty lists included.
 func TestRunCompactedHistoryExactlyAtBudgetPasses(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: ""},
 		{Role: provider.RoleUser, Content: strings.Repeat("d", 100)},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 51, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 1}}
+	w := plan.Window{MaxTokens: 142, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 1}}
 	reg := tools.New()
 	sc := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
-	sum := &summaryScript{reply: `{"Objective":"o","State":"s","Decisions":[],"OpenWork":[],"Risks":[]}`}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	sum := &summaryScript{reply: `{"objective":"o","state":"s","decisions":[],"open_work":[],"risks":[]}`}
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -288,7 +291,7 @@ func TestRunCompactedHistoryExactlyAtBudgetPasses(t *testing.T) {
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -321,12 +324,12 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsClosed(t *testing.T) {
 		{Role: provider.RoleUser, Content: "l"},
 	}
 	estErr := errors.New("post-injection estimate boom")
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sc := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -336,7 +339,7 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsClosed(t *testing.T) {
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: sum,
-		Calibrated: contextplan.Calibrate(failOnSummaryEstimator{err: estErr}, 1.0),
+		Calibrated: plan.Calibrate(failOnSummaryEstimator{err: estErr}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -358,13 +361,13 @@ func TestRunRetentionOverflowFailsBeforeRequest(t *testing.T) {
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleUser, Content: strings.Repeat("u", 100)},
 	}
-	w := contextplan.Window{MaxTokens: 50, Compaction: contextplan.Compaction{TriggerPercent: 100}}
+	w := plan.Window{MaxTokens: 50, Compaction: plan.Compaction{TriggerPercent: 100}}
 	loop, f := newPlanningFixture(t, w, nil, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+	if !errors.Is(err, plan.ErrRetentionOverflow) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
 	}
 	if got := f.completer.callCount(); got != 0 {
@@ -383,17 +386,19 @@ func TestRunRetentionOverflowFailsBeforeRequest(t *testing.T) {
 // checkCompactedBudget boundary from the passing side: a summarized
 // rebuild that re-estimates to exactly w.Budget() must not fail. The
 // fixed system message (1 byte) plus the fixed summaryScript reply's
-// 81-byte rendered form plus one user byte total 83, matching
-// MaxTokens 83 with Reserve 0 exactly.
+// 172-byte rendered form plus one user byte total 174, matching
+// MaxTokens 174 with Reserve 0 exactly. The rendered form is the
+// 81-byte document plus the 64-byte preamble join and the 27 bytes of
+// Evidence and ChangedSurfaces label lines, written for every summary.
 func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleAssistant, Content: strings.Repeat("d", 30)},
 		{Role: provider.RoleUser, Content: "u"},
 	}
-	w := contextplan.Window{
-		MaxTokens: 83,
-		Compaction: contextplan.Compaction{
+	w := plan.Window{
+		MaxTokens: 174,
+		Compaction: plan.Compaction{
 			TriggerPercent: 1,
 			TargetTokens:   1,
 		},
@@ -415,17 +420,18 @@ func TestCheckCompactedBudgetAtBudgetPasses(t *testing.T) {
 
 // TestCheckCompactedBudgetOverBudgetFails pairs
 // TestCheckCompactedBudgetAtBudgetPasses from the failing side: the
-// same window, with the user message one byte longer, pushes the
-// rebuilt re-estimate to Budget()+1 and fails closed.
+// same 174-token window, with the user message one byte longer, puts
+// the rebuilt re-estimate at 175, one byte above Budget(), and fails
+// closed.
 func TestCheckCompactedBudgetOverBudgetFails(t *testing.T) {
 	msgs := []provider.Message{
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleAssistant, Content: strings.Repeat("d", 30)},
 		{Role: provider.RoleUser, Content: "uu"},
 	}
-	w := contextplan.Window{
-		MaxTokens: 83,
-		Compaction: contextplan.Compaction{
+	w := plan.Window{
+		MaxTokens: 174,
+		Compaction: plan.Compaction{
 			TriggerPercent: 1,
 			TargetTokens:   1,
 		},
@@ -435,7 +441,7 @@ func TestCheckCompactedBudgetOverBudgetFails(t *testing.T) {
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+	if !errors.Is(err, plan.ErrRetentionOverflow) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
 	}
 	if got := f.completer.callCount(); got != 0 {

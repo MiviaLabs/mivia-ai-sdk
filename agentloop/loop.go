@@ -7,16 +7,13 @@ import (
 	"math"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // Result holds a Run call's outcome. See docs/plans/agentloop.md's
@@ -50,20 +47,20 @@ type Loop struct {
 	bounds          Bounds
 	onToolError     ErrorPolicy
 	onToolCallError ErrorFunc
-	hooksReg        *hooks.Registry
+	hooksReg        *events.Registry
 	tracer          *trace.Tracer
-	usageAcc        *usage.Accumulator
+	usageAcc        *provider.Accumulator
 	sessionID       string
 	bus             *events.Bus
-	budget          *contextbudget.Limits
+	budget          *budget.Limits
 	trim            func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
 	surfaceFn       func() *Surface
 	defs            []provider.ToolDefinition
 	schemas         map[string]*schema.Compiled
 	audit           AuditFunc
-	window          *contextplan.Window
-	summarizer      *contextsummary.Summarizer
-	calibrated      *contextplan.Calibrated
+	window          *plan.Window
+	summarizer      *plan.Summarizer
+	calibrated      *plan.Calibrated
 	// defaultEffort is the completer's ReasoningPolicy default, read
 	// once at New; empty when the completer has no policy. Each
 	// iteration's request carries it when the request sets no effort

@@ -4,8 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -88,7 +87,7 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	if err := reg.Add(&capabilityTool{}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := plan.NewSummarizer(completer)
 	if err != nil {
 		t.Fatalf("summarizer: %v", err)
 	}
@@ -96,7 +95,7 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(completer, 0.25),
+		Calibrated: plan.Calibrate(completer, 0.25),
 		SessionID:  "cap",
 		Bounds:     Bounds{MaxIterations: 2},
 	}
@@ -128,7 +127,7 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(completer, 0.25),
+		Calibrated: plan.Calibrate(completer, 0.25),
 		SessionID:  "cap",
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return msgs, nil

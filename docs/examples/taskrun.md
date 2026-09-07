@@ -8,7 +8,7 @@ against the module.
 
 ## The ceremony
 
-The `taskrun.Run` call replaces the hand-written ledger ceremony. The
+The `ledger.Run` call replaces the hand-written ledger ceremony. The
 caller supplies the work; the package supplies admission, claim, and
 completion. A successful work run completes `StatusCompleted`. A failed
 work run completes `StatusFailed` and returns the work error.
@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	opts := taskrun.Options{
+	opts := ledger.Options{
 		Ledger: l,
 		Actor:  "ci-runner",
 		Owner:  "worker-1",
@@ -42,24 +42,24 @@ func main() {
 	}
 
 	// Run a successful build task.
-	build := taskrun.Task{Key: "build", Seq: 1, Description: "build ok"}
-	if err := taskrun.Run(ctx, opts, build, func(context.Context) error {
+	build := ledger.Task{Key: "build", Seq: 1, Description: "build ok"}
+	if err := ledger.Run(ctx, opts, build, func(context.Context) error {
 		return nil
 	}); err != nil {
 		fmt.Println("build:", err)
 	}
 
 	// Run a build task whose work fails.
-	broke := taskrun.Task{Key: "broke", Seq: 1, Description: "build fails"}
+	broke := ledger.Task{Key: "broke", Seq: 1, Description: "build fails"}
 	workErr := errors.New("compiler error")
-	if err := taskrun.Run(ctx, opts, broke, func(context.Context) error {
+	if err := ledger.Run(ctx, opts, broke, func(context.Context) error {
 		return workErr
 	}); err != nil {
 		fmt.Println("broke returned:", err == workErr)
 	}
 
 	// Replay a completed key returns its sentinel without running work.
-	if err := taskrun.Run(ctx, opts, build, func(context.Context) error {
+	if err := ledger.Run(ctx, opts, build, func(context.Context) error {
 		fmt.Println("this work never runs")
 		return nil
 	}); err != nil {

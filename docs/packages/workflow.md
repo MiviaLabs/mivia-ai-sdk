@@ -7,8 +7,8 @@ messages. The exported surface below mirrors `api/workflow.txt`.
 
 ## Types
 
-- `Agent` — an opaque struct binding one `*identity.Identity`, one
-  `discovery.Card`, and one `*flow.Definition`. Build it with `New`;
+- `Agent` — an opaque struct binding one `*envelope.Identity`, one
+  `flow.Card`, and one `*flow.Definition`. Build it with `New`;
   the fields stay unexported.
 - `AckWait` — `func(ctx context.Context, msg envelope.Message)
   (envelope.Ack, error)`. `Run` calls it once per step `flow.Run`
@@ -114,7 +114,7 @@ Use `errors.Is` to test these.
 
 ### The optional heartbeat parameter
 
-- `hb` is an optional step-liveness `*heartbeat.Monitor`. A nil `hb`
+- `hb` is an optional step-liveness `*flow.Monitor`. A nil `hb`
   skips every heartbeat call; `Run`'s behavior is otherwise unchanged.
 - A non-nil `hb` beats one id, `a.id.Signer() + ":" + threadID`, right
   before each gated step's `wait` call.
@@ -139,7 +139,7 @@ Use `errors.Is` to test these.
 
 ### The optional budget parameter
 
-- `budget` is an optional `*contextbudget.Limits`. A nil `budget`
+- `budget` is an optional `*context/budget.Limits`. A nil `budget`
   skips every budget check; `Run`'s behavior is otherwise unchanged.
 - A non-nil `budget` runs `budget.Validate()` once, at the same point
   `Run` checks `wait`, `bus`, and `threadID`; an invalid budget
@@ -165,7 +165,7 @@ Use `errors.Is` to test these.
 
 `workflow` is the composition layer. It imports seven other packages:
 `identity`, `discovery`, `flow`, `envelope`, `events`, `heartbeat`,
-and `contextbudget`. None of those seven packages imports `workflow`
+and `context/budget`. None of those seven packages imports `workflow`
 back. Dependency direction flows inward, from the leaf building
 blocks toward the package that wires them together, so `workflow`
 composes signing, workflow stepping, event emission, liveness
@@ -218,8 +218,8 @@ for a runnable program composing all five.
 ## Usage
 
 ```go
-id, _ := identity.New()
-card := discovery.Card{
+id, _ := envelope.New()
+card := flow.Card{
     Name:         "invoice-agent",
     Capabilities: []string{"invoice.review"},
 }

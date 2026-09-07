@@ -1,6 +1,8 @@
 # Plan: contextstate
 
-Status: shipped. One new leaf package plus one unification inside
+Status: superseded. Phase 86 quarantined this package into the
+x/ sub-module, which stops advertising it from the core module.
+See docs/plans/agents/phase86_package_consolidation.md.
 `envelope`, ported from the sibling consumer repo's `internal/contextstate` and
 `internal/contentref` under the phase 65 contract. `contextplan`
 plans a session's context fit on these types; `spool` spools

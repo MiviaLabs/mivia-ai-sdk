@@ -7,27 +7,29 @@ Go SDK for building AI agents. Module:
 
 The SDK is composed of single-concern packages. See [docs/README.md](docs/README.md) and [docs/architecture.md](docs/architecture.md) for full package references and architecture diagrams.
 
-- `envelope/` — AI message protocol (Message, Ack, Sign, VerifyThread).
+- `envelope/` — AI message protocol (Message, Ack, Sign, VerifyThread) and the agent key (Identity, New, Load).
 - `room/` — standing groups: membership roster, roles, admission.
 - `machine/` — status model: triggers, guards, transitions, wire form.
-- `flow/` — step graphs: sequential steps, panels, routing, retry, loops, checkpoint/resume.
-- `agentloop/` — a second composition path beside `flow`: a tool-calling loop over a `provider.Completer` and a `tools.Registry`.
-- `events/` — in-process reaction bus.
+- `flow/` — step graphs: sequential steps, panels, routing, retry, loops, checkpoint/resume; capability cards (Card, Parse, Match) and the liveness monitor (Monitor, Beat).
+- `agentloop/` — a second composition path beside `flow`: a tool-calling loop over a `provider.Completer` and a `tools.Registry`, with the tool-call context plumbing unexported inside.
+- `events/` — in-process reaction bus and the vetoable hook registry (Point, Registry, Fire).
 - `tools/` — tool registry: execution profiles, scopes, approval gating.
-- `provider/` — model provider interface and reasoning vocabulary.
+- `provider/` — model provider interface, reasoning vocabulary, per-session usage accounting (Accumulator), and the routing registry (Registry, Route).
 - `provider/anthropic/` — Anthropic Messages API concrete adapter.
 - `workflow/` — composition layer wiring blocks into an agent.
 - `workflow/run/` — config-struct runner composition over workflow.Run.
 - `subagent/` — blocks as tools, concurrent spawns, and mailboxes.
-- `runconfig/` — JSON-document loader binding a step graph to run.Options.
-- `ledger/` — durable task admission, leased claims, fenced takeover.
-- `workspace/` — filesystem confinement via `os.Root` and secret denial.
+- `ledger/` — durable task admission, leased claims, fenced takeover, the one-task ceremony (Run), and the ledgertest conformance kit.
+- `memory/` — content-addressed store plus the principal-scoped spool (Spool, SpoolTool, ReadOutputTool).
+- `workspace/` — filesystem confinement via `os.Root` and secret path denial (Matcher).
 - `mcp/` — Model Context Protocol client over stdio/HTTP.
-- `a2a/` / `a2aclient/` / `a2aack/` — A2A v1.0 protocol integration.
+- `a2a/` / `a2aclient/` — A2A v1.0 protocol integration, the remote step ack (Wait), and the a2atest loopback fixture.
 - `dispatch/` — NDJSON envelope HTTP endpoint.
-- `contextplan/` / `contextsession/` / `contextref/` / `contextstate/` / `contextsummary/` — context window management, durable planning, content references & compaction.
-- `longtermmemory/` / `memory/` — tiered long-term and content-addressed memory.
-- `channel/` / `scheduler/` / `trigger/` / `heartbeat/` / `discovery/` — supporting primitives.
+- `context/plan/` / `context/ref/` — context window management, compaction, the summarizer (Summarize), and content references.
+- `scheduler/` — due-job firing plus the trigger registry (Condition, Action, Registry).
+- `channel/` / `trace/` — supporting primitives.
+- `x/` — nested sub-module of quarantined orphaned packages (`contextstate`, `contextsession`, `longtermmemory`, `skills`, `envfile`, `runconfig`); the core module does not advertise them. Promote one into core when a second consumer appears.
+- `internal/e2e/` — end-to-end scenario harness and suite; test-only.
 - `policy/` — `layers.json` allowed imports; `pending_wiring.json`;
   `pending_symbols.json`.
 - `api/` — exported-surface locks checked by `scripts/check_api.py`.

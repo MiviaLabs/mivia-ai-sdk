@@ -3,12 +3,11 @@ package subagent_test
 import (
 	"context"
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
-	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
+	"github.com/MiviaLabs/mivia-ai-sdk/internal/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
@@ -35,11 +34,11 @@ func prefixRunner(t *testing.T, prefix string, artifacts *run.Artifacts) *run.Ru
 	if err := reg.Add(e2e.PrefixTool{ToolName: "work", Prefix: prefix}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("workflow.New: %v", err)
 	}
@@ -74,11 +73,11 @@ func failingRunner(t *testing.T, msg string) *run.Runner {
 	if err := reg.Add(failTool{name: "work", msg: msg}); err != nil {
 		t.Fatalf("registry.Add: %v", err)
 	}
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("workflow.New: %v", err)
 	}
@@ -93,11 +92,11 @@ func failingRunner(t *testing.T, msg string) *run.Runner {
 // registry, failing the test on the first error.
 func runnerOver(t *testing.T, plan *flow.Definition, m *machine.Definition, reg *tools.Registry) *run.Runner {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := workflow.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := workflow.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("workflow.New: %v", err)
 	}

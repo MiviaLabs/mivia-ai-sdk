@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `envelope`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: identity
 
 The identity package owns one agent key: an ed25519 pair, the key-file
@@ -64,7 +68,7 @@ string for a wrong-length private key; the length guard runs before
 ## Usage
 
 ```go
-id, _ := identity.New()
+id, _ := envelope.New()
 msg := envelope.Message{
     Version:    envelope.Version,
     ID:         "msg-1",

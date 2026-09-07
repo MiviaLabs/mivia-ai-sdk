@@ -10,7 +10,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -19,7 +18,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // errorCompleter fails every chat turn.
@@ -47,9 +45,9 @@ func commandTools(t *testing.T) []tools.Tool {
 		t.Fatalf("room.New: %v", err)
 	}
 	s := scheduler.New()
-	m, err := heartbeat.New(time.Hour)
+	m, err := flow.NewMonitor(time.Hour)
 	if err != nil {
-		t.Fatalf("heartbeat.New: %v", err)
+		t.Fatalf("flow.New: %v", err)
 	}
 	l, err := ledger.New(nil, nil)
 	if err != nil {
@@ -114,7 +112,7 @@ func TestFlowToolFailurePropagates(t *testing.T) {
 // TestTriggerToolUnknownNameFails proves firing an unregistered
 // trigger surfaces the registry's error.
 func TestTriggerToolUnknownNameFails(t *testing.T) {
-	_, err := subagent.TriggerTool("triggers", trigger.New()).
+	_, err := subagent.TriggerTool("triggers", scheduler.NewRegistry()).
 		Run(context.Background(), inString("ghost"))
 	if err == nil {
 		t.Fatal("Run succeeded, want an unknown-trigger failure")

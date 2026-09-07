@@ -61,6 +61,10 @@ verify: verify-fast verify-ledger-sqlite
 		grep -q "^$$p/" cover.out || { echo "cover.out lacks a profile for package $$p"; exit 1; }; \
 	done; \
 	awk -v floor="$(COVERAGE_FLOOR)" '/^mode:/{next} {file=$$1; sub(/:[0-9].*$$/,"",file); sub(/\/[^\/]+$$/,"",file); tot[file]+=$$(NF-1); if ($$NF==0) unc[file]+=$$(NF-1)} END {ts=0; u=0; bad=0; for (p in tot) {ts+=tot[p]; u+=unc[p]; pct=100*(tot[p]-unc[p])/tot[p]; if (pct<floor) {printf "coverage %.1f%% for %s below the %d%% floor\n", pct, p, floor; bad=1}} t=100*(ts-u)/ts; if (t<floor) {printf "coverage %.1f%% below the %d%% floor\n", t, floor; bad=1} exit bad}' cover.out; \
+	# The x/ sub-module is a nested module, invisible to the root
+	# go list, so the root test block never sees it. Verify it here
+	# so CI keeps testing the quarantine.
+	go test -C x ./...
 	python3 scripts/check_semgrep_probes.py
 	python3 scripts/check_mutation.py --probe
 	python3 scripts/check_orphan_packages.py --probe
@@ -107,7 +111,7 @@ mutation-gate:
 # the composition layer, not only alone.
 verify-ledger-sqlite:
 	@trap 'rm -f cover_ledger_sqlite.out' EXIT; \
-	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./e2e/...; \
+	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./internal/e2e/...; \
 	go tool cover -func=cover_ledger_sqlite.out | awk -v floor="$(COVERAGE_FLOOR)" '/^total:/{pct=$$3; sub(/%/,"",pct); if (pct+0<floor) {printf "ledger (tag ledger_sqlite) coverage %.1f%% below the %d%% floor\n", pct, floor; exit 1}}'
 
 # api-update rewrites every lock under api/ from the tool output. The

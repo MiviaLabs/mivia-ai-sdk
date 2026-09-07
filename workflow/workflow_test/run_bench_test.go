@@ -7,7 +7,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
@@ -55,7 +55,7 @@ func BenchmarkRun(b *testing.B) {
 }
 
 // BenchmarkRunWithHeartbeat benchmarks the same two-step run as
-// BenchmarkRun, with a non-nil *heartbeat.Monitor built with a
+// BenchmarkRun, with a non-nil *flow.Monitor built with a
 // one-second timeout.
 // Measured: ~108 us/op, ~7258 B/op, 67 allocs/op, against
 // BenchmarkRun's own measured nil-hb baseline of ~106 us/op,
@@ -65,9 +65,9 @@ func BenchmarkRun(b *testing.B) {
 func BenchmarkRunWithHeartbeat(b *testing.B) {
 	a, m := twoStepFixture(b)
 	bus := benchRunBus(b)
-	hb, err := heartbeat.New(time.Second)
+	hb, err := flow.NewMonitor(time.Second)
 	if err != nil {
-		b.Fatalf("heartbeat.New() unexpected error: %v", err)
+		b.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	ctx := context.Background()
 	b.ResetTimer()

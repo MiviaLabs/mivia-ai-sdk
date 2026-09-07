@@ -65,8 +65,8 @@ Outside:
 - `type Options struct` — `Completer provider.Completer`,
   `Tools *tools.Registry`, `Scope *tools.Scope`, `Model string`,
   `MaxIterations int`, `MaxCallsPerTurn int`, `MaxTotalTokens int`,
-  `OnToolError ErrorPolicy`, `Hooks *hooks.Registry`,
-  `Tracer *trace.Tracer`, `Usage *usage.Accumulator`,
+  `OnToolError ErrorPolicy`, `Hooks *events.Registry`,
+  `Tracer *trace.Tracer`, `Usage *provider.Accumulator`,
   `SessionID string`, `Bus *events.Bus`,
   `Budget *contextbudget.Limits`,
   `Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)`.
@@ -129,7 +129,7 @@ before a new response arrived, as with `StopHookVeto`. On every
 hard-fail error return — a canceled ctx, a `Completer.Chat` error,
 `ErrOverBudget`, `ErrTokenBudgetExceeded`, `ErrCallsPerTurnExceeded`,
 a `Trim` error, a post-`Trim` `provider.Message.Validate` error, a
-tool error under `ErrorPolicyFail`, or a non-veto `hooks.Fire` error
+tool error under `ErrorPolicyFail`, or a non-veto `events.Fire` error
 — `Run` also returns the partial `Result` alongside the error, not
 the zero value.
 `History`, `Iterations`, and `Usage` carry the same partial state as
@@ -210,7 +210,7 @@ sees the response that tripped the cap. `Options.Usage` recording
 itself still sums the `Completer`'s raw reported `TotalTokens`, not
 the corrected `max()` figure, and carries its own, separate
 under-reporting gap for a `Completer` that leaves `TotalTokens` at
-zero; see the addendum's Outside bullet on `usage.Accumulator`. A
+zero; see the addendum's Outside bullet on `provider.Accumulator`. A
 zero `MaxTotalTokens` means unbounded.
 
 Hitting `MaxIterations` is not an error: `Run` returns
@@ -221,14 +221,14 @@ reserved for `Options.Validate()` rejecting a non-positive
 runtime stop.
 
 `trace.Tracer` opens one span per iteration and one per tool call.
-`hooks.Registry` fires `PointPreTool` and `PointPostTool` per tool
+`events.Registry` fires `PointPreTool` and `PointPostTool` per tool
 call, and `PointStop` once at the end. When a `Fire` call returns a
-non-nil error, `Run` checks `errors.Is(err, hooks.ErrVetoed)`: a veto
+non-nil error, `Run` checks `errors.Is(err, events.ErrVetoed)`: a veto
 is the graceful `StopHookVeto` stop described above — nil error, no
 tool run. Any other `Fire` error, a handler-returned error that is not
 a veto, is a hard failure: `Run` returns the wrapped error and the
 partial `Result` per the rule above, and the tool does not run.
-`usage.Accumulator` records per iteration under `SessionID`.
+`provider.Accumulator` records per iteration under `SessionID`.
 `events.Bus` carries the loop's own events. Each of the four is
 optional and unused when nil.
 
@@ -346,7 +346,7 @@ same footprint the package already holds.
   runs once at `New` and `Run` reuses the cached result. A
   `PointPreTool` handler that returns a non-veto error fails the run
   with the wrapped handler error, asserts
-  `errors.Is(err, hooks.ErrVetoed)` is false to distinguish it from a
+  `errors.Is(err, events.ErrVetoed)` is false to distinguish it from a
   veto, and asserts the returned `Result` carries the accumulated
   `History`, `Iterations`, and `Usage` at the point of failure, not
   the zero value. A `Trim` hook returning a slice with one invalid
@@ -985,7 +985,7 @@ Inside:
 Outside:
 
 - `sumUsage` and `totalUsage`, `Result.Usage`, and
-  `Options.Usage`/`usage.Accumulator` recording. Those three continue
+  `Options.Usage`/`provider.Accumulator` recording. Those three continue
   to record the raw `resp.Usage` a `Completer` reports, unchanged: they
   are a caller-facing report of what the `Completer` said, not a
   safety cap, and correcting a `Completer`'s own under-reporting there
@@ -994,12 +994,12 @@ Outside:
 - `provider.Usage` and `provider/types.go`. This addendum adds no
   `Validate` method there; see the addendum decision above. No
   `docs/plans/provider.md` change.
-- `usage.Accumulator.Record` in `usage/accumulator.go`. It sums
+- `provider.Accumulator.Record` in `usage/accumulator.go`. It sums
   `TotalTokens` the same trust-assuming way `run.go` did, so
   `Accumulator.Total` under-reports for the same
   `TotalTokens`-left-zero `Completer` shape. This is a real, smaller
   gap in a different package, not fixed in this change. It needs its
-  own plan review against `docs/plans/usage.md`, since `usage.Record`
+  own plan review against `docs/plans/usage.md`, since `provider.Record`
   is a reporting primitive, not a safety cap, and the correct fix
   there — reporting the caller's raw numbers, or reporting a corrected
   `max()` total, or adding a `PartialUsage`-style flag — is its own
@@ -1360,7 +1360,7 @@ Window *contextplan.Window
 
 // Summarizer runs the LLM summary every compaction requires. Required
 // when Window is set.
-Summarizer *contextsummary.Summarizer
+Summarizer *contextplan.Summarizer
 
 // Calibrated estimates tokens for planning and receives one Observe
 // call after every Chat. Required when Window is set.
@@ -1429,7 +1429,7 @@ Before each `Completer.Chat`, when `l.window` is non-nil, `Run`:
 The compaction sequence:
 
 - Copies the caller's `Window` value and appends
-  `contextsummary.SummaryMessageName` to the copy's
+  `contextplan.SummaryMessageName` to the copy's
   `Compaction.PreserveNames` only when absent, into a freshly
   allocated slice. The append never mutates the caller's backing
   array, and a caller already listing the name never trips
@@ -1455,7 +1455,7 @@ The compaction sequence:
   `ErrCompactionFailed`, wrapped with the iteration count and the
   contextsummary sentinel. This is the hard rule: no request, no
   messages, no tool calls are sent for that iteration.
-- Injects `contextsummary.SummaryMessage(s)` directly after the
+- Injects `contextplan.SummaryMessage(s)` directly after the
   leading system message, or at index zero when none leads.
 - Re-estimates the rebuilt history. Above the effective window's
   `Budget()`, the iteration fails with `ErrCompactionFailed`
@@ -1549,7 +1549,7 @@ scripted `Completer` and one scripted `Summarizer` per case:
   recorded after `Chat`.
 - Over trigger: `Compact` ran, one summarizer call over the dropped
   messages, the summary message sits after the system message, its
-  `Name` is `contextsummary.SummaryMessageName`, and the request the
+  `Name` is `contextplan.SummaryMessageName`, and the request the
   `Completer` received carries the compacted history.
 - At trigger with nothing droppable: an all-mandatory history at the
   trigger yields an empty `Dropped`; the summarizer is never called,
@@ -2067,7 +2067,7 @@ Inside:
   per-tool-call heartbeat.
 - Emitting on `Bus` at each of those points. A `Bus.Emit` error is
   swallowed, the same way `Run` already swallows a
-  `hooks.Registry.Fire` error from `PointStop`: a heartbeat is
+  `events.Registry.Fire` error from `PointStop`: a heartbeat is
   observability, not a control-flow gate. The gate is decoupled
   per event class: the four lifecycle names (iteration start/end,
   tool-call start/end) fire whenever `Bus` is non-nil, while the
@@ -2167,7 +2167,7 @@ for the full field list, the failure mode, and the gating rule.
   two `EventToolCallHeartbeat` events, then `EventToolCallEnd`, in
   order.
 - `Bus.Emit` errors are swallowed, matching
-  the `PointStop`/`hooks.Registry.Fire` swallow precedent; a name
+  the `PointStop`/`events.Registry.Fire` swallow precedent; a name
   with no subscriber emits nothing; `Run` completes normally.
 - A race sub-case: heartbeat emission from the ticking goroutine and
   the main loop's own state changes run concurrently, under
@@ -3007,7 +3007,7 @@ In `agentloop/agentloop_test/compaction_test.go`:
 
 - `TestRunSummarizerFailureFailsBeforeRequest` (currently at
   `compaction_test.go:324-346`) keeps its `msgs`, `w`, fixture setup,
-  and its `ErrCompactionFailed`/`contextsummary.ErrCallFailed`/
+  and its `ErrCompactionFailed`/`contextplan.ErrCallFailed`/
   `completer.callCount() == 0` assertions unchanged. Replace only its
   final assertion:
 
@@ -3099,7 +3099,7 @@ second compaction's summarizer call failing instead of succeeding:
   1}, 1.0)}`. No `Budget`: irrelevant to this test's boundary.
 - Call `loop.Run(context.Background(), msgs)`.
 - Assert `errors.Is(err, agentloop.ErrCompactionFailed)`.
-- Assert `errors.Is(err, contextsummary.ErrCallFailed)`.
+- Assert `errors.Is(err, contextplan.ErrCallFailed)`.
 - Assert `completer.callCount() == 1`: the first iteration's
   `Completer.Chat` call ran; the second iteration hard-fails inside
   `planHistory`, before any second `Completer.Chat` call.
@@ -5285,14 +5285,14 @@ main.go design:
   - `Window`: `&contextplan.Window{MaxTokens: 512,
     Compaction: contextplan.Compaction{TriggerPercent: 80,
     TargetPercent: 50}}`.
-  - `Summarizer`: `contextsummary.NewSummarizer(canned)`. It returns
+  - `Summarizer`: `contextplan.NewSummarizer(canned)`. It returns
     an error; main prints and returns on it.
   - `Calibrated`: `contextplan.Calibrate(est, 0.25)`.
   - `Tracer`: `trace.New()`.
-  - `Hooks`: `hooks.New()` plus one handler at `hooks.PointPostTool`.
+  - `Hooks`: `events.New()` plus one handler at `events.PointPostTool`.
     The handler prints the payload and returns true, nil, so `Fire`
     continues.
-  - `Usage`: `usage.New()`; `SessionID`: `agentloop-example`.
+  - `Usage`: `provider.New()`; `SessionID`: `agentloop-example`.
   - `WorkBudget`: `Reserve` and `Refund` both non-nil no-op closures.
     A half-wired budget fails `Validate`.
   - `ToolBudget`: `Reserve` non-nil.
@@ -5434,7 +5434,7 @@ Inside:
   parallelism, 3-turn failure tripwire).
 - `EnableCompaction(o *Options, completer provider.Completer, window
   contextplan.Window, alpha float64) error`: builds the
-  `contextsummary.Summarizer` from the completer, the
+  `contextplan.Summarizer` from the completer, the
   `contextplan.Calibrated` from its `provider.TokenEstimator`
   capability, and sets all three `Options` fields. A completer
   without the estimator capability fails with `ErrNoTokenEstimator`
@@ -5571,3 +5571,291 @@ Outside:
 - `go test -race ./agentloop/...` passes.
 - `python3 scripts/check_docs.py` and `python3 scripts/check_plan.py`
   pass with the new section and addendum in place.
+
+## Addendum: summarizer interface, request observer, summary skip, and shape repair
+
+Status: shipped.
+
+### Addendum goal
+
+Four changes land in one commit. `Options.Summarizer` becomes an
+interface owned by `agentloop`. Compaction survives a summarizer that
+declines to summarize. A host hook observes every request before the
+`Completer` call runs. The loop repairs a shape-empty assistant turn
+before planning or sending.
+
+### Addendum scope
+
+Inside:
+
+- The `Summarizer` interface in `agentloop/options.go`. The
+  `Options.Summarizer` field and the unexported `Loop.summarizer`
+  field (`agentloop/loop.go`) change type to it.
+  `*contextsummary.Summarizer` satisfies it, pinned by a compile-time
+  assertion in `options.go`.
+- Doc-comment rules for the interface, the field, and
+  `EnableCompaction`: sanctioned constructors, the
+  `contextsummary.ErrSummarySkipped` contract, and the typed-nil
+  warning.
+- `compactHistory` skip handling through a new `summarizeDropped`
+  bool. See "Skip handling, exact" below.
+- The `Options.ObserveRequest` hook and its `observeRequest` helper in
+  `agentloop/budget.go`. See "Request observer, exact" below.
+- New file `agentloop/shape.go`, matching the per-concern file style
+  of `steer.go` and `budget.go`. See "Shape repair, exact" below.
+- `docs/packages/agentloop.md` same-change updates. See
+  "Same-commit bookkeeping" below.
+
+Outside:
+
+- `Options.Trim` is unchanged, including its `Window` exclusion
+  (`ErrTrimExcluded`).
+- No pre-compaction rewrite hook is added. No loop-path caller needs
+  one. An ordered hook list would be speculative.
+- `contextsummary` is unchanged: no signature change and no new
+  exported symbol. `ErrSummarySkipped` already exists on main.
+- `policy/layers.json` is unchanged. `agentloop` already imports
+  `contextsummary`.
+- `docs/architecture.md` is unchanged. The module-map bullet
+  enumerates no exhaustive `Options` field list, and the package count
+  does not change.
+- The `afterChat` append and the `injectAfterSystem`, `injectNotice`,
+  `splitSummary`, `preserveSummaryName`, `recoveryWindow`, and
+  `checkCompactedBudget` bodies are unchanged.
+- `docs/examples/_agentloop` and `_agentloop_adoption` compile
+  unchanged. They assign a `*contextsummary.Summarizer`, a plain
+  interface conversion.
+
+### Addendum API
+
+New interface, defined in `agentloop`:
+
+```go
+// Summarizer generates the summary one compaction requires. An
+// implementation returns contextsummary.ErrSummarySkipped to decline
+// summary generation; compactHistory then reuses the prior summary or
+// proceeds without one. Build the field's value only through
+// EnableCompaction or contextsummary.NewSummarizer. Warning: a typed
+// nil (*contextsummary.Summarizer)(nil) stored in the field is not
+// nil as an interface, so Validate's nil check passes and the first
+// Summarize call panics.
+type Summarizer interface {
+	Summarize(ctx context.Context, msgs []provider.Message) (contextsummary.Summary, error)
+}
+
+// Compile-time proof, pinned in options.go under the interface.
+var _ Summarizer = (*contextsummary.Summarizer)(nil)
+```
+
+New `Options` field:
+
+```go
+// ObserveRequest runs after reserveWork and before every
+// Completer.Chat call, including the prompt-too-long recovery retry's
+// call. A non-nil error fails the iteration before the call runs.
+// This is not Options.Audit: Audit records after the fact and cannot
+// fail a call. A nil hook is a no-op.
+ObserveRequest func(ctx context.Context, req provider.Request) error
+```
+
+Changed field, same name, new type:
+
+```go
+// Summarizer runs the LLM summary every compaction requires.
+// Required when Window is set. See the Summarizer interface for the
+// sanctioned constructors and the typed-nil warning.
+Summarizer Summarizer
+```
+
+`EnableCompaction` behavior is unchanged. Its assignment is a plain
+interface conversion. `New`'s `deriveWindow` gate reads
+`opts.Summarizer != nil` on the interface. The gate works unchanged.
+`Options.Validate` keeps its check shape. `ErrSummarizerRequired` is
+unchanged.
+
+### Skip handling, exact
+
+`summarizeDropped` (`agentloop/compaction.go`) returns
+`(contextsummary.Summary, bool, error)`. The bool reports a skip.
+`errors.Is(err, contextsummary.ErrSummarySkipped)` maps to
+`(Summary{}, true, nil)`. Any other error keeps today's wrap:
+`ErrCompactionFailed` over the sentinel. `compactHistory` branches on
+the bool, after the existing `!res.Compacted && notice` early return.
+
+- Skip with a prior summary held aside: re-inject the prior message
+  unchanged, through `injectAfterSystem`, the fresh summary's
+  placement, and set `injected`. No summarizer error surfaces.
+- Skip with no prior, planning path: inject nothing. The dropped
+  messages stay dropped. The run proceeds with the kept history.
+- Skip with no prior, recovery path: `compactHistory` returns
+  `(nil, false, nil)`. `recoverPromptTooLong` then returns the
+  original `ErrPromptTooLong`, the same treatment as the existing
+  `!compacted` case. No retry and no notice. A recovery that cannot
+  produce or reuse any summary must not silently retry the same
+  oversized prompt.
+- Skip with a prior, recovery path: proceed. The notice is appended;
+  messages were dropped, and the model must see the notice.
+  `injectNotice` needs no change: the re-injected prior keeps
+  `contextsummary.SummaryMessageName`, so the notice lands directly
+  after it.
+- Every skip path still passes `checkCompactedBudget` before
+  `compactHistory` returns the rebuilt history.
+
+### Request observer, exact
+
+- `observeRequest` (`agentloop/budget.go`, beside `reserveWork`) is a
+  nil-hook no-op.
+- Call point one: `runChat` (`agentloop/run.go`), after
+  `reserveWork`, immediately before `steerableChat`.
+- Call point two: `recoverPromptTooLong`
+  (`agentloop/compaction.go`), after its `reserveWork`, immediately
+  before the retry's `Chat`.
+- A non-nil error wraps as
+  `agentloop: iteration %d: observe request: %w`, with the count the
+  adjacent `reserveWork` call received (`iterations+1` in `runChat`,
+  `iteration+1` in `recoverPromptTooLong`).
+- Primary route: the attempt fails like a `reserveWork` error, a hard
+  fail in `runIteration`.
+- Recovery route: the error returns through
+  `chatAttempt{err: rerr, fromRecovery: true}`, the `fromRecovery`
+  route in `runIteration`.
+- An observer error runs `refundWork` with zero `Usage` before the
+  attempt error returns, on both routes. `Reserve` had succeeded, and
+  the call never consumed the reservation.
+- The doc comment states the `Options.Audit` distinction: `Audit`
+  records after the fact and cannot fail a call.
+
+### Shape repair, exact
+
+- The invariant: the loop never carries a shape-empty assistant
+  message into planning or a request.
+- Shape-empty means `Role == provider.RoleAssistant`, `Content` blank
+  after `TrimSpace`, zero `ToolCalls`, and zero `ReasoningBlocks`.
+  The blank check matches the sibling predicate and `runIteration`'s
+  own `StopEmptyResponse` check.
+- `isEmptyAssistantTurn` mirrors the sibling consumer's
+  `DropEmptyAssistantTurns` predicate at
+  `mivia-agent/internal/provider/api_message.go:198-201`, adapted to
+  this module's `provider.Message`: `ReasoningBlocks` here,
+  `ReasoningContent` there. The doc comment cites the sibling file.
+- `dropEmptyAssistantTurns` returns a filtered copy when any empty
+  turn exists and the input unchanged otherwise, mirroring the
+  sibling's `needsWork` fast path.
+- Call point one: `run`, right after the msgs copy, so the
+  caller-supplied initial history is repaired before the loop starts.
+- Call point two: the top of `runIteration`, before `applyTrim`, so
+  trim, planning, conclude, and rewrite detection see the filtered
+  history as the baseline.
+- The `afterChat` append of `resp.Message` is untouched. A graceful
+  stop keeps today's shape: an empty assistant turn produced by the
+  final turn stays in `Result.History`.
+- The dropped turns carry no reasoning blocks by definition, so
+  filtering never sets `DisableProviderReplay`. The filter runs before
+  the `historyRewritten` comparisons, so the comparisons never see a
+  pre-filter baseline.
+
+### Effective thresholds for host-style configs
+
+- `CompactTrigger` and `CompactTarget` price against `Budget`, never
+  `MaxTokens` (`contextplan.Window.CompactTrigger`).
+- `deriveWindow` sets `Reserve` to `MaxTokens` over five, so `Budget`
+  is `MaxTokens` minus `MaxTokens/5`.
+- A host-style trigger at 80% of `MaxTokens` is `TriggerPercent` 100:
+  `Budget × 100%` is `4·MaxTokens/5`. The identity is exact when
+  `MaxTokens` is a multiple of five, the host case. The derived
+  `Reserve` floors otherwise. The zero `TriggerPercent` resolves to
+  the same 100 through `DefaultTriggerPercent`.
+- A host-style target at 50% of `MaxTokens` is `TargetTokens` set to
+  `MaxTokens/2`. `TargetPercent` is relative to `Budget`, so no
+  integer percent expresses `0.5·MaxTokens`: it is 62.5% of `Budget`.
+  `MaxTokens/2` is below `Budget`, so `Window.Validate` accepts it.
+
+### Growth conditions
+
+- `ObserveRequest` gains a second consumer or is absorbed into
+  `Audit`.
+- `ErrSummarySkipped` gains a second producer or is inlined as adapter
+  behavior.
+
+### Same-commit bookkeeping
+
+- `make api-update` runs with the code. `api/agentloop.txt` gains the
+  `Summarizer` interface and the `ObserveRequest` field, and shows the
+  changed `Summarizer Summarizer` field type. Land the diff in the
+  same commit.
+- `policy/pending_symbols.json`: remove the
+  `contextsummary.ErrSummarySkipped` entry. This change is the
+  consumer the entry was waiting for.
+- `policy/layers.json` is unchanged.
+- `docs/architecture.md` is unchanged.
+- `docs/packages/agentloop.md` updates, pinned sites at the current
+  line numbers:
+  - Lines 14-23, the `Options` entry: add `ObserveRequest` to the
+    field list. State that the `Summarizer` field's type is the
+    `Summarizer` interface.
+  - Lines 77-85, the `EnableCompaction` entry: name it and
+    `contextsummary.NewSummarizer` as the only sanctioned
+    constructors. Carry the typed-nil warning.
+  - Lines 105-115, the `Options.Validate` entry: state the interface
+    nil check and the typed-nil caveat.
+  - Lines 179-188, the `ErrCompactionFailed` and
+    `ErrSummarizerRequired` entries: cross-reference the skip rules.
+  - Lines 202-240, "Context planning and prompt-too-long recovery":
+    add the skip rules for the planning path and the recovery path.
+  - Line 248, "Capability derivation from the Completer": the
+    `opts.Summarizer != nil` gate reads an interface. The gate's
+    behavior is unchanged.
+  - New sections, "Request observer" and "Shape repair". The latter
+    notes the `Result.History` rule for the final turn.
+
+### Addendum tests
+
+In `agentloop/agentloop_test/`. Skip tests use a fake implementing the
+one-method interface directly. No `contextsummary` adapter is needed.
+The existing fixtures keep compiling unchanged:
+`newPlanningFixture` assigns a `*contextsummary.Summarizer` to the
+interface field, a plain conversion.
+
+- `TestCompactionSkipWithPriorReinjectsPrior` — a fake summarizer
+  returns `contextsummary.ErrSummarySkipped`; a prior summary message
+  sat in history. The prior is re-injected unchanged after the system
+  message, no summarizer error surfaces, and the run proceeds.
+- `TestCompactionSkipWithoutPriorDropsQuietly` — skip with no prior:
+  the dropped messages stay dropped, no summary message is injected,
+  and the run proceeds with the kept history.
+- `TestRecoverySkipWithPriorRetriesWithNotice` — recovery path with a
+  prior: the retry proceeds, and the notice sits directly after the
+  re-injected prior.
+- `TestRecoverySkipWithoutPriorReturnsOriginalErr` — recovery path
+  with no prior: `Run` returns the original `provider.ErrPromptTooLong`
+  under `errors.Is`, and the completer call count stays at one.
+- `TestObserveRequestErrorFailsBeforeChat` — primary path: the
+  observer errors, the completer call count is 0, and the error wraps
+  with the iteration count and hard-fails. Recovery path: the observer
+  errors on the retry, and the error returns through the
+  `fromRecovery` route. With `WorkBudget` wired, `Refund` saw zero
+  `Usage` on both routes.
+- `TestObserveRequestSeesRetryRequest` — a completer that rejects once
+  with `provider.ErrPromptTooLong`: the observer is called twice, and
+  the second request carries the rebuilt history.
+- `TestShapeRepairDropsEmptyTurnAtIterationStart` — an empty assistant
+  turn in the middle of history is gone from the sent request. The
+  reachable route: a `ContinueOnStop` continuation after
+  `StopEmptyResponse`. `gracefulStop` appends the empty turn to
+  history and continues, so the next iteration-top filter catches it.
+- `TestShapeRepairFiltersInitialHistory` — an empty assistant turn in
+  `Run`'s input never reaches the completer.
+- `TestValidateSummarizerInterfaceNilChecks` — `Window` set with a nil
+  `Summarizer` fails `ErrSummarizerRequired`. A typed nil
+  `(*contextsummary.Summarizer)(nil)` passes `Validate`, documenting
+  the warning.
+
+### Addendum verification
+
+- `make verify` passes, including the API gate against the
+  regenerated `api/agentloop.txt` and the symbol-wiring gate against
+  the removed `pending_symbols.json` entry.
+- `go test -race ./agentloop/...` passes.
+- `python3 scripts/check_plan.py`, `scripts/check_deps.py`, and
+  `scripts/check_prose.py` pass.
+- The coverage floor of 85 holds for `agentloop` and the total.

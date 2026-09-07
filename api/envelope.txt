@@ -17,6 +17,9 @@ package envelope
   func (a Ack) Correct(correction string) (Ack)
   func (a Ack) Encode() ([]byte, error)
   func (a Ack) Validate() (error)
+  func (i *Identity) Sign(m Message) (Message, error)
+  func (i *Identity) Signer() (string)
+  func (i *Identity) Validate() (error)
   func (m Message) Encode() ([]byte, error)
   func (m Message) Hash() (string)
   func (m Message) RequiresAck() (bool)
@@ -25,6 +28,8 @@ package envelope
   func ContextRef(content string) (string)
   func Decode(data []byte) (Message, error)
   func DecodeAck(data []byte) (Ack, error)
+  func Load(path string) (*Identity, error)
+  func New() (*Identity, error)
   func NewAck(msg Message, from, restatement string) (Ack, error)
   func Sign(key ed25519.PrivateKey, m Message) (Message, error)
   func VerifyThread(msgs []Message) (error)
@@ -37,6 +42,10 @@ package envelope
 }
   type AckStatus string
   type Epistemic string
+  type Identity struct {
+  PublicKey ed25519.PublicKey
+  PrivateKey ed25519.PrivateKey
+}
   type Intent string
   type Message struct {
   Version string `json:"version"`
@@ -63,3 +72,5 @@ package envelope
   Chain []string `json:"chain,omitempty"`
   Evidence []string `json:"evidence,omitempty"`
 }
+  var ErrKeyFormat
+  var ErrKeyInvalid

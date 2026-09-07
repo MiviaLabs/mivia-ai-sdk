@@ -63,7 +63,7 @@ security fix.
   that error unchanged. `Open` is `OpenWith(Options{Root: root})`.
   (commit B)
 - `Options`: `Root string`, `MaxReadBytes int64`, and (change two)
-  `Deny *secretpath.Matcher`. (commit B)
+  `Deny *workspace.Matcher`. (commit B)
 - `(Options) Validate() error`: `Root` must not be blank; a blank
   `Root` returns `ErrBlankRoot`.
   `MaxReadBytes` must be `Unbounded`, zero, or a positive value at or
@@ -240,7 +240,7 @@ security fix.
   the caller never wrote. A fail-closed nil would also break
   `Open(root)`, which every existing caller uses.
 - The compensating control sits one layer up. The phase-71 file-tool
-  options carry their own `Deny *secretpath.Matcher`, and their
+  options carry their own `Deny *workspace.Matcher`, and their
   `Validate` rejects a nil one. The model-reachable path therefore
   fails closed, while the library primitive stays usable without a
   policy. See `docs/packages/workspace.md`.
@@ -274,7 +274,7 @@ error text only.
 - Neither stage opens a file descriptor at any of the four sites.
   `os.Root.Lstat` returns a `FileInfo` and no open file.
 - The nil test lives here and nowhere else. Change two adds no
-  remembered guard to a method body. `secretpath.Matcher.Matches` also
+  remembered guard to a method body. `workspace.Matcher.Matches` also
   becomes nil-safe in the same change, so the nil test is a
   walk-skipping optimization, not the last line between the package
   and a panic. See `docs/packages/workspace.md`.
@@ -533,7 +533,7 @@ Commit B delta:
 Surface added by change two:
 
 - `var ErrSecretPath = errors.New("workspace: path is a secret path")`
-- `Options` gains the field `Deny *secretpath.Matcher`
+- `Options` gains the field `Deny *workspace.Matcher`
 
 `Options` and `OpenWith` land in commit B, because the read bound
 needs a place to live at open time. Change two then adds one field and
@@ -997,7 +997,7 @@ Change two only:
   sentence becomes false.
 - `AGENTS.md`'s `workspace` entry drops "A leaf package; no internal
   imports", names the `secretpath` import, and lists `ErrSecretPath`.
-- `secretpath.Matcher.Matches` becomes nil-safe in the same change.
+- `workspace.Matcher.Matches` becomes nil-safe in the same change.
   `api/secretpath.txt` does not change.
 - Coverage for `workspace` and `secretpath` each stay at or above the
   85 percent floor.

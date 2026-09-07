@@ -9,11 +9,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // cannedCompleter answers one fixed reply and can be told to fail.
@@ -54,7 +52,7 @@ func anyError(error) bool { return true }
 // the caller's order: the first provider fails, the second answers,
 // and the reply content is the answering provider's.
 func TestProviderRegistryToolFallsThrough(t *testing.T) {
-	reg := providerregistry.New()
+	reg := provider.NewRegistry()
 	primaryCalls := 0
 	if err := reg.Register("primary", &cannedCompleter{
 		name: "primary", reply: "from primary", fail: true, calls: &primaryCalls,
@@ -80,7 +78,7 @@ func TestProviderRegistryToolFallsThrough(t *testing.T) {
 // TestProviderRegistryToolAllFailed proves an exhausted order fails
 // the tool with the registry's ErrAllFailed.
 func TestProviderRegistryToolAllFailed(t *testing.T) {
-	reg := providerregistry.New()
+	reg := provider.NewRegistry()
 	for _, name := range []string{"a", "b"} {
 		if err := reg.Register(name, &cannedCompleter{name: name, fail: true}); err != nil {
 			t.Fatalf("Register(%s): %v", name, err)
@@ -88,24 +86,24 @@ func TestProviderRegistryToolAllFailed(t *testing.T) {
 	}
 	tool := subagent.ProviderRegistryTool("model", reg, []string{"a", "b"}, anyError)
 	_, err := tool.Run(context.Background(), tools.InOut{Value: "summarize"})
-	if !errors.Is(err, providerregistry.ErrAllFailed) {
+	if !errors.Is(err, provider.ErrAllFailed) {
 		t.Fatalf("Run error = %v, want ErrAllFailed", err)
 	}
 }
 
 // TestProviderRegistryToolRecordsUsage proves the seam composes with
-// usage.WrapCompleter: one failed and one answered turn still sum
+// provider.WrapCompleter: one failed and one answered turn still sum
 // only the answering turn's usage under the session.
 func TestProviderRegistryToolRecordsUsage(t *testing.T) {
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	primaryCalls := 0
-	wrapped, err := usage.WrapCompleter("session-1", acc, &cannedCompleter{
+	wrapped, err := provider.WrapCompleter("session-1", acc, &cannedCompleter{
 		name: "primary", reply: "x", fail: true, calls: &primaryCalls,
 	})
 	if err != nil {
 		t.Fatalf("WrapCompleter: %v", err)
 	}
-	reg := providerregistry.New()
+	reg := provider.NewRegistry()
 	if err := reg.Register("primary", wrapped); err != nil {
 		t.Fatalf("Register(primary): %v", err)
 	}

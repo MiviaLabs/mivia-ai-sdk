@@ -8,9 +8,8 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -68,24 +67,26 @@ func (s *summaryScript) stats() (int, []provider.Request) {
 	return s.calls, append([]provider.Request(nil), s.reqs...)
 }
 
-// summaryReplyJSON is one strict-schema reply every field set.
-const summaryReplyJSON = `{"Objective":"Ship","State":"Two tests fail","Decisions":["d1"],"OpenWork":["w1"],"Risks":["r1"]}`
+// summaryReplyJSON is one strict-schema reply every field set. Five
+// snake_case keys, no more: the tagged Summary schema minus the two
+// optional list keys this fixture does not exercise.
+const summaryReplyJSON = `{"objective":"Ship","state":"Two tests fail","decisions":["d1"],"open_work":["w1"],"risks":["r1"]}`
 
 // planningFixture wires one Loop with Window, Summarizer, and
 // Calibrated for the compaction tests.
 type planningFixture struct {
 	completer *scriptedCompleter
 	summary   *summaryScript
-	window    contextplan.Window
+	window    plan.Window
 }
 
-func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider.Response, summaryErr error) (*agentloop.Loop, *planningFixture) {
+func newPlanningFixture(t *testing.T, w plan.Window, responses []provider.Response, summaryErr error) (*agentloop.Loop, *planningFixture) {
 	t.Helper()
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: responses}
 	sum := &summaryScript{err: summaryErr}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -95,7 +96,7 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -103,11 +104,11 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 	return loop, &planningFixture{completer: sc, summary: sum, window: w}
 }
 
-// summaryNamed counts messages named contextsummary.SummaryMessageName.
+// summaryNamed counts messages named plan.SummaryMessageName.
 func summaryNamed(msgs []provider.Message) int {
 	n := 0
 	for _, m := range msgs {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == plan.SummaryMessageName {
 			n++
 		}
 	}
@@ -124,12 +125,12 @@ func contentBytes(msgs []provider.Message) int {
 }
 
 func TestOptionsValidateWindowRules(t *testing.T) {
-	validWindow := &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	validWindow := &plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
+	sum, err := plan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
-	cal := contextplan.Calibrate(scaleEstimator{div: 1}, 1.0)
+	cal := plan.Calibrate(scaleEstimator{div: 1}, 1.0)
 	base := agentloop.Options{
 		Completer: &scriptedCompleter{},
 		Tools:     tools.New(),
@@ -171,11 +172,11 @@ func TestOptionsValidateWindowRules(t *testing.T) {
 		{
 			name: "invalid window fails wrapping contextplan",
 			mutate: func(o *agentloop.Options) {
-				o.Window = &contextplan.Window{MaxTokens: 0}
+				o.Window = &plan.Window{MaxTokens: 0}
 				o.Summarizer = sum
 				o.Calibrated = cal
 			},
-			wantErr: contextplan.ErrMaxTokensNotPositive,
+			wantErr: plan.ErrMaxTokensNotPositive,
 		},
 	}
 	for _, c := range cases {
@@ -201,7 +202,7 @@ func TestRunUnderTriggerNoCompaction(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("o", 40)},
 		{Role: provider.RoleUser, Content: strings.Repeat("u", 59)},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 1600, Compaction: plan.Compaction{TriggerPercent: 10, TargetPercent: 5}}
 	responses := []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")}),
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}, Usage: provider.Usage{TotalTokens: 396}},
@@ -247,7 +248,7 @@ func TestRunAtExactTriggerCompacts(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("x", 38)},
 		{Role: provider.RoleUser, Content: "y"},
 	}
-	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 200, Compaction: plan.Compaction{TriggerPercent: 20, TargetTokens: 20}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}, nil)
@@ -271,7 +272,7 @@ func TestRunOverTriggerCompactsThroughSummarizer(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}, nil)
@@ -287,7 +288,7 @@ func TestRunOverTriggerCompactsThroughSummarizer(t *testing.T) {
 	if sent[0].Role != provider.RoleSystem {
 		t.Fatalf("system message not first: %+v", sent[0])
 	}
-	if sent[1].Name != contextsummary.SummaryMessageName || sent[1].Role != provider.RoleUser {
+	if sent[1].Name != plan.SummaryMessageName || sent[1].Role != provider.RoleUser {
 		t.Fatalf("summary not injected after the system message: %+v", sent[1])
 	}
 	if strings.Contains(sent[3].Content, strings.Repeat("o", 100)) {
@@ -307,7 +308,7 @@ func TestRunAtTriggerNothingDroppableSkipsSummarizer(t *testing.T) {
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleUser, Content: "u"},
 	}
-	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 5}}
+	w := plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 5}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}, nil)
@@ -334,13 +335,13 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	loop, f := newPlanningFixture(t, w, nil, errors.New("summary boom"))
 	res, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextsummary.ErrCallFailed) {
+	if !errors.Is(err, plan.ErrCallFailed) {
 		t.Fatalf("Run() error = %v, want the contextsummary sentinel wrapped", err)
 	}
 	if got := f.completer.callCount(); got != 0 {
@@ -363,10 +364,10 @@ func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -377,10 +378,10 @@ func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &contextbudget.Limits{MaxBytes: 200},
+		Budget:     &budget.Limits{MaxBytes: 200},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -418,10 +419,10 @@ func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -430,10 +431,10 @@ func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
 		Completer:  completer,
 		Tools:      reg,
 		Bounds:     agentloop.Bounds{MaxIterations: 3},
-		Budget:     &contextbudget.Limits{MaxBytes: 50},
+		Budget:     &budget.Limits{MaxBytes: 50},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

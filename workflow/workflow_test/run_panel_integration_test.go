@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -202,7 +202,7 @@ func TestBudgetPanelWaveReachesNoCheck(t *testing.T) {
 
 	// MaxEvents of 1 is smaller than the panel's two members; a
 	// checked panel would trip ErrOverBudget on the second member.
-	budget := &contextbudget.Limits{MaxEvents: 1}
+	budget := &budget.Limits{MaxEvents: 1}
 	status, _, err := a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, nil, "", budget)
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v, want nil: a panel wave must never reach Fits", err)

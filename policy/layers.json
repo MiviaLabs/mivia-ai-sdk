@@ -4,93 +4,64 @@
     "a2a": [
       "envelope"
     ],
-    "a2aack": [
-      "a2aclient",
-      "envelope"
-    ],
     "a2aclient": [
       "a2a",
       "envelope"
     ],
-    "a2aloopback": [
-      "a2a",
-      "envelope"
+    "workflow": [
+      "context/budget",
+      "envelope",
+      "events",
+      "flow",
+      "machine"
     ],
     "agentloop": [
-      "provider",
-      "tools",
-      "trace",
-      "hooks",
-      "usage",
+      "context/budget",
+      "context/plan",
       "events",
-      "contextbudget",
+      "provider",
       "schema",
-      "contextplan",
-      "contextsummary",
-      "toolcallctx"
+      "tools",
+      "trace"
+    ],
+    "workflow/run": [
+      "workflow",
+      "channel",
+      "context/budget",
+      "envelope",
+      "events",
+      "flow",
+      "machine",
+      "memory",
+      "tools",
+      "trace"
     ],
     "channel": [],
-    "contextbudget": [],
-    "contextplan": [
-      "contextref",
+    "context/budget": [],
+    "context/plan": [
+      "context/ref",
       "provider"
     ],
-    "contextref": [],
-    "contextsession": [
-      "contextplan",
-      "contextstate",
-      "provider",
-      "spool"
-    ],
-    "contextstate": [
-      "contextref"
-    ],
-    "contextsummary": [
-      "provider"
-    ],
-    "discovery": [],
+    "context/ref": [],
     "dispatch": [
       "workflow",
       "envelope",
       "events",
       "ledger",
-      "room",
-      "taskrun"
-    ],
-    "durablefence": [],
-    "e2e": [
-      "workflow",
-      "channel",
-      "discovery",
-      "envelope",
-      "events",
-      "flow",
-      "identity",
-      "ledger",
-      "provider",
-      "tools"
+      "room"
     ],
     "envelope": [
-      "contextref"
+      "context/ref"
     ],
-    "envfile": [],
     "events": [],
     "flow": [
       "events",
       "machine"
     ],
-    "heartbeat": [
-      "events"
-    ],
-    "hooks": [],
-    "identity": [
-      "envelope"
-    ],
     "ledger": [
-      "machine",
-      "events"
+      "events",
+      "machine"
     ],
-    "longtermmemory": [],
     "machine": [
       "events"
     ],
@@ -98,101 +69,53 @@
       "tools"
     ],
     "memory": [
-      "contextref"
+      "context/ref",
+      "tools"
     ],
     "provider": [],
     "provider/anthropic": [
       "provider"
     ],
-    "providerregistry": [
-      "provider"
-    ],
     "room": [
       "envelope"
-    ],
-    "runconfig": [
-      "workflow/run",
-      "contextbudget",
-      "flow",
-      "heartbeat",
-      "ledger",
-      "machine",
-      "memory",
-      "room",
-      "subagent",
-      "tools",
-      "trace"
     ],
     "scheduler": [
       "events"
     ],
     "schema": [],
-    "secretpath": [],
-    "skills": [],
-    "spool": [
-      "tools"
-    ],
     "subagent": [
       "workflow",
       "workflow/run",
       "channel",
-      "discovery",
       "envelope",
       "events",
       "flow",
-      "heartbeat",
-      "identity",
       "ledger",
       "machine",
       "memory",
       "provider",
-      "providerregistry",
       "room",
       "scheduler",
-      "taskrun",
-      "tools",
-      "trace",
-      "trigger"
-    ],
-    "taskrun": [
-      "ledger"
-    ],
-    "toolcallctx": [
-      "provider"
-    ],
-    "tools": [],
-    "trace": [],
-    "trigger": [],
-    "usage": [
-      "provider"
-    ],
-    "workflow": [
-      "identity",
-      "discovery",
-      "flow",
-      "envelope",
-      "events",
-      "machine",
-      "heartbeat",
-      "contextbudget"
-    ],
-    "workflow/run": [
-      "workflow",
-      "channel",
-      "contextbudget",
-      "envelope",
-      "events",
-      "flow",
-      "heartbeat",
-      "hooks",
-      "identity",
-      "machine",
-      "memory",
       "tools",
       "trace"
     ],
-    "workspace": [
-      "secretpath"
+    "tools": [],
+    "trace": [],
+    "workspace": [],
+    "ledger/ledgertest": [],
+    "a2aclient/a2atest": [
+      "a2a",
+      "envelope"
+    ],
+    "internal/e2e": [
+      "workflow",
+      "channel",
+      "envelope",
+      "events",
+      "flow",
+      "ledger",
+      "provider",
+      "tools"
     ]
   }
 }

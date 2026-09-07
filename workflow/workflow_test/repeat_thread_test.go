@@ -5,11 +5,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/workflow"
 )
@@ -25,11 +23,11 @@ func repeatBus(t *testing.T) *events.Bus {
 // repeatAgent builds an agent over plan under a fresh identity.
 func repeatAgent(t *testing.T, plan *flow.Definition) *workflow.Agent {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := workflow.New(id, discovery.Card{Name: "repeat", Capabilities: []string{"t"}}, plan)
+	a, err := workflow.New(id, flow.Card{Name: "repeat", Capabilities: []string{"t"}}, plan)
 	if err != nil {
 		t.Fatalf("workflow.New: %v", err)
 	}

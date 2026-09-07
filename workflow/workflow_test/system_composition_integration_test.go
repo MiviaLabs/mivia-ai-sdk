@@ -12,13 +12,10 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -30,8 +27,8 @@ import (
 // systemFixture bundles every real value the composition test wires
 // together. No field is a mock; each one is the shipped type.
 type systemFixture struct {
-	idA        *identity.Identity
-	idB        *identity.Identity
+	idA        *envelope.Identity
+	idB        *envelope.Identity
 	a          *workflow.Agent
 	m          *machine.Definition
 	r          *room.Room
@@ -41,7 +38,7 @@ type systemFixture struct {
 	store      *memory.Store
 	l          *ledger.Ledger
 	bus        *events.Bus
-	hb         *heartbeat.Monitor
+	hb         *flow.Monitor
 	approvals  atomic.Int64
 	fireCounts map[string]*atomic.Int64
 	caught     atomic.Value
@@ -142,11 +139,11 @@ func newSystemFixture(t testing.TB) *systemFixture {
 		},
 	}
 	var err error
-	if fx.idA, err = identity.New(); err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+	if fx.idA, err = envelope.New(); err != nil {
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	if fx.idB, err = identity.New(); err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+	if fx.idB, err = envelope.New(); err != nil {
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	if fx.store, err = memory.New(4096); err != nil {
 		t.Fatalf("memory.New() unexpected error: %v", err)
@@ -170,10 +167,10 @@ func newSystemFixture(t testing.TB) *systemFixture {
 	}
 	fx.scope = newReviewScope(approvalNotifier(&fx.approvals))
 	fx.l = newSystemLedger(t, fx.bus)
-	if fx.hb, err = heartbeat.New(time.Minute); err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+	if fx.hb, err = flow.NewMonitor(time.Minute); err != nil {
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "System Composer",
 		Description:  "drives the whole-system composition scenario",
 		Capabilities: []string{"review", "publish"},
@@ -395,7 +392,7 @@ func assertSystemEvents(t *testing.T, rec *lifecycleRecorder) {
 func TestSystemCompositionBudgetStopsTheRun(t *testing.T) {
 	t.Run("generous budget completes", func(t *testing.T) {
 		fx := newSystemFixture(t)
-		budget := &contextbudget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
+		budget := &budget.Limits{MaxBytes: 1_000_000, MaxEvents: 1_000}
 		status, _, err := fx.a.Run(context.Background(), "budget-thread-ok", fx.m, machine.InOut{},
 			systemWait(t, fx, "budget-thread-ok"), fx.bus, fx.hb, fx.r.ID(), budget)
 		if err != nil {
@@ -410,7 +407,7 @@ func TestSystemCompositionBudgetStopsTheRun(t *testing.T) {
 		fx := newSystemFixture(t)
 		rec := &lifecycleRecorder{}
 		rec.subscribe(t, fx.bus, workflow.MessageDeliveredEvent, workflow.MessageAckedEvent)
-		budget := &contextbudget.Limits{MaxBytes: 4, MaxEvents: 1_000}
+		budget := &budget.Limits{MaxBytes: 4, MaxEvents: 1_000}
 		_, _, err := fx.a.Run(context.Background(), "budget-thread-tight", fx.m, machine.InOut{},
 			systemWait(t, fx, "budget-thread-tight"), fx.bus, fx.hb, fx.r.ID(), budget)
 		if !errors.Is(err, workflow.ErrOverBudget) {

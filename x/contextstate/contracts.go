@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextref"
+	contextref "github.com/MiviaLabs/mivia-ai-sdk/context/ref"
 )
 
 // Shape bounds pin the FORM of a durable value, not its volume.

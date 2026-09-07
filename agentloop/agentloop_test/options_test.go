@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -105,11 +105,11 @@ func testOptionsValidateBasics(t *testing.T) {
 			return o
 		}, nil, true},
 		{"negative Budget field fails", func(o agentloop.Options) agentloop.Options {
-			o.Budget = &contextbudget.Limits{MaxBytes: -1}
+			o.Budget = &budget.Limits{MaxBytes: -1}
 			return o
 		}, nil, false},
 		{"valid Budget passes", func(o agentloop.Options) agentloop.Options {
-			o.Budget = &contextbudget.Limits{MaxBytes: 100}
+			o.Budget = &budget.Limits{MaxBytes: 100}
 			return o
 		}, nil, true},
 		{"Usage without SessionID fails", func(o agentloop.Options) agentloop.Options {

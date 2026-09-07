@@ -2,10 +2,10 @@
 
 `mivia-ai-sdk` is a Go module of composable building blocks for
 agent-to-agent messaging: envelope, room, machine, flow, events, a2a,
-a2aclient, dispatch, tools, contextbudget, schema, mcp, ledger, memory,
-provider, provider/anthropic, contextplan, contextref, channel, trace,
+a2aclient, dispatch, tools, context/budget, schema, mcp, ledger, memory,
+provider, provider/anthropic, context/plan, context/ref, channel, trace,
 scheduler, agent, agentrun, agentloop, subagent, tools, workspace, and
-contextref. Each package covers one concern and composes through its
+context/ref. Each package covers one concern and composes through its
 exported API. Phase 86 folded single-consumer peers into their
 targets, moved test fixtures beside the packages they exercise, and
 quarantined six orphaned packages into the `x/` sub-module.
@@ -63,15 +63,15 @@ into a `tools.Registry` through `subagent`:
 - [packages/a2aclient.md](packages/a2aclient.md) — the a2a-go client adapter plus the remote step ack: send a message as a remote task, and resolve one gated step through send, poll, result, verify, and ack.
 - [packages/dispatch.md](packages/dispatch.md) — the NDJSON envelope endpoint: an `http.Handler` that runs the receive ladder per line and answers with confirmed acks, plus `Send`, the client-side counterpart.
 - [packages/tools.md](packages/tools.md) — the tool registry: named actions a step can resolve and run by name, plus execution-risk markers, scoping, and approval gating.
-- [packages/contextbudget.md](packages/contextbudget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
-- [packages/contextref.md](packages/contextref.md) — the canonical content-reference minter and parser: `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
+- [packages/budget.md](packages/budget.md) — a pure, storage-agnostic budget check for one model call's context: a byte cap, an event-count cap, and `Fits`.
+- [packages/ref.md](packages/ref.md) — the canonical content-reference minter and parser: `HashPrefix`, `Digest`, `Mint`, and `IsRef`.
 - [packages/schema.md](packages/schema.md) — the JSON Schema compile/validate/corrective-message primitive: `Compile` admits and compiles a schema, `Validate` checks a payload against it, and `Corrective` renders a bounded, model-facing correction message.
 - [packages/mcp.md](packages/mcp.md) — the MCP tool-calling client: connect to a server, list its tools, and call them, over stdio or streamable HTTP.
 - [packages/ledger.md](packages/ledger.md) — the durable-task-admission primitive plus the one-task ceremony: idempotency-keyed admission, a leased claim with a fence, dependency blocking, and admit-claim-run-complete in one call.
 - [packages/memory.md](packages/memory.md) — the content-addressed context store plus the principal-scoped spool: content refs, byte-budget eviction, grant-scoped oversized content, and tool wrappers.
 - [packages/provider.md](packages/provider.md) — the model provider interface plus usage accounting and the routing registry: the `Completer` contract, per-session usage totals, and ordered named-provider fallback.
 - [packages/provider/anthropic.md](packages/provider/anthropic.md) — the Anthropic Messages API adapter: concrete `Completer`, `ContextAccountant`, and `ReasoningPolicy` implementation.
-- [packages/contextplan.md](packages/contextplan.md) — manages token budget windows and history compaction, plus the summarizer: a token `Window`, compaction thresholds, an EWMA-calibrated estimator, and one bounded summary call.
+- [packages/plan.md](packages/plan.md) — manages token budget windows and history compaction, plus the summarizer: a token `Window`, compaction thresholds, an EWMA-calibrated estimator, and one bounded summary call.
 - [packages/channel.md](packages/channel.md) — the ask-and-wait shape: a `Question`, a typed `Answer`, and the caller-implemented `Notifier` that connects them.
 - [packages/trace.md](packages/trace.md) — the structured-trace primitive: a `Span` records one named operation, a `Tracer` links spans through `ctx`, and `SpanFrom` reads the current span back.
 - [packages/scheduler.md](packages/scheduler.md) — the invoke-on-schedule primitive plus the trigger registry: due-job firing, and the `Condition`/`Action` vocabulary that maps one name to a guarded call.

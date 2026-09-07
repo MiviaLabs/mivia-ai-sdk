@@ -7,7 +7,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -67,7 +67,7 @@ type Options struct {
 	// Room stamps onto each built message. Empty leaves Room zero.
 	Room string
 	// Budget gates each gated step's context fit. Optional.
-	Budget *contextbudget.Limits
+	Budget *budget.Limits
 	// Monitor beats each gated step's id. Optional.
 	Monitor *flow.Monitor
 	// Hooks observes and gates the run through the hooks registry.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
@@ -58,7 +58,7 @@ func TestPropertyPlanNeverExceedsWindow(t *testing.T) {
 				events = append(events, sourceEvent("sess-prop", uint64(i+1), "message", string(provider.RoleUser), ref, len(data)))
 			}
 			sess := &contextstate.Session{Source: events}
-			w := contextplan.Window{MaxTokens: tc.maxTok, Reserve: tc.reserve}
+			w := plan.Window{MaxTokens: tc.maxTok, Reserve: tc.reserve}
 			result, err := planner.Plan(context.Background(), sess, w, byteEstimator{})
 			if err != nil {
 				t.Fatalf("Plan: %v", err)

@@ -84,7 +84,7 @@ fails `Load` with `ErrBadDocument` wrapping `ErrCallerBuilt`.
   invalid internal config value. Also wraps in `ErrBadDocument` any
   rejection from `machine.New`, `flow.New`, or an internal builder. A
   present `options.budget` maps onto `Options.Budget` as a
-  `*contextbudget.Limits` with no range check; `Runner`'s call into
+  `*context/budget.Limits` with no range check; `Runner`'s call into
   `agentrun.New` rejects a negative field. `Load` never reads the
   environment.
 - `NewBlocks()` — returns an empty `*Blocks`.

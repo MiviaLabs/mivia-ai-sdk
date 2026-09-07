@@ -8,7 +8,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
@@ -30,7 +30,7 @@ func TestPlanFitsWhole(t *testing.T) {
 		sourceEvent("sess-a", 3, "message", string(provider.RoleUser), ref3, len(data3)),
 	}}
 
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 100}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 100}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestPlanElidesOldestFirst(t *testing.T) {
 		sourceEvent("sess-a", 3, "message", string(provider.RoleUser), ref3, len(data)),
 	}}
 
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 15}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 15}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestPlanRespectsRetention(t *testing.T) {
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refNewest, len(newest)),
 	}}
 
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 270}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 270}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestPlanUnrecognizedRetention(t *testing.T) {
 				sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refNewest, len(newest)),
 			}}
 
-			result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 270}, byteEstimator{})
+			result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 270}, byteEstimator{})
 			if err != nil {
 				t.Fatalf("Plan: %v", err)
 			}
@@ -182,7 +182,7 @@ func TestPlanReservesHeadroom(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	w := contextplan.Window{MaxTokens: 50, Reserve: 20}
+	w := plan.Window{MaxTokens: 50, Reserve: 20}
 	result, err := planner.Plan(context.Background(), sess, w, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -212,7 +212,7 @@ func TestPlanStubDoesNotFit(t *testing.T) {
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refOldest, len(oldestData)),
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refNewest, len(newest)),
 	}}
-	w := contextplan.Window{MaxTokens: 260}
+	w := plan.Window{MaxTokens: 260}
 	result, err := planner.Plan(context.Background(), sess, w, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -249,7 +249,7 @@ func TestPlanStubBoundaryStacked(t *testing.T) {
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refMiddle, len(middleData)),
 		sourceEvent("sess-a", 3, "message", string(provider.RoleUser), refNewest, len(newest)),
 	}}
-	w := contextplan.Window{MaxTokens: 316}
+	w := plan.Window{MaxTokens: 316}
 	result, err := planner.Plan(context.Background(), sess, w, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -288,7 +288,7 @@ func TestPlanReasoningEvents(t *testing.T) {
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refOrdinary, len(ordinary)),
 		sourceEvent("sess-a", 2, provider.ReasoningEventKind, string(provider.RoleAssistant), refReasoning, len(reasoning)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestPlanReasoningEvents(t *testing.T) {
 }
 
 func TestPlanErrorCases(t *testing.T) {
-	validWindow := contextplan.Window{MaxTokens: 100}
+	validWindow := plan.Window{MaxTokens: 100}
 
 	t.Run("nil session", func(t *testing.T) {
 		store := newStore(t)
@@ -329,7 +329,7 @@ func TestPlanErrorCases(t *testing.T) {
 			t.Fatalf("NewPlanner: %v", err)
 		}
 		sess := &contextstate.Session{}
-		_, err = planner.Plan(context.Background(), sess, contextplan.Window{}, byteEstimator{})
+		_, err = planner.Plan(context.Background(), sess, plan.Window{}, byteEstimator{})
 		if err == nil {
 			t.Fatal("Plan accepted an invalid Window")
 		}
@@ -357,7 +357,7 @@ func TestPlanErrorCases(t *testing.T) {
 // TestPlanErrorCasesResolution covers the resolution-failure branches
 // split out of TestPlanErrorCases to keep each test function short.
 func TestPlanErrorCasesResolution(t *testing.T) {
-	validWindow := contextplan.Window{MaxTokens: 100}
+	validWindow := plan.Window{MaxTokens: 100}
 
 	t.Run("resolution failure for a payload that would be fully dropped", func(t *testing.T) {
 		store := newStore(t)
@@ -373,7 +373,7 @@ func TestPlanErrorCasesResolution(t *testing.T) {
 			sourceEvent("sess-a", 1, "message", string(provider.RoleUser), refMissing, len(missingData)),
 			sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refNewest, len(newest)),
 		}}
-		_, err = planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 100}, byteEstimator{})
+		_, err = planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 100}, byteEstimator{})
 		if !errors.Is(err, contextstate.ErrPayloadNotFound) {
 			t.Fatalf("err = %v, want ErrPayloadNotFound", err)
 		}
@@ -423,7 +423,7 @@ func TestPlanConcurrentUse(t *testing.T) {
 	done := make(chan int, n)
 	for i := 0; i < n; i++ {
 		go func(idx int) {
-			results[idx], errs[idx] = planner.Plan(context.Background(), sessions[idx], contextplan.Window{MaxTokens: 100}, byteEstimator{})
+			results[idx], errs[idx] = planner.Plan(context.Background(), sessions[idx], plan.Window{MaxTokens: 100}, byteEstimator{})
 			done <- idx
 		}(i)
 	}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -88,7 +88,7 @@ func TestRunnerResolves(t *testing.T) {
 	t.Run("bad budget", func(t *testing.T) {
 		d := loadForRunner(t, true)
 		d.Options.Agent = agentOver(t, d)
-		d.Options.Budget = &contextbudget.Limits{MaxBytes: -1}
+		d.Options.Budget = &budget.Limits{MaxBytes: -1}
 		_, err := d.Runner()
 		if err == nil || !strings.Contains(err.Error(), "budget") {
 			t.Fatalf("err = %v, want a forwarded budget error", err)

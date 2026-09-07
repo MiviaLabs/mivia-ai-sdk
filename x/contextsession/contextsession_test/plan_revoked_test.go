@@ -6,7 +6,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
 )
@@ -33,7 +33,7 @@ func TestPlanRevokedMiddleEvent(t *testing.T) {
 		sourceEvent("sess-a", 2, "message", string(provider.RoleUser), refRevoked, len(revoked)),
 		sourceEvent("sess-a", 3, "message", string(provider.RoleUser), refNewer, len(newer)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v, want nil error", err)
 	}
@@ -72,7 +72,7 @@ func TestPlanRevokeAfterWarmCache(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	win := contextplan.Window{MaxTokens: 1000}
+	win := plan.Window{MaxTokens: 1000}
 
 	first, err := planner.Plan(context.Background(), sess, win, byteEstimator{})
 	if err != nil {
@@ -120,7 +120,7 @@ func TestPlanRevokedRetentionCompliance(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 5}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 5}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestPlanRevokedReasoningEvent(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, provider.ReasoningEventKind, string(provider.RoleAssistant), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestPlanEveryEventRevoked(t *testing.T) {
 		events = append(events, sourceEvent("sess-a", uint64(i), "message", string(provider.RoleUser), ref, len(data)))
 	}
 	sess := &contextstate.Session{Source: events}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v, want nil error", err)
 	}
@@ -206,7 +206,7 @@ func TestPlanNonRevokedStaysGreen(t *testing.T) {
 	sess := &contextstate.Session{Source: []contextstate.SourceEvent{
 		sourceEvent("sess-a", 1, "message", string(provider.RoleUser), ref, len(data)),
 	}}
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 1000}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 1000}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

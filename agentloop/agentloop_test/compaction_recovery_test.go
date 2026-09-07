@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -20,7 +20,7 @@ func TestRunPriorSummaryReplacedOnSecondCompaction(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("b", 100)},
 		{Role: provider.RoleAssistant, Content: "x"},
 	}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{TriggerPercent: 40, TargetTokens: 20}}
 	responses := []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "c1", Name: "search", Arguments: []byte("{}")}),
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
@@ -42,7 +42,7 @@ func TestRunPriorSummaryReplacedOnSecondCompaction(t *testing.T) {
 	excerpts := sumReqs[1].Messages[1].Content
 	// The prior summary rides as one message whose content leads with
 	// the preamble SummaryMessage joins before Render output.
-	if !strings.HasPrefix(excerpts, "[user] "+contextplan.SummaryPreamble) {
+	if !strings.HasPrefix(excerpts, "[user] "+plan.SummaryPreamble) {
 		t.Fatalf("second summarizer input missing the prior summary excerpt first:\n%s", excerpts)
 	}
 	if !strings.Contains(excerpts, "Objective:") {
@@ -60,8 +60,8 @@ func TestRunPreserveNameDuplicateSafe(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("b", 100)},
 		{Role: provider.RoleAssistant, Content: "x"},
 	}
-	names := []string{contextplan.SummaryMessageName}
-	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{
+	names := []string{plan.SummaryMessageName}
+	w := plan.Window{MaxTokens: 400, Compaction: plan.Compaction{
 		TriggerPercent: 40, TargetTokens: 20, PreserveNames: names}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
@@ -76,20 +76,20 @@ func TestRunPreserveNameDuplicateSafe(t *testing.T) {
 	if len(w.Compaction.PreserveNames) != 1 {
 		t.Fatalf("caller PreserveNames mutated: %+v", w.Compaction.PreserveNames)
 	}
-	if w.Compaction.PreserveNames[0] != contextplan.SummaryMessageName {
+	if w.Compaction.PreserveNames[0] != plan.SummaryMessageName {
 		t.Fatalf("caller PreserveNames changed: %+v", w.Compaction.PreserveNames)
 	}
 }
 
 // recoveryFixture wires one Loop whose completer fails the first Chat
 // with provider.ErrPromptTooLong.
-func newRecoveryFixture(t *testing.T, w contextplan.Window, div int, errs []error, responses []provider.Response, summaryErr error) (*agentloop.Loop, *planningFixture) {
+func newRecoveryFixture(t *testing.T, w plan.Window, div int, errs []error, responses []provider.Response, summaryErr error) (*agentloop.Loop, *planningFixture) {
 	t.Helper()
 	reg := tools.New()
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: responses, errs: errs}
 	sum := &summaryScript{err: summaryErr}
-	summarizer, err := contextplan.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -99,7 +99,7 @@ func newRecoveryFixture(t *testing.T, w contextplan.Window, div int, errs []erro
 		Bounds:     agentloop.Bounds{MaxIterations: 4},
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: div}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: div}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -114,7 +114,7 @@ func TestRunRecoveryRetriesOnceWithNotice(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
 	res, err := loop.Run(context.Background(), msgs)
@@ -143,7 +143,7 @@ func TestRunRecoveryRetriesOnceWithNotice(t *testing.T) {
 	}
 	afterSummary := false
 	for i, m := range retried {
-		if m.Name != contextplan.SummaryMessageName {
+		if m.Name != plan.SummaryMessageName {
 			continue
 		}
 		if i+1 >= len(retried) || retried[i+1].Content != agentloop.CompactionNotice {
@@ -166,7 +166,7 @@ func TestRunRecoveryLowEstimatorStillCompacts(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 1000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 1000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 10, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
 	res, err := loop.Run(context.Background(), msgs)
@@ -186,7 +186,7 @@ func TestRunRecoveryTinyBudgetClampsTargetToOne(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("o", 100)},
 		{Role: provider.RoleUser, Content: strings.Repeat("u", 100)},
 	}
-	w := contextplan.Window{MaxTokens: 4, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 100, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
 	if _, err := loop.Run(context.Background(), msgs); err != nil {
@@ -219,7 +219,7 @@ func TestRunRecoveryLargeBudgetClampsTargetToRecoveryTargetTokens(t *testing.T) 
 		{Role: provider.RoleUser, Content: big},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 100000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 100000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
 	if _, err := loop.Run(context.Background(), msgs); err != nil {
@@ -241,7 +241,7 @@ func TestRunRecoveryTinyHistoryReturnsOriginalError(t *testing.T) {
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleUser, Content: strings.Repeat("u", 10)},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	rejection := fmt.Errorf("vendor: %w", provider.ErrPromptTooLong)
 	loop, f := newRecoveryFixture(t, w, 1, []error{rejection}, []provider.Response{provider.Response{}}, nil)
 	res, err := loop.Run(context.Background(), msgs)
@@ -266,7 +266,7 @@ func TestRunRecoverySecondRejectionPropagates(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	loop, f := newRecoveryFixture(t, w, 1,
 		[]error{provider.ErrPromptTooLong, provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, provider.Response{}}, nil)
@@ -289,7 +289,7 @@ func TestRunRecoverySummarizerFailureNoRetry(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "l"},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong},
 		[]provider.Response{provider.Response{}, final}, errors.New("summary boom"))
@@ -314,14 +314,14 @@ func TestRunRecoverySummarizerFailureNoRetry(t *testing.T) {
 // TargetTokens at or above Budget fails Validate, even though the
 // original, pre-recovery Window (TargetTokens unset) validated fine
 // at New. The invalid window fails inside compactHistory's own
-// contextplan.Compact call, which validates first; recoverPromptTooLong
+// plan.Compact call, which validates first; recoverPromptTooLong
 // carries no separate check. TriggerPercent 100 with a near-zero-byte
 // estimate keeps planHistory from compacting before the first Chat
 // call, so the run reaches the Completer and its scripted
 // ErrPromptTooLong rejection.
 func TestRunRecoveryInvalidWindowFailsClosed(t *testing.T) {
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: strings.Repeat("o", 50)}}
-	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 1, Compaction: plan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
 	loop, f := newRecoveryFixture(t, w, 1_000_000, []error{provider.ErrPromptTooLong}, []provider.Response{{}}, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
@@ -345,7 +345,7 @@ func TestRunRecoveryCompactedNothingDroppedInjectsNoticeAfterSystem(t *testing.T
 		{Role: provider.RoleSystem, Content: "s"},
 		{Role: provider.RoleUser, Content: strings.Repeat("o", 50)},
 	}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	final := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}, final}, nil)
 	_, err := loop.Run(context.Background(), msgs)
@@ -384,13 +384,13 @@ func TestRunRecoveryCompactedBudgetExceededAfterSummaryInjection(t *testing.T) {
 		{Role: provider.RoleAssistant, Content: "a"},
 		{Role: provider.RoleUser, Content: "final"},
 	}
-	w := contextplan.Window{MaxTokens: 50, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetTokens: 5}}
+	w := plan.Window{MaxTokens: 50, Compaction: plan.Compaction{TriggerPercent: 100, TargetTokens: 5}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}}, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextplan.ErrRetentionOverflow) {
+	if !errors.Is(err, plan.ErrRetentionOverflow) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrRetentionOverflow", err)
 	}
 	if got := f.completer.callCount(); got != 1 {
@@ -427,7 +427,7 @@ func TestRunPromptTooLongWithoutWindowPropagates(t *testing.T) {
 // Budget fails validation: a MaxTokens of one clamps the recovery
 // TargetTokens to one, which sits at, not under, a Budget of one.
 // recoverPromptTooLong's own rw.Validate() call catches this before
-// ever calling compactHistory; contextplan.Compact's own internal
+// ever calling compactHistory; plan.Compact's own internal
 // Validate call is a second, redundant backstop reached only if the
 // first one is ever removed, so this test's ErrCompactionFailed
 // assertion holds either way. The starting message carries empty
@@ -438,7 +438,7 @@ func TestRunPromptTooLongWithoutWindowPropagates(t *testing.T) {
 // rejection's one call, with no retry.
 func TestRunRecoveryWindowValidateFailurePropagatesErrCompactionFailed(t *testing.T) {
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: ""}}
-	w := contextplan.Window{MaxTokens: 1, Compaction: contextplan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 1, Compaction: plan.Compaction{TriggerPercent: 100, TargetPercent: 5}}
 	loop, f := newRecoveryFixture(t, w, 1, []error{provider.ErrPromptTooLong}, []provider.Response{provider.Response{}}, nil)
 	_, err := loop.Run(context.Background(), msgs)
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {

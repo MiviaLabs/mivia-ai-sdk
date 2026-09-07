@@ -64,8 +64,8 @@ reads the real result? In this repo the edges are:
   `a2a.Mapped` value.
 - `a2aclient` imports `a2a` and `envelope`: it sends an `a2a.Mapped`
   task and re-verifies the returned `envelope.Message` signature.
-- `agent` imports `identity`, `discovery`, `flow`, `envelope`, `events`,
-  `machine`, `heartbeat`, and `contextbudget`: `Run` builds signed
+- `agent` imports `context/budget`, `envelope`, `events`, `flow`, and
+  `machine`: `Run` builds signed
   `envelope.Message`s through a `flow.Definition` over a
   `machine.Definition`, emits `events.Event`s, and optionally beats a
   `heartbeat.Monitor`.
@@ -86,8 +86,8 @@ reads the real result? In this repo the edges are:
   `envelope.Message` signature.
 - `scheduler` imports `events`: `Scheduler.Run` emits `JobFailedEvent`
   on the supplied bus.
-- The remaining packages (`channel`, `contextbudget`, `discovery`,
-  `durablefence`, `envelope`, `events`, `provider`, `tools`, `trigger`)
+- The remaining packages (`channel`, `context/budget`, `context/ref`,
+  `events`, `provider`, `schema`, `tools`, `trace`, `workspace`)
   declare no internal import edges.
 
 If an allowed edge has no cross-package test, that is a gap. Flag it.

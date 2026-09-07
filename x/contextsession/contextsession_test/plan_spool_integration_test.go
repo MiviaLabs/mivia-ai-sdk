@@ -7,7 +7,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextsession"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
@@ -47,7 +47,7 @@ func TestPlanSpoolIntegrationRoundTrip(t *testing.T) {
 		sourceEvent("sess-int", 3, "message", string(provider.RoleUser), refNewest, len(newest)),
 	}}
 
-	result, err := planner.Plan(context.Background(), sess, contextplan.Window{MaxTokens: 40}, byteEstimator{})
+	result, err := planner.Plan(context.Background(), sess, plan.Window{MaxTokens: 40}, byteEstimator{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

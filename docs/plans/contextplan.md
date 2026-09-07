@@ -1,9 +1,9 @@
 # Plan: contextplan
 
-Status: shipped. Built on the shipped `contextstate` and `provider`
-interfaces, under the phase 66 contract. Companion change: a fold of
-reasoning vocabulary types into `provider`, documented in
-`docs/plans/provider.md`.
+Status: superseded by `docs/plans/context/plan.md`. Phase 86 folded
+`contextsummary` into this package; the rename pass moves it to
+`context/plan`. This file is a historical record of the shipped
+work.
 
 ## Goal
 

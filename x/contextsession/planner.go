@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/x/contextstate"
@@ -81,7 +81,7 @@ type planState struct {
 // Plan returns a non-nil error only on a malformed
 // Window, a nil sess, or a payload-resolution failure other than a
 // revocation; it never returns a partial PlanResult.
-func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w contextplan.Window, e provider.TokenEstimator) (PlanResult, error) {
+func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w plan.Window, e provider.TokenEstimator) (PlanResult, error) {
 	if sess == nil {
 		return PlanResult{}, ErrNilSession
 	}

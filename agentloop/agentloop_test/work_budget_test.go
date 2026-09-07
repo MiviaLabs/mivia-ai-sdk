@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -182,9 +182,9 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "unused"})
 	log := &budgetLog{}
-	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
+	w := plan.Window{MaxTokens: 4000, Compaction: plan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	sum := &summaryScript{}
-	summarizer, err := contextplan.NewSummarizer(sum)
+	summarizer, err := plan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 		WorkBudget: log.hook(),
 		Window:     &w,
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

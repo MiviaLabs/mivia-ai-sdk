@@ -43,8 +43,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -99,7 +99,7 @@ func newCannedCompleter() *cannedCompleter {
 
 // cannedEstimator implements provider.TokenEstimator as a
 // bytes-over-four count over the request's message contents. It feeds
-// contextplan.Calibrate for planning and calibration.
+// plan.Calibrate for planning and calibration.
 type cannedEstimator struct{}
 
 // EstimateTokens sums the request's message content bytes over four.
@@ -191,9 +191,9 @@ func auditPrinter(ctx context.Context, rec agentloop.AuditRecord) error {
 func main() {
 	ctx := context.Background()
 	canned := newCannedCompleter()
-	summarizer, err := contextplan.NewSummarizer(canned)
+	summarizer, err := plan.NewSummarizer(canned)
 	if err != nil {
-		fmt.Println("contextplan.NewSummarizer:", err)
+		fmt.Println("plan.NewSummarizer:", err)
 		return
 	}
 
@@ -209,7 +209,7 @@ func main() {
 		HeartbeatInterval: time.Hour,
 		DedupWithinTurn:   true,
 		StartTime:         time.Now(),
-		Budget:            &contextbudget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
+		Budget:            &budget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		Completer:         canned,
 		Tools:             buildRegistry(),
 		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
@@ -221,9 +221,9 @@ func main() {
 			MaxConsecutiveToolFailures: 2,
 		},
 		Conclude:   agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		Window:     &contextplan.Window{MaxTokens: 512, Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
+		Window:     &plan.Window{MaxTokens: 512, Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
 		Summarizer: summarizer,
-		Calibrated: contextplan.Calibrate(cannedEstimator{}, 0.25),
+		Calibrated: plan.Calibrate(cannedEstimator{}, 0.25),
 		Tracer:     trace.New(),
 		Hooks:      buildHooks(),
 		Usage:      provider.NewAccumulator(),

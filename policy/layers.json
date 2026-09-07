@@ -9,15 +9,15 @@
       "envelope"
     ],
     "agent": [
-      "contextbudget",
+      "context/budget",
       "envelope",
       "events",
       "flow",
       "machine"
     ],
     "agentloop": [
-      "contextbudget",
-      "contextplan",
+      "context/budget",
+      "context/plan",
       "events",
       "provider",
       "schema",
@@ -27,7 +27,7 @@
     "agentrun": [
       "agent",
       "channel",
-      "contextbudget",
+      "context/budget",
       "envelope",
       "events",
       "flow",
@@ -37,12 +37,12 @@
       "trace"
     ],
     "channel": [],
-    "contextbudget": [],
-    "contextplan": [
-      "contextref",
+    "context/budget": [],
+    "context/plan": [
+      "context/ref",
       "provider"
     ],
-    "contextref": [],
+    "context/ref": [],
     "dispatch": [
       "agent",
       "envelope",
@@ -51,7 +51,7 @@
       "room"
     ],
     "envelope": [
-      "contextref"
+      "context/ref"
     ],
     "events": [],
     "flow": [
@@ -69,7 +69,7 @@
       "tools"
     ],
     "memory": [
-      "contextref",
+      "context/ref",
       "tools"
     ],
     "provider": [],

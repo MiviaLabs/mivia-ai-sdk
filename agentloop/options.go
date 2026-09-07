@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/plan"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -80,7 +80,7 @@ var (
 	ErrPlanFailed = errors.New("agentloop: context planning failed")
 	// ErrCompactionFailed is Run's error when a required compaction
 	// cannot complete: the retention set alone exceeds the window
-	// (wrapping contextplan.ErrRetentionOverflow), the summarizer call
+	// (wrapping plan.ErrRetentionOverflow), the summarizer call
 	// failed (wrapping the contextsummary sentinel), or the compacted
 	// history still exceeds the window. Test with errors.Is.
 	ErrCompactionFailed = errors.New("agentloop: compaction failed")
@@ -219,11 +219,11 @@ type Options struct {
 	// also set, Budget checks the history after window compaction runs,
 	// so a history Window would compact under Budget never fails here.
 	// When Window is nil, Budget checks history exactly as sent.
-	Budget *contextbudget.Limits
+	Budget *budget.Limits
 	// Trim runs before each Completer call on the full message
 	// history. A nil Trim passes the history through unchanged. See
 	// docs/plans/agentloop.md for its contract with
-	// contextplan.Planner.Plan.
+	// plan.Planner.Plan.
 	Trim func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error)
 	// Surface, when non-nil, is consulted at the top of every
 	// iteration from the second one onward (after the steer
@@ -250,13 +250,13 @@ type Options struct {
 	// Window requires Summarizer and Calibrated, and excludes Trim. When
 	// Budget is also set, Window's compaction runs before the Budget
 	// check, so Budget sees the compacted history, not the raw one.
-	Window *contextplan.Window
+	Window *plan.Window
 	// Summarizer runs the LLM summary every compaction requires.
 	// Required when Window is set.
-	Summarizer *contextplan.Summarizer
+	Summarizer *plan.Summarizer
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
-	Calibrated *contextplan.Calibrated
+	Calibrated *plan.Calibrated
 	// Conclude groups the graceful-conclude terms; see the Conclude
 	// type for Margin, Deadline, and Notice.
 	Conclude Conclude
@@ -368,7 +368,7 @@ type ErrorFunc func(ctx context.Context, call provider.ToolCall, err error) (pro
 // Validate checks Options in a fixed order and returns the first
 // failure: Completer required, Tools required, Bounds.Validate (each
 // cap non-negative), Usage requires a non-blank SessionID, a non-nil
-// Budget passes contextbudget.Limits.Validate, a non-nil Window passes
+// Budget passes budget.Limits.Validate, a non-nil Window passes
 // Window.Validate, requires Summarizer, requires Calibrated, and
 // excludes Trim, Conclude.Validate (Margin not negative, then Deadline
 // not negative), a positive HeartbeatInterval requires a non-nil Bus,

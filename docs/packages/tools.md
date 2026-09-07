@@ -263,7 +263,7 @@ all. An unrecognized `Class` must not let a tool skip approval.
 - [room.md](room.md) — `Room.Admit`/`Room.Remove` is the precedent
   for `Registry.Add`/`Registry.Remove`'s add-and-remove symmetry.
 - `tools` imports no other package in this module.
-- [contextbudget.md](../plans/contextbudget.md) — `contextbudget.Limits`
+- [context/budget.md](../plans/context/budget.md) — `context/budget.Limits`
   bounds a whole model call's context. `ResultBudgetTool.
   MaxResultBytes` bounds one tool call's output. The two types do not
   import each other.

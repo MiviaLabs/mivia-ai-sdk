@@ -9,7 +9,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
+	"github.com/MiviaLabs/mivia-ai-sdk/context/budget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -135,7 +135,7 @@ func TestNewRejectionsContent(t *testing.T) {
 		{
 			name: "invalid budget",
 			mutate: func(o *agentrun.Options) {
-				o.Budget = &contextbudget.Limits{MaxBytes: -1}
+				o.Budget = &budget.Limits{MaxBytes: -1}
 			},
 			wantText: "MaxBytes",
 		},

@@ -25,7 +25,7 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `mcp/` — Model Context Protocol client over stdio/HTTP.
 - `a2a/` / `a2aclient/` — A2A v1.0 protocol integration, the remote step ack (Wait), and the a2atest loopback fixture.
 - `dispatch/` — NDJSON envelope HTTP endpoint.
-- `contextplan/` / `contextref/` — context window management, compaction, the summarizer (Summarize), and content references.
+- `context/plan/` / `context/ref/` — context window management, compaction, the summarizer (Summarize), and content references.
 - `scheduler/` — due-job firing plus the trigger registry (Condition, Action, Registry).
 - `channel/` / `trace/` — supporting primitives.
 - `x/` — nested sub-module of quarantined orphaned packages (`contextstate`, `contextsession`, `longtermmemory`, `skills`, `envfile`, `runconfig`); the core module does not advertise them. Promote one into core when a second consumer appears.

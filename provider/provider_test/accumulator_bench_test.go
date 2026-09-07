@@ -1,10 +1,9 @@
-package usage_test
+package provider_test
 
 import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // BenchmarkRecordHundredCalls reports throughput and allocation
@@ -15,7 +14,7 @@ import (
 // a new map entry, and every later call allocates zero, so allocs/op
 // trends toward zero as b.N grows.
 func BenchmarkRecordHundredCalls(b *testing.B) {
-	a := usage.New()
+	a := provider.NewAccumulator()
 	u := provider.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3, CachedTokens: 4}
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -37,7 +36,7 @@ func BenchmarkRecordHundredCalls(b *testing.B) {
 //
 // The plan's second case asked for an isolated fresh-Accumulator
 // first call asserting exactly 1 allocation. Measured against this
-// implementation that claim does not hold: usage.New() plus one
+// implementation that claim does not hold: provider.NewAccumulator() plus one
 // Record call together cost 3 allocations (the Accumulator escapes
 // to the heap once its address is used through a mutex-guarded
 // method, plus the map's initial bucket allocation on first insert),
@@ -47,7 +46,7 @@ func BenchmarkRecordHundredCalls(b *testing.B) {
 // matters (steady-state Record cost stays at or under 1 per call).
 func TestRecordAllocBudget(t *testing.T) {
 	t.Run("amortized over 100 calls on a persistent Accumulator", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		u := provider.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3, CachedTokens: 4}
 		alloc := testing.AllocsPerRun(100, func() {
 			if err := a.Record("session-1", u); err != nil {
@@ -62,13 +61,13 @@ func TestRecordAllocBudget(t *testing.T) {
 	t.Run("isolated first call on a fresh Accumulator", func(t *testing.T) {
 		u := provider.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3, CachedTokens: 4}
 		alloc := testing.AllocsPerRun(1, func() {
-			a := usage.New()
+			a := provider.NewAccumulator()
 			if err := a.Record("session-1", u); err != nil {
 				t.Fatal(err)
 			}
 		})
 		if alloc > 3 {
-			t.Fatalf("New()+first Record allocated %v times; budget is 3", alloc)
+			t.Fatalf("NewAccumulator()+first Record allocated %v times; budget is 3", alloc)
 		}
 	})
 }

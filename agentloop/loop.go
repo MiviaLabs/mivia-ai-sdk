@@ -14,7 +14,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // Result holds a Run call's outcome. See docs/plans/agentloop.md's
@@ -50,7 +49,7 @@ type Loop struct {
 	onToolCallError ErrorFunc
 	hooksReg        *events.Registry
 	tracer          *trace.Tracer
-	usageAcc        *usage.Accumulator
+	usageAcc        *provider.Accumulator
 	sessionID       string
 	bus             *events.Bus
 	budget          *contextbudget.Limits

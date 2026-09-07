@@ -1,4 +1,4 @@
-package usage_test
+package provider_test
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // countingCompleter answers one canned turn per call and reports its
@@ -35,14 +34,14 @@ func (c *countingCompleter) ChatStream(ctx context.Context, req provider.Request
 // completed turn's usage under the wrapped session, keeps the
 // response unchanged, and isolates one session's total from another.
 func TestWrapCompleterRecordsEachTurn(t *testing.T) {
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	inner := &countingCompleter{turns: []provider.Response{
 		{Usage: provider.Usage{PromptTokens: 10, CompletionTokens: 2, TotalTokens: 12},
 			Message: provider.Message{Role: provider.RoleAssistant, Content: "first"}},
 		{Usage: provider.Usage{PromptTokens: 20, CompletionTokens: 4, TotalTokens: 24},
 			Message: provider.Message{Role: provider.RoleAssistant, Content: "second"}},
 	}}
-	wrapped, err := usage.WrapCompleter("session-1", acc, inner)
+	wrapped, err := provider.WrapCompleter("session-1", acc, inner)
 	if err != nil {
 		t.Fatalf("WrapCompleter: %v", err)
 	}
@@ -81,17 +80,17 @@ func TestWrapCompleterConstructionRejects(t *testing.T) {
 	cases := []struct {
 		name    string
 		session string
-		acc     *usage.Accumulator
+		acc     *provider.Accumulator
 		inner   provider.Completer
 		want    error
 	}{
-		{name: "blank session", session: "  ", acc: usage.New(), inner: &countingCompleter{}, want: usage.ErrBlankSessionID},
-		{name: "nil accumulator", session: "s", acc: nil, inner: &countingCompleter{}, want: usage.ErrNilAccumulator},
-		{name: "nil completer", session: "s", acc: usage.New(), inner: nil, want: usage.ErrNilCompleter},
+		{name: "blank session", session: "  ", acc: provider.NewAccumulator(), inner: &countingCompleter{}, want: provider.ErrBlankSessionID},
+		{name: "nil accumulator", session: "s", acc: nil, inner: &countingCompleter{}, want: provider.ErrNilAccumulator},
+		{name: "nil completer", session: "s", acc: provider.NewAccumulator(), inner: nil, want: provider.ErrNilUsageCompleter},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := usage.WrapCompleter(tc.session, tc.acc, tc.inner)
+			_, err := provider.WrapCompleter(tc.session, tc.acc, tc.inner)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("WrapCompleter error = %v, want %v", err, tc.want)
 			}
@@ -102,7 +101,7 @@ func TestWrapCompleterConstructionRejects(t *testing.T) {
 // TestZeroValueAccumulatorRecords proves the zero-value Accumulator
 // records without panicking, its map initializing on first Record.
 func TestZeroValueAccumulatorRecords(t *testing.T) {
-	var acc usage.Accumulator
+	var acc provider.Accumulator
 	if err := acc.Record("session-z", provider.Usage{TotalTokens: 4}); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -137,8 +136,8 @@ func (streamingCompleter) ChatStream(ctx context.Context, req provider.Request) 
 // streamed turn through unchanged and records no usage for it,
 // matching the documented passthrough.
 func TestWrapCompleterStreamRecordsNothing(t *testing.T) {
-	acc := usage.New()
-	wrapped, err := usage.WrapCompleter("session-s", acc, streamingCompleter{})
+	acc := provider.NewAccumulator()
+	wrapped, err := provider.WrapCompleter("session-s", acc, streamingCompleter{})
 	if err != nil {
 		t.Fatalf("WrapCompleter: %v", err)
 	}

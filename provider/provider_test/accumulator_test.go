@@ -1,16 +1,15 @@
-package usage_test
+package provider_test
 
 import (
 	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 func TestRecord(t *testing.T) {
 	t.Run("first call sets the total", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		u := provider.Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30, CachedTokens: 5}
 		if err := a.Record("session-1", u); err != nil {
 			t.Fatalf("Record: %v", err)
@@ -25,7 +24,7 @@ func TestRecord(t *testing.T) {
 	})
 
 	t.Run("second call adds onto the first", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		first := provider.Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30, CachedTokens: 5}
 		second := provider.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3, CachedTokens: 4}
 		if err := a.Record("session-1", first); err != nil {
@@ -45,7 +44,7 @@ func TestRecord(t *testing.T) {
 	})
 
 	t.Run("three or more calls sum in order", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		calls := []provider.Usage{
 			{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2, CachedTokens: 0},
 			{PromptTokens: 2, CompletionTokens: 2, TotalTokens: 4, CachedTokens: 1},
@@ -73,14 +72,14 @@ func TestRecord(t *testing.T) {
 // the 80-line function-length gate.
 func TestRecordBlankSessionID(t *testing.T) {
 	for _, sessionID := range []string{"", " ", "\t\n"} {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		existing := provider.Usage{PromptTokens: 7, CompletionTokens: 8, TotalTokens: 15, CachedTokens: 1}
 		if err := a.Record("session-1", existing); err != nil {
 			t.Fatalf("Record: %v", err)
 		}
 
 		err := a.Record(sessionID, provider.Usage{PromptTokens: 100})
-		if !errors.Is(err, usage.ErrBlankSessionID) {
+		if !errors.Is(err, provider.ErrBlankSessionID) {
 			t.Fatalf("Record(%q): got %v, want ErrBlankSessionID", sessionID, err)
 		}
 
@@ -96,7 +95,7 @@ func TestRecordBlankSessionID(t *testing.T) {
 
 func TestTotal(t *testing.T) {
 	t.Run("unknown sessionID returns zero and false", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		got, ok := a.Total("unknown")
 		if ok {
 			t.Fatal("Total: want false, got true")
@@ -107,7 +106,7 @@ func TestTotal(t *testing.T) {
 	})
 
 	t.Run("known sessionID returns the correct sum and true", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		u := provider.Usage{PromptTokens: 4, CompletionTokens: 5, TotalTokens: 9, CachedTokens: 2}
 		if err := a.Record("session-1", u); err != nil {
 			t.Fatalf("Record: %v", err)
@@ -124,7 +123,7 @@ func TestTotal(t *testing.T) {
 
 func TestReset(t *testing.T) {
 	t.Run("zeroes a recorded session", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		if err := a.Record("session-1", provider.Usage{PromptTokens: 10}); err != nil {
 			t.Fatalf("Record: %v", err)
 		}
@@ -137,7 +136,7 @@ func TestReset(t *testing.T) {
 	})
 
 	t.Run("unknown session is a no-op returning nil", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		if err := a.Reset("never-recorded"); err != nil {
 			t.Fatalf("Reset: got %v, want nil", err)
 		}
@@ -145,16 +144,16 @@ func TestReset(t *testing.T) {
 
 	t.Run("blank sessionID returns ErrBlankSessionID", func(t *testing.T) {
 		for _, sessionID := range []string{"", " ", "\t\n"} {
-			a := usage.New()
+			a := provider.NewAccumulator()
 			err := a.Reset(sessionID)
-			if !errors.Is(err, usage.ErrBlankSessionID) {
+			if !errors.Is(err, provider.ErrBlankSessionID) {
 				t.Fatalf("Reset(%q): got %v, want ErrBlankSessionID", sessionID, err)
 			}
 		}
 	})
 
 	t.Run("Record after Reset starts a fresh sum", func(t *testing.T) {
-		a := usage.New()
+		a := provider.NewAccumulator()
 		if err := a.Record("session-1", provider.Usage{PromptTokens: 100, CompletionTokens: 100, TotalTokens: 200, CachedTokens: 50}); err != nil {
 			t.Fatalf("Record: %v", err)
 		}

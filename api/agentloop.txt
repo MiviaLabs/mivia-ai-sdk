@@ -80,7 +80,7 @@ package agentloop
   OnToolCallError ErrorFunc
   Hooks *events.Registry
   Tracer *trace.Tracer
-  Usage *usage.Accumulator
+  Usage *provider.Accumulator
   SessionID string
   Bus *events.Bus
   Budget *contextbudget.Limits

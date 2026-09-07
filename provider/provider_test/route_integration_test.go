@@ -1,4 +1,4 @@
-package providerregistry_test
+package provider_test
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 )
 
 // TestRouteIntegrationRunsThroughRunTurn wires two fakes through a
@@ -30,7 +29,7 @@ func TestRouteIntegrationRunsThroughRunTurn(t *testing.T) {
 	}
 	second := &fakeCompleter{name: "beta", chatResp: want}
 
-	r := providerregistry.New()
+	r := provider.NewRegistry()
 	if err := r.Register("alpha", first); err != nil {
 		t.Fatalf("Register(alpha) error = %v, want nil", err)
 	}

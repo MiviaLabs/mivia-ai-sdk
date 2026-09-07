@@ -9,8 +9,8 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // validOptions returns a minimal Options that passes Validate, for a
@@ -113,11 +113,11 @@ func testOptionsValidateBasics(t *testing.T) {
 			return o
 		}, nil, true},
 		{"Usage without SessionID fails", func(o agentloop.Options) agentloop.Options {
-			o.Usage = usage.New()
+			o.Usage = provider.NewAccumulator()
 			return o
 		}, agentloop.ErrSessionIDRequired, false},
 		{"Usage with SessionID passes", func(o agentloop.Options) agentloop.Options {
-			o.Usage = usage.New()
+			o.Usage = provider.NewAccumulator()
 			o.SessionID = "sess-1"
 			return o
 		}, nil, true},

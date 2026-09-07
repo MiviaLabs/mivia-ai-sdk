@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-five packages and the import edges
+The diagram shows the forty-three packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
@@ -69,15 +69,12 @@ flowchart LR
     agentloop --> provider
     agentloop --> tools
     agentloop --> trace
-    agentloop --> usage
     agentloop --> events
     agentloop --> contextbudget
     agentloop --> schema
     agentloop --> contextplan
     agentloop --> toolcallctx
     toolcallctx --> provider
-    usage --> provider
-    providerregistry --> provider
     scheduler --> events
     dispatch --> agent
     dispatch --> envelope
@@ -109,7 +106,6 @@ flowchart LR
     subagent --> machine
     subagent --> memory
     subagent --> provider
-    subagent --> providerregistry
     subagent --> room
     subagent --> scheduler
     subagent --> taskrun
@@ -148,7 +144,6 @@ flowchart LR
     skills[skills]
     tools[tools]
     trigger[trigger]
-    usage[usage]
     envfile[envfile]
     longtermmemory[longtermmemory]
     contextref[contextref]
@@ -376,7 +371,7 @@ flowchart LR
   on whether a `Completer.Chat` is currently in flight, closing the
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
-  `trace`, `usage`, `events`, `contextbudget`, `schema`,
+  `trace`, `events`, `contextbudget`, `schema`,
   `contextplan`, and `toolcallctx`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
@@ -522,8 +517,23 @@ flowchart LR
   sequence into one `Response`. `ReasoningEventKind` is the
   `contextstate.SourceEvent.Kind` value a reasoning trace carries;
   `RedactBlock` clears a `ReasoningBlock`'s content and marks it
-  redacted. `provider` imports no other package in this module. See
-  [packages/provider.md](packages/provider.md).
+  redacted. `provider` imports no other package in this module.
+  The package also holds the per-session usage accounting:
+  `Accumulator`, `NewAccumulator`, `Record`, `Total`, `Reset`,
+  `WrapCompleter`, and the sentinels `ErrBlankSessionID`,
+  `ErrNilAccumulator`, and `ErrNilUsageCompleter`. `Record` sums one
+  `Usage` call's four fields onto the running total keyed by a
+  caller-supplied session identifier, guarded for concurrent access;
+  `Total` reads the current sum, and `Reset` clears it. It also holds
+  the multi-provider routing registry: `Registry`, `NewRegistry`,
+  `Register`, `Get`, `Names`, `Retryable`, `Route`, and the sentinels
+  `ErrNilCompleter`, `ErrBlankName`, `ErrDuplicateName`,
+  `ErrUnknownName`, `ErrEmptyOrder`, and `ErrAllFailed`. `Registry`
+  holds named `Completer` values behind the same mutex shape
+  `tools.Registry` uses. `Route` walks a caller-chosen order of names
+  through `RunTurn` and falls through to the next name only when the
+  caller's `Retryable` predicate approves the failure.
+  See [packages/provider.md](packages/provider.md).
 - `contextplan/` — manages token budget windows and compaction. It
   provides `Window` with `Validate` and `Budget`, `Compaction` with
   `Validate`, `Compact`, `CompactResult`, `CompactTrigger` and
@@ -588,25 +598,6 @@ flowchart LR
   cannot close the block early. A leaf: no internal imports, standard
   library only. See
   [packages/longtermmemory.md](packages/longtermmemory.md).
-- `providerregistry/` — the multi-provider routing package. It
-  provides `Registry`, `New`, `Register`, `Get`, `Names`, `Retryable`,
-  `Route`, and the sentinels `ErrNilCompleter`, `ErrBlankName`,
-  `ErrDuplicateName`, `ErrUnknownName`, `ErrEmptyOrder`, and
-  `ErrAllFailed`. `Registry` holds named `Completer` values behind the
-  same mutex shape `tools.Registry` uses. `Route` walks a
-  caller-chosen order of names through `provider.RunTurn` and falls
-  through to the next name only when the caller's `Retryable`
-  predicate approves the failure. `providerregistry` imports
-  `provider` only. See
-  [packages/providerregistry.md](packages/providerregistry.md).
-- `usage/` — the per-session usage accounting package. It provides
-  `Accumulator`, `New`, `Record`, `Total`, `Reset`, `WrapCompleter`,
-  and the sentinels `ErrBlankSessionID`, `ErrNilAccumulator`, and
-  `ErrNilCompleter`. `Record` sums one `provider.Usage` call's four
-  fields onto the running total keyed by a caller-supplied session
-  identifier, guarded for concurrent access; `Total` reads the current
-  sum, and `Reset` clears it. `usage` imports `provider` only, for the
-  `Usage` type. See [packages/usage.md](packages/usage.md).
 - `channel/` — a leaf primitive. It provides `Question`,
   `Question.Validate`, `Answer`, `Answer.Validate`, `Notifier`, and
   the sentinels `ErrEmptyID`, `ErrEmptyRecipient`, `ErrEmptyPayload`,

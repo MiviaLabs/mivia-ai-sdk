@@ -1,4 +1,4 @@
-package providerregistry_test
+package provider_test
 
 import (
 	"context"
@@ -8,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 )
 
-// fakeCompleter is a Completer double. It does no I/O. onChat, when
+// routeFakeCompleter is a Completer double. It does no I/O. onChat, when
 // set, runs before Chat's configured result, so a test can cancel ctx
 // between order entries.
-type fakeCompleter struct {
+type routeFakeCompleter struct {
 	name        string
 	chatResp    provider.Response
 	chatErr     error
@@ -23,9 +22,9 @@ type fakeCompleter struct {
 	lastRequest provider.Request
 }
 
-func (f *fakeCompleter) Name() string { return f.name }
+func (f *routeFakeCompleter) Name() string { return f.name }
 
-func (f *fakeCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
+func (f *routeFakeCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error) {
 	f.lastRequest = req
 	if f.log != nil {
 		*f.log = append(*f.log, f.name)
@@ -39,7 +38,7 @@ func (f *fakeCompleter) Chat(ctx context.Context, req provider.Request) (provide
 	return f.chatResp, nil
 }
 
-func (f *fakeCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+func (f *routeFakeCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
 	ch := make(chan provider.Chunk, 1)
 	ch <- provider.Chunk{Done: true, FinishReason: "stop"}
 	close(ch)
@@ -49,9 +48,9 @@ func (f *fakeCompleter) ChatStream(ctx context.Context, req provider.Request) (<
 // newPopulatedRegistry builds a Registry with the given fakes
 // registered, each under its own name, and returns it with the shared
 // call log.
-func newPopulatedRegistry(t *testing.T, fakes ...*fakeCompleter) (*providerregistry.Registry, *[]string) {
+func newPopulatedRegistry(t *testing.T, fakes ...*routeFakeCompleter) (*provider.Registry, *[]string) {
 	t.Helper()
-	r := providerregistry.New()
+	r := provider.NewRegistry()
 	log := &[]string{}
 	for _, f := range fakes {
 		if err := r.Register(f.name, f); err != nil {
@@ -81,10 +80,10 @@ func TestRouteEmptyOrder(t *testing.T) {
 		{name: "empty order", order: []string{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			fake := &fakeCompleter{name: "alpha"}
+			fake := &routeFakeCompleter{name: "alpha"}
 			r, log := newPopulatedRegistry(t, fake)
 			resp, err := r.Route(context.Background(), userRequest(), tc.order, nil)
-			if !errors.Is(err, providerregistry.ErrEmptyOrder) {
+			if !errors.Is(err, provider.ErrEmptyOrder) {
 				t.Fatalf("Route() error = %v, want ErrEmptyOrder", err)
 			}
 			if !reflect.DeepEqual(resp, provider.Response{}) {
@@ -100,10 +99,10 @@ func TestRouteEmptyOrder(t *testing.T) {
 // TestRouteUnknownName covers order entries Get cannot resolve.
 func TestRouteUnknownName(t *testing.T) {
 	t.Run("unknown entry first calls no completer", func(t *testing.T) {
-		fake := &fakeCompleter{name: "alpha"}
+		fake := &routeFakeCompleter{name: "alpha"}
 		r, log := newPopulatedRegistry(t, fake)
 		_, err := r.Route(context.Background(), userRequest(), []string{"missing", "alpha"}, nil)
-		if !errors.Is(err, providerregistry.ErrUnknownName) {
+		if !errors.Is(err, provider.ErrUnknownName) {
 			t.Fatalf("Route() error = %v, want ErrUnknownName", err)
 		}
 		if len(*log) != 0 {
@@ -111,18 +110,18 @@ func TestRouteUnknownName(t *testing.T) {
 		}
 	})
 	t.Run("error names the missing entry", func(t *testing.T) {
-		r := providerregistry.New()
+		r := provider.NewRegistry()
 		_, err := r.Route(context.Background(), userRequest(), []string{"missing"}, nil)
 		if err == nil || !strings.Contains(err.Error(), "missing") {
 			t.Fatalf("Route() error = %v, want text naming missing", err)
 		}
 	})
 	t.Run("stops at the unresolved entry", func(t *testing.T) {
-		failing := &fakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
-		never := &fakeCompleter{name: "beta"}
+		failing := &routeFakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
+		never := &routeFakeCompleter{name: "beta"}
 		r, log := newPopulatedRegistry(t, failing, never)
 		_, err := r.Route(context.Background(), userRequest(), []string{"alpha", "missing", "beta"}, nil)
-		if !errors.Is(err, providerregistry.ErrUnknownName) {
+		if !errors.Is(err, provider.ErrUnknownName) {
 			t.Fatalf("Route() error = %v, want ErrUnknownName", err)
 		}
 		want := []string{"alpha"}
@@ -140,7 +139,7 @@ func TestRouteSingleNameSucceeds(t *testing.T) {
 		Message:      provider.Message{Role: provider.RoleAssistant, Content: "hi"},
 		FinishReason: "stop",
 	}
-	fake := &fakeCompleter{name: "alpha", chatResp: want}
+	fake := &routeFakeCompleter{name: "alpha", chatResp: want}
 	r, log := newPopulatedRegistry(t, fake)
 
 	got, err := r.Route(context.Background(), userRequest(), []string{"alpha"}, nil)
@@ -159,13 +158,13 @@ func TestRouteSingleNameSucceeds(t *testing.T) {
 // first Completer fails with a retryable error: Route returns the
 // second Completer's Response, and both fakes ran, in order.
 func TestRouteFallsThroughOnRetryable(t *testing.T) {
-	first := &fakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
+	first := &routeFakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
 	want := provider.Response{
 		Model:        "test-model",
 		Message:      provider.Message{Role: provider.RoleAssistant, Content: "from beta"},
 		FinishReason: "stop",
 	}
-	second := &fakeCompleter{name: "beta", chatResp: want}
+	second := &routeFakeCompleter{name: "beta", chatResp: want}
 	r, log := newPopulatedRegistry(t, first, second)
 
 	got, err := r.Route(context.Background(), userRequest(), []string{"alpha", "beta"}, func(error) bool { return true })
@@ -184,9 +183,9 @@ func TestRouteFallsThroughOnRetryable(t *testing.T) {
 // through on every error, same as a predicate that always returns
 // true.
 func TestRouteNilRetryableFallsThrough(t *testing.T) {
-	first := &fakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
+	first := &routeFakeCompleter{name: "alpha", chatErr: errors.New("alpha down")}
 	want := provider.Response{Message: provider.Message{Role: provider.RoleAssistant, Content: "from beta"}}
-	second := &fakeCompleter{name: "beta", chatResp: want}
+	second := &routeFakeCompleter{name: "beta", chatResp: want}
 	r, _ := newPopulatedRegistry(t, first, second)
 
 	got, err := r.Route(context.Background(), userRequest(), []string{"alpha", "beta"}, nil)
@@ -203,8 +202,8 @@ func TestRouteNilRetryableFallsThrough(t *testing.T) {
 // unwrapped and never calls the second fake.
 func TestRouteStopsOnNonRetryable(t *testing.T) {
 	fatal := errors.New("fatal alpha failure")
-	first := &fakeCompleter{name: "alpha", chatErr: fatal}
-	second := &fakeCompleter{name: "beta"}
+	first := &routeFakeCompleter{name: "alpha", chatErr: fatal}
+	second := &routeFakeCompleter{name: "beta"}
 	r, log := newPopulatedRegistry(t, first, second)
 
 	got, err := r.Route(context.Background(), userRequest(), []string{"alpha", "beta"}, func(error) bool { return false })
@@ -227,19 +226,19 @@ func TestRouteAllFailed(t *testing.T) {
 	secondErr := errors.New("beta down")
 	for _, tc := range []struct {
 		name     string
-		fakes    []*fakeCompleter
+		fakes    []*routeFakeCompleter
 		order    []string
 		wantLast error
 	}{
 		{
 			name:     "one name",
-			fakes:    []*fakeCompleter{{name: "alpha", chatErr: firstErr}},
+			fakes:    []*routeFakeCompleter{{name: "alpha", chatErr: firstErr}},
 			order:    []string{"alpha"},
 			wantLast: firstErr,
 		},
 		{
 			name:     "two names",
-			fakes:    []*fakeCompleter{{name: "alpha", chatErr: firstErr}, {name: "beta", chatErr: secondErr}},
+			fakes:    []*routeFakeCompleter{{name: "alpha", chatErr: firstErr}, {name: "beta", chatErr: secondErr}},
 			order:    []string{"alpha", "beta"},
 			wantLast: secondErr,
 		},
@@ -247,10 +246,10 @@ func TestRouteAllFailed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r, _ := newPopulatedRegistry(t, tc.fakes...)
 			got, err := r.Route(context.Background(), userRequest(), tc.order, func(error) bool { return true })
-			if !errors.Is(err, providerregistry.ErrAllFailed) {
+			if !errors.Is(err, provider.ErrAllFailed) {
 				t.Fatalf("Route() error = %v, want errors.Is ErrAllFailed", err)
 			}
-			if text := err.Error(); !strings.Contains(text, providerregistry.ErrAllFailed.Error()) || !strings.Contains(text, tc.wantLast.Error()) {
+			if text := err.Error(); !strings.Contains(text, provider.ErrAllFailed.Error()) || !strings.Contains(text, tc.wantLast.Error()) {
 				t.Fatalf("Route() error text = %q, want both ErrAllFailed and the last error named", text)
 			}
 			if unwrapped := errors.Unwrap(err); unwrapped != tc.wantLast {
@@ -272,9 +271,9 @@ func TestRouteAllFailed(t *testing.T) {
 // calls the remaining names.
 func TestRouteContextCanceledBetweenEntries(t *testing.T) {
 	cancelErr := errors.New("alpha down")
-	first := &fakeCompleter{name: "alpha", chatErr: cancelErr}
-	second := &fakeCompleter{name: "beta"}
-	third := &fakeCompleter{name: "gamma"}
+	first := &routeFakeCompleter{name: "alpha", chatErr: cancelErr}
+	second := &routeFakeCompleter{name: "beta"}
+	third := &routeFakeCompleter{name: "gamma"}
 	r, log := newPopulatedRegistry(t, first, second, third)
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -14,7 +14,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // Sentinel errors for Options.Validate, Definitions, and Run; test
@@ -207,7 +206,7 @@ type Options struct {
 	Tracer *trace.Tracer
 	// Usage records per-iteration provider.Usage under SessionID.
 	// Requires SessionID. Optional.
-	Usage *usage.Accumulator
+	Usage *provider.Accumulator
 	// SessionID keys Usage's running total. Required when Usage is
 	// set.
 	SessionID string

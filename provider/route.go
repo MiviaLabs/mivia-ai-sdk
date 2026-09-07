@@ -1,11 +1,9 @@
-package providerregistry
+package provider
 
 import (
 	"context"
 	"errors"
 	"fmt"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 // Retryable is the fallback predicate Route consults after each
@@ -15,7 +13,7 @@ import (
 type Retryable func(error) bool
 
 // Route tries each name in order, in sequence, calling
-// provider.RunTurn for the Completer Get resolves. Route returns the
+// RunTurn for the Completer Get resolves. Route returns the
 // first successful Response at once. On a RunTurn error, Route checks
 // retryable: nil or true moves to the next name; false stops the loop
 // and returns that error unwrapped. Route rejects an empty order with
@@ -27,31 +25,31 @@ type Retryable func(error) bool
 // each attempt after the first; a canceled ctx stops the loop and
 // returns ctx.Err(). Route walks order once, in the caller's
 // sequence; it never repeats or skips a name on its own.
-func (r *Registry) Route(ctx context.Context, req provider.Request, order []string, retryable Retryable) (provider.Response, error) {
+func (r *Registry) Route(ctx context.Context, req Request, order []string, retryable Retryable) (Response, error) {
 	if len(order) == 0 {
-		return provider.Response{}, ErrEmptyOrder
+		return Response{}, ErrEmptyOrder
 	}
 	var lastErr error
 	for i, name := range order {
 		if i > 0 {
 			if err := ctx.Err(); err != nil {
-				return provider.Response{}, err
+				return Response{}, err
 			}
 		}
 		c, ok := r.Get(name)
 		if !ok {
-			return provider.Response{}, fmt.Errorf("%w: %s", ErrUnknownName, name)
+			return Response{}, fmt.Errorf("%w: %s", ErrUnknownName, name)
 		}
-		resp, err := provider.RunTurn(ctx, c, req)
+		resp, err := RunTurn(ctx, c, req)
 		if err == nil {
 			return resp, nil
 		}
 		if retryable != nil && !retryable(err) {
-			return provider.Response{}, err
+			return Response{}, err
 		}
 		lastErr = err
 	}
-	return provider.Response{}, newAllFailedError(lastErr)
+	return Response{}, newAllFailedError(lastErr)
 }
 
 // allFailedError is Route's ErrAllFailed wrap. Error text and

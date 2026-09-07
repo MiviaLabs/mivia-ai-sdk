@@ -1,11 +1,10 @@
-package usage_test
+package provider_test
 
 import (
 	"sync"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // TestRecordConcurrentSameSession proves no lost update: many
@@ -13,7 +12,7 @@ import (
 // equals the arithmetic sum of every recorded provider.Usage. Run
 // under go test -race.
 func TestRecordConcurrentSameSession(t *testing.T) {
-	a := usage.New()
+	a := provider.NewAccumulator()
 	const goroutines = 100
 	u := provider.Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3, CachedTokens: 4}
 
@@ -49,7 +48,7 @@ func TestRecordConcurrentSameSession(t *testing.T) {
 // distinct sessionID values, and every session's total is correct
 // independently. Run under go test -race.
 func TestRecordConcurrentDistinctSessions(t *testing.T) {
-	a := usage.New()
+	a := provider.NewAccumulator()
 	const sessions = 50
 	const callsPerSession = 10
 	u := provider.Usage{PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2, CachedTokens: 1}

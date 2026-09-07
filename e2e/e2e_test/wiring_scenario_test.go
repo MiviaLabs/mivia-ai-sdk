@@ -11,11 +11,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // wiredCompleter answers one fixed reply and can fail. It backs the
@@ -52,13 +50,13 @@ func (c *wiredCompleter) ChatStream(ctx context.Context, req provider.Request) (
 // wiredSubRunner builds the spawned runner: a one-step plan whose tool
 // is ProviderRegistryTool over a primary that fails and a usage-wrapped
 // backup that answers, both traced by tr.
-func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *usage.Accumulator, session string, primaryCalls *int) *agentrun.Runner {
+func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *provider.Accumulator, session string, primaryCalls *int) *agentrun.Runner {
 	t.Helper()
-	wrapped, err := usage.WrapCompleter(session, acc, &wiredCompleter{name: "backup", reply: "backup says hi"})
+	wrapped, err := provider.WrapCompleter(session, acc, &wiredCompleter{name: "backup", reply: "backup says hi"})
 	if err != nil {
 		t.Fatalf("WrapCompleter: %v", err)
 	}
-	reg := providerregistry.New()
+	reg := provider.NewRegistry()
 	if err := reg.Register("primary", &wiredCompleter{
 		name: "primary", fail: true, calls: primaryCalls,
 	}); err != nil {
@@ -96,7 +94,7 @@ func wiredSubRunner(t *testing.T, tr *trace.Tracer, acc *usage.Accumulator, sess
 // order, the fallback, and the session total all answer.
 func TestWiredStackComposesAllFour(t *testing.T) {
 	tr := trace.New()
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	primaryCalls := 0
 
 	hookReg := events.NewRegistry()

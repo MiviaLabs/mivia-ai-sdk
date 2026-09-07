@@ -1,17 +1,16 @@
-package providerregistry_test
+package provider_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 )
 
 // benchRegistry builds a Registry holding two fakes that do no I/O,
 // registered in first-succeeds order. It takes testing.TB so the
 // benchmark and the allocation budget test share one setup.
-func benchRegistry(tb testing.TB) (*providerregistry.Registry, provider.Request) {
+func benchRegistry(tb testing.TB) (*provider.Registry, provider.Request) {
 	tb.Helper()
 	first := &fakeCompleter{name: "alpha", chatResp: provider.Response{
 		Message:      provider.Message{Role: provider.RoleAssistant, Content: "ok"},
@@ -21,7 +20,7 @@ func benchRegistry(tb testing.TB) (*providerregistry.Registry, provider.Request)
 		Message:      provider.Message{Role: provider.RoleAssistant, Content: "ok"},
 		FinishReason: "stop",
 	}}
-	r := providerregistry.New()
+	r := provider.NewRegistry()
 	if err := r.Register("alpha", first); err != nil {
 		tb.Fatal(err)
 	}

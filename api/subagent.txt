@@ -59,7 +59,7 @@ package subagent
   func LedgerTool(name string, l *ledger.Ledger, actor ledger.Actor, lease time.Duration) (tools.Tool)
   func MemoryTool(name string, s *memory.Store) (tools.Tool)
   func NewMailbox(capacity int) (*Mailbox, error)
-  func ProviderRegistryTool(name string, reg *providerregistry.Registry, order []string, retryable providerregistry.Retryable) (tools.Tool)
+  func ProviderRegistryTool(name string, reg *provider.Registry, order []string, retryable provider.Retryable) (tools.Tool)
   func ProviderTool(name string, c provider.Completer) (tools.Tool)
   func RoomTool(name string, r *room.Room, actor string) (tools.Tool)
   func RunAll(ctx context.Context, specs []Spec) ([]Result)

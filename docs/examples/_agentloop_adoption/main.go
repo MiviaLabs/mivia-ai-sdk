@@ -23,7 +23,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // cannedCompleter implements provider.Completer and
@@ -97,7 +96,7 @@ func (upperTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 
 // buildAdoptionOptions sets one commented line per adoption row. The
 // completer also supplies the estimator and the summarizer.
-func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *events.Bus, accum *usage.Accumulator) (agentloop.Options, error) {
+func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *events.Bus, accum *provider.Accumulator) (agentloop.Options, error) {
 	opts := agentloop.Options{
 		Completer: completer,
 		Tools:     reg,
@@ -173,7 +172,7 @@ func main() {
 		return
 	}
 
-	opts, err := buildAdoptionOptions(completer, reg, events.New(), usage.New())
+	opts, err := buildAdoptionOptions(completer, reg, events.New(), provider.NewAccumulator())
 	if err != nil {
 		fmt.Println("options:", err)
 		return

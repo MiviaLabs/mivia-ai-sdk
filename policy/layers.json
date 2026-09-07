@@ -25,7 +25,6 @@
       "provider",
       "tools",
       "trace",
-      "usage",
       "events",
       "contextbudget",
       "schema",
@@ -112,9 +111,6 @@
     "provider/anthropic": [
       "provider"
     ],
-    "providerregistry": [
-      "provider"
-    ],
     "room": [
       "envelope"
     ],
@@ -153,7 +149,6 @@
       "machine",
       "memory",
       "provider",
-      "providerregistry",
       "room",
       "scheduler",
       "taskrun",
@@ -170,9 +165,6 @@
     "tools": [],
     "trace": [],
     "trigger": [],
-    "usage": [
-      "provider"
-    ],
     "workspace": [
       "secretpath"
     ]

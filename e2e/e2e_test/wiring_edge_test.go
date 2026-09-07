@@ -11,10 +11,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // wiredEdgePlan returns a one-step dispatch plan and machine the edge
@@ -40,7 +39,7 @@ func wiredEdgePlan(t *testing.T) (*flow.Definition, *machine.Definition) {
 // the hook, and the subagent never runs.
 func TestWiredHookVetoFailsRun(t *testing.T) {
 	plan, m := wiredEdgePlan(t)
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	primaryCalls := 0
 	reg := tools.New()
 	addTools(t, reg, subagent.AsTool("dispatch",
@@ -76,7 +75,7 @@ func TestWiredHookVetoFailsRun(t *testing.T) {
 // run, with ErrAllFailed visible at the top.
 func TestWiredAllProvidersFailedSurfaces(t *testing.T) {
 	plan, m := wiredEdgePlan(t)
-	reg := providerregistry.New()
+	reg := provider.NewRegistry()
 	for _, name := range []string{"a", "b"} {
 		if err := reg.Register(name, &wiredCompleter{name: name, fail: true}); err != nil {
 			t.Fatalf("Register(%s): %v", name, err)
@@ -109,7 +108,7 @@ func TestWiredAllProvidersFailedSurfaces(t *testing.T) {
 		t.Fatalf("agentrun.New: %v", err)
 	}
 	_, _, err = runner.Run(context.Background(), "thread-dead", machine.InOut{})
-	if !errors.Is(err, providerregistry.ErrAllFailed) {
+	if !errors.Is(err, provider.ErrAllFailed) {
 		t.Fatalf("Run error = %v, want ErrAllFailed at the top", err)
 	}
 }
@@ -119,7 +118,7 @@ func TestWiredAllProvidersFailedSurfaces(t *testing.T) {
 // answer only its own turns.
 func TestWiredUsageIsolatedPerSession(t *testing.T) {
 	plan, m := wiredEdgePlan(t)
-	acc := usage.New()
+	acc := provider.NewAccumulator()
 	primary := 0
 	reg := tools.New()
 	addTools(t, reg, subagent.AsTool("dispatch",

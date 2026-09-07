@@ -17,11 +17,29 @@ package provider
   const ToolChoiceAuto = "auto"
   const ToolChoiceNone = "none"
   const ToolErrorPrefix = "[tool-error] "
+  func (a *Accumulator) Record(sessionID string, u Usage) (error)
+  func (a *Accumulator) Reset(sessionID string) (error)
+  func (a *Accumulator) Total(sessionID string) (Usage, bool)
   func (c Chunk) Validate() (error)
+  func (e *allFailedError) Error() (string)
+  func (e *allFailedError) Is(target error) (bool)
+  func (e *allFailedError) Unwrap() (error)
   func (m Message) Validate() (error)
+  func (r *Registry) Get(name string) (Completer, bool)
+  func (r *Registry) Names() ([]string)
+  func (r *Registry) Register(name string, c Completer) (error)
+  func (r *Registry) Route(ctx context.Context, req Request, order []string, retryable Retryable) (Response, error)
+  func (r *recordingCompleter) Chat(ctx context.Context, req Request) (Response, error)
+  func (r *recordingCompleter) ChatStream(ctx context.Context, req Request) (<-chan Chunk, error)
+  func (r *recordingCompleter) Name() (string)
   func (r Request) Validate() (error)
+  func NewAccumulator() (*Accumulator)
+  func NewRegistry() (*Registry)
   func RedactBlock(b ReasoningBlock) (ReasoningBlock)
   func RunTurn(ctx context.Context, c Completer, req Request) (Response, error)
+  func WrapCompleter(sessionID string, a *Accumulator, c Completer) (Completer, error)
+  type Accumulator struct {
+}
   type CacheStyle string
   type CacheUsage struct {
   Reported bool
@@ -70,6 +88,8 @@ package provider
   type ReasoningPolicy interface {
 	ReasoningEffort() string
 }
+  type Registry struct {
+}
   type Request struct {
   Model string
   Messages []Message
@@ -95,6 +115,7 @@ package provider
   CacheUsage CacheUsage
   WebSearch []WebSearchResult
 }
+  type Retryable func(error) bool
   type Role string
   type TokenEstimator interface {
 	EstimateTokens(req Request) (int, error)
@@ -126,9 +147,17 @@ package provider
   Refer string
   PublishDate string
 }
+  var ErrAllFailed
+  var ErrBlankName
+  var ErrBlankSessionID
   var ErrChunkErrDoneConflict
+  var ErrDuplicateName
+  var ErrEmptyOrder
   var ErrNameInvalid
   var ErrNameUnexpected
+  var ErrNilAccumulator
+  var ErrNilCompleter
+  var ErrNilUsageCompleter
   var ErrPromptTooLong
   var ErrReasoningContentUnexpected
   var ErrStreamClosedEarly
@@ -136,4 +165,5 @@ package provider
   var ErrToolCallIDUnexpected
   var ErrToolCallsUnexpected
   var ErrToolChoiceInvalid
+  var ErrUnknownName
   var ErrUnknownRole

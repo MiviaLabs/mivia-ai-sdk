@@ -1,12 +1,10 @@
-package usage
+package provider
 
 import (
 	"errors"
 	"fmt"
 	"strings"
 	"sync"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 // The sentinels below cover Record's, Reset's, and WrapCompleter's
@@ -19,24 +17,24 @@ var (
 	// ErrNilAccumulator is WrapCompleter's construction error for a
 	// nil Accumulator.
 	ErrNilAccumulator = errors.New("usage: accumulator must not be nil")
-	// ErrNilCompleter is WrapCompleter's construction error for a nil
+	// ErrNilUsageCompleter is WrapCompleter's construction error for a nil
 	// Completer.
-	ErrNilCompleter = errors.New("usage: completer must not be nil")
+	ErrNilUsageCompleter = errors.New("usage: completer must not be nil")
 )
 
-// Accumulator holds one running provider.Usage total per session
+// Accumulator holds one running Usage total per session
 // identifier, guarded for concurrent access. Its fields stay
 // unexported; a caller reaches the state only through Record, Total,
 // and Reset. New is the constructor; the zero value also works,
 // because Record initializes the map on first call.
 type Accumulator struct {
 	mu     sync.Mutex
-	totals map[string]provider.Usage
+	totals map[string]Usage
 }
 
-// New creates an empty Accumulator ready to record.
-func New() *Accumulator {
-	return &Accumulator{totals: make(map[string]provider.Usage)}
+// NewAccumulator creates an empty Accumulator ready to record.
+func NewAccumulator() *Accumulator {
+	return &Accumulator{totals: make(map[string]Usage)}
 }
 
 // Record adds u's four fields onto the running total keyed by
@@ -45,14 +43,14 @@ func New() *Accumulator {
 // session's total on its first Record call; every later call for the
 // same sessionID adds onto the existing total. Safe to call from more
 // than one goroutine for the same or different sessionID values.
-func (a *Accumulator) Record(sessionID string, u provider.Usage) error {
+func (a *Accumulator) Record(sessionID string, u Usage) error {
 	if strings.TrimSpace(sessionID) == "" {
 		return fmt.Errorf("usage: sessionID %q: %w", sessionID, ErrBlankSessionID)
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.totals == nil {
-		a.totals = make(map[string]provider.Usage)
+		a.totals = make(map[string]Usage)
 	}
 	total := a.totals[sessionID]
 	total.PromptTokens += u.PromptTokens
@@ -63,10 +61,10 @@ func (a *Accumulator) Record(sessionID string, u provider.Usage) error {
 	return nil
 }
 
-// Total returns the current summed provider.Usage for sessionID and
-// true, or the zero provider.Usage and false when no Record call has
+// Total returns the current summed Usage for sessionID and
+// true, or the zero Usage and false when no Record call has
 // ever named that sessionID.
-func (a *Accumulator) Total(sessionID string) (provider.Usage, bool) {
+func (a *Accumulator) Total(sessionID string) (Usage, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	u, ok := a.totals[sessionID]

@@ -49,7 +49,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // cannedCompleter implements provider.Completer over a script. Each
@@ -227,7 +226,7 @@ func main() {
 		Calibrated: contextplan.Calibrate(cannedEstimator{}, 0.25),
 		Tracer:     trace.New(),
 		Hooks:      buildHooks(),
-		Usage:      usage.New(),
+		Usage:      provider.NewAccumulator(),
 		SessionID:  "agentloop-example",
 		WorkBudget: &agentloop.WorkBudget{
 			Reserve: func(ctx context.Context, req provider.Request) error { return nil },

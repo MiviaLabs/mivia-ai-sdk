@@ -1,18 +1,18 @@
-package providerregistry_test
+package provider_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
+	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 // TestRegister covers Register's accept path and its nil, blank-name,
 // and duplicate-name rejection cases.
 func TestRegister(t *testing.T) {
 	t.Run("nil completer leaves the registry unchanged", func(t *testing.T) {
-		r := providerregistry.New()
-		if err := r.Register("alpha", nil); !errors.Is(err, providerregistry.ErrNilCompleter) {
+		r := provider.NewRegistry()
+		if err := r.Register("alpha", nil); !errors.Is(err, provider.ErrNilCompleter) {
 			t.Fatalf("Register(nil) error = %v, want ErrNilCompleter", err)
 		}
 		if names := r.Names(); len(names) != 0 {
@@ -28,15 +28,15 @@ func TestRegister(t *testing.T) {
 			{name: "whitespace name", arg: "   "},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				r := providerregistry.New()
-				if err := r.Register(tc.arg, &fakeCompleter{name: "alpha"}); !errors.Is(err, providerregistry.ErrBlankName) {
+				r := provider.NewRegistry()
+				if err := r.Register(tc.arg, &fakeCompleter{name: "alpha"}); !errors.Is(err, provider.ErrBlankName) {
 					t.Fatalf("Register(%q) error = %v, want ErrBlankName", tc.arg, err)
 				}
 			})
 		}
 	})
 	t.Run("valid name then Get resolves it", func(t *testing.T) {
-		r := providerregistry.New()
+		r := provider.NewRegistry()
 		want := &fakeCompleter{name: "alpha"}
 		if err := r.Register("alpha", want); err != nil {
 			t.Fatalf("Register(alpha) error = %v, want nil", err)
@@ -50,12 +50,12 @@ func TestRegister(t *testing.T) {
 		}
 	})
 	t.Run("duplicate name keeps the first completer", func(t *testing.T) {
-		r := providerregistry.New()
+		r := provider.NewRegistry()
 		first := &fakeCompleter{name: "alpha"}
 		if err := r.Register("alpha", first); err != nil {
 			t.Fatalf("first Register(alpha) error = %v, want nil", err)
 		}
-		if err := r.Register("alpha", &fakeCompleter{name: "replacement"}); !errors.Is(err, providerregistry.ErrDuplicateName) {
+		if err := r.Register("alpha", &fakeCompleter{name: "replacement"}); !errors.Is(err, provider.ErrDuplicateName) {
 			t.Fatalf("second Register(alpha) error = %v, want ErrDuplicateName", err)
 		}
 		got, ok := r.Get("alpha")
@@ -64,7 +64,7 @@ func TestRegister(t *testing.T) {
 		}
 	})
 	t.Run("padded name registers under the raw key", func(t *testing.T) {
-		r := providerregistry.New()
+		r := provider.NewRegistry()
 		if err := r.Register(" alpha", &fakeCompleter{name: "alpha"}); err != nil {
 			t.Fatalf("Register(\" alpha\") error = %v, want nil", err)
 		}
@@ -79,7 +79,7 @@ func TestRegister(t *testing.T) {
 
 // TestGet covers the present and absent lookup paths.
 func TestGet(t *testing.T) {
-	r := providerregistry.New()
+	r := provider.NewRegistry()
 	want := &fakeCompleter{name: "alpha"}
 	if err := r.Register("alpha", want); err != nil {
 		t.Fatalf("Register(alpha) error = %v, want nil", err)
@@ -104,7 +104,7 @@ func TestGet(t *testing.T) {
 // TestNames covers the set, not the order: three registrations list
 // all three names.
 func TestNames(t *testing.T) {
-	r := providerregistry.New()
+	r := provider.NewRegistry()
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		if err := r.Register(name, &fakeCompleter{name: name}); err != nil {
 			t.Fatalf("Register(%s) error = %v, want nil", name, err)

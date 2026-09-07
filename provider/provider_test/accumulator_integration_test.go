@@ -1,10 +1,9 @@
-package usage_test
+package provider_test
 
 import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // TestMultiTurnSession simulates one multi-turn conversation: four
@@ -13,7 +12,7 @@ import (
 // asserting the summed result. A second session recorded in the same
 // test proves the first session's total is unaffected by the second.
 func TestMultiTurnSession(t *testing.T) {
-	a := usage.New()
+	a := provider.NewAccumulator()
 
 	turns := []provider.Usage{
 		{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120, CachedTokens: 0},

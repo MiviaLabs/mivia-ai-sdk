@@ -1,11 +1,9 @@
-package providerregistry
+package provider
 
 import (
 	"errors"
 	"strings"
 	"sync"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 // Sentinel errors for Registry operations; test with errors.Is.
@@ -42,12 +40,12 @@ var (
 // the map.
 type Registry struct {
 	mu         sync.RWMutex
-	completers map[string]provider.Completer
+	completers map[string]Completer
 }
 
-// New creates an empty Registry.
-func New() *Registry {
-	return &Registry{completers: make(map[string]provider.Completer)}
+// NewRegistry creates an empty Registry.
+func NewRegistry() *Registry {
+	return &Registry{completers: make(map[string]Completer)}
 }
 
 // Register adds c under name. Rejects a nil c (c == nil) with
@@ -57,7 +55,7 @@ func New() *Registry {
 // strings.TrimSpace) with ErrBlankName. Rejects a name already
 // registered with ErrDuplicateName. Register never replaces an
 // existing entry.
-func (r *Registry) Register(name string, c provider.Completer) error {
+func (r *Registry) Register(name string, c Completer) error {
 	if c == nil {
 		return ErrNilCompleter
 	}
@@ -75,7 +73,7 @@ func (r *Registry) Register(name string, c provider.Completer) error {
 
 // Get resolves name to its registered Completer. Returns (nil, false)
 // when name is absent.
-func (r *Registry) Get(name string) (provider.Completer, bool) {
+func (r *Registry) Get(name string) (Completer, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	c, ok := r.completers[name]

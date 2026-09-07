@@ -6,6 +6,7 @@ package provider/anthropic
   func (c *Client) Chat(ctx context.Context, req provider.Request) (provider.Response, error)
   func (c *Client) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)
   func (c *Client) ContextWindow() (int)
+  func (c *Client) EstimateTokens(req provider.Request) (int, error)
   func (c *Client) Name() (string)
   func (c *Client) ReasoningEffort() (string)
   func (o Options) Validate() (error)

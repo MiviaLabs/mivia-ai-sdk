@@ -312,3 +312,52 @@ request replays both, in order, ahead of the text part.
 - No `policy/` edit and no new import. The package's allowed import
   stays `provider` alone.
 
+
+## Addendum: token estimation
+
+Status: shipped. The package gains `(*Client) EstimateTokens`, the
+`provider.TokenEstimator` capability. agentloop's compaction knobs
+(`Window`, `Summarizer`, `Calibrated`) need a token estimator, and
+nothing in either repo supplied one; the shipped provider now does.
+
+### Addendum scope
+
+Inside:
+
+- One new method, `(*Client) EstimateTokens(req provider.Request)
+  (int, error)`. It posts the request to the Messages API
+  `count_tokens` endpoint, one attempt, no retry schedule.
+- A zero-token short circuit: a request with no messages and no
+  tools returns zero with no round trip.
+- A fallback estimate for any endpoint failure: total prompt
+  characters divided by four, per message content, tool-call
+  arguments, and tool names, descriptions, and schemas.
+
+Outside:
+
+- No change to `Chat`, `ChatStream`, or any other method.
+- No new import edge. The package still imports `provider` plus
+  standard library alone.
+
+### Addendum tests
+
+`provider/anthropic/anthropic_test/estimate_test.go`, on the
+`newTestServer` fixture, carries four tests.
+
+TestEstimateTokensUsesCountTokensEndpoint proves the endpoint's
+exact count comes back for a non-empty request.
+
+TestEstimateTokensFallsBackOnServerFailure proves a server failure
+degrades to the ratio estimate, not an error.
+
+TestEstimateTokensZeroRequest pins the zero-input short circuit and
+asserts the endpoint is never called.
+
+TestEstimateTokensMakesOneAttempt proves the count path retries
+nothing; the endpoint sees exactly one call.
+
+### Verification
+
+- `make verify` passes.
+- `docs/packages/provider/anthropic.md` documents the method and the
+  widened capability list in the same change.

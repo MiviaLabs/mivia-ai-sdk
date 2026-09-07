@@ -7,7 +7,7 @@ packages `net/http` and `encoding/json` alone.
 ## Types
 
 - `Client` — implements `provider.Completer`, `provider.ContextAccountant`,
-  and `provider.ReasoningPolicy`.
+  `provider.ReasoningPolicy`, and `provider.TokenEstimator`.
 - `Options` — configuration for `Client`:
   - `APIKey string` — required Anthropic API key.
   - `BaseURL string` — optional override for the Anthropic API endpoint.
@@ -49,6 +49,13 @@ packages `net/http` and `encoding/json` alone.
   executes a non-streaming turn.
 - `(*Client) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)` —
   executes a streaming turn over SSE.
+- `(*Client) EstimateTokens(req provider.Request) (int, error)` —
+  implements `provider.TokenEstimator`. It posts to the Messages API
+  `count_tokens` endpoint once, with no retry schedule. An empty
+  request (no messages, no tools) returns zero without a round trip.
+  Any endpoint failure falls back to a character-ratio estimate
+  (prompt characters divided by four), so the estimate stays
+  available when the endpoint is not.
 
 ## Sentinels
 

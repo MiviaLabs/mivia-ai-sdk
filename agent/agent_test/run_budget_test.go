@@ -16,7 +16,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -183,9 +183,9 @@ func TestRunMaxBytesExceededFirstStepAlone(t *testing.T) {
 func TestRunBudgetFitsFailureNeverBeats(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 

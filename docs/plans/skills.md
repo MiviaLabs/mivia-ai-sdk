@@ -1,6 +1,8 @@
 # Plan: skills
 
-Status: shipped.
+Status: superseded. Phase 86 quarantined this package into the
+x/ sub-module, which stops advertising it from the core module.
+See docs/plans/agents/phase86_package_consolidation.md.
 
 ## Goal
 
@@ -35,7 +37,7 @@ Outside:
 - SKILL.md or any frontmatter parsing. A caller's own loader builds a
   `Skill` value from whatever source format it uses, the same way no
   package in this module parses an agent card's source file for it;
-  `discovery.Parse` reads bytes already in the wire shape, not a
+  `flow.Parse` reads bytes already in the wire shape, not a
   markdown dialect.
 - Permission or policy enforcement. `RequiredTools` and any future
   permission field are metadata this package publishes; a caller
@@ -59,13 +61,13 @@ Outside:
 
 ### Why zero import edges, not two
 
-`trigger.Condition` is a runtime predicate a caller evaluates once,
-tied to a `trigger.Action` that then runs. A `Skill.Triggers` entry is
+`scheduler.Condition` is a runtime predicate a caller evaluates once,
+tied to a `scheduler.Action` that then runs. A `Skill.Triggers` entry is
 a static phrase, matched by string comparison, never executed.
 Importing `trigger` would buy `skills` nothing; `Skill` has no
 `Action` to pair a `Condition` with.
 
-`discovery.Card.Match` is the closer shape: a value-receiver method
+`flow.Card.Match` is the closer shape: a value-receiver method
 that compares a need string against a capability list with
 `strings.EqualFold`, returning the first hit. `skills.Registry.Match`
 reuses that exact comparison rule but not the method itself.
@@ -88,7 +90,7 @@ The surface below lands in `api/skills.txt` via `make api-update`.
   names tool names this skill expects available; this package never
   reads or enforces it. `Triggers` and `RequiredTools` are exported
   slices; `Add` does not defensively copy either, matching
-  `discovery.Card`'s documented no-copy convention for `Capabilities`
+  `flow.Card`'s documented no-copy convention for `Capabilities`
   and `envelope.Message`'s same rule for its own slice fields. A
   caller that mutates a slice after `Add` mutates the registry's
   stored `Skill` too.
@@ -114,13 +116,13 @@ The surface below lands in `api/skills.txt` via `make api-update`.
   `tools.Registry.Remove`'s exact contract. Removing an absent name
   changes nothing.
 - `func (r *Registry) Names() []string` — lists every registered
-  name. Order is unspecified, matching `providerregistry.Registry.
+  name. Order is unspecified, matching `provider.Registry.
   Names`; a caller that needs a stable order sorts the result.
 - `func (r *Registry) Match(query string) []Skill` — returns every
   registered skill with a `Triggers` entry equal to `query` under
   `strings.EqualFold`. Returns `nil` for a blank `query` or no hit.
   `Match` never trims `query`; a padded query does not match an
-  unpadded trigger entry, mirroring `discovery.Card.Match`. Results
+  unpadded trigger entry, mirroring `flow.Card.Match`. Results
   sort by `Name` ascending, so the result is deterministic across
   calls regardless of Go's unspecified map iteration order.
 - `var ErrBlankName` — `Validate` returns this when `Name` is blank
@@ -164,7 +166,7 @@ Test files live in `skills/skills_test/`, an external test package.
   keeps a reference to; mutate index zero of that slice after `Add`;
   `Get` the same name back and assert its `Triggers[0]` reflects the
   mutation, proving `Add` shares backing storage rather than copying
-  it, matching `discovery.Card`'s no-copy convention.
+  it, matching `flow.Card`'s no-copy convention.
 - `match_test.go` — red-green cases for `Match`. A query equal to one
   skill's trigger entry, case-insensitive, returns that skill. A
   query matching no trigger entry returns `nil`. A blank query

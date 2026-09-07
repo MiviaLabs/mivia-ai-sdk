@@ -22,7 +22,7 @@ or a bound trips. The exported surface below mirrors
   `ContinueOnStop`.
   `Completer` and `Tools` are required; the rest are optional.
   The `Summarizer` field's type is the `Summarizer` interface below,
-  not the concrete `*contextsummary.Summarizer`.
+  not the concrete `*contextplan.Summarizer`.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Bounds` — the loop's numeric caps group: `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
@@ -51,14 +51,14 @@ or a bound trips. The exported surface below mirrors
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
 - `Summarizer` — the one-method interface `Options.Summarizer` takes:
-  `Summarize(ctx, msgs) (contextsummary.Summary, error)`.
-  `*contextsummary.Summarizer` satisfies it. An implementation returns
-  `contextsummary.ErrSummarySkipped` to decline summary generation;
+  `Summarize(ctx, msgs) (contextplan.Summary, error)`.
+  `*contextplan.Summarizer` satisfies it. An implementation returns
+  `contextplan.ErrSummarySkipped` to decline summary generation;
   compactHistory then reuses the prior summary or proceeds without
   one. See "Context planning and prompt-too-long recovery" below.
-  `EnableCompaction` and `contextsummary.NewSummarizer` are the only
+  `EnableCompaction` and `contextplan.NewSummarizer` are the only
   sanctioned constructors for the field's value. A typed nil
-  `(*contextsummary.Summarizer)(nil)` stored by hand is not nil as an
+  `(*contextplan.Summarizer)(nil)` stored by hand is not nil as an
   interface: `Validate` passes it and the first `Summarize` call
   panics.
 - `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
@@ -92,7 +92,7 @@ or a bound trips. The exported surface below mirrors
   `Completer`, in one call. The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
   call fails with `ErrNoTokenEstimator` and leaves `Options`
-  untouched. `EnableCompaction` and `contextsummary.NewSummarizer`
+  untouched. `EnableCompaction` and `contextplan.NewSummarizer`
   are the only sanctioned constructors for `Options.Summarizer`. A
   typed nil stored by hand is not nil as an interface; see the
   `Summarizer` type above for the warning. A minimal entry path is
@@ -131,7 +131,7 @@ or a bound trips. The exported surface below mirrors
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
   `validate` check. The `Summarizer` requirement is an interface nil
   check: an untyped nil fails `ErrSummarizerRequired`. A typed nil
-  `(*contextsummary.Summarizer)(nil)` passes the check, because a
+  `(*contextplan.Summarizer)(nil)` passes the check, because a
   typed nil stored in an interface field is not nil; see the
   `Summarizer` type above for the caveat.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
@@ -200,11 +200,11 @@ Use `errors.Is` to test these.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
   error when a required compaction cannot complete: a
   `contextplan.Compact` failure (wrapping its sentinel), a summarizer
-  failure (wrapping the `contextsummary` sentinel), or a rebuilt
+  failure (wrapping the `contextplan` sentinel), or a rebuilt
   history still over `Window.Budget` (wrapping
   `contextplan.ErrRetentionOverflow`). Nothing is sent for that
   iteration. A summarizer that returns
-  `contextsummary.ErrSummarySkipped` is a skip, not this failure; see
+  `contextplan.ErrSummarySkipped` is a skip, not this failure; see
   the skip rules under "Context planning and prompt-too-long
   recovery" below.
 - `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
@@ -234,10 +234,10 @@ Before each `Completer.Chat`, `Run` estimates the history through
 `Calibrated` and passes through under `Window.CompactTrigger`. At or
 above the trigger it runs the compaction sequence: `contextplan.
 Compact` under a copy of the caller's `Window` whose
-`Compaction.PreserveNames` gained `contextsummary.
+`Compaction.PreserveNames` gained `contextplan.
 SummaryMessageName` when absent, the prior summary message held aside
 as summarizer input, the dropped messages summarized through
-`contextsummary`, the fresh summary injected after the leading system
+`contextplan`, the fresh summary injected after the leading system
 message, and the rebuilt history re-estimated against
 `Window.Budget`. The compacted history replaces the old one only
 after the whole sequence succeeds; a failed compaction returns the
@@ -264,7 +264,7 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
-A summarizer that returns `contextsummary.ErrSummarySkipped` is a
+A summarizer that returns `contextplan.ErrSummarySkipped` is a
 skip, not a compaction failure. The rules differ by path and by
 prior-summary state:
 
@@ -272,7 +272,7 @@ prior-summary state:
   re-injected unchanged after the leading system message, in the
   fresh summary's placement. Both paths proceed. On the recovery
   path the notice lands directly after the re-injected prior, since
-  the prior keeps `contextsummary.SummaryMessageName`.
+  the prior keeps `contextplan.SummaryMessageName`.
 - Skip with no prior, planning path: nothing is injected. The
   dropped messages stay dropped, and the run proceeds with the kept
   history.
@@ -434,7 +434,7 @@ On every hard-fail error return — a canceled ctx, a `Completer.Chat`
 error, `ErrOverBudget`, `ErrTokenBudgetExceeded`,
 `ErrCallsPerTurnExceeded`, a `Trim` error, a post-`Trim`
 `provider.Message.Validate` error, a tool error under
-`ErrorPolicyFail`, a non-veto `hooks.Fire` error, or a non-nil
+`ErrorPolicyFail`, a non-veto `events.Fire` error, or a non-nil
 `Options.Audit` return — `Run` also
 returns the partial `Result` alongside the error, not the zero value,
 once at least one iteration has completed. `Final` and `Stop` stay
@@ -626,7 +626,7 @@ path exactly.
 
 - `New` calls `Definitions` once; a tool registered after `New` but
   before `Run` is never offered to the model.
-- A `PointPreTool` veto (`errors.Is(err, hooks.ErrVetoed)`) stops the
+- A `PointPreTool` veto (`errors.Is(err, events.ErrVetoed)`) stops the
   run with `StopHookVeto` and does not run the tool. Any other
   `PointPreTool` handler error is a hard failure.
 - A wired `Hooks` registry fires `PointPreTool` before each tool

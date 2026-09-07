@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `events`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: hooks
 
 The hooks package gives a caller a named, multi-handler registry for
@@ -83,7 +87,7 @@ no conformance vector applies.
 ## Usage
 
 ```go
-r := hooks.New()
+r := events.New()
 
 observer := func(_ context.Context, payload any) (bool, error) {
     fmt.Println("tool call:", payload)
@@ -93,11 +97,11 @@ blocker := func(_ context.Context, _ any) (bool, error) {
     return false, nil // veto: stop the action
 }
 
-_ = r.Add(hooks.PointPreTool, "audit-log", observer)
-_ = r.Add(hooks.PointPreTool, "policy-gate", blocker)
+_ = r.Add(events.PointPreTool, "audit-log", observer)
+_ = r.Add(events.PointPreTool, "policy-gate", blocker)
 
-err := r.Fire(context.Background(), hooks.PointPreTool, "rm -rf /tmp/x")
-// err wraps hooks.ErrVetoed: "policy-gate" said no, so the action
+err := r.Fire(context.Background(), events.PointPreTool, "rm -rf /tmp/x")
+// err wraps events.ErrVetoed: "policy-gate" said no, so the action
 // does not run. The observer's log line landed first.
 ```
 

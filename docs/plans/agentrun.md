@@ -37,7 +37,7 @@ Outside:
 type Options struct {
 	Agent    *agent.Agent
 	Machine  *machine.Definition
-	Receiver *identity.Identity
+	Receiver *envelope.Identity
 	Bus      *events.Bus
 	Tools    *tools.Registry
 	Scope    *tools.Scope
@@ -47,8 +47,8 @@ type Options struct {
 	Artifacts *Artifacts
 	Room     string
 	Budget   *contextbudget.Limits
-	Monitor  *heartbeat.Monitor
-	Hooks    *hooks.Registry
+	Monitor  *flow.Monitor
+	Hooks    *events.Registry
 	Tracer   *trace.Tracer
 	Wait     agent.AckWait
 }

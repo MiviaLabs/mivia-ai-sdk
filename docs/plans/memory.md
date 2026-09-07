@@ -45,7 +45,7 @@ via `make api-update`.
 - `type Store struct` — holds the blobs and the byte budget.
   Unexported fields. Built only through `New`. Mutex-guarded, safe
   for concurrent use. The zero value is not usable; create a `Store`
-  with `New`, matching `heartbeat.Monitor` and `room.Room`.
+  with `New`, matching `flow.Monitor` and `room.Room`.
 - `func New(maxBytes int) (*Store, error)` — creates a `Store` with a
   fixed byte budget. A non-positive `maxBytes` wraps `ErrNoBudget`.
 - `func (s *Store) Put(content []byte) (ref string, err error)` —

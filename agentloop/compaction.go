@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -55,7 +54,7 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 		}
 		switch {
 		case !skipped:
-			rebuilt = injectAfterSystem(rebuilt, contextsummary.SummaryMessage(summary))
+			rebuilt = injectAfterSystem(rebuilt, contextplan.SummaryMessage(summary))
 			injected = true
 		case prior != nil:
 			// Skip with a prior: re-inject the prior summary
@@ -85,20 +84,20 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 // summarizeDropped prepends the held-aside prior summary, when one
 // exists, to the dropped messages and runs one summarizer call. The
 // bool reports a skip: the summarizer returned
-// contextsummary.ErrSummarySkipped, so no summary exists and the
+// contextplan.ErrSummarySkipped, so no summary exists and the
 // caller reuses the prior or proceeds without one. Any other error
 // keeps the ErrCompactionFailed wrap.
-func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextsummary.Summary, bool, error) {
+func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextplan.Summary, bool, error) {
 	input := dropped
 	if prior != nil {
 		input = append([]provider.Message{*prior}, dropped...)
 	}
 	summary, err := l.summarizer.Summarize(ctx, input)
-	if errors.Is(err, contextsummary.ErrSummarySkipped) {
-		return contextsummary.Summary{}, true, nil
+	if errors.Is(err, contextplan.ErrSummarySkipped) {
+		return contextplan.Summary{}, true, nil
 	}
 	if err != nil {
-		return contextsummary.Summary{}, false, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+		return contextplan.Summary{}, false, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
 	}
 	return summary, false, nil
 }
@@ -131,13 +130,13 @@ func recoveryWindow(w contextplan.Window) contextplan.Window {
 // allocated slice. The caller's backing array never changes.
 func preserveSummaryName(w contextplan.Window) contextplan.Window {
 	for _, name := range w.Compaction.PreserveNames {
-		if name == contextsummary.SummaryMessageName {
+		if name == contextplan.SummaryMessageName {
 			return w
 		}
 	}
 	fresh := make([]string, 0, len(w.Compaction.PreserveNames)+1)
 	fresh = append(fresh, w.Compaction.PreserveNames...)
-	w.Compaction.PreserveNames = append(fresh, contextsummary.SummaryMessageName)
+	w.Compaction.PreserveNames = append(fresh, contextplan.SummaryMessageName)
 	return w
 }
 
@@ -147,7 +146,7 @@ func splitSummary(msgs []provider.Message) (*provider.Message, []provider.Messag
 	var prior *provider.Message
 	rest := make([]provider.Message, 0, len(msgs))
 	for i := range msgs {
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == contextplan.SummaryMessageName {
 			if prior == nil {
 				prior = &msgs[i]
 			}
@@ -182,7 +181,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 	out := make([]provider.Message, 0, len(msgs)+1)
 	for i := range msgs {
 		out = append(out, msgs[i])
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == contextplan.SummaryMessageName {
 			out = append(out, provider.Message{Role: provider.RoleUser, Content: CompactionNotice})
 		}
 	}
@@ -271,7 +270,7 @@ func messagesEqual(a, b provider.Message) bool {
 // percentages. alpha is the calibration factor passed to
 // contextplan.Calibrate. The Options must not already carry Trim;
 // Window and Trim are mutually exclusive, and Validate rejects the
-// pair. EnableCompaction and contextsummary.NewSummarizer are the
+// pair. EnableCompaction and contextplan.NewSummarizer are the
 // only sanctioned constructors for Options.Summarizer. A typed nil
 // stored by hand is not nil as an interface; see the Summarizer
 // interface for the warning.
@@ -280,7 +279,7 @@ func EnableCompaction(o *Options, completer provider.Completer, window contextpl
 	if !ok {
 		return ErrNoTokenEstimator
 	}
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := contextplan.NewSummarizer(completer)
 	if err != nil {
 		return err
 	}

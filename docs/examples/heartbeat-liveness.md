@@ -1,6 +1,6 @@
 # Example: heartbeat liveness
 
-This walkthrough tracks two ids on one `heartbeat.Monitor` with a
+This walkthrough tracks two ids on one `flow.Monitor` with a
 30-second timeout. Both ids beat at fixed times, so the example stays
 deterministic. One id goes silent past the timeout while the other
 stays inside it; `Forget` then drops the silent id from the tracked
@@ -24,12 +24,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 )
 
 func main() {
 	// A 30-second timeout: an id is dead after 30 seconds of silence.
-	mon, err := heartbeat.New(30 * time.Second)
+	mon, err := flow.NewMonitor(30 * time.Second)
 	if err != nil {
 		fmt.Println("new:", err)
 		return

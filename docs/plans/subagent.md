@@ -66,17 +66,17 @@ func LedgerTool(name string, l *ledger.Ledger, actor ledger.Actor, lease time.Du
 func MemoryTool(name string, s *memory.Store) tools.Tool
 func RoomTool(name string, r *room.Room, actor string) tools.Tool
 func SchedulerTool(name string, s *scheduler.Scheduler, job scheduler.Job) tools.Tool
-func HeartbeatTool(name string, m *heartbeat.Monitor) tools.Tool
+func HeartbeatTool(name string, m *flow.Monitor) tools.Tool
 func DiscoveryTool(name string) tools.Tool
 func ProviderTool(name string, c provider.Completer) tools.Tool
-func ProviderRegistryTool(name string, reg *providerregistry.Registry, order []string, retryable providerregistry.Retryable) tools.Tool
-func TriggerTool(name string, reg *trigger.Registry) tools.Tool
+func ProviderRegistryTool(name string, reg *provider.Registry, order []string, retryable provider.Retryable) tools.Tool
+func TriggerTool(name string, reg *scheduler.Registry) tools.Tool
 func ChannelTool(name string, ask channel.Notifier, recipient string) tools.Tool
 
 func NewMailbox(capacity int) (*Mailbox, error)
 func (m *Mailbox) Deliver(msg envelope.Message) error
 func (m *Mailbox) Take() []envelope.Message
-func SendTool(name string, box *Mailbox, id *identity.Identity) tools.Tool
+func SendTool(name string, box *Mailbox, id *envelope.Identity) tools.Tool
 func InboxTool(name string, box *Mailbox) tools.Tool
 ```
 
@@ -234,7 +234,7 @@ Inside:
   that gap for file access by implementing `tools.SchemaTool`
   themselves, the same way `tools.SchemaOf` reads a published schema
   off any tool that declares the interface.
-- `FileToolOptions{Root string; Deny *secretpath.Matcher; MaxReadBytes int64}`
+- `FileToolOptions{Root string; Deny *workspace.Matcher; MaxReadBytes int64}`
   and `(FileToolOptions) Validate() error`, in a new file
   `subagent/filetoolset.go`. `Validate` rejects a blank `Root` and a
   nil `Deny`. `Deny` is mandatory here even though
@@ -243,7 +243,7 @@ Inside:
   tools are the one place in this module that hands filesystem
   access to a model, so they hold their own, stricter requirement. A
   caller that truly wants no secret-path denial passes
-  `secretpath.NewMatcher(nil)`, a non-nil matcher that matches
+  `workspace.NewMatcher(nil)`, a non-nil matcher that matches
   nothing; see "Who supplies the FileTools" for the symlink
   consequence that choice still carries.
 - `FileTools`, an opaque handle holding one opened
@@ -368,13 +368,13 @@ Outside:
   Add a two-path or two-workspace variant only when a caller names
   the need.
 - Spooling an oversized read or diff result automatically.
-  `spool.SpoolTool` already wraps any `tools.Tool` generically,
+  `memory.SpoolTool` already wraps any `tools.Tool` generically,
   including every tool this addendum adds, since `spool` imports only
-  `tools`. Forcing every file tool through `spool.SpoolTool` by
+  `tools`. Forcing every file tool through `memory.SpoolTool` by
   default would need a new `subagent` -> `spool` import edge for a
   concern `spool` already covers at the composition site. A caller
-  that wants spooling builds a `*spool.Spool` with `spool.NewSpool`
-  and wraps `spool.SpoolTool(name, maxBytes, sp,
+  that wants spooling builds a `*memory.Spool` with `memory.NewSpool`
+  and wraps `memory.SpoolTool(name, maxBytes, sp,
   subagent.WorkspaceReadTool(...))` itself, the same way it already
   composes `SpoolTool` over any other oversized-result tool.
 - Any bound on `WorkspaceWriteTool`'s content size beyond what
@@ -405,7 +405,7 @@ The caller assembling a subagent's `tools.Registry` calls
 `subagent.OpenFileTools(subagent.FileToolOptions{Root: root, Deny:
 deny})` once, naming a root path it chose (a task's scratch
 directory, a repository checkout, a sandbox mount) and a
-`*secretpath.Matcher` naming the paths that root must never expose
+`*workspace.Matcher` naming the paths that root must never expose
 to a model. `OpenFileTools` is the one place these five tools accept
 a workspace from; none of the five constructors takes a bare
 `*workspace.Workspace` anymore, so a caller cannot route around the
@@ -467,7 +467,7 @@ replaces its own `workspace.Open` or `workspace.OpenWith` call with
 `subagent/subagent_test/filetools_test.go`'s `openWorkspace` helper,
 rewritten to `openFileTools`, opening through `OpenFileTools` with a
 matcher built from an explicit, test-local deny list rather than
-`secretpath.NewMatcher(nil)`, so the new secret-path tests below
+`workspace.NewMatcher(nil)`, so the new secret-path tests below
 exercise a real refusal.
 
 No compatibility shim ships for the old signatures. AGENTS.md forbids
@@ -517,10 +517,10 @@ model this addendum needs; nothing new is invented.
   provided the caller's `Deny` patterns actually name those paths.
   The residual risk is caller error: a `Deny` that omits a
   credential-bearing path, or a `Deny` built from
-  `secretpath.NewMatcher(nil)` to opt out of the walk while accepting
+  `workspace.NewMatcher(nil)` to opt out of the walk while accepting
   the symlink refusal, still exposes that path to the model. This
   addendum does not validate a caller's pattern list for
-  completeness; `secretpath.Matcher` cannot know what a deployment
+  completeness; `workspace.Matcher` cannot know what a deployment
   considers secret. Mitigation: the caller reviews its root for
   credential-bearing paths before naming its `Deny` patterns, the
   same discipline `docs/plans/secretpath.md` already asks of a
@@ -531,7 +531,7 @@ model this addendum needs; nothing new is invented.
 ```go
 type FileToolOptions struct {
 	Root         string
-	Deny         *secretpath.Matcher
+	Deny         *workspace.Matcher
 	MaxReadBytes int64
 }
 func (o FileToolOptions) Validate() error
@@ -579,7 +579,7 @@ type WorkspaceFileInfo struct {
 }
 ```
 
-`FileToolOptions.Deny` names `*secretpath.Matcher`, so `subagent`
+`FileToolOptions.Deny` names `*workspace.Matcher`, so `subagent`
 needs a direct import of `secretpath`, not only the transitive
 `workspace` -> `secretpath` edge. Every unexported struct behind the
 five tool constructors (for example `workspaceReadTool`,
@@ -611,7 +611,7 @@ stay in the rewritten `subagent/subagent_test/filetools_test.go`.
 
 Both files share the `openFileTools(t, deny []string) *FileTools`
 helper, which replaces the old `openWorkspace` helper. It opens
-through `subagent.OpenFileTools` with a `secretpath.NewMatcher(deny)`
+through `subagent.OpenFileTools` with a `workspace.NewMatcher(deny)`
 matcher and registers `t.Cleanup` on `Close`; every existing `build`
 func's parameter changes from `ws *workspace.Workspace` to
 `ft *subagent.FileTools` to match the new constructor signatures. The
@@ -790,7 +790,7 @@ Enforcement breaks no in-repo caller. Every call site delivers a
 signed message today.
 
 - `sendTool.Run` (`subagent/mailbox.go:101`) delivers a message it
-  signed with its `identity.Identity`.
+  signed with its `envelope.Identity`.
 - `e2e/e2e_test/subagent_messaging_test.go:148` delivers a
   human-signed message.
 - `subagent/subagent_test/mailbox_test.go` and

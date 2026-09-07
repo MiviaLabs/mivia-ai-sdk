@@ -1,5 +1,5 @@
 // Package agent_test also holds the two-agent system-integration
-// test: two real identity.Identity values, a real room.Room, a real
+// test: two real envelope.Identity values, a real room.Room, a real
 // tools.Registry, a real memory.Store, and one a2a.ToPart/FromPart
 // hop, wired around agent.Agent's Run and AckWait, with no mock at
 // any trust boundary.
@@ -14,11 +14,9 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
@@ -56,15 +54,15 @@ func (e *echoTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 }
 
 // exchangeFixture bundles the real state a two-agent exchange test
-// needs: Agent A's identity.Identity-backed agent.Agent, the machine
-// model its plan targets, Agent B's identity.Identity, the shared
+// needs: Agent A's envelope.Identity-backed agent.Agent, the machine
+// model its plan targets, Agent B's envelope.Identity, the shared
 // room.Room, Agent B's tools.Registry and memory.Store, the call
 // counter echoTool increments, and the events.Bus the exchange
 // reports through.
 type exchangeFixture struct {
 	a        *agent.Agent
 	m        *machine.Definition
-	idB      *identity.Identity
+	idB      *envelope.Identity
 	r        *room.Room
 	registry *tools.Registry
 	store    *memory.Store
@@ -77,15 +75,15 @@ type exchangeFixture struct {
 // runs the exchange.
 func newExchangeFixture(t testing.TB, admitB bool) *exchangeFixture {
 	t.Helper()
-	idA, err := identity.New()
+	idA, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	idB, err := identity.New()
+	idB, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "Requester",
 		Description:  "requests an echo from agent B",
 		Capabilities: []string{"exchange"},
@@ -135,7 +133,7 @@ func newExchangeFixture(t testing.TB, admitB bool) *exchangeFixture {
 // membership, since idB is the signer here: unlike req, whose signer
 // is always Agent A the room founder, this message's admission check
 // actually depends on whether Agent B has joined the room.
-func buildReceiptMessage(idB *identity.Identity, req envelope.Message) (envelope.Message, error) {
+func buildReceiptMessage(idB *envelope.Identity, req envelope.Message) (envelope.Message, error) {
 	receipt := envelope.Message{
 		Version:   envelope.Version,
 		ID:        req.ID + "-receipt",

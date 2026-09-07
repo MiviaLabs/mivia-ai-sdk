@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/skills`. The core module no longer
+> ships it.
+
 # Package reference: skills
 
 The skills package holds a reusable instruction bundle a caller
@@ -16,7 +20,7 @@ exported surface below mirrors `api/skills.txt`.
   `RequiredTools` names tool names this skill expects available;
   `skills` never reads or enforces it. `Triggers` and `RequiredTools`
   are exported slices; `Registry.Add` does not defensively copy
-  either, matching `discovery.Card`'s no-copy convention for
+  either, matching `flow.Card`'s no-copy convention for
   `Capabilities`.
 - `Registry` — holds skills by name. Built only through `New`. Safe
   for concurrent `Add`, `Get`, `Remove`, `Names`, and `Match`; a
@@ -35,7 +39,7 @@ exported surface below mirrors `api/skills.txt`.
 - `Registry.Remove(name)` — removes `name`. Returns whether `name` was
   present.
 - `Registry.Names()` — lists every registered name. Order is
-  unspecified, matching `providerregistry.Registry.Names`.
+  unspecified, matching `provider.Registry.Names`.
 - `Registry.Match(query)` — returns every registered skill with a
   `Triggers` entry equal to `query` under `strings.EqualFold`. Results
   sort by `Name` ascending.
@@ -88,8 +92,8 @@ bundle an agent reads as guidance, distinct from `tools.Tool`, an
 atomic callable action. `skills` declines an import edge to `trigger`
 and `discovery`: a `Skill.Triggers` entry is a static phrase matched
 by string comparison, never a runtime predicate like
-`trigger.Condition`, and `Registry.Match` must return every hit, not
-the first one `discovery.Card.Match` returns. `skills` implements the
+`scheduler.Condition`, and `Registry.Match` must return every hit, not
+the first one `flow.Card.Match` returns. `skills` implements the
 same `strings.EqualFold` comparison rule directly rather than import
 either package for one reused loop body. See
 [../plans/skills.md](../plans/skills.md) for the full design

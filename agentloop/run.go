@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
@@ -53,7 +53,7 @@ func (l *Loop) fireStop(ctx context.Context, res Result) {
 	if l.hooksReg == nil {
 		return
 	}
-	_ = l.hooksReg.Fire(ctx, hooks.PointStop, res)
+	_ = l.hooksReg.Fire(ctx, events.PointStop, res)
 }
 
 // runState carries the six pointer parameters runIteration mutated

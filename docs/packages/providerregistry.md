@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `provider`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: providerregistry
 
 The providerregistry package holds named `provider.Completer` values
@@ -116,7 +120,7 @@ func (e echoCompleter) ChatStream(ctx context.Context, req provider.Request) (<-
     return ch, nil
 }
 
-reg := providerregistry.New()
+reg := provider.New()
 _ = reg.Register("primary", echoCompleter{label: "primary"})
 _ = reg.Register("fallback", echoCompleter{label: "fallback"})
 

@@ -1,3 +1,7 @@
+> Status: moved. Phase 86 quarantined this package into the
+> `x/` sub-module at `x/runconfig`. The core module no longer
+> ships it.
+
 # Package reference: runconfig
 
 The runconfig package loads a JSON document into a validated

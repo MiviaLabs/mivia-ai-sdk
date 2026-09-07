@@ -10,8 +10,8 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -31,12 +31,12 @@ func (boomTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 var errBoomSentinel = errors.New("boom: tool down")
 
 // vetoingStop adds one stop-point veto handler.
-func vetoingStop(t *testing.T, reg *hooks.Registry, name string) {
+func vetoingStop(t *testing.T, reg *events.Registry, name string) {
 	t.Helper()
-	if err := reg.Add(hooks.PointStop, name, func(ctx context.Context, payload any) (bool, error) {
+	if err := reg.Add(events.PointStop, name, func(ctx context.Context, payload any) (bool, error) {
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add(%s): %v", name, err)
+		t.Fatalf("events.Add(%s): %v", name, err)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestStopHookJoinsRunError(t *testing.T) {
 	plan, m := oneStepPlanMachine(t)
 	reg := tools.New()
 	addTools(t, reg, boomTool{})
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	vetoingStop(t, hookReg, "auditor")
 	runner, err := agentrun.New(agentrun.Options{
 		Agent: mustAgent(t, plan), Machine: m,
@@ -60,7 +60,7 @@ func TestStopHookJoinsRunError(t *testing.T) {
 	if !errors.Is(err, errBoomSentinel) {
 		t.Fatalf("Run error %v lacks the tool sentinel", err)
 	}
-	if !errors.Is(err, hooks.ErrVetoed) {
+	if !errors.Is(err, events.ErrVetoed) {
 		t.Fatalf("Run error %v lacks the stop-hook veto", err)
 	}
 	if status != "done" {
@@ -72,15 +72,15 @@ func TestStopHookJoinsRunError(t *testing.T) {
 // Wait resolver drives the run, with the final status as payload.
 func TestStopHookFiresWithWaitResolver(t *testing.T) {
 	plan, m := oneStepPlanMachine(t)
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	var stopPayload any
 	fired := false
-	if err := hookReg.Add(hooks.PointStop, "watcher", func(ctx context.Context, payload any) (bool, error) {
+	if err := hookReg.Add(events.PointStop, "watcher", func(ctx context.Context, payload any) (bool, error) {
 		fired = true
 		stopPayload = payload
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	runner, err := agentrun.New(agentrun.Options{
 		Agent: mustAgent(t, plan), Machine: m,
@@ -122,15 +122,15 @@ func TestAskPathFiresPostTool(t *testing.T) {
 	approve := channel.Notifier(func(ctx context.Context, q channel.Question) (channel.Answer, error) {
 		return channel.Answer{QuestionID: q.ID, Approved: true, Payload: "human approved"}, nil
 	})
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	fired := 0
 	var postPayload any
-	if err := hookReg.Add(hooks.PointPostTool, "auditor", func(ctx context.Context, payload any) (bool, error) {
+	if err := hookReg.Add(events.PointPostTool, "auditor", func(ctx context.Context, payload any) (bool, error) {
 		fired++
 		postPayload = payload
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	runner, err := agentrun.New(agentrun.Options{
 		Agent: mustAgent(t, plan), Machine: m,
@@ -166,13 +166,13 @@ func (escalateByName) Run(ctx context.Context, in tools.InOut) (tools.Out, error
 // step message, not a fragment of it.
 func TestPreToolPayloadIsMessage(t *testing.T) {
 	plan, m := oneStepPlanMachine(t)
-	hookReg := hooks.New()
+	hookReg := events.NewRegistry()
 	var prePayload any
-	if err := hookReg.Add(hooks.PointPreTool, "gate", func(ctx context.Context, payload any) (bool, error) {
+	if err := hookReg.Add(events.PointPreTool, "gate", func(ctx context.Context, payload any) (bool, error) {
 		prePayload = payload
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add: %v", err)
+		t.Fatalf("events.Add: %v", err)
 	}
 	calls := 0
 	reg := tools.New()

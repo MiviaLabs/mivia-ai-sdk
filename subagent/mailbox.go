@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -79,7 +78,7 @@ var sendSeq uint64
 // delivers it to the bound mailbox: any caller - agent or human
 // wiring - sends to the recipient through the same surface. The
 // input string is the payload; the result is the message id.
-func SendTool(name string, box *Mailbox, id *identity.Identity) tools.Tool {
+func SendTool(name string, box *Mailbox, id *envelope.Identity) tools.Tool {
 	return &sendTool{name: name, box: box, id: id}
 }
 
@@ -88,7 +87,7 @@ func SendTool(name string, box *Mailbox, id *identity.Identity) tools.Tool {
 type sendTool struct {
 	name string
 	box  *Mailbox
-	id   *identity.Identity
+	id   *envelope.Identity
 }
 
 // Name returns the registry name.

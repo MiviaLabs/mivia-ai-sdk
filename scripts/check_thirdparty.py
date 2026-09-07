@@ -284,8 +284,8 @@ def _write_base(root: Path) -> None:
         '\t_ "google.golang.org/grpc"\n'
         ")\n"
     ))
-    go_packages.write_file(root, "a2aloopback/a2aloopback.go", (
-        "package a2aloopback\n\nimport (\n"
+    go_packages.write_file(root, "a2aclient/a2atest/a2atest.go", (
+        "package a2atest\n\nimport (\n"
         '\t_ "github.com/a2aproject/a2a-go/a2a"\n'
         '\t_ "github.com/a2aproject/a2a-go/a2asrv"\n'
         '\t_ "github.com/a2aproject/a2a-go/a2asrv/eventqueue"\n'

@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // Handler resolves one received message into a restatement. New's
@@ -191,7 +190,7 @@ func New(opts Options) (*Endpoint, error) {
 		resolve: opts.Resolve,
 		bus:     bus,
 		maxBody: maxBody,
-		taskOpts: taskrun.Options{
+		taskOpts: ledger.Options{
 			Ledger: led,
 			Actor:  ledger.Actor(opts.ID),
 			Owner:  ledger.OwnerID(opts.ID),

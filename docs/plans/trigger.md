@@ -1,6 +1,8 @@
 # Plan: trigger
 
-Status: shipped. One new package, `trigger`, with zero internal import
+Status: superseded. Phase 86 folded this package into scheduler;
+the symbols live in scheduler now. See
+docs/plans/agents/phase86_package_consolidation.md.
 edges. It ships independently of phase 38 (flow loop). It composes
 with phase 39 (scheduler) and `channel` only through caller-owned
 closures.
@@ -14,7 +16,7 @@ now, as a real package. This plan still keeps the package to the
 smallest shape that answers "what fired" and "what runs."
 
 This Go SDK has no "skill" concept today. No package in this module
-exports a `Skill` type or a skill registry. `trigger.Action` is a
+exports a `Skill` type or a skill registry. `scheduler.Action` is a
 plain closure shape generic enough to wrap anything invocable: a
 `tools.Tool.Run` call, an `agent.Run` call, a `flow.Run` call, or a
 future concept once one exists as a concrete Go value. This plan adds
@@ -88,7 +90,7 @@ matching `tools`, `discovery`, and `envelope`.
   `machine.Guard`'s exact signature. Reusing it, rather than inventing
   a new predicate type, keeps one predicate shape across the module.
 - `Action func(ctx context.Context) error` matches `scheduler.Job`'s
-  exact signature. A `trigger.Action` and a `scheduler.Job` are
+  exact signature. A `scheduler.Action` and a `scheduler.Job` are
   interchangeable by shape; a caller can pass the same closure to
   either, with no adapter.
 

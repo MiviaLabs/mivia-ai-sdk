@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
-// scenarioKey is the fixed idempotency key the durablefence.Scenario
+// scenarioKey is the fixed idempotency key the ledgertest.Scenario
 // wiring below exercises across every check.
 const scenarioKey = ledger.IdempotencyKey("durablefence-scenario")
 
@@ -54,12 +54,12 @@ func (c *scenarioClock) staleNow() time.Time {
 }
 
 // fenceToToken converts a ledger.FenceToken to the opaque string
-// token durablefence.Scenario carries.
+// token ledgertest.Scenario carries.
 func fenceToToken(f ledger.FenceToken) string {
 	return strconv.FormatUint(uint64(f), 10)
 }
 
-// tokenToFence parses a durablefence.Scenario token back into a
+// tokenToFence parses a ledgertest.Scenario token back into a
 // ledger.FenceToken.
 func tokenToFence(token string) (ledger.FenceToken, error) {
 	v, err := strconv.ParseUint(token, 10, 64)
@@ -70,14 +70,14 @@ func tokenToFence(token string) (ledger.FenceToken, error) {
 }
 
 // buildLedgerScenario admits scenarioKey against l and wires a
-// durablefence.Scenario over Ledger.Claim, Takeover, Renew, Release,
+// ledgertest.Scenario over Ledger.Claim, Takeover, Renew, Release,
 // and State.
-func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) durablefence.Scenario {
+func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) ledgertest.Scenario {
 	t.Helper()
 	mustAdmit(t, l, ctx, scenarioKey, 1)
 	clk := &scenarioClock{}
 
-	return durablefence.Scenario{
+	return ledgertest.Scenario{
 		Claim: func(ctx context.Context) (string, error) {
 			fence, err := l.Claim(ctx, testActor, scenarioKey, scenarioOwner, scenarioLease, clk.now())
 			if err != nil {
@@ -135,7 +135,7 @@ func buildLedgerScenario(t *testing.T, l *ledger.Ledger, ctx context.Context) du
 	}
 }
 
-// TestLedgerScenarioConformance wires a durablefence.Scenario against
+// TestLedgerScenarioConformance wires a ledgertest.Scenario against
 // a real Ledger and runs the shared conformance suite. It runs
 // alongside claim_race_test.go, not in place of it. Run under
 // go test -race.
@@ -143,5 +143,5 @@ func TestLedgerScenarioConformance(t *testing.T) {
 	ctx := context.Background()
 	l := newLedger(t, nil)
 	s := buildLedgerScenario(t, l, ctx)
-	durablefence.RunAll(t, ctx, s)
+	ledgertest.RunAll(t, ctx, s)
 }

@@ -91,7 +91,7 @@ its own goroutine, so more than one goroutine can call `Add`, `Get`,
 `Remove`, `Run`, and `RunScoped` on the same `Registry` at once, once
 that wiring lands. This plan states the concurrency contract now,
 ahead of that caller, matching how `room.Room`, `events.Bus`, and
-`heartbeat.Monitor` each state their contract in their own plan before
+`flow.Monitor` each state their contract in their own plan before
 every caller existed.
 
 A tool that does not implement `ProfiledTool` is unclassified.

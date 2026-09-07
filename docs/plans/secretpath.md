@@ -1,6 +1,8 @@
 # secretpath plan
 
-Status: shipped.
+Status: superseded. Phase 86 folded this package into workspace;
+the symbols live in workspace now. See
+docs/plans/agents/phase86_package_consolidation.md.
 
 ## Goal
 

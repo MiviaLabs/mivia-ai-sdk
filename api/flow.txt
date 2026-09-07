@@ -2,10 +2,13 @@ package flow
   const AdmissionOnFailed
   const AdmissionOnFinished
   const AdmissionOnSucceeded = iota
+  const MissedEvent = "heartbeat.missed"
   const OutcomeFailed
   const OutcomeSkipped
   const OutcomeSucceeded = iota
   const StepCompletedEvent = "flow.step_completed"
+  func (c Card) Match(need string) (string, bool)
+  func (c Card) Validate() (error)
   func (c Checkpoint) Encode() ([]byte, error)
   func (c Checkpoint) Validate() (error)
   func (d Definition) Panels() ([]Panel)
@@ -13,6 +16,10 @@ package flow
   func (d Definition) Steps() ([]Step)
   func (e *failureError) Error() (string)
   func (e *failureError) Unwrap() (error)
+  func (m *Monitor) Alive(id string, now time.Time) (bool)
+  func (m *Monitor) Beat(id string, at time.Time) (error)
+  func (m *Monitor) Dead(now time.Time) ([]string)
+  func (m *Monitor) Forget(id string)
   func (p LoopPolicy) Validate() (error)
   func (p RetryPolicy) NextDelay(attempt int) (time.Duration)
   func (p RetryPolicy) Validate() (error)
@@ -24,9 +31,16 @@ package flow
   func FailureFrom(ctx context.Context) (Failure, bool)
   func LoopStateFrom(ctx context.Context) (LoopState, bool)
   func New(steps []Step, panels []Panel) (*Definition, error)
+  func NewMonitor(timeout time.Duration) (*Monitor, error)
+  func Parse(data []byte) (Card, error)
   func Resume(ctx context.Context, d *Definition, m *machine.Definition, checkpoint Checkpoint, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
   func Run(ctx context.Context, d *Definition, m *machine.Definition, in machine.InOut, confirm Confirm, bus *events.Bus, onCheckpoint func(Checkpoint)) (Report, error)
   type Admission int
+  type Card struct {
+  Name string `json:"name"`
+  Description string `json:"description,omitempty"`
+  Capabilities []string `json:"capabilities"`
+}
   type Checkpoint struct {
   Status machine.Status
   Record machine.InOut
@@ -48,6 +62,8 @@ package flow
   type LoopState struct {
   Iteration int
   Record machine.InOut
+}
+  type Monitor struct {
 }
   type Outcome int
   type Panel []string
@@ -74,3 +90,6 @@ package flow
   Retry *RetryPolicy
   Loop *LoopPolicy
 }
+  var ErrNoID
+  var ErrNoTimeout
+  var ErrStaleBeat

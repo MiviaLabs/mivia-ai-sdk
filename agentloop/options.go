@@ -10,13 +10,10 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // Sentinel errors for Options.Validate, Definitions, and Run; test
@@ -170,19 +167,19 @@ const (
 // and the graceful-stop helpers.
 
 // Summarizer generates the summary one compaction requires. An
-// implementation returns contextsummary.ErrSummarySkipped to decline
+// implementation returns contextplan.ErrSummarySkipped to decline
 // summary generation; compactHistory then reuses the prior summary or
 // proceeds without one. Build the field's value only through
-// EnableCompaction or contextsummary.NewSummarizer. Warning: a typed
-// nil (*contextsummary.Summarizer)(nil) stored in the field is not
+// EnableCompaction or contextplan.NewSummarizer. Warning: a typed
+// nil (*contextplan.Summarizer)(nil) stored in the field is not
 // nil as an interface, so Validate's nil check passes and the first
 // Summarize call panics.
 type Summarizer interface {
-	Summarize(ctx context.Context, msgs []provider.Message) (contextsummary.Summary, error)
+	Summarize(ctx context.Context, msgs []provider.Message) (contextplan.Summary, error)
 }
 
 // Compile-time proof, pinned in options.go under the interface.
-var _ Summarizer = (*contextsummary.Summarizer)(nil)
+var _ Summarizer = (*contextplan.Summarizer)(nil)
 
 // Options declares the blocks one New call wires into a Loop.
 // Completer and Tools are required; the rest are optional.
@@ -218,13 +215,13 @@ type Options struct {
 	OnToolCallError ErrorFunc
 	// Hooks fires PointPreTool and PointPostTool per tool call, and
 	// PointStop once at the end. Optional.
-	Hooks *hooks.Registry
+	Hooks *events.Registry
 	// Tracer opens one span per iteration and one per tool call.
 	// Optional.
 	Tracer *trace.Tracer
 	// Usage records per-iteration provider.Usage under SessionID.
 	// Requires SessionID. Optional.
-	Usage *usage.Accumulator
+	Usage *provider.Accumulator
 	// SessionID keys Usage's running total. Required when Usage is
 	// set.
 	SessionID string

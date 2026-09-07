@@ -5,7 +5,7 @@ package subagent
 import (
 	"context"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -49,7 +49,7 @@ func (t *discoveryTool) Run(ctx context.Context, in tools.InOut) (tools.Out, err
 	if cmd.Op != OpMatch {
 		return tools.Out{}, badCommand(t.name)
 	}
-	card, err := discovery.Parse([]byte(cmd.Card))
+	card, err := flow.Parse([]byte(cmd.Card))
 	if err != nil {
 		return tools.Out{}, err
 	}

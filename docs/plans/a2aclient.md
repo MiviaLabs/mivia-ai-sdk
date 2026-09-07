@@ -141,7 +141,7 @@ Design notes:
   until a second real configuration need exists.
 - `TaskHandle` and `Client` keep their fields unexported. The caller
   never constructs either by hand; both come from `New` and `Send`.
-  This matches `identity.Identity`'s shape: a value returned by a
+  This matches `envelope.Identity`'s shape: a value returned by a
   constructor, never assembled field by field.
 - `State` follows `machine.Status`'s enum convention: a typed int, a
   closed `const` block, and a `String` method. No caller compares
@@ -894,7 +894,7 @@ Two failures follow.
 
 - `Client.Result` returns `ErrNotTerminal` forever for a rejected
   task, because `State.terminal` is false for `StateUnspecified`.
-- `a2aack.Wait` polls a rejected task until its own deadline. It then
+- `a2aclient.Wait` polls a rejected task until its own deadline. It then
   returns `ErrTimeout after unspecified`. A rejected task and a hung
   task look the same to the caller.
 
@@ -993,8 +993,8 @@ Put the three `Client` and `String` tests below in a new file,
   `TestWaitFailsOnUnresolvableStates` — a new function holding a table
   with three rows: `StateRejected`, `StateAuthRequired`,
   `StateInputRequired`. For each row assert the `AckWait` error
-  satisfies `errors.Is(err, a2aack.ErrRemoteFailed)`, does not satisfy
-  `errors.Is(err, a2aack.ErrTimeout)`, and names the state. Today each
+  satisfies `errors.Is(err, a2aclient.ErrRemoteFailed)`, does not satisfy
+  `errors.Is(err, a2aclient.ErrTimeout)`, and names the state. Today each
   row polls to the deadline and returns `ErrTimeout`. Leave the
   shipped `TestWaitFailsCorrectly` byte-identical. Do not fold it into
   the new table.

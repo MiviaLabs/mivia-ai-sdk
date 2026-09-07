@@ -1,8 +1,17 @@
 package events
+  const PointPostTool
+  const PointPreTool
+  const PointStop
   func (b *Bus) Emit(ctx context.Context, e Event) (error)
   func (b *Bus) Subscribe(name Name, h Handler) (error)
   func (e Event) Validate() (error)
+  func (p Point) String() (string)
+  func (p Point) Validate() (error)
+  func (r *Registry) Add(point Point, name string, h HookHandler) (error)
+  func (r *Registry) Fire(ctx context.Context, point Point, payload any) (error)
+  func (r *Registry) Remove(point Point, name string) (bool)
   func New() (*Bus)
+  func NewRegistry() (*Registry)
   type Bus struct {
 }
   type Event struct {
@@ -10,4 +19,12 @@ package events
   Data string
 }
   type Handler func(ctx context.Context, e Event) error
+  type HookHandler func(ctx context.Context, payload any) (bool, error)
   type Name string
+  type Point int
+  type Registry struct {
+}
+  var ErrBlankName
+  var ErrDuplicateName
+  var ErrNilHandler
+  var ErrVetoed

@@ -8,7 +8,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -23,7 +22,7 @@ func (e erroringEstimator) EstimateTokens(req provider.Request) (int, error) {
 
 // summaryAwareEstimator prices one token per content byte, like
 // scaleEstimator, for a request carrying no message named
-// contextsummary.SummaryMessageName. For a request that does carry
+// contextplan.SummaryMessageName. For a request that does carry
 // one, it instead applies failErr or overflow, so a test can isolate
 // checkCompactedBudget's own post-injection re-estimate from every
 // earlier estimate in the same Run call: contextplan.Compact's own
@@ -37,7 +36,7 @@ type summaryAwareEstimator struct {
 func (e summaryAwareEstimator) EstimateTokens(req provider.Request) (int, error) {
 	hasSummary := false
 	for _, m := range req.Messages {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == contextplan.SummaryMessageName {
 			hasSummary = true
 			break
 		}
@@ -65,7 +64,7 @@ func TestRunPlanHistoryEstimatorErrorFailsWithErrPlanFailed(t *testing.T) {
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	w := contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
 	reg := tools.New()
-	summarizer, err := contextsummary.NewSummarizer(&summaryScript{})
+	summarizer, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -112,7 +111,7 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsWithErrCompactionFailed(t *te
 	}
 	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
-	summarizer, err := contextsummary.NewSummarizer(&summaryScript{})
+	summarizer, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -157,7 +156,7 @@ func TestRunCheckCompactedBudgetOverflowAfterSummaryInjection(t *testing.T) {
 	}
 	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
-	summarizer, err := contextsummary.NewSummarizer(&summaryScript{})
+	summarizer, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}

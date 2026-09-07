@@ -5,17 +5,17 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
+	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient/a2atest"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
-// loopbackClient boots the a2aloopback.Loopback fixture and returns a
+// loopbackClient boots the a2atest.Loopback fixture and returns a
 // Client pointed at it. It registers cleanup that stops the server and
 // closes the client. Using Loopback keeps the fixture covered and
 // removes the duplicated in-package server this file once carried.
 func loopbackClient(t *testing.T) *Client {
 	t.Helper()
-	addr, stop, err := a2aloopback.Loopback()
+	addr, stop, err := a2atest.Loopback()
 	if err != nil {
 		t.Fatalf("Loopback: %v", err)
 	}

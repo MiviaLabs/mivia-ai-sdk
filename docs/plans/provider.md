@@ -384,7 +384,7 @@ method runs.
 - No conformance vector: `envelope` owns the wire; this field is
   in-process only.
 - Consumers in this change window: `contextplan.Compact` reads
-  `Name` for `PreserveNames`; `contextsummary.SummaryMessage` sets it;
+  `Name` for `PreserveNames`; `contextplan.SummaryMessage` sets it;
   `agentloop` tests `ErrPromptTooLong`. Each lands its own plan.
 
 ## Change: request controls, reasoning replay, and turn accounting
@@ -490,7 +490,7 @@ type Request struct {
   zero value differs from its four named constants.
 - `Timeout time.Duration` stays a plain value: zero already means "no
   caller-side timeout override", the standard meaning of a zero
-  `time.Duration` in this module (`heartbeat.Monitor` uses the same
+  `time.Duration` in this module (`flow.Monitor` uses the same
   rule).
 - `SessionID string` and `DisableProviderReplay bool` stay plain
   values: an empty string and `false` are their natural "not set"

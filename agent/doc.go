@@ -8,7 +8,7 @@
 // MessageDeliveredEvent, MessageAckedEvent, ThreadVerifiedEvent.
 // translator.go = ErrNoBus, EmitMessageDelivered, EmitMessageAcked,
 // EmitThreadVerified. run.go = AckWait, Run, ErrEscalated, ErrNoWait,
-// ErrNoThread, ErrOverBudget, Run's optional *heartbeat.Monitor beat
+// ErrNoThread, ErrOverBudget, Run's optional *flow.Monitor beat
 // and forget logic, Run's optional *contextbudget.Limits budget
 // check, and confirmStep's room-stamping of Message.Room before
 // a.id.Sign. The definition is data; it states who the agent is,

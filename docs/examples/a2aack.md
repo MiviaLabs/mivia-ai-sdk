@@ -1,7 +1,7 @@
 # Example: a2aack remote step ack
 
 This walkthrough resolves one gated step through a remote A2A task.
-`a2aack.Wait` turns an `a2aclient.Client` into an `agent.AckWait`.
+`a2aclient.Wait` turns an `a2aclient.Client` into an `agent.AckWait`.
 The step's message goes out as a remote task; the remote agent's reply
 becomes the confirmed ack's restatement.
 
@@ -37,7 +37,7 @@ if err != nil {
 	return fmt.Errorf("dial remote agent: %w", err)
 }
 
-ackWait, err := a2aack.Wait(client, a2aack.Options{
+ackWait, err := a2aclient.Wait(client, a2aclient.Options{
 	Poll:    100 * time.Millisecond,
 	Timeout: 30 * time.Second,
 })

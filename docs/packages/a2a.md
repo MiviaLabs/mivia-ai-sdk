@@ -187,9 +187,8 @@ The client half returns exported sentinels. A caller matches one with
   remote"`): `Wait` returns it when the result signer differs from
   `Options.ExpectSigner`.
 
-Every client failure mode above is pinned by a test in
-`a2a/client_test.go`, `a2a/wait_test.go`, or
-`a2a/grpc_internal_test.go`.
+Every client failure mode above is pinned by a test in `a2a`'s own
+test files. Grep the sentinel's name to find the test that pins it.
 
 ## Client usage
 

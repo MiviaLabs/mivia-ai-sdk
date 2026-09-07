@@ -129,12 +129,13 @@ def _tracked_files(root: Path) -> list[Path]:
 def check_repo_name(root: Path) -> list[str]:
     """check_repo_name rejects the private consumer repository's name
     in any tracked path or in any line of a tracked text file. See
-    REPO_NAME for the pattern. The x/ sub-module and .git/ are out of
-    scope, and a binary file is read for its path only."""
+    REPO_NAME for the pattern. Only a top-level x/ or .git/ is out of
+    scope; the same name deeper in the tree is scanned. A binary file
+    is read for its path only."""
     violations = []
     for path in _tracked_files(root):
         rel = path.relative_to(root)
-        if set(rel.parts) & SKIP_TOP_DIRS:
+        if rel.parts[0] in SKIP_TOP_DIRS:
             continue
         if REPO_NAME.search(rel.as_posix()):
             violations.append(
@@ -247,6 +248,22 @@ def _probe_repo_name_allows_this_module(tmp: Path) -> list[str]:
     return []
 
 
+def _probe_repo_name_scans_below_the_root(tmp: Path) -> list[str]:
+    """Only a top-level x/ is out of scope. A directory named x deeper
+    in the tree is scanned like any other."""
+    nested = tmp / "docs" / "x"
+    nested.mkdir(parents=True)
+    cited = _ORG_PREFIX + "-" + "agent"
+    (nested / "notes.md").write_text("# Notes\n\nSee " + cited + ".\n")
+    problems = run(tmp)
+    if not any("matches the banned pattern" in p for p in problems):
+        return [
+            "probe_repo_name_scans_below_the_root: expected a banned-name hit, "
+            f"got {problems}"
+        ]
+    return []
+
+
 def _probe_real_tree_passes() -> list[str]:
     root = Path(__file__).resolve().parent.parent
     problems = run(root)
@@ -269,6 +286,7 @@ def run_probe() -> bool:
         _probe_underscore_dir_exempt,
         _probe_repo_name_fails,
         _probe_repo_name_allows_this_module,
+        _probe_repo_name_scans_below_the_root,
     ):
         with tempfile.TemporaryDirectory(prefix="names-probe-") as tmp:
             problems.extend(fn(Path(tmp)))

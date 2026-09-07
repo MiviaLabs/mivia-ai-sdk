@@ -1,6 +1,7 @@
 package contextplan_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -8,25 +9,28 @@ import (
 
 func TestWindowValidate(t *testing.T) {
 	cases := []struct {
-		name    string
-		w       contextplan.Window
-		wantErr bool
+		name      string
+		w         contextplan.Window
+		wantError error
 	}{
-		{"valid", contextplan.Window{MaxTokens: 100, Reserve: 10}, false},
-		{"zero max tokens", contextplan.Window{MaxTokens: 0, Reserve: 0}, true},
-		{"negative max tokens", contextplan.Window{MaxTokens: -1, Reserve: 0}, true},
-		{"negative reserve", contextplan.Window{MaxTokens: 100, Reserve: -1}, true},
-		{"reserve equals max", contextplan.Window{MaxTokens: 100, Reserve: 100}, true},
-		{"reserve over max", contextplan.Window{MaxTokens: 100, Reserve: 200}, true},
+		{"valid", contextplan.Window{MaxTokens: 100, Reserve: 10}, nil},
+		{"zero max tokens", contextplan.Window{MaxTokens: 0, Reserve: 0}, contextplan.ErrMaxTokensNotPositive},
+		{"negative max tokens", contextplan.Window{MaxTokens: -1, Reserve: 0}, contextplan.ErrMaxTokensNotPositive},
+		{"negative reserve", contextplan.Window{MaxTokens: 100, Reserve: -1}, contextplan.ErrReserveNegative},
+		{"reserve equals max", contextplan.Window{MaxTokens: 100, Reserve: 100}, contextplan.ErrReserveTooLarge},
+		{"reserve over max", contextplan.Window{MaxTokens: 100, Reserve: 200}, contextplan.ErrReserveTooLarge},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.w.Validate()
-			if tc.wantErr && err == nil {
-				t.Fatal("Validate accepted an invalid Window")
+			if tc.wantError == nil {
+				if err != nil {
+					t.Fatalf("Validate rejected a valid Window: %v", err)
+				}
+				return
 			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("Validate rejected a valid Window: %v", err)
+			if !errors.Is(err, tc.wantError) {
+				t.Fatalf("Validate error = %v, want %v", err, tc.wantError)
 			}
 		})
 	}

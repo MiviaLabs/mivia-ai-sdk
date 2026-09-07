@@ -160,8 +160,7 @@ const (
 )
 
 // StopReason and its constants live in stop.go, beside StopDecision
-// and the graceful-stop helpers. Splitting them out keeps options.go
-// under the structure gate's per-file line cap.
+// and the graceful-stop helpers.
 
 // Options declares the blocks one New call wires into a Loop.
 // Completer and Tools are required; the rest are optional.

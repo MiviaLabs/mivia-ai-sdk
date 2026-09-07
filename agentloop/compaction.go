@@ -254,3 +254,38 @@ func EnableCompaction(o *Options, completer provider.Completer, window contextpl
 	o.Calibrated = contextplan.Calibrate(est, alpha)
 	return nil
 }
+
+// applyTrim runs l.trim on history when set, then validates every
+// message in the result. A nil l.trim passes history through
+// unchanged and skips validation.
+func (l *Loop) applyTrim(ctx context.Context, history []provider.Message, iteration int) ([]provider.Message, error) {
+	if l.trim == nil {
+		return history, nil
+	}
+	trimmed, err := l.trim(ctx, history)
+	if err != nil {
+		return nil, fmt.Errorf("agentloop: iteration %d: trim: %w", iteration, err)
+	}
+	for _, m := range trimmed {
+		if err := m.Validate(); err != nil {
+			return nil, fmt.Errorf("agentloop: iteration %d: trimmed message: %w", iteration, err)
+		}
+	}
+	return trimmed, nil
+}
+
+// checkBudget sums history's content bytes and message count and
+// checks them against l.budget.Fits. A nil l.budget means uncapped.
+func (l *Loop) checkBudget(history []provider.Message, iteration int) error {
+	if l.budget == nil {
+		return nil
+	}
+	var bytes int
+	for _, m := range history {
+		bytes += len(m.Content)
+	}
+	if !l.budget.Fits(bytes, len(history)) {
+		return fmt.Errorf("agentloop: iteration %d: %w", iteration, ErrOverBudget)
+	}
+	return nil
+}

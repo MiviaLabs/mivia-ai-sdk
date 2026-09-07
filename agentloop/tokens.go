@@ -24,3 +24,19 @@ func sumUsage(a, b provider.Usage) provider.Usage {
 		CachedTokens:     a.CachedTokens + b.CachedTokens,
 	}
 }
+
+// estimateTokens returns l.calibrated.EstimateTokens(req), or zero
+// when l.calibrated is nil or the estimate call fails. Zero is a
+// safe default: Calibrated.Observe no-ops on a non-positive estimated
+// value, so an estimator failure here degrades silently, the same
+// rule EstimateTokens failures already followed outside planning.
+func (l *Loop) estimateTokens(req provider.Request) int {
+	if l.calibrated == nil {
+		return 0
+	}
+	est, err := l.calibrated.EstimateTokens(req)
+	if err != nil {
+		return 0
+	}
+	return est
+}

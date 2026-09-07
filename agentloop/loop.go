@@ -106,7 +106,7 @@ func New(opts Options) (*Loop, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, err
 	}
-	defs, _, err := Definitions(opts.Tools, opts.Scope)
+	defs, err := Definitions(opts.Tools, opts.Scope)
 	if err != nil {
 		return nil, err
 	}

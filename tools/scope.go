@@ -1,6 +1,15 @@
 package tools
 
-import "context"
+import (
+	"context"
+	"errors"
+	"fmt"
+)
+
+// ErrUnknownApprovalThreshold is ScopeOptions.Validate's error when
+// ApprovalThreshold is not one of the four declared ExecutionClass
+// values. Test with errors.Is.
+var ErrUnknownApprovalThreshold = errors.New("tools: unknown ApprovalThreshold")
 
 // ScopeOptions holds the inputs to NewScope: an allowlist, an extra
 // denylist, and an optional approval gate. Approve and
@@ -25,11 +34,26 @@ type Scope struct {
 	approvalThreshold ExecutionClass
 }
 
+// Validate checks opts: ApprovalThreshold must be one of the four
+// declared ExecutionClass values. An unknown class has no rank, so
+// RunScoped would silently treat it as "never approve"; Validate
+// rejects it instead, for callers that want construction-time
+// enforcement.
+func (o ScopeOptions) Validate() error {
+	switch o.ApprovalThreshold {
+	case ExecutionClassUnclassified, ExecutionClassRead, ExecutionClassWrite, ExecutionClassExternal:
+		return nil
+	}
+	return fmt.Errorf("%w: %q", ErrUnknownApprovalThreshold, string(o.ApprovalThreshold))
+}
+
 // NewScope builds a Scope from opts. An empty Allowlist means every
 // non-denied, non-privileged tool is allowed. ExtraDenylist always
 // removes a name from the allowed set, even when Allowlist also names
 // it. Approve and ApprovalThreshold carry through unchanged for
-// RunScoped's approval check.
+// RunScoped's approval check. An unknown ApprovalThreshold ranks as
+// External there, the highest class, so approve never fires: call
+// Validate first to reject it at construction time.
 func NewScope(opts ScopeOptions) *Scope {
 	s := &Scope{
 		allow:             make(map[string]struct{}, len(opts.Allowlist)),

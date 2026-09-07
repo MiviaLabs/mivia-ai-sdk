@@ -5,6 +5,7 @@ package agentrun
   func (a *Artifacts) Set(step, value string)
   func (a *Artifacts) SetRun(msgID, step, value string)
   func (a *Artifacts) Validate() (error)
+  func (o Options) Validate() (error)
   func (r *Runner) Bus() (*events.Bus)
   func (r *Runner) Run(ctx context.Context, threadID string, in machine.InOut) (machine.Status, machine.InOut, error)
   func DecodeArtifacts(data []byte) (*Artifacts, error)

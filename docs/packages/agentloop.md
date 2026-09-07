@@ -115,8 +115,7 @@ or a bound trips. The exported surface below mirrors
   `validate` check.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
-  denies. The second return holds the names skipped for a missing
-  schema. Fails closed with `ErrNoSchemas` whenever `reg` is
+  denies. Fails closed with `ErrNoSchemas` whenever `reg` is
   non-empty and the offered set ends up empty, whatever the cause. An
   empty `reg` returns an empty set and no error.
 

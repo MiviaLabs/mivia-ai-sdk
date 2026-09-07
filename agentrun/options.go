@@ -87,6 +87,49 @@ type Options struct {
 	Wait agent.AckWait
 }
 
+// Validate checks every option in a fixed order and returns the
+// first failure: Agent and Machine non-nil; Wait and Tools not both
+// set; one of them set; Scope, Store, Ask, and Artifacts each need
+// Tools; Ask needs a non-empty AskTo; a set Budget passes its own
+// Validate; the transition matrix passes ValidateMatrix; and, with
+// Tools set, every Confirm-gated step ID resolves in the registry.
+// The Receiver check stays in New because it reads the resolved
+// signer, not the options alone.
+func (o Options) Validate() error {
+	if o.Agent == nil {
+		return ErrNoAgent
+	}
+	if o.Machine == nil {
+		return ErrNoMachine
+	}
+	if o.Wait != nil && o.Tools != nil {
+		return ErrAmbiguousWait
+	}
+	if o.Wait == nil && o.Tools == nil {
+		return ErrNoResolver
+	}
+	if o.Tools == nil && (o.Scope != nil || o.Store != nil || o.Ask != nil || o.Artifacts != nil) {
+		return ErrNoTools
+	}
+	if o.Ask != nil && o.AskTo == "" {
+		return ErrNoRecipient
+	}
+	if o.Budget != nil {
+		if err := o.Budget.Validate(); err != nil {
+			return fmt.Errorf("agentrun: invalid budget: %w", err)
+		}
+	}
+	if err := ValidateMatrix(o.Agent.Plan(), o.Machine); err != nil {
+		return err
+	}
+	if o.Tools != nil {
+		if err := resolveGatedSteps(o.Agent.Plan(), o.Tools); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // New validates opts, then wires the resolved blocks into a Runner.
 // It runs every check in a fixed order and returns the first failure.
 // Checks: Agent and Machine non-nil; Wait and Tools not both set; one
@@ -96,36 +139,8 @@ type Options struct {
 // Confirm-gated step ID resolves in the registry. New builds a bus
 // when Options.Bus is nil, then returns it through Runner.Bus.
 func New(opts Options) (*Runner, error) {
-	if opts.Agent == nil {
-		return nil, ErrNoAgent
-	}
-	if opts.Machine == nil {
-		return nil, ErrNoMachine
-	}
-	if opts.Wait != nil && opts.Tools != nil {
-		return nil, ErrAmbiguousWait
-	}
-	if opts.Wait == nil && opts.Tools == nil {
-		return nil, ErrNoResolver
-	}
-	if opts.Tools == nil && (opts.Scope != nil || opts.Store != nil || opts.Ask != nil || opts.Artifacts != nil) {
-		return nil, ErrNoTools
-	}
-	if opts.Ask != nil && opts.AskTo == "" {
-		return nil, ErrNoRecipient
-	}
-	if opts.Budget != nil {
-		if err := opts.Budget.Validate(); err != nil {
-			return nil, fmt.Errorf("agentrun: invalid budget: %w", err)
-		}
-	}
-	if err := ValidateMatrix(opts.Agent.Plan(), opts.Machine); err != nil {
+	if err := opts.Validate(); err != nil {
 		return nil, err
-	}
-	if opts.Tools != nil {
-		if err := resolveGatedSteps(opts.Agent.Plan(), opts.Tools); err != nil {
-			return nil, err
-		}
 	}
 
 	receiver := opts.Agent.Signer()

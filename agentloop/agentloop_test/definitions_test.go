@@ -12,12 +12,12 @@ import (
 // TestDefinitionsEmptyRegistry proves an empty Registry yields an
 // empty, no-error result.
 func TestDefinitionsEmptyRegistry(t *testing.T) {
-	defs, skipped, err := agentloop.Definitions(tools.New(), nil)
+	defs, err := agentloop.Definitions(tools.New(), nil)
 	if err != nil {
 		t.Fatalf("Definitions() error = %v, want nil", err)
 	}
-	if len(defs) != 0 || len(skipped) != 0 {
-		t.Fatalf("Definitions() = %v, %v, want both empty", defs, skipped)
+	if len(defs) != 0 {
+		t.Fatalf("Definitions() = %v, want empty", defs)
 	}
 }
 
@@ -28,15 +28,12 @@ func TestDefinitionsSkipsSchemaFreeTools(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "with-schema", schema: []byte(`{}`)})
 	mustAdd(t, reg, &noSchemaTool{name: "without-schema"})
 
-	defs, skipped, err := agentloop.Definitions(reg, nil)
+	defs, err := agentloop.Definitions(reg, nil)
 	if err != nil {
 		t.Fatalf("Definitions() error = %v, want nil", err)
 	}
 	if len(defs) != 1 || defs[0].Name != "with-schema" {
 		t.Fatalf("Definitions() defs = %v, want one entry named with-schema", defs)
-	}
-	if len(skipped) != 1 || skipped[0] != "without-schema" {
-		t.Fatalf("Definitions() skipped = %v, want [without-schema]", skipped)
 	}
 }
 
@@ -50,15 +47,12 @@ func TestDefinitionsSkipsNilSchemaSchemaTool(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &schemaEchoTool{name: "nil-schema", schema: nil})
 
-	defs, skipped, err := agentloop.Definitions(reg, nil)
+	defs, err := agentloop.Definitions(reg, nil)
 	if !errors.Is(err, agentloop.ErrNoSchemas) {
 		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
 	}
 	if len(defs) != 0 {
 		t.Fatalf("Definitions() defs = %v, want none: a nil schema is not a published schema", defs)
-	}
-	if len(skipped) != 1 || skipped[0] != "nil-schema" {
-		t.Fatalf("Definitions() skipped = %v, want [nil-schema]", skipped)
 	}
 	if strings.Contains(err.Error(), "nil-schema") {
 		t.Fatalf("err = %v, want it to not name the skipped tool", err)
@@ -74,15 +68,12 @@ func TestDefinitionsScopeDenial(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "denied", schema: []byte(`{}`)})
 	scope := tools.NewScope(tools.ScopeOptions{Allowlist: []string{"allowed"}})
 
-	defs, skipped, err := agentloop.Definitions(reg, scope)
+	defs, err := agentloop.Definitions(reg, scope)
 	if err != nil {
 		t.Fatalf("Definitions() error = %v, want nil", err)
 	}
 	if len(defs) != 1 || defs[0].Name != "allowed" {
 		t.Fatalf("Definitions() defs = %v, want one entry named allowed", defs)
-	}
-	if len(skipped) != 0 {
-		t.Fatalf("Definitions() skipped = %v, want none: scope denial is not a schema skip", skipped)
 	}
 }
 
@@ -93,15 +84,12 @@ func TestDefinitionsErrNoSchemasEveryToolMissingSchema(t *testing.T) {
 	mustAdd(t, reg, &noSchemaTool{name: "a"})
 	mustAdd(t, reg, &noSchemaTool{name: "b"})
 
-	defs, skipped, err := agentloop.Definitions(reg, nil)
+	defs, err := agentloop.Definitions(reg, nil)
 	if !errors.Is(err, agentloop.ErrNoSchemas) {
 		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
 	}
 	if len(defs) != 0 {
 		t.Fatalf("Definitions() defs = %v, want none", defs)
-	}
-	if len(skipped) != 2 {
-		t.Fatalf("Definitions() skipped = %v, want both names", skipped)
 	}
 }
 
@@ -114,15 +102,12 @@ func TestDefinitionsErrNoSchemasScopeDeniesEveryTool(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "b", schema: []byte(`{}`)})
 	scope := tools.NewScope(tools.ScopeOptions{ExtraDenylist: []string{"a", "b"}})
 
-	defs, skipped, err := agentloop.Definitions(reg, scope)
+	defs, err := agentloop.Definitions(reg, scope)
 	if !errors.Is(err, agentloop.ErrNoSchemas) {
 		t.Fatalf("Definitions() error = %v, want ErrNoSchemas", err)
 	}
 	if len(defs) != 0 {
 		t.Fatalf("Definitions() defs = %v, want none", defs)
-	}
-	if len(skipped) != 0 {
-		t.Fatalf("Definitions() skipped = %v, want none: both tools had schemas", skipped)
 	}
 }
 

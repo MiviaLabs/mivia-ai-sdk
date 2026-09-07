@@ -224,8 +224,7 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 
 // afterChat holds the second half of one iteration's body: recording
 // the response, audit, the token-budget check, and tool-call dispatch
-// through runToolStage. Split from runIteration to keep both under
-// the structure gate's per-function line cap. noticeInRequest,
+// through runToolStage. noticeInRequest,
 // computed by runIteration, picks StopConcluded over StopNoToolCalls
 // when this iteration's Completer request carried the Conclude.Margin
 // nudge.
@@ -339,9 +338,8 @@ func isSteerStop(err error, ctx context.Context, steer *Steer, fromRecovery bool
 	return steer.wasTriggered()
 }
 
-// noticePresent and shouldConclude live in conclude.go alongside
-// the other conclude helpers. Splitting them out keeps run.go under
-// the structure gate's per-file line cap.
+// noticePresent and shouldConclude live in conclude.go alongside the
+// other conclude helpers.
 
 // chatAttempt carries one iteration's Completer outcome. iterCtx is
 // the span-annotated context the iteration ran under, for the turn's
@@ -403,22 +401,6 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		estimatedTokens: l.estimateTokens(retryReq)}
 }
 
-// estimateTokens returns l.calibrated.EstimateTokens(req), or zero
-// when l.calibrated is nil or the estimate call fails. Zero is a
-// safe default: Calibrated.Observe no-ops on a non-positive estimated
-// value, so an estimator failure here degrades silently, the same
-// rule EstimateTokens failures already followed outside planning.
-func (l *Loop) estimateTokens(req provider.Request) int {
-	if l.calibrated == nil {
-		return 0
-	}
-	est, err := l.calibrated.EstimateTokens(req)
-	if err != nil {
-		return 0
-	}
-	return est
-}
-
 // steerableChat calls l.completer.Chat on ctx directly when steer is
 // nil. When steer is non-nil, it derives a child context, arms steer
 // with the child's cancel func, calls Chat on the child, then disarms
@@ -450,40 +432,4 @@ func (l *Loop) hardFail(history []provider.Message, iterations int, totalUsage p
 	return Result{History: history, Iterations: iterations, Usage: totalUsage}
 }
 
-// billedTokens and sumUsage live in tokens.go. Splitting them out
-// keeps run.go under the structure gate's per-file line cap.
-
-// applyTrim runs l.trim on history when set, then validates every
-// message in the result. A nil l.trim passes history through
-// unchanged and skips validation.
-func (l *Loop) applyTrim(ctx context.Context, history []provider.Message, iteration int) ([]provider.Message, error) {
-	if l.trim == nil {
-		return history, nil
-	}
-	trimmed, err := l.trim(ctx, history)
-	if err != nil {
-		return nil, fmt.Errorf("agentloop: iteration %d: trim: %w", iteration, err)
-	}
-	for _, m := range trimmed {
-		if err := m.Validate(); err != nil {
-			return nil, fmt.Errorf("agentloop: iteration %d: trimmed message: %w", iteration, err)
-		}
-	}
-	return trimmed, nil
-}
-
-// checkBudget sums history's content bytes and message count and
-// checks them against l.budget.Fits. A nil l.budget means uncapped.
-func (l *Loop) checkBudget(history []provider.Message, iteration int) error {
-	if l.budget == nil {
-		return nil
-	}
-	var bytes int
-	for _, m := range history {
-		bytes += len(m.Content)
-	}
-	if !l.budget.Fits(bytes, len(history)) {
-		return fmt.Errorf("agentloop: iteration %d: %w", iteration, ErrOverBudget)
-	}
-	return nil
-}
+// billedTokens, sumUsage, and estimateTokens live in tokens.go.

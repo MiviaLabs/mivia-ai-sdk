@@ -150,13 +150,21 @@ func TestWorkBudgetValidateRequiresBothFuncs(t *testing.T) {
 	base := agentloop.Options{Completer: completer, Tools: reg}
 	noReserve := base
 	noReserve.WorkBudget = &agentloop.WorkBudget{Refund: func(context.Context, provider.Request, provider.Usage) {}}
-	if err := noReserve.Validate(); err == nil || !strings.Contains(err.Error(), "WorkBudget") {
-		t.Fatalf("err = %v, want WorkBudget validation error", err)
+	if err := noReserve.Validate(); !errors.Is(err, agentloop.ErrIncompleteWorkBudget) {
+		t.Fatalf("err = %v, want ErrIncompleteWorkBudget", err)
 	}
 	noRefund := base
 	noRefund.WorkBudget = &agentloop.WorkBudget{Reserve: func(context.Context, provider.Request) error { return nil }}
-	if err := noRefund.Validate(); err == nil || !strings.Contains(err.Error(), "WorkBudget") {
-		t.Fatalf("err = %v, want WorkBudget validation error", err)
+	if err := noRefund.Validate(); !errors.Is(err, agentloop.ErrIncompleteWorkBudget) {
+		t.Fatalf("err = %v, want ErrIncompleteWorkBudget", err)
+	}
+	complete := base
+	complete.WorkBudget = &agentloop.WorkBudget{
+		Reserve: func(context.Context, provider.Request) error { return nil },
+		Refund:  func(context.Context, provider.Request, provider.Usage) {},
+	}
+	if err := complete.Validate(); err != nil {
+		t.Fatalf("Validate with both funcs = %v, want nil", err)
 	}
 }
 

@@ -6,6 +6,7 @@ package tools
   const ExecutionClassWrite = "write"
   const TimeoutNone = -1
   func (c ExecutionClass) Validate() (error)
+  func (o ScopeOptions) Validate() (error)
   func (r *Registry) Add(t Tool) (error)
   func (r *Registry) Get(name string) (Tool, bool)
   func (r *Registry) Remove(name string) (bool)
@@ -71,4 +72,5 @@ package tools
   var ErrRunTimeout
   var ErrScopeDenied
   var ErrToolDeclined
+  var ErrUnknownApprovalThreshold
   var ErrUnknownName

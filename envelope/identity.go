@@ -1,8 +1,8 @@
-// Package identity owns one agent key: an ed25519 pair, the key-file
-// load, the invariant check, and the hex signer string. Sign wraps
-// envelope.Sign. See envelope/ for the wire format and
-// ../docs/plans/identity.md for the contract.
-package identity
+// Identity owns one agent key: an ed25519 pair, the key-file load,
+// the invariant check, and the hex signer string. Identity.Sign wraps
+// Sign. See docs/plans/envelope.md for the contract.
+
+package envelope
 
 import (
 	"crypto/ed25519"
@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 )
 
 // Sentinel errors for identity operations; test with errors.Is.
@@ -88,17 +86,17 @@ func (i *Identity) Validate() error {
 	return nil
 }
 
-// Sign validates the identity, then wraps envelope.Sign: value in,
+// Sign validates the identity, then wraps Sign: value in,
 // signed copy out. It never logs the private key.
-func (i *Identity) Sign(m envelope.Message) (envelope.Message, error) {
+func (i *Identity) Sign(m Message) (Message, error) {
 	if err := i.Validate(); err != nil {
-		return envelope.Message{}, err
+		return Message{}, err
 	}
-	return envelope.Sign(i.PrivateKey, m)
+	return Sign(i.PrivateKey, m)
 }
 
 // Signer returns the hex public key derived from the private key, the
-// same form envelope.Sign writes into Message.Signer. Deriving keeps
+// same form Sign writes into Message.Signer. Deriving keeps
 // one source of truth; the exported PublicKey field can diverge.
 // Signer returns "" when the private key is not
 // ed25519.PrivateKeySize bytes; the length guard comes first because

@@ -1,12 +1,12 @@
 package agent_test
 
 import (
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
 // benchPlan builds a two-step, no-panel Definition for the New
@@ -32,9 +32,9 @@ func benchPlan(b testing.TB) *flow.Definition {
 // value directly, so the cost is dominated by card.Validate's
 // capability-map allocation.
 func BenchmarkNew(b *testing.B) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		b.Fatalf("identity.New() unexpected error: %v", err)
+		b.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	plan := benchPlan(b)
@@ -51,9 +51,9 @@ func BenchmarkNew(b *testing.B) {
 // baseline. A regression that copies the plan or the identity fails
 // here.
 func TestNewAllocBudget(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	plan := benchPlan(t)

@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -18,18 +17,18 @@ import (
 )
 
 // namedIdentity builds a fresh identity and its agent name.
-func namedIdentity(t *testing.T, name string) *identity.Identity {
+func namedIdentity(t *testing.T, name string) *envelope.Identity {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New(%s): %v", name, err)
+		t.Fatalf("envelope.New(%s): %v", name, err)
 	}
 	return id
 }
 
 // messagingSubRunner builds the worker that drains its inbox and
 // replies into the orchestrator's mailbox.
-func messagingSubRunner(t *testing.T, subID *identity.Identity, subBox, parentBox *subagent.Mailbox) (*agentrun.Runner, *agentrun.Artifacts) {
+func messagingSubRunner(t *testing.T, subID *envelope.Identity, subBox, parentBox *subagent.Mailbox) (*agentrun.Runner, *agentrun.Artifacts) {
 	t.Helper()
 	plan, err := flow.New([]flow.Step{
 		{ID: "inbox", To: "received", Payload: "drain"},
@@ -66,7 +65,7 @@ func messagingSubRunner(t *testing.T, subID *identity.Identity, subBox, parentBo
 
 // messagingOrchestrator builds the parent that greets, admits the
 // subagent's signer, delegates, and collects the reply.
-func messagingOrchestrator(t *testing.T, parentID *identity.Identity, subID *identity.Identity, subRunner *agentrun.Runner, subArtifacts *agentrun.Artifacts, subBox, parentBox *subagent.Mailbox, r *room.Room) (*agentrun.Runner, *agentrun.Artifacts) {
+func messagingOrchestrator(t *testing.T, parentID *envelope.Identity, subID *envelope.Identity, subRunner *agentrun.Runner, subArtifacts *agentrun.Artifacts, subBox, parentBox *subagent.Mailbox, r *room.Room) (*agentrun.Runner, *agentrun.Artifacts) {
 	t.Helper()
 	admitCmd := subagentToolCommand(t, subagent.RoomCommand{
 		Op: subagent.OpAdmit, ID: subID.Signer(),
@@ -161,7 +160,7 @@ func TestAgentsAndHumansMessageTheSubagent(t *testing.T) {
 
 // assertMessagingResults checks the drained inbox, the collected
 // reply, and the room admission.
-func assertMessagingResults(t *testing.T, subArtifacts, orchArtifacts *agentrun.Artifacts, r *room.Room, subID *identity.Identity) {
+func assertMessagingResults(t *testing.T, subArtifacts, orchArtifacts *agentrun.Artifacts, r *room.Room, subID *envelope.Identity) {
 	t.Helper()
 	inbox, ok := subArtifacts.Get("inbox")
 	if !ok {

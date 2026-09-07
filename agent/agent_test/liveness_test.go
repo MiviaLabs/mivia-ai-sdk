@@ -17,19 +17,18 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
 // oneStepFixtureWithIdentity builds the same one-step, no-panel plan
-// as oneStepFixture, and also returns the *identity.Identity behind
+// as oneStepFixture, and also returns the *envelope.Identity behind
 // the returned Agent, so a test can compute the beat id
-// identity.Signer()+":"+threadID.
-func oneStepFixtureWithIdentity(t *testing.T) (*agent.Agent, *identity.Identity, *machine.Definition) {
+// envelope.Signer()+":"+threadID.
+func oneStepFixtureWithIdentity(t *testing.T) (*agent.Agent, *envelope.Identity, *machine.Definition) {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "step-a", To: "done", Payload: "do the thing"},
@@ -156,9 +155,9 @@ func TestRunHeartbeatForgetsOnPlainWaitError(t *testing.T) {
 // TestRunHeartbeatOneIDServesTwoSteps proves one id serves the whole
 // run: both step's wait calls see the same id as alive.
 func TestRunHeartbeatOneIDServesTwoSteps(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "a", To: "a-done", Payload: "step a payload"},

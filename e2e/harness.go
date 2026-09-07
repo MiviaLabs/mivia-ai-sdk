@@ -12,14 +12,13 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // NewAgent builds an Agent over plan under a fresh identity and a
 // one-capability card, failing only when key generation fails.
 func NewAgent(name string, plan *flow.Definition) (*agent.Agent, error) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		return nil, fmt.Errorf("e2e: identity for %q: %w", name, err)
 	}

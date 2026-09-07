@@ -1,4 +1,4 @@
-package identity_test
+package envelope_test
 
 import (
 	"errors"
@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 )
 
@@ -29,7 +28,7 @@ func testMessage() envelope.Message {
 // TestEnvelopeRoundTrip signs, encodes, decodes, and verifies. A tamper
 // after signing must break verification.
 func TestEnvelopeRoundTrip(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -60,7 +59,7 @@ func TestEnvelopeRoundTrip(t *testing.T) {
 // the wrapped envelope.Sign call unchanged, not just its own Validate
 // failure. A NaN confidence breaks envelope.Sign's JSON marshal step.
 func TestSignForwardsEnvelopeError(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -78,7 +77,7 @@ func TestSignForwardsEnvelopeError(t *testing.T) {
 // TestSignerEqualityAfterLoad pins the canonical signer form: Signer()
 // and the signed message's Signer field derive from the same key bytes.
 func TestSignerEqualityAfterLoad(t *testing.T) {
-	id, err := identity.Load("testdata/valid")
+	id, err := envelope.Load("testdata/keyfile/valid")
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -94,7 +93,7 @@ func TestSignerEqualityAfterLoad(t *testing.T) {
 // TestRoomAdmission admits a member's signed message and rejects a
 // signer outside the roster. The signer string is the room member id.
 func TestRoomAdmission(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -113,7 +112,7 @@ func TestRoomAdmission(t *testing.T) {
 		t.Fatalf("member message rejected: %v", err)
 	}
 
-	outsider, err := identity.New()
+	outsider, err := envelope.New()
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

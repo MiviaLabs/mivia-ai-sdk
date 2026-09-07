@@ -15,7 +15,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -25,9 +24,9 @@ import (
 // values.
 func lifecycleFixture(t *testing.T) (*agent.Agent, *machine.Definition) {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	card := discovery.Card{Name: "Lifecycle Agent", Description: "runs the full loop", Capabilities: []string{"run"}}
 	plan, err := flow.New([]flow.Step{

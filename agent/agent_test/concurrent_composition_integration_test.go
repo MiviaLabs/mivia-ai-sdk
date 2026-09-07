@@ -19,7 +19,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -88,9 +87,9 @@ func newSharedBlocks(t testing.TB) *sharedBlocks {
 // sharedBlocks are shared.
 func concurrentAgent(t testing.TB, index int) (*agent.Agent, *machine.Definition) {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "draft", To: "drafted", Payload: fmt.Sprintf("draft for run %d", index)},

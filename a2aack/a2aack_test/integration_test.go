@@ -2,6 +2,7 @@ package a2aack_test
 
 import (
 	"context"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"strings"
 	"sync"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -56,9 +56,9 @@ func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Def
 	if err != nil {
 		t.Fatalf("machine.New() error: %v", err)
 	}
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() error: %v", err)
+		t.Fatalf("envelope.New() error: %v", err)
 	}
 	a, err := agent.New(id, discovery.Card{Name: "A2A", Capabilities: []string{"ack"}}, plan)
 	if err != nil {

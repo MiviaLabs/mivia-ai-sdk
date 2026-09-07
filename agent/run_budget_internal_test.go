@@ -20,7 +20,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
 // TestConfirmStepFitsFailureNeverBeats proves confirmStep checks
@@ -32,9 +31,9 @@ import (
 // Fits second) still records a beat before it returns the error, and
 // this test catches that: hb.Alive would read true.
 func TestConfirmStepFitsFailureNeverBeats(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{{ID: "step-a", To: "done", Payload: "do the thing"}}, nil)
 	if err != nil {

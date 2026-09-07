@@ -64,7 +64,7 @@ package subagent
   func RoomTool(name string, r *room.Room, actor string) (tools.Tool)
   func RunAll(ctx context.Context, specs []Spec) ([]Result)
   func SchedulerTool(name string, s *scheduler.Scheduler, job scheduler.Job) (tools.Tool)
-  func SendTool(name string, box *Mailbox, id *identity.Identity) (tools.Tool)
+  func SendTool(name string, box *Mailbox, id *envelope.Identity) (tools.Tool)
   func TriggerTool(name string, reg *trigger.Registry) (tools.Tool)
   type DiscoveryCommand struct {
   Op string `json:"op"`

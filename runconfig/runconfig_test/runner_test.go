@@ -3,6 +3,7 @@ package runconfig_test
 import (
 	"context"
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"strings"
 	"testing"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -46,9 +46,9 @@ func loadForRunner(t *testing.T, register bool) *runconfig.Definition {
 // agentOver builds an Agent over d's loaded plan.
 func agentOver(t *testing.T, d *runconfig.Definition) *agent.Agent {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	a, err := agent.New(id, discovery.Card{Name: "runner-test", Capabilities: []string{"cap"}}, d.Plan)
 	if err != nil {
@@ -184,9 +184,9 @@ func innerRunner(t *testing.T) *agentrun.Runner {
 	if err != nil {
 		t.Fatalf("flow.New: %v", err)
 	}
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	a, err := agent.New(id, discovery.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
 	if err != nil {

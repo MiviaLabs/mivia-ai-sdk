@@ -17,7 +17,7 @@ package agentrun
   type Options struct {
   Agent *agent.Agent
   Machine *machine.Definition
-  Receiver *identity.Identity
+  Receiver *envelope.Identity
   Bus *events.Bus
   Tools *tools.Registry
   Scope *tools.Scope

@@ -3,6 +3,7 @@ package agentrun
 import (
 	"errors"
 	"fmt"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
@@ -10,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -49,7 +49,7 @@ type Options struct {
 	// Machine is the status model the plan targets. Required.
 	Machine *machine.Definition
 	// Receiver is the ack From identity. It defaults to Agent.Signer().
-	Receiver *identity.Identity
+	Receiver *envelope.Identity
 	// Bus receives the agent's events. Built when nil; no handler is
 	// subscribed. Callers add handlers through Bus().Subscribe.
 	Bus *events.Bus

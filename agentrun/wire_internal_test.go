@@ -2,13 +2,13 @@ package agentrun
 
 import (
 	"context"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -18,7 +18,7 @@ import (
 // does not expose Runner.receiver, so this internal test asserts it
 // directly via New's wiring.
 func TestRunnerReceiverOverride(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestRunnerReceiverOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	override, err := identity.New()
+	override, err := envelope.New()
 	if err != nil {
 		t.Fatal(err)
 	}

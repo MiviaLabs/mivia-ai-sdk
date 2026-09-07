@@ -11,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -60,9 +59,9 @@ func (t nonTextTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error)
 // mustAgent builds an Agent over plan, failing the test on error.
 func mustAgent(t *testing.T, plan *flow.Definition) *agent.Agent {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	card := discovery.Card{Name: "test-agent", Capabilities: []string{"cap"}}
 	a, err := agent.New(id, card, plan)

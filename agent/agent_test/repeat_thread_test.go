@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -25,9 +24,9 @@ func repeatBus(t *testing.T) *events.Bus {
 // repeatAgent builds an agent over plan under a fresh identity.
 func repeatAgent(t *testing.T, plan *flow.Definition) *agent.Agent {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	a, err := agent.New(id, discovery.Card{Name: "repeat", Capabilities: []string{"t"}}, plan)
 	if err != nil {

@@ -5,22 +5,22 @@ package agent_test
 
 import (
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"strings"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
 // newIdentity builds a fresh Identity for a test case; a nil id
 // stands in for the missing-identity case.
-func newIdentity(t *testing.T) *identity.Identity {
+func newIdentity(t *testing.T) *envelope.Identity {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	return id
 }
@@ -53,7 +53,7 @@ func validPlan(t *testing.T) *flow.Definition {
 // case can supply a nil value without sharing state across cases.
 type newCase struct {
 	name    string
-	id      func(t *testing.T) *identity.Identity
+	id      func(t *testing.T) *envelope.Identity
 	card    discovery.Card
 	plan    func(t *testing.T) *flow.Definition
 	wantErr error  // checked with errors.Is when non-nil
@@ -62,7 +62,7 @@ type newCase struct {
 }
 
 // nilIdentity stands in for the missing-identity case.
-func nilIdentity(t *testing.T) *identity.Identity { return nil }
+func nilIdentity(t *testing.T) *envelope.Identity { return nil }
 
 // nilPlan stands in for the missing-plan case.
 func nilPlan(t *testing.T) *flow.Definition { return nil }

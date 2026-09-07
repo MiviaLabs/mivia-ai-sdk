@@ -19,7 +19,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -30,8 +29,8 @@ import (
 // systemFixture bundles every real value the composition test wires
 // together. No field is a mock; each one is the shipped type.
 type systemFixture struct {
-	idA        *identity.Identity
-	idB        *identity.Identity
+	idA        *envelope.Identity
+	idB        *envelope.Identity
 	a          *agent.Agent
 	m          *machine.Definition
 	r          *room.Room
@@ -142,11 +141,11 @@ func newSystemFixture(t testing.TB) *systemFixture {
 		},
 	}
 	var err error
-	if fx.idA, err = identity.New(); err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+	if fx.idA, err = envelope.New(); err != nil {
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	if fx.idB, err = identity.New(); err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+	if fx.idB, err = envelope.New(); err != nil {
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	if fx.store, err = memory.New(4096); err != nil {
 		t.Fatalf("memory.New() unexpected error: %v", err)

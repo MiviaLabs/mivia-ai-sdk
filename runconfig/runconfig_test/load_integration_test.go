@@ -3,12 +3,12 @@ package runconfig_test
 import (
 	"context"
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -44,9 +44,9 @@ func TestGoldenDocumentRuns(t *testing.T) {
 		t.Fatalf("External.Add: %v", err)
 	}
 
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	card := discovery.Card{Name: "golden-agent", Capabilities: []string{"cap"}}
 	a, err := agent.New(id, card, d.Plan)

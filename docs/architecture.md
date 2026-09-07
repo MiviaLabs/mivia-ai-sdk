@@ -7,7 +7,6 @@ enforces. It is the single design reference for this SDK. See
 [packages/room.md](packages/room.md),
 [packages/machine.md](packages/machine.md),
 [packages/flow.md](packages/flow.md),
-[packages/identity.md](packages/identity.md),
 [packages/events.md](packages/events.md),
 [packages/a2a.md](packages/a2a.md),
 [packages/a2aclient.md](packages/a2aclient.md),
@@ -19,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-nine packages and the import edges
+The diagram shows the forty-eight packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`, `hooks`,
@@ -37,7 +36,6 @@ packages `a2aclient` imports. `workspace` imports `secretpath` alone.
 
 ```mermaid
 flowchart LR
-    agent --> identity
     agent --> discovery
     agent --> flow
     agent --> envelope
@@ -56,7 +54,6 @@ flowchart LR
     flow --> events
     flow --> machine
     heartbeat --> events
-    identity --> envelope
     machine --> events
     ledger --> machine
     ledger --> events
@@ -101,7 +98,6 @@ flowchart LR
     agentrun --> flow
     agentrun --> heartbeat
     agentrun --> hooks
-    agentrun --> identity
     agentrun --> machine
     agentrun --> memory
     agentrun --> tools
@@ -115,7 +111,6 @@ flowchart LR
     subagent --> events
     subagent --> flow
     subagent --> heartbeat
-    subagent --> identity
     subagent --> ledger
     subagent --> machine
     subagent --> memory
@@ -145,7 +140,6 @@ flowchart LR
     e2e --> envelope
     e2e --> events
     e2e --> flow
-    e2e --> identity
     e2e --> ledger
     e2e --> provider
     e2e --> tools
@@ -167,7 +161,7 @@ flowchart LR
 ```
 
 - `envelope/` — the wire unit. It holds Message, Ack, Sign, and
-  VerifyThread. `ContextRef` delegates to `contextref.Mint`, so
+  VerifyThread. It also holds `Identity`, the one agent key. `ContextRef` delegates to `contextref.Mint`, so
   every ref in this SDK has one form. One package per concern. See
   [packages/envelope.md](packages/envelope.md).
 - `room/` — standing groups. It holds the roster, the roles, and
@@ -224,11 +218,6 @@ flowchart LR
   caller owns the bus; the module has no shared bus. Event names are
   typed `Name` constants owned by each domain. See
   [packages/events.md](packages/events.md).
-- `identity/` — one agent key. It provides `Identity`, `New`, `Load`,
-  `Validate`, `Sign`, `Signer`, and the sentinels `ErrKeyFormat` and
-  `ErrKeyInvalid`. `Sign` wraps `envelope.Sign`; `Signer` derives the
-  hex public key from the private key. See
-  [packages/identity.md](packages/identity.md).
 - `discovery/` — the capability card. It provides `Card`, `Parse`,
   `Validate`, and `Match`. `Parse` reads a card from JSON and validates
   it. `Validate` rejects a blank name, an empty capability list, and a
@@ -236,7 +225,7 @@ flowchart LR
   the card, case-insensitive and exact. See
   [packages/discovery.md](packages/discovery.md).
 - `agent/` — the composition layer. It provides `Agent`, `New`,
-  `Name`, and `Capabilities`. `New` wires an `identity.Identity`, a
+  `Name`, and `Capabilities`. `New` wires an `envelope.Identity`, a
   `discovery.Card`, and a `flow.Definition` into one agent. It rejects
   a nil identity, an invalid card, and a nil plan, in that order. It
   also provides the envelope-to-events translator:
@@ -667,7 +656,6 @@ The machine and flow packages compose. Flow imports machine for each
 step's status transitions and for `Run`'s status walk. The machine
 package imports events for its typed `MoveEvent` constant.
 The events package imports nothing; it is a leaf.
-The identity package imports envelope only; it wraps `envelope.Sign`.
 The a2a package imports envelope only; it holds no other edge.
 The a2aclient package imports a2a and envelope. It also imports the
 third-party github.com/a2aproject/a2a-go, the one exception to this

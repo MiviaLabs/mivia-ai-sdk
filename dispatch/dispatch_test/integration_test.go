@@ -13,7 +13,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 )
@@ -64,9 +63,9 @@ func countingBus(t testing.TB, extra ...events.Name) (*events.Bus, *deliveredAck
 // client's opened loop and that both sides' buses see
 // MessageDeliveredEvent and MessageAckedEvent.
 func TestIntegrationSendClosesTheLoop(t *testing.T) {
-	senderID, err := identity.New()
+	senderID, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() error: %v", err)
+		t.Fatalf("envelope.New() error: %v", err)
 	}
 	roomID := "integration-room"
 	r, err := room.New(roomID, senderID.Signer())

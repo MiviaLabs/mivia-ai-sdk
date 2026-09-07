@@ -2,24 +2,24 @@ package agent_test
 
 import (
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 )
 
 // TestNewCrossesIdentityDiscoveryFlow builds a real Identity with
-// identity.New, a real Card by struct literal, and a real Definition
+// envelope.New, a real Card by struct literal, and a real Definition
 // with flow.New over a two-step, no-panel plan. It proves agent.New
 // accepts the triple and that Name and Capabilities resolve to the
 // card's own values, crossing all three import edges the policy
 // declares for agent.
 func TestNewCrossesIdentityDiscoveryFlow(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	card := discovery.Card{
 		Name:         "Agent A",
@@ -71,9 +71,9 @@ func TestFlowNewRejectsCycleBeforeAgentEverRuns(t *testing.T) {
 // confirms ErrNoPlan, the path a cycle-rejected flow.New call never
 // reaches because it returns before agent.New runs.
 func TestNewNilPlanIsErrNoPlan(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read"}}
 	_, err = agent.New(id, card, nil)

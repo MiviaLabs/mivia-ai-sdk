@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Designs a change before any code exists. Use when a task adds a package, changes the API surface, or touches more than one file. Produces the plan, the import policy row, and the test strategy.
-tools: [read_file, write_file, search_replace, glob, grep, run_command]
+tools: [Read, Write, Edit, Glob, Grep, Bash]
 skills: [architect, docs-maintenance]
 ---
 

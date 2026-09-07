@@ -1146,3 +1146,67 @@ orchestrator authorizes the trailers.
   pass.
 - `python3 scripts/check_api.py` passes with no `api/runconfig.txt`
   diff.
+
+## Addendum: a sub step must build a Runner
+
+Status: planned, not yet built.
+
+`buildPlan` recurses into a step's child plan and emits no `Binding`
+for the parent step. `Runner` registers one step tool per binding, so
+the parent step's identifier reaches no registry entry.
+
+`workflow/run` gates every step outside a two-or-more-member panel,
+including a step that carries a child plan. `resolveGatedSteps` then
+fails with `tools.ErrUnknownName` naming the parent step.
+
+The grammar documents `sub` as a valid step binding, and a `loop` step
+requires `sub`. So every document that uses either form fails at
+`Runner`, and the message points the operator at a tool declaration the
+grammar forbids.
+
+Fix: walk the loaded plan in `Runner` and register a pass-through step
+tool for every step that carries a child plan and is gated. The
+pass-through returns its string payload unchanged, which matches the
+ack the parent step's confirmation needs. `flow.Definition` exposes
+`Steps` and `Panels`, so the walk needs no new flow surface.
+
+The walk must mirror the core module's gating walk exactly, then filter
+to the steps that carry a child plan. Two details matter and neither is
+optional.
+
+The panel set is computed per plan level, not once for the document.
+A step's panel membership is a property of the plan that holds it.
+
+A member of a two-or-more-member panel is skipped together with its
+whole subtree. The core walk does not descend into a skipped member's
+child plan, because that member never reaches confirmation. A walk that
+descends anyway registers tools for steps the runner never calls.
+
+The pass-through declares no parameter schema. The ack chain asks a
+tool for its schema and skips argument decoding when none is published,
+so the plain string payload reaches the tool and returns unchanged.
+
+The core module stays untouched. `gatedStepIDs` is correct as written:
+the parent step really is confirmed, so a registry entry must exist for
+it.
+
+### Addendum tests
+
+TestRunnerSubStepBuilds loads a document whose one step carries a child
+plan with a single tool-bound child step. It registers the child's
+external tool, sets an Agent, and calls `Runner`. It asserts no error,
+then runs the plan to its final status. Before the fix `Runner` returns
+`tools.ErrUnknownName` naming the parent step.
+
+TestRunnerLoopStepBuilds does the same for a `loop` step, which the
+grammar requires to carry a child plan. It proves the fix covers the
+second form that reaches the same defect.
+
+### Addendum verification
+
+- `go test -C x ./...` passes. The nested module is invisible to the
+  root `go list`, so it needs its own run.
+- No `policy/layers.json` row changes. `x/runconfig` already imports
+  `tools` and `workflow/run`.
+- No `api/` diff. `Runner`'s exported signature is unchanged and the
+  pass-through tool is unexported.

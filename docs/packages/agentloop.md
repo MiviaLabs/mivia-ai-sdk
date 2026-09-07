@@ -16,11 +16,13 @@ or a bound trips. The exported surface below mirrors
   `OnToolError`, `OnToolCallError`,
   `Hooks`, `Tracer`, `Usage`, `SessionID`, `Bus`, `Budget`, `Trim`,
   `Surface`, `StreamingWriter`, `Audit`, `Window`, `Summarizer`,
-  `Calibrated`, `StartTime`, `Conclude`,
+  `Calibrated`, `ObserveRequest`, `StartTime`, `Conclude`,
   `DedupWithinTurn`, `HeartbeatInterval`,
   `WorkBudget`, `ToolBudget`,
   `ContinueOnStop`.
   `Completer` and `Tools` are required; the rest are optional.
+  The `Summarizer` field's type is the `Summarizer` interface below,
+  not the concrete `*context/plan.Summarizer`.
   `Bus` receives lifecycle and heartbeat events. See "Events" below.
 - `Bounds` — the loop's numeric caps group: `MaxIterations`,
   `MaxCallsPerTurn`, `MaxTotalTokens`, `MaxConcurrentTools`,
@@ -48,6 +50,17 @@ or a bound trips. The exported surface below mirrors
   with `NewSteer` and call `Trigger` from another goroutine. One
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
+- `Summarizer` — the one-method interface `Options.Summarizer` takes:
+  `Summarize(ctx, msgs) (context/plan.Summary, error)`.
+  `*context/plan.Summarizer` satisfies it. An implementation returns
+  `context/plan.ErrSummarySkipped` to decline summary generation;
+  compactHistory then reuses the prior summary or proceeds without
+  one. See "Context planning and prompt-too-long recovery" below.
+  `EnableCompaction` and `context/plan.NewSummarizer` are the only
+  sanctioned constructors for the field's value. A typed nil
+  `(*context/plan.Summarizer)(nil)` stored by hand is not nil as an
+  interface: `Validate` passes it and the first `Summarize` call
+  panics.
 - `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
   at a graceful stop: `Stop`, `Message`, `Iterations`, and
   `History`. See "Stop-decision hook" below.
@@ -79,7 +92,11 @@ or a bound trips. The exported surface below mirrors
   `Completer`, in one call. The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
   call fails with `ErrNoTokenEstimator` and leaves `Options`
-  untouched. A minimal entry path is therefore: `anthropic.New`,
+  untouched. `EnableCompaction` and `context/plan.NewSummarizer`
+  are the only sanctioned constructors for `Options.Summarizer`. A
+  typed nil stored by hand is not nil as an interface; see the
+  `Summarizer` type above for the warning. A minimal entry path is
+  therefore: `anthropic.New`,
   `tools.New`, `Options{Completer, Tools, Bounds: DefaultBounds()}`,
   `EnableCompaction`, `agentloop.New`, `Run`. See
   `docs/examples/_agentloop_minimal`.
@@ -112,7 +129,11 @@ or a bound trips. The exported surface below mirrors
   (`Margin` not negative, then `Deadline` not negative),
   `HeartbeatInterval` requires `Bus`, and finally a non-nil
   `WorkBudget` and a non-nil `ToolBudget` each pass their own
-  `validate` check.
+  `validate` check. The `Summarizer` requirement is an interface nil
+  check: an untyped nil fails `ErrSummarizerRequired`. A typed nil
+  `(*context/plan.Summarizer)(nil)` passes the check, because a
+  typed nil stored in an interface field is not nil; see the
+  `Summarizer` type above for the caveat.
 - `Definitions(reg, scope)` — builds `[]provider.ToolDefinition` from
   `reg`, skipping a tool with no published schema and one `scope`
   denies. Fails closed with `ErrNoSchemas` whenever `reg` is
@@ -179,13 +200,17 @@ Use `errors.Is` to test these.
 - `ErrCompactionFailed` ("agentloop: compaction failed") — `Run`'s
   error when a required compaction cannot complete: a
   `context/plan.Compact` failure (wrapping its sentinel), a summarizer
-  failure (wrapping the `contextsummary` sentinel), or a rebuilt
+  failure (wrapping the `contextplan` sentinel), or a rebuilt
   history still over `Window.Budget` (wrapping
   `context/plan.ErrRetentionOverflow`). Nothing is sent for that
-  iteration.
+  iteration. A summarizer that returns
+  `context/plan.ErrSummarySkipped` is a skip, not this failure; see
+  the skip rules under "Context planning and prompt-too-long
+  recovery" below.
 - `ErrSummarizerRequired` ("agentloop: Window requires Summarizer") —
   `Options.Validate` returns it when `Window` is set and `Summarizer`
-  is nil.
+  is a nil interface. See the typed-nil caveat under
+  `Options.Validate` above.
 - `ErrEstimatorRequired` ("agentloop: Window requires Calibrated") —
   `Options.Validate` returns it when `Window` is set and `Calibrated`
   is nil.
@@ -209,10 +234,10 @@ Before each `Completer.Chat`, `Run` estimates the history through
 `Calibrated` and passes through under `Window.CompactTrigger`. At or
 above the trigger it runs the compaction sequence: `context/plan.
 Compact` under a copy of the caller's `Window` whose
-`Compaction.PreserveNames` gained `contextsummary.
+`Compaction.PreserveNames` gained `context/plan.
 SummaryMessageName` when absent, the prior summary message held aside
 as summarizer input, the dropped messages summarized through
-`contextsummary`, the fresh summary injected after the leading system
+`contextplan`, the fresh summary injected after the leading system
 message, and the rebuilt history re-estimated against
 `Window.Budget`. The compacted history replaces the old one only
 after the whole sequence succeeds; a failed compaction returns the
@@ -239,6 +264,27 @@ with no retry and no notice. Without a `Window`, the rejection
 propagates unchanged. Compaction is LLM-only: no structural fallback
 path exists anywhere in `Run`.
 
+A summarizer that returns `context/plan.ErrSummarySkipped` is a
+skip, not a compaction failure. The rules differ by path and by
+prior-summary state:
+
+- Skip with a prior summary held aside: the prior summary message is
+  re-injected unchanged after the leading system message, in the
+  fresh summary's placement. Both paths proceed. On the recovery
+  path the notice lands directly after the re-injected prior, since
+  the prior keeps `context/plan.SummaryMessageName`.
+- Skip with no prior, planning path: nothing is injected. The
+  dropped messages stay dropped, and the run proceeds with the kept
+  history.
+- Skip with no prior, recovery path: the recovery cannot produce or
+  reuse any summary, so a retry would resend the same oversized
+  prompt. `Run` returns the original `provider.ErrPromptTooLong`
+  unchanged, with no retry and no notice, the same treatment as an
+  uncompacted result.
+
+Every skip path still re-estimates the rebuilt history against
+`Window.Budget` before `Run` sends it.
+
 ## Capability derivation from the Completer
 
 `New` derives two Options defaults from `opts.Completer`, without any
@@ -251,6 +297,9 @@ it does, and `ContextAccountant.ContextWindow()` returns a positive
 value, `New` builds a default `context/plan.Window`: `MaxTokens` is the
 reported window, `Reserve` is one fifth of it, and `Compaction`
 triggers at 80% and targets 50%, matching the 80%-trigger reserve.
+The `opts.Summarizer != nil` gate reads an interface, since the
+`Summarizer` field holds the `Summarizer` interface type; the gate's
+behavior is unchanged.
 Derivation stands down whenever `Trim` is set, because `Validate`
 rejects `Window` and `Trim` together (`ErrTrimExcluded`); a derived
 Window must not manufacture that rejection.
@@ -265,6 +314,49 @@ Both checks are adoption rows over Go interface assertions: a
 Completer that implements neither capability behaves exactly as
 before. See `agentloop/adoption.go` (`deriveWindow`,
 `deriveReasoningEffort`) and `agentloop/capability_derivation_test.go`.
+
+## Request observer
+
+`Options.ObserveRequest` runs after `WorkBudget.Reserve` and before
+every `Completer.Chat` call, including the prompt-too-long recovery
+retry's call. It sees the exact `provider.Request` about to be sent.
+A nil hook is a no-op.
+
+A non-nil return fails the iteration before the call runs, wrapped as
+`agentloop: iteration N: observe request: ...`, with `N` the count
+the adjacent `Reserve` call received. On the primary route the
+attempt hard-fails, exactly like a `Reserve` error. On the recovery
+route the error returns through the `fromRecovery` route, so the
+pre-failure `Result` travels with it. On both routes the loop refunds
+the reservation with zero `Usage` before the attempt error returns:
+`Reserve` had succeeded, and the call never consumed it.
+
+This is not `Options.Audit`: `Audit` records after the fact and
+cannot fail a call. `ObserveRequest` inspects the request before it
+ships and can. See `agentloop/budget.go` (`observeRequest`), beside
+the `WorkBudget` helpers.
+
+## Shape repair
+
+The invariant: the loop never carries a shape-empty assistant turn
+into planning or a request. Shape-empty means `RoleAssistant`,
+`Content` blank after `TrimSpace`, zero `ToolCalls`, and zero
+`ReasoningBlocks`. The predicate mirrors the sibling consumer's
+`DropEmptyAssistantTurns` in
+`mivia-agent/internal/provider/api_message.go`, adapted to
+`provider.Message`: `ReasoningBlocks` here, `ReasoningContent` there.
+
+The filter runs at two points. In `run`, right after the
+caller-supplied messages are copied, so the initial history is
+repaired before the loop starts. At the top of every iteration, before
+`Trim` and window planning, so trim, planning, conclude, and the
+history-rewrite detection see the filtered history as the baseline.
+
+The append of the model's own turn after a call is untouched. A
+graceful stop keeps today's shape: an empty assistant turn produced by
+the final turn stays in `Result.History`. The dropped turns carry no
+reasoning blocks by definition, so the filter never sets
+`DisableProviderReplay` on its own. See `agentloop/shape.go`.
 
 ## Graceful conclude near Bounds.MaxIterations
 

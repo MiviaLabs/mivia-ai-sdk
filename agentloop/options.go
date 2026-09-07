@@ -166,6 +166,21 @@ const (
 // StopReason and its constants live in stop.go, beside StopDecision
 // and the graceful-stop helpers.
 
+// Summarizer generates the summary one compaction requires. An
+// implementation returns plan.ErrSummarySkipped to decline
+// summary generation; compactHistory then reuses the prior summary or
+// proceeds without one. Build the field's value only through
+// EnableCompaction or plan.NewSummarizer. Warning: a typed
+// nil (*plan.Summarizer)(nil) stored in the field is not
+// nil as an interface, so Validate's nil check passes and the first
+// Summarize call panics.
+type Summarizer interface {
+	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
+}
+
+// Compile-time proof, pinned in options.go under the interface.
+var _ Summarizer = (*plan.Summarizer)(nil)
+
 // Options declares the blocks one New call wires into a Loop.
 // Completer and Tools are required; the rest are optional.
 type Options struct {
@@ -252,11 +267,18 @@ type Options struct {
 	// check, so Budget sees the compacted history, not the raw one.
 	Window *plan.Window
 	// Summarizer runs the LLM summary every compaction requires.
-	// Required when Window is set.
-	Summarizer *plan.Summarizer
+	// Required when Window is set. See the Summarizer interface for the
+	// sanctioned constructors and the typed-nil warning.
+	Summarizer Summarizer
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *plan.Calibrated
+	// ObserveRequest runs after reserveWork and before every
+	// Completer.Chat call, including the prompt-too-long recovery retry's
+	// call. A non-nil error fails the iteration before the call runs.
+	// This is not Options.Audit: Audit records after the fact and cannot
+	// fail a call. A nil hook is a no-op.
+	ObserveRequest func(ctx context.Context, req provider.Request) error
 	// Conclude groups the graceful-conclude terms; see the Conclude
 	// type for Margin, Deadline, and Notice.
 	Conclude Conclude

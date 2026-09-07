@@ -101,8 +101,9 @@ package agentloop
   StreamingWriter io.Writer
   Audit AuditFunc
   Window *plan.Window
-  Summarizer *plan.Summarizer
+  Summarizer Summarizer
   Calibrated *plan.Calibrated
+  ObserveRequest func(ctx context.Context, req provider.Request) error
   Conclude Conclude
   StartTime time.Time
   DedupWithinTurn bool
@@ -127,6 +128,9 @@ package agentloop
   History []provider.Message
 }
   type StopReason string
+  type Summarizer interface {
+	Summarize(ctx context.Context, msgs []provider.Message) (plan.Summary, error)
+}
   type Surface struct {
   Advertised []provider.ToolDefinition
   Registry *tools.Registry

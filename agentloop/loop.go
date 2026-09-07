@@ -59,8 +59,12 @@ type Loop struct {
 	schemas         map[string]*schema.Compiled
 	audit           AuditFunc
 	window          *plan.Window
-	summarizer      *plan.Summarizer
+	summarizer      Summarizer
 	calibrated      *plan.Calibrated
+	// observe is the caller's Options.ObserveRequest, nil when unset.
+	// The observeRequest helper in agentloop/budget.go runs it after
+	// reserveWork and before every Completer.Chat call.
+	observe func(ctx context.Context, req provider.Request) error
 	// defaultEffort is the completer's ReasoningPolicy default, read
 	// once at New; empty when the completer has no policy. Each
 	// iteration's request carries it when the request sets no effort
@@ -156,6 +160,7 @@ func New(opts Options) (*Loop, error) {
 		defaultEffort:   defaultEffort,
 		summarizer:      opts.Summarizer,
 		calibrated:      opts.Calibrated,
+		observe:         opts.ObserveRequest,
 		conclude:        conclude,
 		deadlineAt:      computeDeadlineAt(opts.StartTime, opts.Conclude.Deadline),
 		dedupWithinTurn: opts.DedupWithinTurn,

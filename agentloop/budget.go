@@ -79,6 +79,22 @@ func (l *Loop) refundWork(ctx context.Context, req provider.Request) {
 	l.workBudget.Refund(ctx, req, provider.Usage{})
 }
 
+// observeRequest runs the caller's Options.ObserveRequest hook for one
+// iteration's request, after reserveWork and before the Completer call.
+// A nil hook is a no-op. An error wraps with the 1-based iteration
+// count, mirroring reserveWork; the caller refunds the already-held
+// reservation before returning the error, on both the primary and the
+// recovery route.
+func (l *Loop) observeRequest(ctx context.Context, req provider.Request, iteration int) error {
+	if l.observe == nil {
+		return nil
+	}
+	if err := l.observe(ctx, req); err != nil {
+		return fmt.Errorf("agentloop: iteration %d: observe request: %w", iteration, err)
+	}
+	return nil
+}
+
 // settleWork runs the WorkBudget's Refund after a call completed with
 // real Usage. A zero Usage (no observation) keeps the reservation
 // consumed - the legacy loop's consume-on-completion rule - so Refund

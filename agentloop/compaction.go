@@ -2,6 +2,7 @@ package agentloop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
@@ -29,8 +30,12 @@ func (l *Loop) planHistory(ctx context.Context, history []provider.Message, iter
 // anything. notice appends one CompactionNotice message after the
 // summary injection, the recovery path's addition; under notice, an
 // uncompacted result returns early and unchanged, so the caller can
-// treat it as unrecoverable. A failure returns a nil history;
-// history itself never changes on failure.
+// treat it as unrecoverable. A summarizer skip reuses the prior
+// summary when one was held aside; with no prior, the planning path
+// proceeds without a summary and the recovery path returns an
+// uncompacted nil history. Every path passes checkCompactedBudget
+// before returning a rebuilt history. A failure returns a nil
+// history; history itself never changes on failure.
 func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w contextplan.Window, iteration int, notice bool) ([]provider.Message, bool, error) {
 	adjusted := preserveSummaryName(w)
 	prior, rest := splitSummary(history)
@@ -44,12 +49,29 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 	rebuilt := append([]provider.Message(nil), res.Kept...)
 	injected := false
 	if len(res.Dropped) > 0 || prior != nil {
-		summary, err := l.summarizeDropped(ctx, prior, res.Dropped)
+		summary, skipped, err := l.summarizeDropped(ctx, prior, res.Dropped)
 		if err != nil {
 			return nil, false, err
 		}
-		rebuilt = injectAfterSystem(rebuilt, contextsummary.SummaryMessage(summary))
-		injected = true
+		switch {
+		case !skipped:
+			rebuilt = injectAfterSystem(rebuilt, contextsummary.SummaryMessage(summary))
+			injected = true
+		case prior != nil:
+			// Skip with a prior: re-inject the prior summary
+			// unchanged. It keeps SummaryMessageName, so a
+			// recovery notice lands directly after it.
+			rebuilt = injectAfterSystem(rebuilt, *prior)
+			injected = true
+		case notice:
+			// Skip with no prior, recovery path: no summary to
+			// reuse, so a retry would resend the same oversized
+			// prompt. Unrecoverable, like the !compacted case.
+			return nil, false, nil
+		}
+		// Skip with no prior, planning path: inject nothing. The
+		// dropped messages stay dropped and the run proceeds with
+		// the kept history.
 	}
 	if notice {
 		rebuilt = injectNotice(rebuilt, injected)
@@ -61,17 +83,24 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 }
 
 // summarizeDropped prepends the held-aside prior summary, when one
-// exists, to the dropped messages and runs one summarizer call.
-func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextsummary.Summary, error) {
+// exists, to the dropped messages and runs one summarizer call. The
+// bool reports a skip: the summarizer returned
+// contextsummary.ErrSummarySkipped, so no summary exists and the
+// caller reuses the prior or proceeds without one. Any other error
+// keeps the ErrCompactionFailed wrap.
+func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextsummary.Summary, bool, error) {
 	input := dropped
 	if prior != nil {
 		input = append([]provider.Message{*prior}, dropped...)
 	}
 	summary, err := l.summarizer.Summarize(ctx, input)
-	if err != nil {
-		return contextsummary.Summary{}, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+	if errors.Is(err, contextsummary.ErrSummarySkipped) {
+		return contextsummary.Summary{}, true, nil
 	}
-	return summary, nil
+	if err != nil {
+		return contextsummary.Summary{}, false, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+	}
+	return summary, false, nil
 }
 
 // checkCompactedBudget re-estimates the rebuilt history and fails
@@ -185,6 +214,10 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 	if rerr := l.reserveWork(ctx, req, iteration+1); rerr != nil {
 		return provider.Response{}, nil, provider.Request{}, rerr
 	}
+	if oerr := l.observeRequest(ctx, req, iteration+1); oerr != nil {
+		l.refundWork(ctx, req)
+		return provider.Response{}, nil, provider.Request{}, oerr
+	}
 	resp, err := l.completer.Chat(ctx, req)
 	if err != nil {
 		l.refundWork(ctx, req)
@@ -238,7 +271,10 @@ func messagesEqual(a, b provider.Message) bool {
 // percentages. alpha is the calibration factor passed to
 // contextplan.Calibrate. The Options must not already carry Trim;
 // Window and Trim are mutually exclusive, and Validate rejects the
-// pair.
+// pair. EnableCompaction and contextsummary.NewSummarizer are the
+// only sanctioned constructors for Options.Summarizer. A typed nil
+// stored by hand is not nil as an interface; see the Summarizer
+// interface for the warning.
 func EnableCompaction(o *Options, completer provider.Completer, window contextplan.Window, alpha float64) error {
 	est, ok := completer.(provider.TokenEstimator)
 	if !ok {

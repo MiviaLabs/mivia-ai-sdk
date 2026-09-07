@@ -76,6 +76,9 @@ type runState struct {
 func (l *Loop) run(ctx context.Context, msgs []provider.Message, steer *Steer) (Result, error) {
 	stream := newStreamBuffer(l.streamSink)
 	history := append([]provider.Message(nil), msgs...)
+	// Shape repair (agentloop/shape.go): the caller-supplied initial
+	// history is repaired before the loop starts.
+	history = dropEmptyAssistantTurns(history)
 	var totalUsage provider.Usage
 	var runningTokens int
 	iterations := 0
@@ -154,6 +157,12 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 	label := iterationLabel(*st.iterations + 1)
 	l.emitEvent(ctx, EventIterationStart, label)
 	defer func() { l.emitEvent(ctx, EventIterationEnd, label) }()
+
+	// Shape repair (agentloop/shape.go): a shape-empty assistant turn
+	// never reaches trim, planning, conclude, or the request. The
+	// filter runs before the historyRewritten comparisons, so they
+	// never see a pre-filter baseline.
+	*st.history = dropEmptyAssistantTurns(*st.history)
 
 	// Any rewrite of the history prefix invalidates reasoning replay:
 	// a trimmed or compacted turn may have lost the thinking block the
@@ -378,6 +387,12 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	// call fails, settle with the real Usage when it succeeds.
 	if rerr := l.reserveWork(ctx, req, iterations+1); rerr != nil {
 		return chatAttempt{err: rerr, iterCtx: ctx}
+	}
+	if oerr := l.observeRequest(ctx, req, iterations+1); oerr != nil {
+		// Reserve had succeeded and the call never ran; give the
+		// reservation back before the attempt error returns.
+		l.refundWork(ctx, req)
+		return chatAttempt{err: oerr, iterCtx: ctx}
 	}
 	resp, err := l.steerableChat(ctx, req, steer)
 	if span != nil {

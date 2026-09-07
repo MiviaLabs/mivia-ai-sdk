@@ -1,6 +1,8 @@
 # Plan: heartbeat
 
-Status: shipped. No phase contract yet; this is a new top-level
+Status: superseded. Phase 86 folded this package into flow;
+the symbols live in flow now. See
+docs/plans/agents/phase86_package_consolidation.md.
 package. See docs/architecture.md for the module map this package
 joins.
 

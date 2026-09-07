@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
@@ -36,7 +35,7 @@ func BenchmarkNew(b *testing.B) {
 	if err != nil {
 		b.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+	card := flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	plan := benchPlan(b)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -55,7 +54,7 @@ func TestNewAllocBudget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+	card := flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	plan := benchPlan(t)
 	alloc := testing.AllocsPerRun(1000, func() {
 		if _, err := agent.New(id, card, plan); err != nil {

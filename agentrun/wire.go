@@ -14,7 +14,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -36,7 +35,7 @@ type Runner struct {
 	artifacts *Artifacts
 	room      string
 	budget    *contextbudget.Limits
-	monitor   *heartbeat.Monitor
+	monitor   *flow.Monitor
 	hooks     *events.Registry
 	tracer    *trace.Tracer
 	wait      agent.AckWait

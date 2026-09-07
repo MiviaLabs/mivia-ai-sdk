@@ -10,7 +10,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -46,9 +45,9 @@ func commandTools(t *testing.T) []tools.Tool {
 		t.Fatalf("room.New: %v", err)
 	}
 	s := scheduler.New()
-	m, err := heartbeat.New(time.Hour)
+	m, err := flow.NewMonitor(time.Hour)
 	if err != nil {
-		t.Fatalf("heartbeat.New: %v", err)
+		t.Fatalf("flow.New: %v", err)
 	}
 	l, err := ledger.New(nil, nil)
 	if err != nil {

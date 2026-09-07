@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
@@ -144,9 +143,9 @@ func TestSchedulerToolRejectsEveryMsOverflow(t *testing.T) {
 // against explicit clock values, with no sleeps.
 func TestHeartbeatToolReportsLiveness(t *testing.T) {
 	ctx := context.Background()
-	m, err := heartbeat.New(time.Hour)
+	m, err := flow.NewMonitor(time.Hour)
 	if err != nil {
-		t.Fatalf("heartbeat.New: %v", err)
+		t.Fatalf("flow.New: %v", err)
 	}
 	tool := subagent.HeartbeatTool("beat", m)
 	if _, err := tool.Run(ctx, inString(`{"op":"beat","id":"live"}`)); err != nil {
@@ -167,7 +166,7 @@ func TestHeartbeatToolReportsLiveness(t *testing.T) {
 func TestDiscoveryToolMatchesCard(t *testing.T) {
 	ctx := context.Background()
 	tool := subagent.DiscoveryTool("cards")
-	card, err := json.Marshal(discovery.Card{
+	card, err := json.Marshal(flow.Card{
 		Name: "translator", Capabilities: []string{"text.translate"},
 	})
 	if err != nil {

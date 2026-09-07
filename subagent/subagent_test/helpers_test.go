@@ -8,7 +8,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -39,7 +38,7 @@ func prefixRunner(t *testing.T, prefix string, artifacts *agentrun.Artifacts) *a
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}
@@ -78,7 +77,7 @@ func failingRunner(t *testing.T, msg string) *agentrun.Runner {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}
@@ -97,7 +96,7 @@ func runnerOver(t *testing.T, plan *flow.Definition, m *machine.Definition, reg 
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "sub", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}

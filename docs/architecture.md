@@ -18,10 +18,10 @@ API references.
 
 ## Package map
 
-The diagram shows the forty packages and the import edges
+The diagram shows the thirty-eight packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
-`discovery`, `durablefence`, `envfile`, `events`,
+`durablefence`, `envfile`, `events`,
 `longtermmemory`, `provider`, `schema`, `skills`,
 `tools`, and `trace` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
@@ -31,17 +31,15 @@ package in this module. `envelope` imports `contextref` alone.
 `provider`, and `spool`. `spool` imports `tools` alone.
 `a2aloopback` imports `a2a` and `envelope`, the same two internal
 packages `a2aclient` imports. `workspace` imports no other package in this module.
-`runconfig` imports `agentrun`, `contextbudget`, `flow`, `heartbeat`,
+`runconfig` imports `agentrun`, `contextbudget`, `flow`,
 `ledger`, `machine`, `memory`, `room`, `subagent`, `tools`, and `trace`.
 
 ```mermaid
 flowchart LR
-    agent --> discovery
     agent --> flow
     agent --> envelope
     agent --> events
     agent --> machine
-    agent --> heartbeat
     agent --> contextbudget
     envelope --> contextref
     contextstate --> contextref
@@ -53,7 +51,6 @@ flowchart LR
     contextsession --> spool
     flow --> events
     flow --> machine
-    heartbeat --> events
     machine --> events
     ledger --> machine
     ledger --> events
@@ -87,7 +84,6 @@ flowchart LR
     agentrun --> envelope
     agentrun --> events
     agentrun --> flow
-    agentrun --> heartbeat
     agentrun --> machine
     agentrun --> memory
     agentrun --> tools
@@ -95,11 +91,9 @@ flowchart LR
     subagent --> agent
     subagent --> agentrun
     subagent --> channel
-    subagent --> discovery
     subagent --> envelope
     subagent --> events
     subagent --> flow
-    subagent --> heartbeat
     subagent --> ledger
     subagent --> machine
     subagent --> memory
@@ -111,7 +105,6 @@ flowchart LR
     runconfig --> agentrun
     runconfig --> contextbudget
     runconfig --> flow
-    runconfig --> heartbeat
     runconfig --> ledger
     runconfig --> machine
     runconfig --> memory
@@ -121,7 +114,6 @@ flowchart LR
     runconfig --> trace
     e2e --> agent
     e2e --> channel
-    e2e --> discovery
     e2e --> envelope
     e2e --> events
     e2e --> flow
@@ -131,7 +123,6 @@ flowchart LR
     anthropic["provider/anthropic"] --> provider
     contextbudget[contextbudget]
     schema[schema]
-    discovery[discovery]
     durablefence[durablefence]
     envelope[envelope]
     events[events]
@@ -195,7 +186,17 @@ flowchart LR
   later from the last checkpoint through `Resume`. `Checkpoint`'s
   `Failed` field preserves an already-caught failure's outcome across
   the pause, but a still-pending fallback's handler bookkeeping does
-  not survive the round trip. See [packages/flow.md](packages/flow.md).
+  not survive the round trip. The package also holds the capability
+  card: `Card`, `Parse`, `Validate`, and `Match`. `Parse` reads a
+  card from JSON and validates it. `Validate` rejects a blank name,
+  an empty capability list, and a duplicate capability. `Match`
+  compares a capability request against the card, case-insensitive
+  and exact. It also holds the liveness monitor: `Monitor`,
+  `NewMonitor`, `Beat`, `Alive`, `Dead`, `Forget`, and the typed
+  event name `MissedEvent`. `Monitor` tracks liveness by time: it
+  records the last beat per id and reports which ids have gone silent
+  past a fixed timeout; it never emits `MissedEvent` itself.
+  See [packages/flow.md](packages/flow.md).
 - `events/` — the in-process reaction bus and the hook registry. It
   provides `Name`, `Event`, `Handler`, `Bus`, `New`, `Subscribe`, and
   `Emit`. It also provides the hook surface: `Point`, `PointPreTool`,
@@ -209,15 +210,9 @@ flowchart LR
   `Bus`, `Fire` propagates the decision: a veto or a handler error
   short-circuits the chain and returns to the caller. See
   [packages/events.md](packages/events.md).
-- `discovery/` — the capability card. It provides `Card`, `Parse`,
-  `Validate`, and `Match`. `Parse` reads a card from JSON and validates
-  it. `Validate` rejects a blank name, an empty capability list, and a
-  duplicate capability. `Match` compares a capability request against
-  the card, case-insensitive and exact. See
-  [packages/discovery.md](packages/discovery.md).
 - `agent/` — the composition layer. It provides `Agent`, `New`,
   `Name`, and `Capabilities`. `New` wires an `envelope.Identity`, a
-  `discovery.Card`, and a `flow.Definition` into one agent. It rejects
+  `flow.Card`, and a `flow.Definition` into one agent. It rejects
   a nil identity, an invalid card, and a nil plan, in that order. It
   also provides the envelope-to-events translator:
   `EmitMessageDelivered`, `EmitMessageAcked`, and `EmitThreadVerified`.
@@ -231,7 +226,7 @@ flowchart LR
   caller-supplied `AckWait`, and emits `MessageAckedEvent` once the
   ack confirms. An `AckWait` that wraps `ErrEscalated` routes the step
   back to the caller. `Run` takes one trailing, optional
-  `*heartbeat.Monitor` parameter. A non-nil `Monitor` beats one id,
+  `*flow.Monitor` parameter. A non-nil `Monitor` beats one id,
   `a.id.Signer()+":"+threadID`, right before each gated step's
   `AckWait` call, and forgets it once, on every return path. A panel
   step reaches no beat call. `Run` never reads `Dead` itself; an
@@ -245,24 +240,17 @@ flowchart LR
   checks `wait`, `bus`, and `threadID`; an invalid budget returns its
   wrapped `Validate` error. A non-nil, valid `budget` makes
   `confirmStep` check `budget.Fits`, right before each gated step's
-  `AckWait` call and before the heartbeat beat, against the cumulative
+  `AckWait` call and before the liveness beat, against the cumulative
   byte total of every message built so far plus the step about to run.
   A `Fits` failure returns `ErrOverBudget`, wrapping the step ID,
   without beating, waiting, or emitting `MessageAckedEvent` for that
   step. A panel step reaches no `Fits` check either. `agent` imports
-  `envelope`, `events`, `machine`, `heartbeat`, and `contextbudget`;
+  `envelope`, `events`, `machine`, `flow`, and `contextbudget`;
   none of those five packages imports `agent` or any of the other
   four. `provider`, `tools`, `mcp`, `ledger`, and `memory` compose
   around `Run` through `AckWait` and plan construction, not through a
   direct import edge; the flowchart above draws no new arrow for them.
   See [packages/agent.md](packages/agent.md).
-- `heartbeat/` — a leaf primitive. It provides `Monitor`, `New`,
-  `Beat`, `Alive`, `Dead`, `Forget`, and the typed event name
-  `MissedEvent`. `Monitor` tracks liveness by time: it records the
-  last beat per id and reports which ids have gone silent past a
-  fixed timeout. `agent`, `agentrun`, `runconfig`, and `subagent`
-  import it. It imports `events` only, for the `MissedEvent`
-  constant. See [packages/heartbeat.md](packages/heartbeat.md).
 - `a2a/` — the A2A v1.0 mapping. It provides `Part`, `Mapped`,
   `ToPart`, and `FromPart`. `ToPart` validates an `envelope.Message`
   and encodes it into a `Part`. `FromPart` decodes a `Part` back into

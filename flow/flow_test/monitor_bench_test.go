@@ -1,19 +1,19 @@
-package heartbeat_test
+package flow_test
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // buildThousandIDMonitor creates a Monitor with one thousand tracked
 // ids, half alive and half past the timeout at the returned now.
-func buildThousandIDMonitor() (*heartbeat.Monitor, time.Time) {
+func buildThousandIDMonitor() (*flow.Monitor, time.Time) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	timeout := time.Minute
-	m, err := heartbeat.New(timeout)
+	m, err := flow.NewMonitor(timeout)
 	if err != nil {
 		panic("buildThousandIDMonitor: " + err.Error())
 	}

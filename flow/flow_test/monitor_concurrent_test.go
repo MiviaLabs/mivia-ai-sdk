@@ -1,4 +1,4 @@
-package heartbeat_test
+package flow_test
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // TestConcurrentBeatSameIDLatestWins runs N goroutines beating one id
@@ -16,7 +16,7 @@ import (
 func TestConcurrentBeatSameIDLatestWins(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	timeout := time.Hour
-	m, err := heartbeat.New(timeout)
+	m, err := flow.NewMonitor(timeout)
 	if err != nil {
 		t.Fatalf("New error = %v", err)
 	}
@@ -59,7 +59,7 @@ func TestConcurrentBeatSameIDLatestWins(t *testing.T) {
 func TestConcurrentBeatDistinctIDsDeadSet(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	timeout := time.Minute
-	m, err := heartbeat.New(timeout)
+	m, err := flow.NewMonitor(timeout)
 	if err != nil {
 		t.Fatalf("New error = %v", err)
 	}

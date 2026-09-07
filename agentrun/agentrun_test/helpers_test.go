@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -63,7 +62,7 @@ func mustAgent(t *testing.T, plan *flow.Definition) *agent.Agent {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	card := discovery.Card{Name: "test-agent", Capabilities: []string{"cap"}}
+	card := flow.Card{Name: "test-agent", Capabilities: []string{"cap"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)

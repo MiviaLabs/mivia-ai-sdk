@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -35,7 +34,7 @@ func newRunAgent(t testing.TB, plan *flow.Definition) *agent.Agent {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Runner", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Runner", Capabilities: []string{"run"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
@@ -309,7 +308,7 @@ func TestRunOneStepSignFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Broken", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Broken", Capabilities: []string{"run"}}
 	a, err := agent.New(&envelope.Identity{}, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)

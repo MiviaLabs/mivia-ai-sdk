@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -150,7 +149,7 @@ func TestKindBuildersPinConstructors(t *testing.T) {
 		}),
 			""},
 		{HeartbeatKind, true, refWireable(func(*Definition) (tools.Tool, error) {
-			monitor, err := heartbeat.New(30 * time.Second)
+			monitor, err := flow.NewMonitor(30 * time.Second)
 			if err != nil {
 				return nil, err
 			}

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -97,7 +96,7 @@ func buildAgent(payload string) (*agent.Agent, *envelope.Identity, error) {
 		return nil, nil, err
 	}
 
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "composition-agent",
 		Capabilities: []string{"invoice.review"},
 	}

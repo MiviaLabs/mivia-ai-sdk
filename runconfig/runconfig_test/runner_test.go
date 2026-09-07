@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
@@ -50,7 +49,7 @@ func agentOver(t *testing.T, d *runconfig.Definition) *agent.Agent {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "runner-test", Capabilities: []string{"cap"}}, d.Plan)
+	a, err := agent.New(id, flow.Card{Name: "runner-test", Capabilities: []string{"cap"}}, d.Plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}
@@ -188,7 +187,7 @@ func innerRunner(t *testing.T) *agentrun.Runner {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "inner", Capabilities: []string{"cap"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}

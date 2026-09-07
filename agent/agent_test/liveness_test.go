@@ -13,10 +13,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -36,7 +34,7 @@ func oneStepFixtureWithIdentity(t *testing.T) (*agent.Agent, *envelope.Identity,
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Runner", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Runner", Capabilities: []string{"run"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
@@ -68,9 +66,9 @@ func TestRunHeartbeatNilIsInert(t *testing.T) {
 func TestRunHeartbeatBeatsBeforeWait(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	seenAlive := false
@@ -92,9 +90,9 @@ func TestRunHeartbeatBeatsBeforeWait(t *testing.T) {
 func TestRunHeartbeatForgetsOnSuccess(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "", nil)
@@ -111,9 +109,9 @@ func TestRunHeartbeatForgetsOnSuccess(t *testing.T) {
 func TestRunHeartbeatForgetsOnEscalation(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	escalate := func(ctx context.Context, msg envelope.Message) (envelope.Ack, error) {
@@ -134,9 +132,9 @@ func TestRunHeartbeatForgetsOnEscalation(t *testing.T) {
 func TestRunHeartbeatForgetsOnPlainWaitError(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	wantErr := errors.New("wait: connection refused")
@@ -166,7 +164,7 @@ func TestRunHeartbeatOneIDServesTwoSteps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Runner", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Runner", Capabilities: []string{"run"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
@@ -179,9 +177,9 @@ func TestRunHeartbeatOneIDServesTwoSteps(t *testing.T) {
 		t.Fatalf("machine.New() unexpected error: %v", err)
 	}
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	calls := 0
@@ -212,9 +210,9 @@ func TestRunHeartbeatOneIDServesTwoSteps(t *testing.T) {
 func TestRunHeartbeatOneNanosecondTimeoutAges(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Nanosecond)
+	hb, err := flow.NewMonitor(time.Nanosecond)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 	var second bool

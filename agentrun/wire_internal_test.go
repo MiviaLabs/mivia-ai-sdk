@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -22,7 +21,7 @@ func TestRunnerReceiverOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	card := discovery.Card{Name: "test", Capabilities: []string{"cap"}}
+	card := flow.Card{Name: "test", Capabilities: []string{"cap"}}
 	plan, err := flow.New([]flow.Step{{ID: "t1", To: "resolved"}}, nil)
 	if err != nil {
 		t.Fatal(err)

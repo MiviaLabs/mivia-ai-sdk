@@ -11,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aclient"
 	"github.com/MiviaLabs/mivia-ai-sdk/a2aloopback"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -59,7 +58,7 @@ func integrationFixture(t testing.TB) (agent.AckWait, *agent.Agent, *machine.Def
 	if err != nil {
 		t.Fatalf("envelope.New() error: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "A2A", Capabilities: []string{"ack"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "A2A", Capabilities: []string{"ack"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New() error: %v", err)
 	}

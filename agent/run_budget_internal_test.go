@@ -15,11 +15,9 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 )
 
 // TestConfirmStepFitsFailureNeverBeats proves confirmStep checks
@@ -39,7 +37,7 @@ func TestConfirmStepFitsFailureNeverBeats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	a, err := New(id, discovery.Card{Name: "Runner", Capabilities: []string{"run"}}, plan)
+	a, err := New(id, flow.Card{Name: "Runner", Capabilities: []string{"run"}}, plan)
 	if err != nil {
 		t.Fatalf("New() unexpected error: %v", err)
 	}
@@ -49,9 +47,9 @@ func TestConfirmStepFitsFailureNeverBeats(t *testing.T) {
 		t.Fatalf("Subscribe(MessageDeliveredEvent) unexpected error: %v", err)
 	}
 
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	hbID := id.Signer() + ":thread-1"
 

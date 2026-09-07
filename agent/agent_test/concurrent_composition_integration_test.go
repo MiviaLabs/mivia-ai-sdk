@@ -1,6 +1,6 @@
 // Package agent_test also holds the concurrent composition test.
 // Eight agent.Run calls share one memory.Store, one tools.Registry,
-// one ledger.Ledger, one events.Bus, and one heartbeat.Monitor. It
+// one ledger.Ledger, one events.Bus, and one flow.Monitor. It
 // proves the shared blocks stay correct under real contention.
 // See docs/plans/agents/PHASES.md's phase 47 paragraph.
 package agent_test
@@ -14,11 +14,9 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -43,7 +41,7 @@ type sharedBlocks struct {
 	tool     *reviewTool
 	l        *ledger.Ledger
 	bus      *events.Bus
-	hb       *heartbeat.Monitor
+	hb       *flow.Monitor
 	approves atomic.Int64
 	counts   map[events.Name]*atomic.Int64
 }
@@ -66,8 +64,8 @@ func newSharedBlocks(t testing.TB) *sharedBlocks {
 	if sb.store, err = memory.New(1 << 20); err != nil {
 		t.Fatalf("memory.New() unexpected error: %v", err)
 	}
-	if sb.hb, err = heartbeat.New(time.Minute); err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+	if sb.hb, err = flow.NewMonitor(time.Minute); err != nil {
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	sb.l = newSystemLedger(t, sb.bus)
 	for _, name := range []events.Name{
@@ -97,7 +95,7 @@ func concurrentAgent(t testing.TB, index int) (*agent.Agent, *machine.Definition
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: fmt.Sprintf("Worker %d", index), Capabilities: []string{"draft"}}
+	card := flow.Card{Name: fmt.Sprintf("Worker %d", index), Capabilities: []string{"draft"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)

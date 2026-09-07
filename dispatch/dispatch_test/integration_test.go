@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/dispatch"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
@@ -109,7 +108,7 @@ func TestIntegrationSendClosesTheLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("machine.New() error: %v", err)
 	}
-	a, err := agent.New(senderID, discovery.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
+	a, err := agent.New(senderID, flow.Card{Name: "Dispatch", Capabilities: []string{"ack"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New() error: %v", err)
 	}

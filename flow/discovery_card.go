@@ -1,4 +1,4 @@
-package discovery
+package flow
 
 import (
 	"encoding/json"

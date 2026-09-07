@@ -27,7 +27,7 @@ package agentrun
   Artifacts *Artifacts
   Room string
   Budget *contextbudget.Limits
-  Monitor *heartbeat.Monitor
+  Monitor *flow.Monitor
   Hooks *events.Registry
   Tracer *trace.Tracer
   Wait agent.AckWait

@@ -126,6 +126,11 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
+    "flow.MissedEvent": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
     "flow.Outcomes": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
@@ -137,11 +142,6 @@
       "permanent": true
     },
     "flow.Roots": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "heartbeat.MissedEvent": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true

@@ -14,11 +14,9 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -40,7 +38,7 @@ type systemFixture struct {
 	store      *memory.Store
 	l          *ledger.Ledger
 	bus        *events.Bus
-	hb         *heartbeat.Monitor
+	hb         *flow.Monitor
 	approvals  atomic.Int64
 	fireCounts map[string]*atomic.Int64
 	caught     atomic.Value
@@ -169,10 +167,10 @@ func newSystemFixture(t testing.TB) *systemFixture {
 	}
 	fx.scope = newReviewScope(approvalNotifier(&fx.approvals))
 	fx.l = newSystemLedger(t, fx.bus)
-	if fx.hb, err = heartbeat.New(time.Minute); err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+	if fx.hb, err = flow.NewMonitor(time.Minute); err != nil {
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "System Composer",
 		Description:  "drives the whole-system composition scenario",
 		Capabilities: []string{"review", "publish"},

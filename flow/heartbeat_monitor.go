@@ -1,4 +1,4 @@
-package heartbeat
+package flow
 
 import (
 	"errors"
@@ -32,9 +32,9 @@ type Monitor struct {
 	last    map[string]time.Time
 }
 
-// New creates a Monitor with a fixed timeout. A non-positive timeout
+// NewMonitor creates a Monitor with a fixed timeout. A non-positive timeout
 // wraps ErrNoTimeout.
-func New(timeout time.Duration) (*Monitor, error) {
+func NewMonitor(timeout time.Duration) (*Monitor, error) {
 	if timeout <= 0 {
 		return nil, ErrNoTimeout
 	}

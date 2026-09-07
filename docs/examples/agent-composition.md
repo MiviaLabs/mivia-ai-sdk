@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -119,7 +118,7 @@ func buildAgent(payload string) (*agent.Agent, *envelope.Identity, error) {
 		return nil, nil, err
 	}
 
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "composition-agent",
 		Capabilities: []string{"invoice.review"},
 	}
@@ -300,7 +299,7 @@ plan-construction time, before `flow.New` and `agent.New` run, because
 generated content back into an already-signed message.
 
 `buildAgent` builds a one-step `flow.Definition` carrying that drafted
-payload, then binds a fresh `envelope.Identity` and a `discovery.Card`
+payload, then binds a fresh `envelope.Identity` and a `flow.Card`
 into an `*agent.Agent`. It also returns a second identity, the one the
 `AckWait` closure signs the confirmed `Ack` with, standing in for a
 distinct receiver.

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
@@ -21,7 +20,7 @@ func TestNewCrossesIdentityDiscoveryFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "Agent A",
 		Capabilities: []string{"read", "write"},
 	}
@@ -75,7 +74,7 @@ func TestNewNilPlanIsErrNoPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read"}}
+	card := flow.Card{Name: "Agent A", Capabilities: []string{"read"}}
 	_, err = agent.New(id, card, nil)
 	if !errors.Is(err, agent.ErrNoPlan) {
 		t.Fatalf("agent.New() error = %v, want errors.Is match for ErrNoPlan", err)

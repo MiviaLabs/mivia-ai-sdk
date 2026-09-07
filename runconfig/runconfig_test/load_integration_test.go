@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/runconfig"
@@ -48,7 +47,7 @@ func TestGoldenDocumentRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	card := discovery.Card{Name: "golden-agent", Capabilities: []string{"cap"}}
+	card := flow.Card{Name: "golden-agent", Capabilities: []string{"cap"}}
 	a, err := agent.New(id, card, d.Plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)

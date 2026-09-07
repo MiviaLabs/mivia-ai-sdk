@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
@@ -22,7 +21,7 @@ var (
 // stay unexported.
 type Agent struct {
 	id   *envelope.Identity
-	card discovery.Card
+	card flow.Card
 	plan *flow.Definition
 }
 
@@ -32,7 +31,7 @@ type Agent struct {
 // hit. New does not re-run flow's cycle check: a plan built through
 // flow.New already passed it, and a zero-value plan carries no step
 // for the check to reject.
-func New(id *envelope.Identity, card discovery.Card, plan *flow.Definition) (*Agent, error) {
+func New(id *envelope.Identity, card flow.Card, plan *flow.Definition) (*Agent, error) {
 	if id == nil {
 		return nil, ErrNoIdentity
 	}
@@ -54,7 +53,7 @@ func (a *Agent) Name() string {
 
 // Capabilities returns the card's Capabilities slice: the same
 // backing array Parse or the caller set, with no defensive copy.
-// This matches discovery.Card, which carries the same caller-owned
+// This matches flow.Card, which carries the same caller-owned
 // mutability.
 func (a *Agent) Capabilities() []string {
 	return a.card.Capabilities

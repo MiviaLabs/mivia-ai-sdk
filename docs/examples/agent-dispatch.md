@@ -18,11 +18,9 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
 	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
@@ -43,7 +41,7 @@ func main() {
 		return
 	}
 
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "dispatch-agent",
 		Capabilities: []string{"task.dispatch"},
 	}
@@ -73,9 +71,9 @@ func main() {
 		return
 	}
 
-	mon, err := heartbeat.New(30 * time.Second)
+	mon, err := flow.NewMonitor(30 * time.Second)
 	if err != nil {
-		fmt.Println("heartbeat.New:", err)
+		fmt.Println("flow.New:", err)
 		return
 	}
 
@@ -139,7 +137,7 @@ func main() {
 sequenceDiagram
     participant Agent
     participant Run as Run
-    participant HB as heartbeat.Monitor
+    participant HB as flow.Monitor
     participant Receiver as Receiver (AckWait)
     participant Room as room
     participant Bus as events.Bus
@@ -162,7 +160,7 @@ sequenceDiagram
 ## What the program shows
 
 `identity.New` generates the dispatching agent's ed25519 key pair.
-`discovery.Card` names the agent and lists one capability,
+`flow.Card` names the agent and lists one capability,
 `task.dispatch`; `agent.New` validates the card before it binds
 identity, card, and plan into an `Agent`. The plan is one gated step
 outside any panel, so `flow.Run` gates it behind `Confirm` and `Run`
@@ -177,7 +175,7 @@ confirms a real `envelope.Ack` through `envelope.NewAck` and
 `Confirm`, which stands in for a receiver that accepts the message
 through its own channel and acknowledges it back to the sender.
 
-`heartbeat.New` builds a monitor with a thirty-second timeout. `Run`
+`flow.New` builds a monitor with a thirty-second timeout. `Run`
 beats one id, the agent's signer joined with the thread ID, right
 before it calls `wait` for the gated step, and forgets that id on
 every return path. This stands in for a supervisor that polls `Dead`

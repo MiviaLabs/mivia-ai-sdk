@@ -54,7 +54,7 @@ package subagent
   func ChannelTool(name string, ask channel.Notifier, recipient string) (tools.Tool)
   func DiscoveryTool(name string) (tools.Tool)
   func FlowTool(name string, plan *flow.Definition, m *machine.Definition, bus *events.Bus) (tools.Tool)
-  func HeartbeatTool(name string, m *heartbeat.Monitor) (tools.Tool)
+  func HeartbeatTool(name string, m *flow.Monitor) (tools.Tool)
   func InboxTool(name string, box *Mailbox) (tools.Tool)
   func LedgerTool(name string, l *ledger.Ledger, actor ledger.Actor, lease time.Duration) (tools.Tool)
   func MemoryTool(name string, s *memory.Store) (tools.Tool)

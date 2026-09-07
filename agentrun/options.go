@@ -9,7 +9,7 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -69,7 +69,7 @@ type Options struct {
 	// Budget gates each gated step's context fit. Optional.
 	Budget *contextbudget.Limits
 	// Monitor beats each gated step's id. Optional.
-	Monitor *heartbeat.Monitor
+	Monitor *flow.Monitor
 	// Hooks observes and gates the run through the hooks registry.
 	// PointPreTool fires before each gated step's tool and vetoes;
 	// a veto fails the step. PointPostTool fires after each ack

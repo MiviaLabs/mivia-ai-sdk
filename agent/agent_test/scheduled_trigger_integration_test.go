@@ -13,7 +13,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -49,7 +48,7 @@ func newInvokedFixture(t testing.TB) *invokedFixture {
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Sweeper", Capabilities: []string{"sweep"}}
+	card := flow.Card{Name: "Sweeper", Capabilities: []string{"sweep"}}
 	if fx.a, err = agent.New(id, card, plan); err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
 	}

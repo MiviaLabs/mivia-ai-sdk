@@ -8,7 +8,7 @@ import (
 // Match returns every registered skill with a Triggers entry equal to
 // query under strings.EqualFold. Returns nil for a blank query or no
 // hit. Match never trims query; a padded query does not match an
-// unpadded trigger entry, mirroring discovery.Card.Match. Match
+// unpadded trigger entry, mirroring flow.Card.Match. Match
 // searches Triggers only, never Name. Results sort by Name ascending,
 // so the result is deterministic across calls regardless of Go's
 // unspecified map iteration order.

@@ -1,21 +1,21 @@
-package discovery_test
+package flow_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // buildManyCapabilitiesCard returns a Card with one hundred
 // capabilities. The sought need is the last entry, the worst case for
 // a linear scan.
-func buildManyCapabilitiesCard() discovery.Card {
+func buildManyCapabilitiesCard() flow.Card {
 	caps := make([]string, 100)
 	for i := range caps {
 		caps[i] = fmt.Sprintf("capability-%03d", i)
 	}
-	return discovery.Card{Name: "Agent A", Capabilities: caps}
+	return flow.Card{Name: "Agent A", Capabilities: caps}
 }
 
 // BenchmarkMatch benchmarks Match over a card of one hundred

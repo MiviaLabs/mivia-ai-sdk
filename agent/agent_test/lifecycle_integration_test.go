@@ -1,5 +1,5 @@
 // Package agent_test also holds the full-lifecycle integration test:
-// a real identity, a real discovery.Card, a real flow.Definition with
+// a real identity, a real flow.Card, a real flow.Definition with
 // one one-member panel step and one sequential step, agent.New
 // binding them, and agent.Run executing the plan end to end.
 package agent_test
@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -28,7 +27,7 @@ func lifecycleFixture(t *testing.T) (*agent.Agent, *machine.Definition) {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Lifecycle Agent", Description: "runs the full loop", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Lifecycle Agent", Description: "runs the full loop", Capabilities: []string{"run"}}
 	plan, err := flow.New([]flow.Step{
 		{ID: "root", To: "root-done", Payload: "root payload"},
 		{ID: "next", Needs: []string{"root"}, To: "final", Payload: "next payload"},

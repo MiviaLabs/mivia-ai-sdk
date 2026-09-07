@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
@@ -26,8 +25,8 @@ func newIdentity(t *testing.T) *envelope.Identity {
 }
 
 // validCard returns a Card that passes Validate.
-func validCard() discovery.Card {
-	return discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+func validCard() flow.Card {
+	return flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 }
 
 // zeroPlan returns a zero-value Definition, never built through
@@ -54,7 +53,7 @@ func validPlan(t *testing.T) *flow.Definition {
 type newCase struct {
 	name    string
 	id      func(t *testing.T) *envelope.Identity
-	card    discovery.Card
+	card    flow.Card
 	plan    func(t *testing.T) *flow.Definition
 	wantErr error  // checked with errors.Is when non-nil
 	errSub  string // checked with strings.Contains when wantErr is nil and wantNil is false
@@ -72,15 +71,15 @@ func newCases() []newCase {
 	return []newCase{
 		{name: "valid triple builds an Agent", id: newIdentity, card: validCard(), plan: validPlan, wantNil: true},
 		{name: "nil identity is rejected", id: nilIdentity, card: validCard(), plan: validPlan, wantErr: agent.ErrNoIdentity},
-		{name: "blank card name is rejected", id: newIdentity, card: discovery.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "name is required"},
-		{name: "empty capability list is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "capabilities must not be empty"},
-		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate capability"},
-		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "capability entry must not be blank"},
+		{name: "blank card name is rejected", id: newIdentity, card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, plan: validPlan, errSub: "name is required"},
+		{name: "empty capability list is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{}}, plan: validPlan, errSub: "capabilities must not be empty"},
+		{name: "duplicate capability differing only in case is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "Read"}}, plan: validPlan, errSub: "duplicate capability"},
+		{name: "whitespace-only capability entry is rejected", id: newIdentity, card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, plan: validPlan, errSub: "capability entry must not be blank"},
 		{name: "nil plan is rejected", id: newIdentity, card: validCard(), plan: nilPlan, wantErr: agent.ErrNoPlan},
 		{name: "zero-value plan is accepted", id: newIdentity, card: validCard(), plan: zeroPlan, wantNil: true},
 		{name: "nil identity and nil plan: identity error wins", id: nilIdentity, card: validCard(), plan: nilPlan, wantErr: agent.ErrNoIdentity},
-		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: discovery.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "name is required"},
-		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: discovery.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: agent.ErrNoIdentity},
+		{name: "invalid card and nil plan: card error wins", id: newIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: nilPlan, errSub: "name is required"},
+		{name: "nil identity and invalid card: identity error wins", id: nilIdentity, card: flow.Card{Name: "", Capabilities: []string{"read"}}, plan: validPlan, wantErr: agent.ErrNoIdentity},
 	}
 }
 
@@ -143,7 +142,7 @@ func TestNewNilIdentityBeforePlanProvesOrder(t *testing.T) {
 // report the wrapped card error, not ErrNoPlan.
 func TestNewInvalidCardBeforePlanProvesOrder(t *testing.T) {
 	id := newIdentity(t)
-	card := discovery.Card{Name: "", Capabilities: []string{"read"}}
+	card := flow.Card{Name: "", Capabilities: []string{"read"}}
 	_, err := agent.New(id, card, nil)
 	if err == nil {
 		t.Fatal("New() returned a nil error, want error")
@@ -172,7 +171,7 @@ func TestName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			id := newIdentity(t)
-			card := discovery.Card{Name: tt.cardName, Capabilities: []string{"read"}}
+			card := flow.Card{Name: tt.cardName, Capabilities: []string{"read"}}
 			a, err := agent.New(id, card, validPlan(t))
 			if err != nil {
 				t.Fatalf("New() unexpected error: %v", err)
@@ -190,7 +189,7 @@ func TestName(t *testing.T) {
 // and confirms the source card observed the same change.
 func TestCapabilitiesAliasesTheCard(t *testing.T) {
 	id := newIdentity(t)
-	card := discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
+	card := flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}
 	a, err := agent.New(id, card, validPlan(t))
 	if err != nil {
 		t.Fatalf("New() unexpected error: %v", err)

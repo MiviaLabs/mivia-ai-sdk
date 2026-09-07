@@ -1,7 +1,7 @@
 // Package discovery_test holds the red-green unit cases for Parse,
 // Validate, and Match. Each case asserted first against the empty
 // package, then went green once card.go implemented the behavior.
-package discovery_test
+package flow_test
 
 import (
 	"os"
@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // readFixture loads a testdata JSON fixture by name.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", name))
+	data, err := os.ReadFile(filepath.Join("testdata", "discovery", name))
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", name, err)
 	}
@@ -57,7 +57,7 @@ func TestParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := discovery.Parse(readFixture(t, tt.fixture))
+			c, err := flow.Parse(readFixture(t, tt.fixture))
 			if tt.wantErr {
 				assertErrSubstr(t, err, tt.errSubstr)
 				return
@@ -74,7 +74,7 @@ func TestParse(t *testing.T) {
 
 // TestParseEmptyInput confirms Parse rejects zero-length input.
 func TestParseEmptyInput(t *testing.T) {
-	_, err := discovery.Parse([]byte(""))
+	_, err := flow.Parse([]byte(""))
 	if err == nil {
 		t.Fatal("Parse(\"\") returned nil error, want error")
 	}
@@ -85,20 +85,20 @@ func TestParseEmptyInput(t *testing.T) {
 func TestCardValidate(t *testing.T) {
 	tests := []struct {
 		name      string
-		card      discovery.Card
+		card      flow.Card
 		wantErr   bool
 		errSubstr string
 	}{
-		{name: "valid card", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}},
-		{name: "whitespace-only name is rejected", card: discovery.Card{Name: "   ", Capabilities: []string{"read"}}, wantErr: true, errSubstr: "name is required"},
-		{name: "empty capabilities is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{}}, wantErr: true, errSubstr: "capabilities must not be empty"},
-		{name: "nil capabilities is rejected", card: discovery.Card{Name: "Agent A"}, wantErr: true, errSubstr: "capabilities must not be empty"},
-		{name: "blank capability entry after trim is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", ""}}, wantErr: true, errSubstr: "capability entry must not be blank"},
-		{name: "whitespace-only capability entry is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, wantErr: true, errSubstr: "capability entry must not be blank"},
-		{name: "duplicate capability differing only in case is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "duplicate capability differing only in padding is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "duplicate capability"},
-		{name: "padded capability entry is rejected", card: discovery.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "capability entry must not carry padding"},
+		{name: "valid card", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "write"}}},
+		{name: "whitespace-only name is rejected", card: flow.Card{Name: "   ", Capabilities: []string{"read"}}, wantErr: true, errSubstr: "name is required"},
+		{name: "empty capabilities is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{}}, wantErr: true, errSubstr: "capabilities must not be empty"},
+		{name: "nil capabilities is rejected", card: flow.Card{Name: "Agent A"}, wantErr: true, errSubstr: "capabilities must not be empty"},
+		{name: "blank capability entry after trim is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", ""}}, wantErr: true, errSubstr: "capability entry must not be blank"},
+		{name: "whitespace-only capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "\t\n "}}, wantErr: true, errSubstr: "capability entry must not be blank"},
+		{name: "duplicate capability differing only in case is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "duplicate capability"},
+		{name: "duplicate capability differing only in padding is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "duplicate capability"},
+		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "duplicate capability"},
+		{name: "padded capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "capability entry must not carry padding"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -116,7 +116,7 @@ func TestCardValidate(t *testing.T) {
 
 // TestCardMatch covers Match against a fixed capability list.
 func TestCardMatch(t *testing.T) {
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "Agent A",
 		Capabilities: []string{"read", "write", "execute"},
 	}

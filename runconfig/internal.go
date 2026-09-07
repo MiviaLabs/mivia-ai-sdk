@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/room"
@@ -52,7 +52,7 @@ var builders = map[Kind]internalBuilder{
 		if err != nil {
 			return nil, err
 		}
-		monitor, err := heartbeat.New(timeout)
+		monitor, err := flow.NewMonitor(timeout)
 		if err != nil {
 			return nil, err
 		}

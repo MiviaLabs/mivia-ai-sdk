@@ -1,11 +1,11 @@
-package heartbeat_test
+package flow_test
 
 import (
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // TestNew covers the timeout validation: positive, zero, and negative.
@@ -16,20 +16,20 @@ func TestNew(t *testing.T) {
 		wantErr error
 	}{
 		{"positive timeout", time.Second, nil},
-		{"zero timeout", 0, heartbeat.ErrNoTimeout},
-		{"negative timeout", -time.Second, heartbeat.ErrNoTimeout},
+		{"zero timeout", 0, flow.ErrNoTimeout},
+		{"negative timeout", -time.Second, flow.ErrNoTimeout},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m, err := heartbeat.New(tc.timeout)
+			m, err := flow.NewMonitor(tc.timeout)
 			if !errors.Is(err, tc.wantErr) {
-				t.Fatalf("New(%v) error = %v, want %v", tc.timeout, err, tc.wantErr)
+				t.Fatalf("NewMonitor(%v) error = %v, want %v", tc.timeout, err, tc.wantErr)
 			}
 			if tc.wantErr == nil && m == nil {
-				t.Fatalf("New(%v) returned nil Monitor with nil error", tc.timeout)
+				t.Fatalf("NewMonitor(%v) returned nil Monitor with nil error", tc.timeout)
 			}
 			if tc.wantErr != nil && m != nil {
-				t.Fatalf("New(%v) returned non-nil Monitor with error %v", tc.timeout, err)
+				t.Fatalf("NewMonitor(%v) returned non-nil Monitor with error %v", tc.timeout, err)
 			}
 		})
 	}
@@ -39,19 +39,19 @@ func TestNew(t *testing.T) {
 func TestBeat(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	t.Run("blank id", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
-		if err := m.Beat("", base); !errors.Is(err, heartbeat.ErrNoID) {
+		m, _ := flow.NewMonitor(time.Minute)
+		if err := m.Beat("", base); !errors.Is(err, flow.ErrNoID) {
 			t.Fatalf("Beat(\"\") error = %v, want ErrNoID", err)
 		}
 	})
 	t.Run("whitespace-only id", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
-		if err := m.Beat("   ", base); !errors.Is(err, heartbeat.ErrNoID) {
+		m, _ := flow.NewMonitor(time.Minute)
+		if err := m.Beat("   ", base); !errors.Is(err, flow.ErrNoID) {
 			t.Fatalf("Beat(whitespace) error = %v, want ErrNoID", err)
 		}
 	})
 	t.Run("fresh id", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
+		m, _ := flow.NewMonitor(time.Minute)
 		if err := m.Beat("a", base); err != nil {
 			t.Fatalf("Beat(fresh) error = %v, want nil", err)
 		}
@@ -60,7 +60,7 @@ func TestBeat(t *testing.T) {
 		}
 	})
 	t.Run("later at overwrites", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
+		m, _ := flow.NewMonitor(time.Minute)
 		if err := m.Beat("a", base); err != nil {
 			t.Fatalf("Beat(base) error = %v", err)
 		}
@@ -73,7 +73,7 @@ func TestBeat(t *testing.T) {
 		}
 	})
 	t.Run("equal at overwrites", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
+		m, _ := flow.NewMonitor(time.Minute)
 		if err := m.Beat("a", base); err != nil {
 			t.Fatalf("Beat(base) error = %v", err)
 		}
@@ -82,12 +82,12 @@ func TestBeat(t *testing.T) {
 		}
 	})
 	t.Run("earlier at is stale", func(t *testing.T) {
-		m, _ := heartbeat.New(time.Minute)
+		m, _ := flow.NewMonitor(time.Minute)
 		if err := m.Beat("a", base); err != nil {
 			t.Fatalf("Beat(base) error = %v", err)
 		}
 		earlier := base.Add(-time.Second)
-		if err := m.Beat("a", earlier); !errors.Is(err, heartbeat.ErrStaleBeat) {
+		if err := m.Beat("a", earlier); !errors.Is(err, flow.ErrStaleBeat) {
 			t.Fatalf("Beat(earlier) error = %v, want ErrStaleBeat", err)
 		}
 		// The stored time stays at base; a beat one minute after base
@@ -117,7 +117,7 @@ func TestAlive(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m, _ := heartbeat.New(timeout)
+			m, _ := flow.NewMonitor(timeout)
 			if tc.beat != nil {
 				if err := m.Beat("a", *tc.beat); err != nil {
 					t.Fatalf("Beat error = %v", err)
@@ -137,7 +137,7 @@ func TestDead(t *testing.T) {
 	timeout := time.Minute
 
 	t.Run("no ids tracked", func(t *testing.T) {
-		m, _ := heartbeat.New(timeout)
+		m, _ := flow.NewMonitor(timeout)
 		got := m.Dead(base)
 		if len(got) != 0 {
 			t.Fatalf("Dead() = %v, want empty", got)
@@ -145,7 +145,7 @@ func TestDead(t *testing.T) {
 	})
 
 	t.Run("exactly at boundary is excluded", func(t *testing.T) {
-		m, _ := heartbeat.New(timeout)
+		m, _ := flow.NewMonitor(timeout)
 		_ = m.Beat("a", base)
 		// now.Sub(last) == timeout: Alive reports true at this boundary
 		// (see TestAlive/exactly at boundary), so Dead must agree and
@@ -163,7 +163,7 @@ func TestDead(t *testing.T) {
 	})
 
 	t.Run("mix of alive and dead ids sorted", func(t *testing.T) {
-		m, _ := heartbeat.New(timeout)
+		m, _ := flow.NewMonitor(timeout)
 		_ = m.Beat("zebra", base)
 		_ = m.Beat("alive", base.Add(50*time.Second))
 		_ = m.Beat("apple", base)
@@ -176,7 +176,7 @@ func TestDead(t *testing.T) {
 	})
 
 	t.Run("Dead after Forget removes a dead id", func(t *testing.T) {
-		m, _ := heartbeat.New(timeout)
+		m, _ := flow.NewMonitor(timeout)
 		_ = m.Beat("a", base)
 		_ = m.Beat("b", base)
 		now := base.Add(90 * time.Second)
@@ -189,7 +189,7 @@ func TestDead(t *testing.T) {
 	})
 
 	t.Run("repeat calls are level-triggered", func(t *testing.T) {
-		m, _ := heartbeat.New(timeout)
+		m, _ := flow.NewMonitor(timeout)
 		_ = m.Beat("a", base)
 		now := base.Add(90 * time.Second)
 		first := m.Dead(now)
@@ -206,7 +206,7 @@ func TestDead(t *testing.T) {
 // TestForget covers a tracked id and an untracked id (no-op, no panic).
 func TestForget(t *testing.T) {
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	m, _ := heartbeat.New(time.Minute)
+	m, _ := flow.NewMonitor(time.Minute)
 	_ = m.Beat("a", base)
 
 	t.Run("tracked id", func(t *testing.T) {

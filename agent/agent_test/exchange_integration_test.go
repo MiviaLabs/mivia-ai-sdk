@@ -14,7 +14,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/a2a"
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -84,7 +83,7 @@ func newExchangeFixture(t testing.TB, admitB bool) *exchangeFixture {
 	if err != nil {
 		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "Requester",
 		Description:  "requests an echo from agent B",
 		Capabilities: []string{"exchange"},

@@ -1,6 +1,8 @@
 # Plan: discovery
 
-Status: shipped. This package has no internal imports. See
+Status: superseded. Phase 86 folded this package into flow;
+the symbols live in flow now. See
+docs/plans/agents/phase86_package_consolidation.md.
 docs/packages/discovery.md's "Why this shape" section for the
 capability-card decision.
 

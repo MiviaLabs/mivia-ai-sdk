@@ -1,4 +1,4 @@
-package heartbeat
+package flow
 
 import "github.com/MiviaLabs/mivia-ai-sdk/events"
 

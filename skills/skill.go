@@ -34,7 +34,7 @@ var (
 // against. RequiredTools names tool names this skill expects
 // available; this package never reads or enforces it. Triggers and
 // RequiredTools are exported slices; Registry.Add does not
-// defensively copy either, matching discovery.Card's documented
+// defensively copy either, matching flow.Card's documented
 // no-copy convention for Capabilities and envelope.Message's same
 // rule for its own slice fields. A caller that mutates a slice after
 // Add mutates the registry's stored Skill too.

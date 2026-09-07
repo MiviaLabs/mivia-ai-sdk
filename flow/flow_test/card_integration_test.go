@@ -1,10 +1,10 @@
-package discovery_test
+package flow_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
+	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 )
 
 // TestParseMatchIntegration parses a real card fixture, matches a
@@ -13,7 +13,7 @@ import (
 // literal.
 func TestParseMatchIntegration(t *testing.T) {
 	data := readFixture(t, "valid.json")
-	card, err := discovery.Parse(data)
+	card, err := flow.Parse(data)
 	if err != nil {
 		t.Fatalf("Parse() unexpected error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestParseMatchIntegration(t *testing.T) {
 // Parse end to end.
 func TestParseMalformedFixtureFails(t *testing.T) {
 	data := readFixture(t, "malformed.json")
-	if _, err := discovery.Parse(data); err == nil {
+	if _, err := flow.Parse(data); err == nil {
 		t.Fatal("Parse(malformed.json) returned nil error, want error")
 	}
 }
@@ -41,7 +41,7 @@ func TestParseMalformedFixtureFails(t *testing.T) {
 // TestValidateRejectsStructLiteralCard proves Validate rejects a Card
 // built by struct literal, bypassing Parse.
 func TestValidateRejectsStructLiteralCard(t *testing.T) {
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "",
 		Capabilities: nil,
 	}
@@ -56,7 +56,7 @@ func TestValidateRejectsStructLiteralCard(t *testing.T) {
 // Validate, so this Card, which Validate would reject, still works
 // with Match.
 func TestMatchOnUnvalidatedCardFirstMatchWins(t *testing.T) {
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "Agent A",
 		Capabilities: []string{"Read", "read", "READ"},
 	}

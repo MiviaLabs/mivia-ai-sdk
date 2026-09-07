@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -22,7 +21,7 @@ func NewAgent(name string, plan *flow.Definition) (*agent.Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("e2e: identity for %q: %w", name, err)
 	}
-	card := discovery.Card{Name: name, Capabilities: []string{"e2e"}}
+	card := flow.Card{Name: name, Capabilities: []string{"e2e"}}
 	return agent.New(id, card, plan)
 }
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
@@ -28,7 +27,7 @@ func repeatAgent(t *testing.T, plan *flow.Definition) *agent.Agent {
 	if err != nil {
 		t.Fatalf("envelope.New: %v", err)
 	}
-	a, err := agent.New(id, discovery.Card{Name: "repeat", Capabilities: []string{"t"}}, plan)
+	a, err := agent.New(id, flow.Card{Name: "repeat", Capabilities: []string{"t"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New: %v", err)
 	}

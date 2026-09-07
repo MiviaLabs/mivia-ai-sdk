@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
@@ -50,7 +49,7 @@ func messagingSubRunner(t *testing.T, subID *envelope.Identity, subBox, parentBo
 		subagent.SendTool("reply", parentBox, subID),
 	)
 	artifacts := &agentrun.Artifacts{}
-	a, err := agent.New(subID, discovery.Card{Name: "worker", Capabilities: []string{"c"}}, plan)
+	a, err := agent.New(subID, flow.Card{Name: "worker", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New sub: %v", err)
 	}
@@ -98,7 +97,7 @@ func messagingOrchestrator(t *testing.T, parentID *envelope.Identity, subID *env
 		subagent.InboxTool("collect", parentBox),
 	)
 	artifacts := &agentrun.Artifacts{}
-	a, err := agent.New(parentID, discovery.Card{Name: "orchestrator", Capabilities: []string{"c"}}, plan)
+	a, err := agent.New(parentID, flow.Card{Name: "orchestrator", Capabilities: []string{"c"}}, plan)
 	if err != nil {
 		t.Fatalf("agent.New orch: %v", err)
 	}

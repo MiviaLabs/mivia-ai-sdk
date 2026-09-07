@@ -42,7 +42,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
@@ -84,7 +83,7 @@ func buildAgent(plan *flow.Definition) (*agent.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	card := discovery.Card{
+	card := flow.Card{
 		Name:         "pipeline-agent",
 		Capabilities: []string{"invoice.review"},
 	}

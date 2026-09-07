@@ -113,7 +113,7 @@ func TestNamesListsEveryRegisteredName(t *testing.T) {
 
 // TestAddSharesTriggersBackingStorage proves Add does not defensively
 // copy Triggers: mutating index zero of the caller's slice after Add
-// must be visible through a following Get, matching discovery.Card's
+// must be visible through a following Get, matching flow.Card's
 // no-copy convention.
 func TestAddSharesTriggersBackingStorage(t *testing.T) {
 	r := skills.New()

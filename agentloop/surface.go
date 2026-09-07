@@ -9,7 +9,7 @@ import (
 )
 
 // Surface is one iteration's tool surface, produced by
-// Options.Surface. Advertised is what the model is offered this
+// Extensions.Surface. Advertised is what the model is offered this
 // iteration (compiled into the loop's schemas); Registry is where
 // model-chosen calls resolve; Scope optionally narrows Registry.
 // Advertised MAY name tools whose definitions are not backed by

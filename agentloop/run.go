@@ -31,9 +31,10 @@ func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
 // gracefully at the next iteration boundary with Stop == StopSteered.
 // With an injector installed, the run soft-continues and StopSteered
 // never fires. See SetInjector. Final holds the
-// zero value, except when Options.StreamingWriter is set: then Final
-// carries the bytes the Completer wrote before the steer, the same
-// rule every other pre-response graceful stop already follows.
+// zero value, except when Options.Extensions.StreamingWriter is set:
+// then Final carries the bytes the Completer wrote before the steer,
+// the same rule every other pre-response graceful stop already
+// follows.
 // History, Iterations, and Usage carry every already-completed
 // iteration's state. Run(ctx, msgs) is equivalent to
 // RunSteerable(ctx, msgs, nil).
@@ -293,7 +294,7 @@ func (l *Loop) afterChat(ctx context.Context, at chatAttempt, st *runState, noti
 // bool reports whether the caller must return res (and err) as the
 // iteration's own result; when false, res.History carries the loop's next
 // history and the loop continues. The three graceful stops route through
-// gracefulStop, which consults Options.ContinueOnStop; see stop.go.
+// gracefulStop, which consults Extensions.ContinueOnStop; see stop.go.
 func (l *Loop) runToolStage(ctx context.Context, history []provider.Message, resp provider.Response, iterations int, totalUsage provider.Usage, consecutiveFailures *int, noticeInRequest bool, surface runSurface) (Result, bool, error) {
 	if len(resp.ToolCalls) == 0 {
 		*consecutiveFailures = 0
@@ -369,7 +370,7 @@ type chatAttempt struct {
 
 // runChat builds this iteration's Request, reserves budget, calls
 // Completer.Chat, and catches ErrPromptTooLong to attempt one-shot
-// compaction recovery when Options.Window is set.
+// compaction recovery when Options.Compaction.Window is set.
 func (l *Loop) runChat(ctx context.Context, history []provider.Message, iterations int, steer *Steer, stream *bytes.Buffer, surface runSurface, replayUnsafe bool) chatAttempt {
 	var span *trace.Span
 	if l.tracer != nil {

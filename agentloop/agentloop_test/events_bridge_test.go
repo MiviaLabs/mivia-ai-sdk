@@ -45,8 +45,7 @@ func TestEventsBridgeThinkingCacheCalibration(t *testing.T) {
 	}}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		Bus: bus, HeartbeatInterval: time.Hour,
-		Calibrated: cal,
+		Bus: bus, HeartbeatInterval: time.Hour, Compaction: agentloop.Compaction{Calibrated: cal},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

@@ -30,12 +30,12 @@ or a bound trips. The exported surface below mirrors
   member's own rule.
 - `Conclude` — the graceful-conclude group: `Margin`, `Deadline`,
   `Notice`. See "Graceful conclude" below.
-- `Surface` — one iteration's tool surface from `Options.Surface`:
+- `Surface` — one iteration's tool surface from `Options.Extensions.Surface`:
   `Advertised`, `Registry`, `Scope`.
 - `WorkBudget` — host token-reservation hooks: `Reserve` and `Refund`.
 - `ToolBudget` — host cumulative tool-call budget hook: `Reserve`.
 - `ErrorFunc` — `func(ctx context.Context, call provider.ToolCall, err error) (provider.Message, error)`,
-  custom tool-error message constructor for `Options.OnToolCallError`.
+  custom tool-error message constructor for `Options.Extensions.OnToolCallError`.
 - `Result` — one `Run` or `RunSteerable` call's outcome: `Final`,
   `History`, `Iterations`, `Usage`, `Stop`. See "Result shape" below
   for how each field behaves on a graceful stop versus a hard-fail
@@ -50,7 +50,7 @@ or a bound trips. The exported surface below mirrors
   with `NewSteer` and call `Trigger` from another goroutine. One
   `Steer` must not be passed to two concurrent `RunSteerable` calls.
   See "Steering and interruption" below.
-- `Summarizer` — the one-method interface `Options.Summarizer` takes:
+- `Summarizer` — the one-method interface `Options.Compaction.Summarizer` takes:
   `Summarize(ctx, msgs) (context/plan.Summary, error)`.
   `*context/plan.Summarizer` satisfies it. An implementation returns
   `context/plan.ErrSummarySkipped` to decline summary generation;
@@ -64,7 +64,7 @@ or a bound trips. The exported surface below mirrors
   `ErrSummarizerRequired`, the same as an untyped nil. A custom
   `Summarizer` of some other pointer type holding a nil receiver is
   outside this check.
-- `StopDecision` — the evidence the loop hands `Options.ContinueOnStop`
+- `StopDecision` — the evidence the loop hands `Options.Extensions.ContinueOnStop`
   at a graceful stop: `Stop`, `Message`, `Iterations`, and
   `History`. See "Stop-decision hook" below.
 - `ErrorPolicy` — a string enum naming what `Run` does with a
@@ -91,12 +91,12 @@ or a bound trips. The exported surface below mirrors
   200k total tokens, 4-way tool parallelism, and a 3-turn failure
   tripwire. Copy and adjust single members.
 - `EnableCompaction(o, completer, window, alpha)` — fills a
-  `Options`' `Window`, `Summarizer`, and `Calibrated` fields from one
-  `Completer`, in one call. The `Completer` must also implement
+  `Options.Compaction`'s `Window`, `Summarizer`, and `Calibrated`
+  fields from one `Completer`, in one call. The `Completer` must also implement
   `provider.TokenEstimator` (`anthropic.Client` does); otherwise the
   call fails with `ErrNoTokenEstimator` and leaves `Options`
   untouched. `EnableCompaction` and `context/plan.NewSummarizer`
-  are the only sanctioned constructors for `Options.Summarizer`. A
+  are the only sanctioned constructors for `Options.Compaction.Summarizer`. A
   typed nil stored by hand is not nil as an interface, but `Validate`
   rejects the sanctioned adapter's typed-nil shape the same as an
   untyped nil; see the `Summarizer` type above. A minimal entry path is
@@ -232,7 +232,7 @@ Use `errors.Is` to test these.
 
 ## Context planning and prompt-too-long recovery
 
-A non-nil `Options.Window` plans every iteration against a token
+A non-nil `Options.Compaction.Window` plans every iteration against a token
 budget. `Window` requires `Summarizer` and `Calibrated`, and excludes
 `Trim`; a nil `Window` keeps the loop exactly as it was.
 
@@ -378,7 +378,7 @@ reasoning blocks by definition, so the filter never sets
 
 ## Graceful conclude near Bounds.MaxIterations
 
-A positive `Options.Conclude.Margin` nudges the model toward a final
+A positive `Options.Extensions.Conclude.Margin` nudges the model toward a final
 answer as `Bounds.MaxIterations` approaches, instead of hard-stopping with
 whatever partial state the transcript holds. Zero disables nudging.
 
@@ -407,13 +407,13 @@ the notice and that the notice still sits in the request the model
 actually answered; a `Trim` or `Window` step that strips the notice
 before the model sees it falls back to `StopNoToolCalls`.
 
-`Options.Window` may also drop, reorder, or summarize away the notice
+`Options.Compaction.Window` may also drop, reorder, or summarize away the notice
 before a nudged call; no test covers `Conclude.Margin` combined with
 `Window`, and the two have no current caller pairing them.
 
 ## Duplicate-call dedup within a turn
 
-`Options.DedupWithinTurn` detects a duplicate `(tool name, canonical
+`Options.Extensions.DedupWithinTurn` detects a duplicate `(tool name, canonical
 arguments)` call already served earlier in the same turn, and serves
 `DuplicateCallNotice` instead of running the tool a second time. False,
 the zero value, runs every call, unchanged from the base behavior.
@@ -463,7 +463,7 @@ case for ctx cancellation or any other cause.
 
 ## Stop-decision hook
 
-`Options.ContinueOnStop` observes a graceful stop and may continue the
+`Options.Extensions.ContinueOnStop` observes a graceful stop and may continue the
 run. The loop consults the hook only at the three tool-stage stops:
 `StopNoToolCalls`, `StopEmptyResponse`, and `StopConcluded`. The hook
 never runs at `StopSteered`, `StopHookVeto`, `StopMaxIterations`,

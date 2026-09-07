@@ -9,10 +9,10 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
-// TestSDKValidateAllowsUnboundedMaxIterations pins the legacy contract:
-// a caller that wants the loop to run as long as it must (no
-// per-iteration cap) sets MaxIterations to 0; the SDK must treat 0 as
-// uncapped instead of failing Validate the way MaxIterations<0 does.
+// TestSDKValidateAllowsUnboundedMaxIterations pins New's zero-Bounds
+// defaulting: the Options literal here carries the fully zero Bounds,
+// so New applies DefaultBounds and the constructor succeeds. Partial-
+// Bounds uncapped coverage lives in TestNewKeepsPartialBoundsAsGiven.
 func TestSDKValidateAllowsUnboundedMaxIterations(t *testing.T) {
 	_, err := sdkagentloop.New(sdkagentloop.Options{
 		Completer: &replayCompleter{turns: []provider.Response{
@@ -23,7 +23,7 @@ func TestSDKValidateAllowsUnboundedMaxIterations(t *testing.T) {
 		Bounds: sdkagentloop.Bounds{MaxIterations: 0},
 	})
 	if err != nil {
-		t.Fatalf("New with MaxIterations=0 returned err: %v", err)
+		t.Fatalf("New with a fully zero Bounds returned err: %v", err)
 	}
 }
 

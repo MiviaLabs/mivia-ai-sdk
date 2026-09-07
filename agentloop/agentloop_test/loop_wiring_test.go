@@ -23,40 +23,22 @@ func TestNewPropagatesValidateError(t *testing.T) {
 	}
 }
 
-// TestRunHallucinatedSchemaFreeToolName proves a model-requested call
-// naming a registered tool that does not implement tools.SchemaTool
-// reports a decode-path error under ErrorPolicyReport, the same as
-// any other tool-run error.
+// TestRunHallucinatedSchemaFreeToolName proves a registered tool that
+// does not implement tools.SchemaTool fails New with ErrNoSchema
+// naming it, before Run can ever start. The runtime hallucinated-name
+// case for unregistered names stays covered by
+// unknown_tool_error_test.go.
 func TestRunHallucinatedSchemaFreeToolName(t *testing.T) {
 	schemaTool := &schemaEchoTool{name: "with-schema", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, schemaTool)
 	mustAdd(t, reg, &noSchemaTool{name: "no-schema"})
-	completer := &scriptedCompleter{responses: []provider.Response{
-		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "no-schema"}),
-		{Message: textMessage(provider.RoleAssistant, "final")},
-	}}
-	loop, err := agentloop.New(agentloop.Options{Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
-	if err != nil {
-		t.Fatalf("New() error = %v, want nil", err)
+	_, err := agentloop.New(agentloop.Options{Completer: &scriptedCompleter{}, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}})
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("New() error = %v, want ErrNoSchema", err)
 	}
-	res, err := loop.Run(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")})
-	if err != nil {
-		t.Fatalf("Run() error = %v, want nil", err)
-	}
-	var content string
-	found := false
-	for _, m := range res.History {
-		if m.Role == provider.RoleTool && m.ToolCallID == "call-1" {
-			found = true
-			content = m.Content
-		}
-	}
-	if !found {
-		t.Fatalf("no RoleTool message reporting the schema-free-tool error: %+v", res.History)
-	}
-	if !strings.Contains(content, "publishes no schema") {
-		t.Fatalf("tool message content = %q, want it to carry the schema-free-tool error text", content)
+	if !strings.Contains(err.Error(), "no-schema") {
+		t.Fatalf("New() error = %v, want it to name no-schema", err)
 	}
 }
 
@@ -94,7 +76,7 @@ func TestRunFiresPointStopOnGracefulStop(t *testing.T) {
 		fired++
 		return true, nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
@@ -137,7 +119,7 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 		got, gotOK = payload.(agentloop.Result)
 		return false, nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 1}, Hooks: hreg,
@@ -174,7 +156,7 @@ func TestRunFiresPointStopWithResultPayload(t *testing.T) {
 		got, gotOK = payload.(agentloop.Result)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
@@ -230,15 +212,16 @@ func TestRunToolDecisionReadsTopLevelToolCalls(t *testing.T) {
 }
 
 // TestNewPropagatesDefinitionsError proves New returns Definitions's
-// ErrNoSchemas when the registry offers nothing the model can call.
+// ErrNoSchema, wrapped with the tool's name, for a schema-free
+// registry.
 func TestNewPropagatesDefinitionsError(t *testing.T) {
 	reg := tools.New()
 	mustAdd(t, reg, &noSchemaTool{name: "no-schema"})
 	_, err := agentloop.New(agentloop.Options{
 		Completer: &scriptedCompleter{}, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 1},
 	})
-	if !errors.Is(err, agentloop.ErrNoSchemas) {
-		t.Fatalf("New() error = %v, want ErrNoSchemas", err)
+	if !errors.Is(err, agentloop.ErrNoSchema) {
+		t.Fatalf("New() error = %v, want ErrNoSchema", err)
 	}
 }
 
@@ -283,7 +266,7 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 	if err := hreg.Add(events.PointPostTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
@@ -313,13 +296,13 @@ func newOrderRecordingHooks(t *testing.T, preAllow bool) (*events.Registry, *[]s
 		*order = append(*order, "pre")
 		return preAllow, nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	if err := hreg.Add(events.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
 		*order = append(*order, "post")
 		return true, nil
 	}); err != nil {
-		t.Fatalf("events.Add error = %v, want nil", err)
+		t.Fatalf("hooks.Add error = %v, want nil", err)
 	}
 	return hreg, order
 }

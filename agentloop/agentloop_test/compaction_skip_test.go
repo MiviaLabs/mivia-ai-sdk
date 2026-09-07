@@ -50,13 +50,15 @@ func newSkipFixture(t *testing.T, w plan.Window, errs []error, responses []provi
 	sc := &scriptedCompleter{errs: errs, responses: responses}
 	skip := &skipSummarizer{}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: skip,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	})
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: skip,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -291,12 +293,14 @@ func TestCompactionSkipWrappedSentinelStillSkips(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:  sc,
-		Tools:      reg,
-		Bounds:     agentloop.Bounds{MaxIterations: 4},
-		Window:     &w,
-		Summarizer: &wrappedSkipSummarizer{reason: "summarizer disabled by policy"},
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		Completer: sc,
+		Tools:     reg,
+		Bounds:    agentloop.Bounds{MaxIterations: 4},
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Summarizer: &wrappedSkipSummarizer{reason: "summarizer disabled by policy"},
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		},
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -329,16 +333,18 @@ func TestCompactionSkipWrappedSentinelStillSkips(t *testing.T) {
 func TestValidateSummarizerInterfaceNilChecks(t *testing.T) {
 	w := plan.Window{MaxTokens: 100, Compaction: plan.Compaction{TriggerPercent: 50}}
 	opts := agentloop.Options{
-		Completer:  &scriptedCompleter{},
-		Tools:      tools.New(),
-		Window:     &w,
-		Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
-	}
+		Completer: &scriptedCompleter{},
+		Tools:     tools.New(),
+
+		Compaction: agentloop.Compaction{
+			Window:     &w,
+			Calibrated: plan.Calibrate(scaleEstimator{div: 1}, 1.0),
+		}}
 	if err := opts.Validate(); !errors.Is(err, agentloop.ErrSummarizerRequired) {
 		t.Fatalf("Validate() = %v, want ErrSummarizerRequired for an untyped nil Summarizer", err)
 	}
 	var typedNil *plan.Summarizer
-	opts.Summarizer = typedNil
+	opts.Compaction.Summarizer = typedNil
 	if err := opts.Validate(); !errors.Is(err, agentloop.ErrSummarizerRequired) {
 		t.Fatalf("Validate() = %v, want ErrSummarizerRequired for a typed nil Summarizer too", err)
 	}

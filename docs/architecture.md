@@ -304,8 +304,8 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `AuditRecord` per completion and per tool call, keeping `agentloop`
   envelope-agnostic: a caller signs its own audit trail from those
   records, outside the block, the way `workflow.confirmStep` signs `flow`
-  steps. A non-nil `Options.Window` plans every iteration against a
-  token budget: under the trigger the history passes through; at or
+  steps. A non-nil `Options.Compaction.Window` plans every iteration
+  against a token budget: under the trigger the history passes through; at or
   above it, one `context/plan.Compact` call plus one `Summarize` call
   rebuild the history around an injected summary message, and one
   `Calibrated.Observe` after every turn keeps the estimate honest. A

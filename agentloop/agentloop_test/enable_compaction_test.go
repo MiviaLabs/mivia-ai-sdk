@@ -49,32 +49,88 @@ func TestEnableCompactionRequiresEstimator(t *testing.T) {
 	if !errors.Is(err, agentloop.ErrNoTokenEstimator) {
 		t.Fatalf("EnableCompaction err = %v, want ErrNoTokenEstimator", err)
 	}
-	if opts.Window != nil || opts.Summarizer != nil || opts.Calibrated != nil {
+	if opts.Compaction.Window != nil || opts.Compaction.Summarizer != nil || opts.Compaction.Calibrated != nil {
 		t.Fatal("EnableCompaction mutated Options on failure")
 	}
 }
 
-// TestEnableCompactionSetsTriple proves the Window, Summarizer, and
-// Calibrated fields land populated and the Options pass Validate.
+// TestEnableCompactionSetsTriple proves the Compaction group lands
+// populated and the Options pass Validate.
 func TestEnableCompactionSetsTriple(t *testing.T) {
 	opts := agentloop.Options{}
 	window := plan.Window{MaxTokens: 512, Reserve: 128}
 	if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
 		t.Fatalf("EnableCompaction: %v", err)
 	}
-	if opts.Window == nil || opts.Window.MaxTokens != window.MaxTokens || opts.Window.Reserve != window.Reserve {
-		t.Fatalf("Window = %+v, want the configured window", opts.Window)
+	if opts.Compaction.Window == nil || opts.Compaction.Window.MaxTokens != window.MaxTokens || opts.Compaction.Window.Reserve != window.Reserve {
+		t.Fatalf("Compaction.Window = %+v, want the configured window", opts.Compaction.Window)
 	}
-	if opts.Summarizer == nil {
-		t.Fatal("Summarizer is nil")
+	if opts.Compaction.Summarizer == nil {
+		t.Fatal("Compaction.Summarizer is nil")
 	}
-	if opts.Calibrated == nil {
-		t.Fatal("Calibrated is nil")
+	if opts.Compaction.Calibrated == nil {
+		t.Fatal("Compaction.Calibrated is nil")
 	}
 	opts.Completer = estimatingCompleter{}
 	opts.Tools = tools.New()
 	if err := opts.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
+	}
+}
+
+// TestEnableCompactionZeroWindowLeavesWindowNil proves a zero or
+// negative MaxTokens leaves Compaction.Window nil for New's
+// derivation, while Summarizer and Calibrated land and the Options
+// pass Validate. plan.Window.Validate rejects MaxTokens <= 0,
+// so such a value can never be an explicit window; derive is the only
+// sensible reading.
+func TestEnableCompactionZeroWindowLeavesWindowNil(t *testing.T) {
+	cases := []struct {
+		name      string
+		maxTokens int
+	}{
+		{"zero MaxTokens derives", 0},
+		{"negative MaxTokens derives", -512},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := agentloop.Options{}
+			window := plan.Window{MaxTokens: tc.maxTokens, Reserve: 128}
+			if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
+				t.Fatalf("EnableCompaction: %v", err)
+			}
+			if opts.Compaction.Window != nil {
+				t.Fatalf("Compaction.Window = %+v, want nil for derivation", opts.Compaction.Window)
+			}
+			if opts.Compaction.Summarizer == nil {
+				t.Fatal("Compaction.Summarizer is nil")
+			}
+			if opts.Compaction.Calibrated == nil {
+				t.Fatal("Compaction.Calibrated is nil")
+			}
+			opts.Completer = estimatingCompleter{}
+			opts.Tools = tools.New()
+			if err := opts.Validate(); err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+		})
+	}
+}
+
+// TestEnableCompactionExplicitWindowStillWins proves a positive
+// MaxTokens lands the window as given; derivation does not replace
+// it.
+func TestEnableCompactionExplicitWindowStillWins(t *testing.T) {
+	opts := agentloop.Options{}
+	window := plan.Window{MaxTokens: 512, Reserve: 128}
+	if err := agentloop.EnableCompaction(&opts, estimatingCompleter{}, window, 0.25); err != nil {
+		t.Fatalf("EnableCompaction: %v", err)
+	}
+	if opts.Compaction.Window == nil {
+		t.Fatal("Compaction.Window is nil, want the explicit window")
+	}
+	if opts.Compaction.Window.MaxTokens != 512 || opts.Compaction.Window.Reserve != 128 {
+		t.Fatalf("Compaction.Window = %+v, want MaxTokens 512 Reserve 128 as given", opts.Compaction.Window)
 	}
 }
 

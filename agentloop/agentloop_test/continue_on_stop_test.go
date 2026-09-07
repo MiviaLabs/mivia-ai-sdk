@@ -43,7 +43,7 @@ func (c *constantCompleter) callCount() int {
 	return c.calls
 }
 
-// stopHookRecorder records every StopDecision Options.ContinueOnStop
+// stopHookRecorder records every StopDecision Options.Extensions.ContinueOnStop
 // receives and delegates the return value to decide, which sees the
 // zero-based invocation index. A nil decide always stops the run.
 type stopHookRecorder struct {
@@ -116,8 +116,7 @@ func TestContinueOnStopContinuesNoToolCalls(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -157,8 +156,7 @@ func TestContinueOnStopContinuesEmptyResponse(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -196,8 +194,7 @@ func TestContinueOnStopEmptyResponseRoleLessTrimFails(t *testing.T) {
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return msgs, nil
-		},
-		ContinueOnStop: rec.hook,
+		}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -224,8 +221,7 @@ func TestContinueOnStopContinuesConcluded(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		Conclude: agentloop.Conclude{Margin: 5}, ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{Conclude: agentloop.Conclude{Margin: 5}, ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -257,8 +253,7 @@ func runNoToolCallOnce(t *testing.T, hook func(context.Context, agentloop.StopDe
 		{Message: textMessage(provider.RoleAssistant, "final"), Usage: provider.Usage{TotalTokens: 3}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -334,7 +329,7 @@ func TestContinueOnStopNilHookRequestsIdentical(t *testing.T) {
 			{Message: textMessage(provider.RoleAssistant, "final")},
 		}}
 		loop, err := agentloop.New(agentloop.Options{
-			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, ContinueOnStop: hook,
+			Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: hook},
 		})
 		if err != nil {
 			t.Fatalf("New() error = %v, want nil", err)
@@ -362,8 +357,7 @@ func TestContinueOnStopReceivesStopEvidence(t *testing.T) {
 	final := textMessage(provider.RoleAssistant, "final")
 	completer := &scriptedCompleter{responses: []provider.Response{{Message: final}}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: rec.hook,
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -403,8 +397,7 @@ func TestContinueOnStopTrimAppliesToGrownHistory(t *testing.T) {
 			seen = append(seen, append([]provider.Message(nil), msgs...))
 			mu.Unlock()
 			return msgs, nil
-		},
-		ContinueOnStop: rec.hook,
+		}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)
@@ -433,10 +426,9 @@ func TestContinueOnStopPanicFailsClosed(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "second")},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: func(context.Context, agentloop.StopDecision) []provider.Message {
+		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: func(context.Context, agentloop.StopDecision) []provider.Message {
 			panic("hostile host")
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v, want nil", err)

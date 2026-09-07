@@ -39,11 +39,13 @@ func TestShapeRepairDropsEmptyTurnAtIterationStart(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	loop, err := agentloop.New(agentloop.Options{
-		Completer:      completer,
-		Tools:          tools.New(),
-		Bounds:         agentloop.Bounds{MaxIterations: 5},
-		ContinueOnStop: rec.hook,
-	})
+		Completer: completer,
+		Tools:     tools.New(),
+		Bounds:    agentloop.Bounds{MaxIterations: 5},
+
+		Extensions: &agentloop.Extensions{
+			ContinueOnStop: rec.hook,
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

@@ -144,26 +144,12 @@ func (upperTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	return tools.Out{Value: strings.ToUpper(s)}, nil
 }
 
-// shoutTool implements tools.Tool only, with no parameter schema. It
-// shows the plain-tool path beside the schema tool: registered and
-// allowed, but skipped by Definitions, so the model is never offered
-// it.
-type shoutTool struct{}
-
-// Name returns the tool's registry name.
-func (shoutTool) Name() string { return "shout" }
-
-// Run returns the input string uppercased with an exclamation mark.
-func (shoutTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	s, _ := in.Value.(string)
-	return tools.Out{Value: strings.ToUpper(s) + "!"}, nil
-}
-
-// buildRegistry registers both tools under one registry.
+// buildRegistry registers the schema tool under one registry. Every
+// registered tool must publish a parameter schema: Definitions fails
+// with ErrNoSchema otherwise.
 func buildRegistry() *tools.Registry {
 	reg := tools.New()
 	_ = reg.Add(upperTool{})
-	_ = reg.Add(shoutTool{})
 	return reg
 }
 
@@ -207,12 +193,10 @@ func main() {
 	loop, err := agentloop.New(agentloop.Options{
 		Bus:               events.New(),
 		HeartbeatInterval: time.Hour,
-		DedupWithinTurn:   true,
-		StartTime:         time.Now(),
 		Budget:            &budget.Limits{MaxBytes: 1 << 20, MaxEvents: 4096},
 		Completer:         canned,
 		Tools:             buildRegistry(),
-		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper", "shout"}}),
+		Scope:             tools.NewScope(tools.ScopeOptions{Allowlist: []string{"upper"}}),
 		Bounds: agentloop.Bounds{
 			MaxIterations:              4,
 			MaxCallsPerTurn:            4,
@@ -220,23 +204,29 @@ func main() {
 			MaxConcurrentTools:         2,
 			MaxConsecutiveToolFailures: 2,
 		},
-		Conclude:   agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		Window:     &plan.Window{MaxTokens: 512, Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(cannedEstimator{}, 0.25),
-		Tracer:     trace.New(),
-		Hooks:      buildHooks(),
-		Usage:      provider.NewAccumulator(),
-		SessionID:  "agentloop-example",
-		WorkBudget: &agentloop.WorkBudget{
-			Reserve: func(ctx context.Context, req provider.Request) error { return nil },
-			Refund:  func(ctx context.Context, req provider.Request, used provider.Usage) {},
+		Tracer:    trace.New(),
+		Hooks:     buildHooks(),
+		Usage:     provider.NewAccumulator(),
+		SessionID: "agentloop-example",
+		Audit:     auditPrinter,
+
+		Extensions: &agentloop.Extensions{
+			DedupWithinTurn: true,
+			StartTime:       time.Now(),
+			Conclude:        agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
+			WorkBudget: &agentloop.WorkBudget{
+				Reserve: func(ctx context.Context, req provider.Request) error { return nil },
+				Refund:  func(ctx context.Context, req provider.Request, used provider.Usage) {},
+			},
+			ToolBudget: &agentloop.ToolBudget{
+				Reserve: func(ctx context.Context, calls int) error { return nil },
+			},
 		},
-		ToolBudget: &agentloop.ToolBudget{
-			Reserve: func(ctx context.Context, calls int) error { return nil },
-		},
-		Audit: auditPrinter,
-	})
+		Compaction: agentloop.Compaction{
+			Window:     &plan.Window{MaxTokens: 512, Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50}},
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(cannedEstimator{}, 0.25),
+		}})
 	if err != nil {
 		fmt.Println("agentloop.New:", err)
 		return
@@ -258,11 +248,11 @@ func main() {
 }
 ```
 
-The `Bounds` and `Conclude` fields replace this addendum's nine flat
+The `Extensions` and `Compaction` groups replace this addendum's flat
 `Options` fields; see
 [../plans/agentloop.md](../plans/agentloop.md)'s "Addendum: the
-agentloop composition example and the Conclude and Bounds groups" for
-the field map. The `upper` tool publishes its parameter schema through
-`tools.SchemaTool`, so `Definitions` offers it; `shout` implements
-`tools.Tool` only, so the offered set skips it. `verify-fast` vets
-this program through the explicit `go vet` line in the `Makefile`.
+Options and Extensions split" for the field map. The `upper` tool
+publishes its parameter schema through `tools.SchemaTool`, so
+`Definitions` offers it. A registered tool with no schema fails
+`Definitions` with `ErrNoSchema`; `verify-fast` vets this program
+through the explicit `go vet` line in the `Makefile`.

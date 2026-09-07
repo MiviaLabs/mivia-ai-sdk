@@ -126,8 +126,10 @@ func runBatchOrderTurn(t *testing.T, maxConcurrent int) *BatchOrder {
 
 	loop, err := New(Options{
 		Completer: completer, Tools: reg, Bounds: Bounds{MaxIterations: 3, MaxConcurrentTools: maxConcurrent},
-		DedupWithinTurn: true,
-	})
+
+		Extensions: &Extensions{
+			DedupWithinTurn: true,
+		}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

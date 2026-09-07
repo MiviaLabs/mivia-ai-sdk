@@ -96,8 +96,9 @@ func (t *spoolTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 // tools.IsPrivileged, and tools.SchemaOf, so a caller reading inner's
 // published values through those helpers sees no difference.
 // tools.SchemaOf fails closed: a schema-less inner reports nil, false,
-// so agentloop.Definitions skips the wrapper instead of offering a nil
-// schema. SpoolTool changes only Run's result handling, not inner's
+// and agentloop.New then fails with ErrNoSchema naming the wrapper.
+// Wrap schema-bearing inners for model-facing registries. SpoolTool
+// changes only Run's result handling, not inner's
 // declared execution class, result budget, privilege, or schema.
 // A nil sp wraps ErrNilSpool. A negative maxBytes clamps to zero.
 // Two or more SpoolTool calls sharing one sp share its grant budget

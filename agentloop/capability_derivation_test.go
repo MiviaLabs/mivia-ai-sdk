@@ -134,13 +134,15 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 		t.Fatalf("summarizer: %v", err)
 	}
 	opts := Options{
-		Completer:  completer,
-		Tools:      reg,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(completer, 0.25),
-		SessionID:  "cap",
-		Bounds:     Bounds{MaxIterations: 2},
-	}
+		Completer: completer,
+		Tools:     reg,
+		SessionID: "cap",
+		Bounds:    Bounds{MaxIterations: 2},
+
+		Compaction: Compaction{
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(completer, 0.25),
+		}}
 	loop, err := New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -166,15 +168,17 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	// would otherwise reach ErrTrimExcluded's forbidden combination
 	// without ever going through Validate.
 	trimmed := Options{
-		Completer:  completer,
-		Tools:      reg,
-		Summarizer: summarizer,
-		Calibrated: plan.Calibrate(completer, 0.25),
-		SessionID:  "cap",
+		Completer: completer,
+		Tools:     reg,
+		SessionID: "cap",
 		Trim: func(ctx context.Context, msgs []provider.Message) ([]provider.Message, error) {
 			return msgs, nil
 		},
-	}
+
+		Compaction: Compaction{
+			Summarizer: summarizer,
+			Calibrated: plan.Calibrate(completer, 0.25),
+		}}
 	trimmedLoop, err := New(trimmed)
 	if err != nil {
 		t.Fatalf("New with Trim set: %v", err)
@@ -204,4 +208,33 @@ func (capabilityTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 // Run reports done.
 func (capabilityTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	return tools.Out{Value: "done"}, nil
+}
+
+// TestEnableCompactionZeroWindowAdoptsDerivedWindow proves the chain
+// EnableCompaction -> New composes with derivation: a window with a
+// zero MaxTokens stays nil through EnableCompaction, and New derives
+// the window from the Completer's ContextAccountant capability.
+func TestEnableCompactionZeroWindowAdoptsDerivedWindow(t *testing.T) {
+	completer := &capabilityCompleter{window: 10000}
+	reg := tools.New()
+	if err := reg.Add(&capabilityTool{}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	opts := Options{Completer: completer, Tools: reg, SessionID: "cap", Bounds: Bounds{MaxIterations: 2}}
+	if err := EnableCompaction(&opts, completer, plan.Window{}, 0.25); err != nil {
+		t.Fatalf("EnableCompaction: %v", err)
+	}
+	if opts.Compaction.Window != nil {
+		t.Fatalf("Compaction.Window = %+v, want nil before New", opts.Compaction.Window)
+	}
+	loop, err := New(opts)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if loop.window == nil || loop.window.MaxTokens != 10000 || loop.window.Reserve != 2000 {
+		t.Fatalf("window = %+v, want MaxTokens 10000 Reserve 2000", loop.window)
+	}
+	if loop.window.CompactTrigger() != 6400 {
+		t.Fatalf("trigger = %d, want 6400", loop.window.CompactTrigger())
+	}
 }

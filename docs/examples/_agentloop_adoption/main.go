@@ -117,18 +117,20 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		// Row: Tracer. Spans for the host's session sink.
 		Tracer: trace.New(),
 		// Row: DedupWithinTurn. The SDK dedups identical calls per turn.
-		DedupWithinTurn: true,
 		// Row: Audit. One structured record per tool call.
 		Audit: func(ctx context.Context, rec agentloop.AuditRecord) error {
 			return nil
 		},
 		// Row: Conclude. The graceful wrap-up budget.
-		Conclude:  agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
-		StartTime: time.Now(),
 		// Row: HeartbeatInterval + Bus. The host subscribes to this bus.
 		Bus:               bus,
 		HeartbeatInterval: time.Hour,
-	}
+
+		Extensions: &agentloop.Extensions{
+			DedupWithinTurn: true,
+			Conclude:        agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
+			StartTime:       time.Now(),
+		}}
 	// Row: Window + Summarizer + Calibrated. The compaction triple;
 	// the completer must implement provider.TokenEstimator.
 	window := plan.Window{
@@ -136,13 +138,13 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		Reserve:    512,
 		Compaction: plan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}
-	opts.Window = &window
+	opts.Compaction.Window = &window
 	summarizer, err := plan.NewSummarizer(completer)
 	if err != nil {
 		return opts, err
 	}
-	opts.Summarizer = summarizer
-	opts.Calibrated = plan.Calibrate(completer, 0.25)
+	opts.Compaction.Summarizer = summarizer
+	opts.Compaction.Calibrated = plan.Calibrate(completer, 0.25)
 	return opts, nil
 }
 

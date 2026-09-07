@@ -36,6 +36,11 @@
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
+    "agentloop.UnsettledBefore": {
+      "reason": "BatchOrder method re-exported alongside Dispatched/Settle/Settled/Changed when toolcallctx folded into agentloop (this package is the sole producer of BatchOrder values, attached to a tool's ctx during dispatch). mivia-agent's turn-shaping wrapper only reads Dispatched and Settled off the ledger it recovers from ctx; UnsettledBefore rounds out BatchOrder's exported surface for other external Tool wrappers with a coarser fast-path check, matching the pre-fold toolcallctx contract.",
+      "target": "no in-tree or sibling consumer today; kept as SDK surface completing BatchOrder's exported API",
+      "permanent": true
+    },
     "agentrun.DecodeArtifacts": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",

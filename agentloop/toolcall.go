@@ -68,8 +68,8 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 			dispatched = append(dispatched, p.call.Index)
 		}
 	}
-	order := newBatchOrder(dispatched)
-	ctx = withBatchOrder(ctx, order)
+	order := NewBatchOrder(dispatched)
+	ctx = WithBatchOrder(ctx, order)
 	results := l.executeCalls(ctx, order, plans, iteration, surface)
 	return l.collectCalls(ctx, history, plans, results, iteration)
 }
@@ -120,14 +120,14 @@ type callOutcome struct {
 // l.bounds.MaxConcurrentTools otherwise. Dispatch overlap is the only difference
 // between the two paths: per-call semantics are runOneToolCall's own.
 //
-// Settlement contract (batchOrder): every dispatched index
+// Settlement contract (BatchOrder): every dispatched index
 // settles exactly once - when its run returns (success, a reported
 // error, or a pre-tool rejection inside runOneToolCall), or at
 // abandonment when an abort stops the batch before the call runs. A
 // worker that observes the abort AFTER claiming an index settles that
 // index itself, so no dispatched index is ever left permanently
 // unsettled while another worker's tool waits on it.
-func (l *Loop) executeCalls(ctx context.Context, order *batchOrder, plans []callPlan, iteration int, surface runSurface) []callOutcome {
+func (l *Loop) executeCalls(ctx context.Context, order *BatchOrder, plans []callPlan, iteration int, surface runSurface) []callOutcome {
 	outcomes := make([]callOutcome, len(plans))
 	idx := make([]int, 0, len(plans))
 	for i, p := range plans {
@@ -137,7 +137,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *batchOrder, plans []call
 	}
 	var aborted atomic.Bool
 	run := func(i int) {
-		defer order.settle(plans[i].call.Index)
+		defer order.Settle(plans[i].call.Index)
 		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration, surface)
 		if outcomes[i].err != nil || outcomes[i].veto {
 			aborted.Store(true)
@@ -148,7 +148,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *batchOrder, plans []call
 			run(i)
 			if aborted.Load() {
 				for _, rest := range idx[k+1:] {
-					order.settle(plans[rest].call.Index)
+					order.Settle(plans[rest].call.Index)
 				}
 				break
 			}
@@ -167,7 +167,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *batchOrder, plans []call
 					return
 				}
 				if aborted.Load() {
-					order.settle(plans[idx[n]].call.Index)
+					order.Settle(plans[idx[n]].call.Index)
 					continue
 				}
 				run(idx[n])
@@ -307,7 +307,7 @@ func (l *Loop) auditToolCall(ctx context.Context, iteration int, call provider.T
 // its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
 // starts only after the veto check passes.
 func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int, surface runSurface) (msg provider.Message, veto bool, reported error, err error) {
-	callCtx := withToolCall(ctx, call)
+	callCtx := WithToolCall(ctx, call)
 	label := toolCallLabel(iteration, call)
 	l.emitEvent(callCtx, EventToolCallStart, label)
 	defer func() { l.emitEvent(callCtx, EventToolCallEnd, label) }()

@@ -1,10 +1,17 @@
+> Status: relocated. Phase 86 folded this surface into `agentloop`
+> (`toolcall_context.go`, `toolcall_batch.go`) as its sole producer,
+> but external callers still consume it: any external `tools.Tool`
+> wrapper reads the `provider.ToolCall` and `BatchOrder` that
+> `agentloop.Loop` attaches to the `ctx` it passes into `Tool.Run`
+> during dispatch. The types stayed exported for that reason. This
+> page stays as reference, with names updated to their `agentloop`
+> home; the exported surface below mirrors `api/agentloop.txt`.
+
 # Package reference: toolcallctx
 
-The toolcallctx package carries tool execution state through a
+The toolcallctx surface carries tool execution state through a
 `context.Context`. It attaches individual `provider.ToolCall` values and
-per-batch `BatchOrder` dispatch ledgers. It is a leaf: its only imports
-are `context`, `sort`, `sync`, and `provider`. The exported surface below
-mirrors `api/toolcallctx.txt`.
+per-batch `BatchOrder` dispatch ledgers.
 
 ## Types
 
@@ -60,21 +67,21 @@ mirrors `api/toolcallctx.txt`.
 ## Usage
 
 ```go
-ctx := toolcallctx.WithToolCall(parent, provider.ToolCall{
+ctx := agentloop.WithToolCall(parent, provider.ToolCall{
     ID:        "call_1",
     Name:      "search",
     Arguments: []byte(`{"query":"weather"}`),
 })
 
-call, ok := toolcallctx.ToolCallFromContext(ctx)
+call, ok := agentloop.ToolCallFromContext(ctx)
 if !ok {
     // ctx was nil, or carried no attached call
 }
 // call.Name == "search"
 
-order := toolcallctx.NewBatchOrder([]int{0, 1})
-ctxWithOrder := toolcallctx.WithBatchOrder(ctx, order)
-orderFromCtx, ok := toolcallctx.BatchOrderFromContext(ctxWithOrder)
+order := agentloop.NewBatchOrder([]int{0, 1})
+ctxWithOrder := agentloop.WithBatchOrder(ctx, order)
+orderFromCtx, ok := agentloop.BatchOrderFromContext(ctxWithOrder)
 if ok {
     orderFromCtx.Settle(0)
 }

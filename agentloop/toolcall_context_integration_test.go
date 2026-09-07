@@ -23,7 +23,7 @@ func (c *ctxObservingTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 	return tools.InOut{Value: string(raw)}, nil
 }
 func (c *ctxObservingTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	if call, ok := toolCallFromContext(ctx); ok {
+	if call, ok := ToolCallFromContext(ctx); ok {
 		c.mu.Lock()
 		c.recordedCall = call
 		c.hasCall = true
@@ -46,14 +46,14 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	var postHookFound bool
 	hookReg := events.NewRegistry()
 	_ = hookReg.Add(events.PointPreTool, "test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolCallFromContext(ctx); ok {
+		if call, ok := ToolCallFromContext(ctx); ok {
 			preHookCall = call
 			preHookFound = true
 		}
 		return true, nil
 	})
 	_ = hookReg.Add(events.PointPostTool, "test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolCallFromContext(ctx); ok {
+		if call, ok := ToolCallFromContext(ctx); ok {
 			postHookCall = call
 			postHookFound = true
 		}
@@ -64,7 +64,7 @@ func TestRunOneToolCall_ThreadsToolCallContext(t *testing.T) {
 	var busEventFound bool
 	bus := events.New()
 	_ = bus.Subscribe(EventToolCallEnd, func(ctx context.Context, _ events.Event) error {
-		if call, ok := toolCallFromContext(ctx); ok {
+		if call, ok := ToolCallFromContext(ctx); ok {
 			busEventCall = call
 			busEventFound = true
 		}
@@ -129,7 +129,7 @@ func (p *parallelContextTool) DecodeArguments(raw []byte) (tools.InOut, error) {
 }
 func (p *parallelContextTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
 	p.mu.Lock()
-	if call, ok := toolCallFromContext(ctx); ok {
+	if call, ok := ToolCallFromContext(ctx); ok {
 		p.sawCall = call
 		p.sawOK = true
 	}
@@ -217,7 +217,7 @@ func TestToolCallContext_PreToolVeto(t *testing.T) {
 	var vetoedFound bool
 	hookReg := events.NewRegistry()
 	_ = hookReg.Add(events.PointPreTool, "veto-test", func(ctx context.Context, _ any) (bool, error) {
-		if call, ok := toolCallFromContext(ctx); ok {
+		if call, ok := ToolCallFromContext(ctx); ok {
 			vetoedCall = call
 			vetoedFound = true
 		}
@@ -280,7 +280,7 @@ func TestToolCallContext_ErrorPolicyReportDecodeFailure(t *testing.T) {
 		Completer: completer,
 		Tools:     reg,
 		OnToolCallError: func(ctx context.Context, call provider.ToolCall, cerr error) (provider.Message, error) {
-			if tc, ok := toolCallFromContext(ctx); ok {
+			if tc, ok := ToolCallFromContext(ctx); ok {
 				errHookCall = tc
 				errHookFound = true
 			}

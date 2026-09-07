@@ -87,11 +87,11 @@ func (t *batchEchoTool) run(ctx context.Context, in tools.InOut) (tools.Out, err
 type orderObservingTool struct {
 	batchEchoTool
 	mu     sync.Mutex
-	orders []*batchOrder
+	orders []*BatchOrder
 }
 
 func (t *orderObservingTool) Run(ctx context.Context, in tools.InOut) (tools.Out, error) {
-	if order, ok := batchOrderFromContext(ctx); ok {
+	if order, ok := BatchOrderFromContext(ctx); ok {
 		t.mu.Lock()
 		t.orders = append(t.orders, order)
 		t.mu.Unlock()
@@ -99,17 +99,17 @@ func (t *orderObservingTool) Run(ctx context.Context, in tools.InOut) (tools.Out
 	return t.batchEchoTool.run(ctx, in)
 }
 
-func (t *orderObservingTool) observed() []*batchOrder {
+func (t *orderObservingTool) observed() []*BatchOrder {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return append([]*batchOrder(nil), t.orders...)
+	return append([]*BatchOrder(nil), t.orders...)
 }
 
 // runBatchOrderTurn drives one turn with calls [0 ok, 1 unknown-name
 // reject, 2 ok, 3 duplicate-of-0] and returns the BatchOrder the tools
 // observed. Index 3 is a byte-identical duplicate of index 0 under
 // DedupWithinTurn, so it must not be dispatched at all.
-func runBatchOrderTurn(t *testing.T, maxConcurrent int) *batchOrder {
+func runBatchOrderTurn(t *testing.T, maxConcurrent int) *BatchOrder {
 	t.Helper()
 	tool := &orderObservingTool{batchEchoTool: batchEchoTool{name: "observer", schema: []byte(`{}`), result: "ok"}}
 	reg := tools.New()
@@ -162,16 +162,16 @@ func TestBatchOrderSettlementContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			order := runBatchOrderTurn(t, tc.maxConcurrent)
 
-			got := order.dispatchedList()
+			got := order.Dispatched()
 			if len(got) != 3 || got[0] != 0 || got[1] != 1 || got[2] != 2 {
 				t.Fatalf("Dispatched = %v, want [0 1 2] (index 3 is a duplicate and never dispatches)", got)
 			}
 			for _, d := range got {
-				if !order.isSettled(d) {
+				if !order.Settled(d) {
 					t.Fatalf("dispatched index %d is unsettled after the batch ended", d)
 				}
 			}
-			if order.unsettledBefore(3) {
+			if order.UnsettledBefore(3) {
 				t.Fatal("UnsettledBefore(3) = true after every dispatched index settled")
 			}
 		})
@@ -210,8 +210,8 @@ func TestBatchOrderSettlesAbandonedCallsOnAbort(t *testing.T) {
 		t.Fatal("the failing tool never observed a BatchOrder")
 	}
 	order := orders[0]
-	for _, d := range order.dispatchedList() {
-		if !order.isSettled(d) {
+	for _, d := range order.Dispatched() {
+		if !order.Settled(d) {
 			t.Fatalf("dispatched index %d left unsettled after abort abandonment", d)
 		}
 	}

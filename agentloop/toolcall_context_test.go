@@ -14,20 +14,20 @@ func TestToolCallContextRoundTrip(t *testing.T) {
 		Arguments: []byte(`{"param":"value"}`),
 	}
 
-	ctx := withToolCall(context.Background(), call)
-	got, ok := toolCallFromContext(ctx)
+	ctx := WithToolCall(context.Background(), call)
+	got, ok := ToolCallFromContext(ctx)
 	if !ok {
-		t.Fatal("expected toolCallFromContext to return true")
+		t.Fatal("expected ToolCallFromContext to return true")
 	}
 	if got.ID != call.ID || got.Name != call.Name || string(got.Arguments) != string(call.Arguments) {
 		t.Fatalf("got %+v, want %+v", got, call)
 	}
 
 	// Nil context or context without value
-	if _, ok := toolCallFromContext(nil); ok {
-		t.Fatal("expected toolCallFromContext(nil) to return false")
+	if _, ok := ToolCallFromContext(nil); ok {
+		t.Fatal("expected ToolCallFromContext(nil) to return false")
 	}
-	if _, ok := toolCallFromContext(context.Background()); ok {
-		t.Fatal("expected toolCallFromContext(empty ctx) to return false")
+	if _, ok := ToolCallFromContext(context.Background()); ok {
+		t.Fatal("expected ToolCallFromContext(empty ctx) to return false")
 	}
 }

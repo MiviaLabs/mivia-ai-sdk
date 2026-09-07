@@ -148,19 +148,37 @@ def commit_message(root: Path, rev: str) -> str:
         return ""
 
 
+def _normalize_range_args(root: Path, cmp_args: list) -> list:
+    """_normalize_range_args resolves a single A...B or A..B range arg
+    into the two-rev form [base, B]. An A...B three-dot range uses the
+    merge base of A and B as the base rev, matching git diff's
+    meaning. Resolving here keeps every later text read a plain
+    rev:path git show, so an unresolvable rev fails loudly in name-
+    status order rather than as silently empty file texts."""
+    revs = [a for a in cmp_args if not a.startswith("-")]
+    if len(revs) != 1 or ".." not in revs[0] or "--cached" in cmp_args:
+        return cmp_args
+    left, sep, right = revs[0].partition("...")
+    if not sep:
+        left, _, right = revs[0].partition("..")
+    base = left or "HEAD"
+    target = right or "HEAD"
+    if sep:
+        merge = _git(root, "merge-base", base, target).decode().strip()
+        if merge:
+            base = merge
+    return [base, target]
+
+
 def _diff_base_and_target(cmp_args: list) -> tuple:
     """_diff_base_and_target splits one git-diff arg list into (base,
     target) revs: target None means the worktree. `--cached` diffs the
     staged tree against HEAD or, with an extra rev, against that rev.
-    An `A..B` range arg splits into base A, target B, so file texts
-    never silently resolve against the worktree."""
+    Range args arrive already normalized to the two-rev form."""
     revs = [a for a in cmp_args if not a.startswith("-")]
     if "--cached" in cmp_args:
         base = revs[0] if revs else "HEAD"
         return base, None
-    if revs and ".." in revs[0]:
-        left, _, right = revs[0].partition("..")
-        return left or "HEAD", right or "HEAD"
     if len(revs) >= 2:
         return revs[0], revs[1]
     return revs[0] if revs else "HEAD", None
@@ -184,6 +202,7 @@ def build_diff(root: Path, cmp_args: list) -> list:
     `git show` for the base text, the worktree or rev for the target
     text."""
     out = _git(root, "diff", "--name-status", *cmp_args).decode()
+    cmp_args = _normalize_range_args(root, cmp_args)
     base, target = _diff_base_and_target(cmp_args)
     diffs = []
     for line in out.splitlines():

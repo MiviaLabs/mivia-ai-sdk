@@ -52,7 +52,10 @@ func (c *Client) EstimateTokens(req provider.Request) (int, error) {
 // caller's fallback covers transient failures. The payload carries
 // only the fields count_tokens accepts: model, messages, system, and
 // tools. A full Messages body would add max_tokens and friends,
-// which the endpoint may reject.
+// which the endpoint may reject. Replay follows the decision Chat
+// makes, so replayed thinking blocks are counted; a request whose
+// messages all convert to nothing falls back instead of posting an
+// empty messages array.
 func (c *Client) countTokens(req provider.Request) (int, error) {
 	model := req.Model
 	if model == "" {
@@ -61,7 +64,15 @@ func (c *Client) countTokens(req provider.Request) (int, error) {
 	if model == "" {
 		model = DefaultModel
 	}
-	systemBlocks, msgs := convertMessages(req.Messages, false)
+	effort := req.ReasoningEffort
+	if effort == "" {
+		effort = c.opts.DefaultEffort
+	}
+	replay := effort != "" && effort != provider.ReasoningEffortNone && !req.DisableProviderReplay
+	systemBlocks, msgs := convertMessages(req.Messages, replay)
+	if len(msgs) == 0 {
+		return 0, fmt.Errorf("anthropic: no countable messages for this request")
+	}
 	payload, err := encodeCountTokensBody(countTokensBody{
 		Model:    model,
 		Messages: msgs,
@@ -104,13 +115,15 @@ func (c *Client) countTokensEndpoint() string {
 }
 
 // estimateByRatio estimates prompt tokens as total prompt characters
-// divided by fallbackCharsPerToken. It counts message content, system
-// content is already folded into Messages by the caller's Request
-// shape, and tool names plus schemas.
+// divided by fallbackCharsPerToken. It counts message content,
+// replayed reasoning-block content, and tool names plus schemas.
 func estimateByRatio(req provider.Request) int {
 	chars := 0
 	for _, msg := range req.Messages {
 		chars += len(msg.Content)
+		for _, block := range msg.ReasoningBlocks {
+			chars += len(block.Content) + len(block.Data)
+		}
 		for _, tc := range msg.ToolCalls {
 			chars += len(tc.Arguments)
 		}

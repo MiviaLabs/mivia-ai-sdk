@@ -17,7 +17,7 @@
       "permanent": false
     },
     "mcp": {
-      "reason": "MCP client leaf. Its consumer is external application code: mivia-agent imports it at 22 call sites as of 2026-09-07.",
+      "reason": "MCP client leaf. Its consumer is external application code: mivia-agent imports it through internal/sdkadapter as of 2026-09-07.",
       "target": "external application code (mivia-agent)",
       "permanent": true
     },

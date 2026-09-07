@@ -143,3 +143,48 @@ func TestEstimateTokensPostsOnlyCountFields(t *testing.T) {
 		}
 	}
 }
+
+// TestEstimateTokensCountsReplayedReasoningBlocks proves a history
+// whose only weight is a signed reasoning block estimates nonzero:
+// the count body replays the thinking part, and the fallback counts
+// reasoning content too.
+func TestEstimateTokensCountsReplayedReasoningBlocks(t *testing.T) {
+	var sawThinking bool
+	_, fix := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content []struct {
+					Type string `json:"type"`
+				} `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for _, m := range body.Messages {
+			for _, part := range m.Content {
+				if part.Type == "thinking" {
+					sawThinking = true
+				}
+			}
+		}
+		http.Error(w, "down", http.StatusInternalServerError)
+	})
+	est := provider.TokenEstimator(fix.client)
+	req := provider.Request{
+		ReasoningEffort: provider.ReasoningEffortMedium,
+		Messages: []provider.Message{
+			{Role: provider.RoleAssistant, ReasoningBlocks: []provider.ReasoningBlock{
+				{Content: strings.Repeat("r", 200), Signature: "sig"},
+			}},
+		},
+	}
+	n, err := est.EstimateTokens(req)
+	if err != nil {
+		t.Fatalf("EstimateTokens: %v", err)
+	}
+	if n == 0 {
+		t.Fatal("EstimateTokens = 0 for a thinking-only history; reasoning blocks must count")
+	}
+	if !sawThinking {
+		t.Fatal("count body did not replay the reasoning block the next Chat would send")
+	}
+}

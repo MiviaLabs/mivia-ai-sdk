@@ -5546,10 +5546,12 @@ Inside:
 - The Trim exclusion: derivation stands down whenever `opts.Trim` is
   set, because `Options.Validate` rejects `Window` and `Trim`
   together (`ErrTrimExcluded`); a derived Window must not manufacture
-  that rejection. This exclusion is already implemented in
-  `agentloop/loop.go`'s `New` (the `opts.Trim == nil` term) and
-  already covered by `agentloop/capability_derivation_test.go`; this
-  addendum documents it, it does not add it.
+  that rejection. Commit c5696d9 added this exclusion, the
+  `opts.Trim == nil` term in `agentloop/loop.go`'s `New`, and its
+  covering case in `agentloop/capability_derivation_test.go`, fixing a
+  gap in the capability-derivation commit above: derivation there had
+  no Trim check, so a derived Window could manufacture
+  `ErrTrimExcluded` for one commit before this fix landed.
 - `docs/packages/agentloop.md`'s new "Capability derivation from the
   Completer" section.
 

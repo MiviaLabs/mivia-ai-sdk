@@ -21,7 +21,7 @@ API references.
 The diagram shows the thirty-six packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
-`durablefence`, `envfile`, `events`,
+`envfile`, `events`,
 `longtermmemory`, `provider`, `schema`, `skills`,
 `tools`, and `trace` are leaves: they import no other
 package in this module. `envelope` imports `contextref` alone.
@@ -119,7 +119,6 @@ flowchart LR
     anthropic["provider/anthropic"] --> provider
     contextbudget[contextbudget]
     schema[schema]
-    durablefence[durablefence]
     envelope[envelope]
     events[events]
     provider[provider]
@@ -282,7 +281,7 @@ flowchart LR
   returns the address and a stop function. `a2aloopback` imports `a2a`
   and `envelope`, plus the same third-party `a2a-go`/`grpc` exception
   `a2aclient` carries, scoped to the server-side packages a production
-  client never needs. It follows `durablefence`'s convention: no
+  client never needs. It follows the fixture convention: no
   production package may import it; only `a2aclient`'s own tests do.
 - `dispatch/` — the NDJSON envelope endpoint. It provides `Handler`,
   `Options`, `Options.Validate`, `New`, `Endpoint`, `Endpoint.Handler`,
@@ -388,16 +387,16 @@ flowchart LR
   ceremony `Run` with `Options` and `Task`: it admits, claims, runs,
   and completes one work func under ledger admission, maps the work
   result onto the ledger status, and returns the work's own error.
+  The `ledger/ledgertest` conformance kit lives beside the package:
+  it provides `Scenario`, `Validate`, `ErrIncompleteScenario`, seven
+  `Check*` functions, and `RunAll`. A caller wires its own claim,
+  takeover, mutate, release, and fence-reading calls into a
+  `Scenario` literal and runs `RunAll` to prove the claim-and-fence
+  invariants hold, including a concurrent takeover-versus-mutate
+  race a sequential test cannot reach. No production code may
+  import it; `ledger/ledger_test/scenario_test.go` wires it against
+  `Ledger`.
   See [packages/ledger.md](packages/ledger.md).
-- `durablefence/` — a test-only conformance kit. It provides
-  `Scenario`, `Validate`, `ErrIncompleteScenario`, seven `Check*`
-  functions, and `RunAll`. A caller wires its own claim, takeover,
-  mutate, release, and fence-reading calls into a `Scenario` literal
-  and runs `RunAll` to prove the claim-and-fence invariants hold,
-  including a concurrent takeover-versus-mutate race a sequential test
-  cannot reach. `durablefence` is a leaf with no import edge to or
-  from any other package in this module; no production code may import
-  it. `ledger/ledger_test/scenario_test.go` wires it against `Ledger`.
 - `memory/` — the content-addressed context store. It provides
   `Store`, `New`, `Put`, `Get`, and the sentinels `ErrNoBudget`,
   `ErrBudgetExceeded`, and `ErrUnknownRef`. `Put` computes a blob's

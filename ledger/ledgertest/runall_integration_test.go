@@ -1,10 +1,10 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // TestRunAllComposesOverOneScenario calls RunAll once against the
@@ -16,7 +16,7 @@ func TestRunAllComposesOverOneScenario(t *testing.T) {
 	r := newReferenceClaim()
 	s := r.scenario()
 	ok := t.Run("RunAll", func(t *testing.T) {
-		durablefence.RunAll(t, ctx, s)
+		ledgertest.RunAll(t, ctx, s)
 	})
 	if !ok {
 		t.Fatal("RunAll reported a failing subtest against a correct reference implementation")

@@ -1,15 +1,15 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
-// fullScenario returns a durablefence.Scenario with every field set,
+// fullScenario returns a ledgertest.Scenario with every field set,
 // wired against a fresh referenceClaim.
-func fullScenario() durablefence.Scenario {
+func fullScenario() ledgertest.Scenario {
 	return newReferenceClaim().scenario()
 }
 
@@ -27,21 +27,21 @@ func TestScenarioValidateComplete(t *testing.T) {
 func TestScenarioValidateMissingField(t *testing.T) {
 	cases := []struct {
 		name  string
-		clear func(*durablefence.Scenario)
+		clear func(*ledgertest.Scenario)
 	}{
-		{"Claim", func(s *durablefence.Scenario) { s.Claim = nil }},
-		{"Takeover", func(s *durablefence.Scenario) { s.Takeover = nil }},
-		{"Mutate", func(s *durablefence.Scenario) { s.Mutate = nil }},
-		{"Release", func(s *durablefence.Scenario) { s.Release = nil }},
-		{"IsHeld", func(s *durablefence.Scenario) { s.IsHeld = nil }},
-		{"IsFenced", func(s *durablefence.Scenario) { s.IsFenced = nil }},
+		{"Claim", func(s *ledgertest.Scenario) { s.Claim = nil }},
+		{"Takeover", func(s *ledgertest.Scenario) { s.Takeover = nil }},
+		{"Mutate", func(s *ledgertest.Scenario) { s.Mutate = nil }},
+		{"Release", func(s *ledgertest.Scenario) { s.Release = nil }},
+		{"IsHeld", func(s *ledgertest.Scenario) { s.IsHeld = nil }},
+		{"IsFenced", func(s *ledgertest.Scenario) { s.IsFenced = nil }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			s := fullScenario()
 			c.clear(&s)
 			err := s.Validate()
-			if !errors.Is(err, durablefence.ErrIncompleteScenario) {
+			if !errors.Is(err, ledgertest.ErrIncompleteScenario) {
 				t.Fatalf("Validate: got %v, want ErrIncompleteScenario", err)
 			}
 		})

@@ -1,4 +1,4 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // errRefNotHeld is returned by the reference implementation's Mutate
@@ -116,9 +116,9 @@ func newReferenceClaim() *referenceClaim {
 	return &referenceClaim{fenced: make(map[string]bool)}
 }
 
-// scenario wires r's methods into a durablefence.Scenario.
-func (r *referenceClaim) scenario() durablefence.Scenario {
-	return durablefence.Scenario{
+// scenario wires r's methods into a ledgertest.Scenario.
+func (r *referenceClaim) scenario() ledgertest.Scenario {
+	return ledgertest.Scenario{
 		Claim:    r.claim,
 		Takeover: r.takeover,
 		Mutate:   r.mutate,

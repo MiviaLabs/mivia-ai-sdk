@@ -1,10 +1,10 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // assertUnheld fails t when r reports a held resource.
@@ -22,42 +22,42 @@ func assertUnheld(t *testing.T, ctx context.Context, r *referenceClaim) {
 func TestCheckClaimGrantsHold(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckClaimGrantsHold(t, ctx, r.scenario())
+	ledgertest.CheckClaimGrantsHold(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
 func TestCheckClaimRejectsWhileHeld(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckClaimRejectsWhileHeld(t, ctx, r.scenario())
+	ledgertest.CheckClaimRejectsWhileHeld(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
 func TestCheckReleaseClearsHold(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckReleaseClearsHold(t, ctx, r.scenario())
+	ledgertest.CheckReleaseClearsHold(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
 func TestCheckIsFencedFalseForUnknownToken(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckIsFencedFalseForUnknownToken(t, ctx, r.scenario())
+	ledgertest.CheckIsFencedFalseForUnknownToken(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
 func TestCheckTakeoverFencesPreviousOwner(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckTakeoverFencesPreviousOwner(t, ctx, r.scenario())
+	ledgertest.CheckTakeoverFencesPreviousOwner(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
 func TestCheckMutateSucceedsForCurrentOwner(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, r.scenario())
+	ledgertest.CheckMutateSucceedsForCurrentOwner(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }
 
@@ -67,6 +67,6 @@ func TestCheckMutateSucceedsForCurrentOwner(t *testing.T) {
 func TestCheckTakeoverFencesConcurrentMutate(t *testing.T) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.CheckTakeoverFencesConcurrentMutate(t, ctx, r.scenario())
+	ledgertest.CheckTakeoverFencesConcurrentMutate(t, ctx, r.scenario())
 	assertUnheld(t, ctx, r)
 }

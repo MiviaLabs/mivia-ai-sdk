@@ -1,10 +1,10 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // releaseOnFailureCase names one Check* function and a Scenario
@@ -13,17 +13,17 @@ import (
 type releaseOnFailureCase struct {
 	name  string
 	check string
-	build func(r *referenceClaim) durablefence.Scenario
+	build func(r *referenceClaim) ledgertest.Scenario
 }
 
 // releaseOnFailureChecks maps each case's check name to the real
 // Check* function under test.
-var releaseOnFailureChecks = map[string]func(testing.TB, context.Context, durablefence.Scenario){
-	"CheckClaimGrantsHold":                durablefence.CheckClaimGrantsHold,
-	"CheckClaimRejectsWhileHeld":          durablefence.CheckClaimRejectsWhileHeld,
-	"CheckTakeoverFencesPreviousOwner":    durablefence.CheckTakeoverFencesPreviousOwner,
-	"CheckTakeoverFencesConcurrentMutate": durablefence.CheckTakeoverFencesConcurrentMutate,
-	"CheckMutateSucceedsForCurrentOwner":  durablefence.CheckMutateSucceedsForCurrentOwner,
+var releaseOnFailureChecks = map[string]func(testing.TB, context.Context, ledgertest.Scenario){
+	"CheckClaimGrantsHold":                ledgertest.CheckClaimGrantsHold,
+	"CheckClaimRejectsWhileHeld":          ledgertest.CheckClaimRejectsWhileHeld,
+	"CheckTakeoverFencesPreviousOwner":    ledgertest.CheckTakeoverFencesPreviousOwner,
+	"CheckTakeoverFencesConcurrentMutate": ledgertest.CheckTakeoverFencesConcurrentMutate,
+	"CheckMutateSucceedsForCurrentOwner":  ledgertest.CheckMutateSucceedsForCurrentOwner,
 }
 
 // releaseOnFailureCases lies on one Scenario field per case, chosen
@@ -34,7 +34,7 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 	{
 		name:  "CheckClaimGrantsHold/IsFenced lies true",
 		check: "CheckClaimGrantsHold",
-		build: func(r *referenceClaim) durablefence.Scenario {
+		build: func(r *referenceClaim) ledgertest.Scenario {
 			s := r.scenario()
 			s.IsFenced = func(context.Context, string) (bool, error) { return true, nil }
 			return s
@@ -43,7 +43,7 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 	{
 		name:  "CheckClaimRejectsWhileHeld/second Claim lies success",
 		check: "CheckClaimRejectsWhileHeld",
-		build: func(r *referenceClaim) durablefence.Scenario {
+		build: func(r *referenceClaim) ledgertest.Scenario {
 			s := r.scenario()
 			first := true
 			s.Claim = func(ctx context.Context) (string, error) {
@@ -62,7 +62,7 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 	{
 		name:  "CheckTakeoverFencesPreviousOwner/IsFenced lies false",
 		check: "CheckTakeoverFencesPreviousOwner",
-		build: func(r *referenceClaim) durablefence.Scenario {
+		build: func(r *referenceClaim) ledgertest.Scenario {
 			s := r.scenario()
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, nil }
 			return s
@@ -71,7 +71,7 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 	{
 		name:  "CheckTakeoverFencesConcurrentMutate/IsFenced lies false",
 		check: "CheckTakeoverFencesConcurrentMutate",
-		build: func(r *referenceClaim) durablefence.Scenario {
+		build: func(r *referenceClaim) ledgertest.Scenario {
 			s := r.scenario()
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, nil }
 			return s
@@ -80,7 +80,7 @@ var releaseOnFailureCases = []releaseOnFailureCase{
 	{
 		name:  "CheckMutateSucceedsForCurrentOwner/Mutate lies error",
 		check: "CheckMutateSucceedsForCurrentOwner",
-		build: func(r *referenceClaim) durablefence.Scenario {
+		build: func(r *referenceClaim) ledgertest.Scenario {
 			s := r.scenario()
 			// Lies about the current, non-fenced owner's Mutate call
 			// failing, without touching the real reference state, so the

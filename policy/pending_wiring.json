@@ -26,11 +26,6 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "durablefence": {
-      "reason": "Test-only conformance kit. AGENTS.md states it is imported only from another package's _test subdirectory.",
-      "target": "ledger/ledger_test and other packages' _test subdirectories only",
-      "permanent": true
-    },
     "e2e": {
       "reason": "End-to-end scenario harness. Its intended callers are its own e2e_test subdirectory and subagent/subagent_test/helpers_test.go, both test code, by design.",
       "target": "e2e/e2e_test scenarios and subagent/subagent_test/helpers_test.go",
@@ -39,6 +34,11 @@
     "envfile": {
       "reason": "Dotenv parser leaf. Its consumer is external application code: the sibling consumer repo imports it in internal/miviaauth/serverurl.go, internal/config/bootstrap.go, and internal/config/load.go.",
       "target": "external application code (the sibling consumer repo)",
+      "permanent": true
+    },
+    "ledger/ledgertest": {
+      "reason": "Test-only conformance kit, formerly the top-level durablefence package. It is imported only from other packages' _test subdirectories.",
+      "target": "ledger/ledger_test and other packages' _test subdirectories only",
       "permanent": true
     },
     "longtermmemory": {

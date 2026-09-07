@@ -1,4 +1,4 @@
-package durablefence
+package ledger/ledgertest
   func (s Scenario) Validate() (error)
   func CheckClaimGrantsHold(t testing.TB, ctx context.Context, s Scenario)
   func CheckClaimRejectsWhileHeld(t testing.TB, ctx context.Context, s Scenario)

@@ -13,20 +13,20 @@
       "envelope"
     ],
     "agent": [
-      "flow",
+      "contextbudget",
       "envelope",
       "events",
-      "machine",
-      "contextbudget"
+      "flow",
+      "machine"
     ],
     "agentloop": [
-      "provider",
-      "tools",
-      "trace",
-      "events",
       "contextbudget",
+      "contextplan",
+      "events",
+      "provider",
       "schema",
-      "contextplan"
+      "tools",
+      "trace"
     ],
     "agentrun": [
       "agent",
@@ -50,8 +50,8 @@
     "contextsession": [
       "contextplan",
       "contextstate",
-      "provider",
-      "memory"
+      "memory",
+      "provider"
     ],
     "contextstate": [
       "contextref"
@@ -63,7 +63,6 @@
       "ledger",
       "room"
     ],
-    "durablefence": [],
     "e2e": [
       "agent",
       "channel",
@@ -140,6 +139,7 @@
     ],
     "tools": [],
     "trace": [],
-    "workspace": []
+    "workspace": [],
+    "ledger/ledgertest": []
   }
 }

@@ -1,10 +1,10 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // FuzzRunAllAgainstNonTestingT calls RunAll with a *testing.F, a real
@@ -16,6 +16,6 @@ import (
 func FuzzRunAllAgainstNonTestingT(f *testing.F) {
 	ctx := context.Background()
 	r := newReferenceClaim()
-	durablefence.RunAll(f, ctx, r.scenario())
+	ledgertest.RunAll(f, ctx, r.scenario())
 	f.Fuzz(func(*testing.T, []byte) {})
 }

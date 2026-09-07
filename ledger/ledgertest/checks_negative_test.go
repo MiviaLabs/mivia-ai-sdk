@@ -1,11 +1,11 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // errAlwaysErrorsMutate is the error a broken Mutate returns for
@@ -40,7 +40,7 @@ func TestCheckTakeoverFencesPreviousOwnerCatchesBrokenTakeover(t *testing.T) {
 		return r.owner, nil
 	}
 	ok := runIsolated("CheckTakeoverFencesPreviousOwner", func(t *testing.T) {
-		durablefence.CheckTakeoverFencesPreviousOwner(t, ctx, s)
+		ledgertest.CheckTakeoverFencesPreviousOwner(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Takeover that never fences the previous token")
@@ -63,7 +63,7 @@ func TestCheckTakeoverFencesPreviousOwnerCatchesBrokenMutate(t *testing.T) {
 	s := r.scenario()
 	s.Mutate = func(context.Context, string) error { return nil }
 	ok := runIsolated("CheckTakeoverFencesPreviousOwner", func(t *testing.T) {
-		durablefence.CheckTakeoverFencesPreviousOwner(t, ctx, s)
+		ledgertest.CheckTakeoverFencesPreviousOwner(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Mutate that never rejects a fenced token")
@@ -84,7 +84,7 @@ func TestCheckTakeoverFencesConcurrentMutateCatchesBrokenTakeover(t *testing.T) 
 		return r.newToken(), nil
 	}
 	ok := runIsolated("CheckTakeoverFencesConcurrentMutate", func(t *testing.T) {
-		durablefence.CheckTakeoverFencesConcurrentMutate(t, ctx, s)
+		ledgertest.CheckTakeoverFencesConcurrentMutate(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Takeover that does not fence a concurrent Mutate")
@@ -102,7 +102,7 @@ func TestCheckReleaseClearsHoldCatchesBrokenRelease(t *testing.T) {
 		return nil
 	}
 	ok := runIsolated("CheckReleaseClearsHold", func(t *testing.T) {
-		durablefence.CheckReleaseClearsHold(t, ctx, s)
+		ledgertest.CheckReleaseClearsHold(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Release that never clears the hold")
@@ -124,7 +124,7 @@ func TestCheckClaimRejectsWhileHeldCatchesBrokenClaim(t *testing.T) {
 		return r.owner, nil
 	}
 	ok := runIsolated("CheckClaimRejectsWhileHeld", func(t *testing.T) {
-		durablefence.CheckClaimRejectsWhileHeld(t, ctx, s)
+		ledgertest.CheckClaimRejectsWhileHeld(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Claim that grants a second hold while already held")
@@ -144,7 +144,7 @@ func TestCheckClaimGrantsHoldCatchesBrokenClaim(t *testing.T) {
 		return r.newToken(), nil
 	}
 	ok := runIsolated("CheckClaimGrantsHold", func(t *testing.T) {
-		durablefence.CheckClaimGrantsHold(t, ctx, s)
+		ledgertest.CheckClaimGrantsHold(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Claim that does not set the hold")
@@ -162,7 +162,7 @@ func TestCheckIsFencedFalseForUnknownTokenCatchesBrokenIsFenced(t *testing.T) {
 		return true, nil
 	}
 	ok := runIsolated("CheckIsFencedFalseForUnknownToken", func(t *testing.T) {
-		durablefence.CheckIsFencedFalseForUnknownToken(t, ctx, s)
+		ledgertest.CheckIsFencedFalseForUnknownToken(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against an IsFenced that always reports true")
@@ -185,7 +185,7 @@ func TestCheckMutateSucceedsForCurrentOwnerCatchesBrokenMutate(t *testing.T) {
 		return errAlwaysErrorsMutate
 	}
 	ok := runIsolated("CheckMutateSucceedsForCurrentOwner", func(t *testing.T) {
-		durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
+		ledgertest.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against a Mutate that always errors, even for the current owner")
@@ -208,7 +208,7 @@ func TestCheckClaimGrantsHoldCatchesBrokenIsFencedDefaultTrue(t *testing.T) {
 		return r.fenced[token], nil
 	}
 	ok := runIsolated("CheckClaimGrantsHold", func(t *testing.T) {
-		durablefence.CheckClaimGrantsHold(t, ctx, s)
+		ledgertest.CheckClaimGrantsHold(t, ctx, s)
 	})
 	if ok {
 		t.Fatal("check passed against an IsFenced that defaults true for any held token")

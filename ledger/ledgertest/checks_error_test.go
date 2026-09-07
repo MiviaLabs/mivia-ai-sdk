@@ -1,17 +1,17 @@
-package durablefence_test
+package ledgertest_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/durablefence"
+	"github.com/MiviaLabs/mivia-ai-sdk/ledger/ledgertest"
 )
 
 // errInjected is the backend error every case below injects into one
 // Scenario field, proving a Check* function stops and fails loud on
 // the first backend error it sees, distinct from a fencing violation.
-var errInjected = errors.New("durablefence_test: injected backend error")
+var errInjected = errors.New("ledgertest_test: injected backend error")
 
 // expectCheckFail runs run under an isolated *testing.T and fails t
 // when run reports success; every case in this file expects run to
@@ -30,18 +30,18 @@ func TestCheckClaimGrantsHoldPropagatesBackendErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"isheld-error", func(s *durablefence.Scenario) {
+		{"isheld-error", func(s *ledgertest.Scenario) {
 			s.IsHeld = func(context.Context) (bool, error) { return false, errInjected }
 		}},
-		{"isfenced-error", func(s *durablefence.Scenario) {
+		{"isfenced-error", func(s *ledgertest.Scenario) {
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
 	}
@@ -50,7 +50,7 @@ func TestCheckClaimGrantsHoldPropagatesBackendErrors(t *testing.T) {
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckClaimGrantsHold", func(t *testing.T) {
-				durablefence.CheckClaimGrantsHold(t, ctx, s)
+				ledgertest.CheckClaimGrantsHold(t, ctx, s)
 			})
 		})
 	}
@@ -63,12 +63,12 @@ func TestCheckClaimRejectsWhileHeldPropagatesBackendErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
 	}
@@ -77,7 +77,7 @@ func TestCheckClaimRejectsWhileHeldPropagatesBackendErrors(t *testing.T) {
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckClaimRejectsWhileHeld", func(t *testing.T) {
-				durablefence.CheckClaimRejectsWhileHeld(t, ctx, s)
+				ledgertest.CheckClaimRejectsWhileHeld(t, ctx, s)
 			})
 		})
 	}
@@ -90,15 +90,15 @@ func TestCheckReleaseClearsHoldPropagatesBackendErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
-		{"isheld-error", func(s *durablefence.Scenario) {
+		{"isheld-error", func(s *ledgertest.Scenario) {
 			s.IsHeld = func(context.Context) (bool, error) { return false, errInjected }
 		}},
 	}
@@ -107,7 +107,7 @@ func TestCheckReleaseClearsHoldPropagatesBackendErrors(t *testing.T) {
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckReleaseClearsHold", func(t *testing.T) {
-				durablefence.CheckReleaseClearsHold(t, ctx, s)
+				ledgertest.CheckReleaseClearsHold(t, ctx, s)
 			})
 		})
 	}
@@ -120,18 +120,18 @@ func TestCheckTakeoverFencesPreviousOwnerPropagatesBackendErrors(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"takeover-error", func(s *durablefence.Scenario) {
+		{"takeover-error", func(s *ledgertest.Scenario) {
 			s.Takeover = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"isfenced-error", func(s *durablefence.Scenario) {
+		{"isfenced-error", func(s *ledgertest.Scenario) {
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
 	}
@@ -140,7 +140,7 @@ func TestCheckTakeoverFencesPreviousOwnerPropagatesBackendErrors(t *testing.T) {
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckTakeoverFencesPreviousOwner", func(t *testing.T) {
-				durablefence.CheckTakeoverFencesPreviousOwner(t, ctx, s)
+				ledgertest.CheckTakeoverFencesPreviousOwner(t, ctx, s)
 			})
 		})
 	}
@@ -153,18 +153,18 @@ func TestCheckTakeoverFencesConcurrentMutatePropagatesBackendErrors(t *testing.T
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"takeover-error", func(s *durablefence.Scenario) {
+		{"takeover-error", func(s *ledgertest.Scenario) {
 			s.Takeover = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"isfenced-error", func(s *durablefence.Scenario) {
+		{"isfenced-error", func(s *ledgertest.Scenario) {
 			s.IsFenced = func(context.Context, string) (bool, error) { return false, errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
 	}
@@ -173,7 +173,7 @@ func TestCheckTakeoverFencesConcurrentMutatePropagatesBackendErrors(t *testing.T
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckTakeoverFencesConcurrentMutate", func(t *testing.T) {
-				durablefence.CheckTakeoverFencesConcurrentMutate(t, ctx, s)
+				ledgertest.CheckTakeoverFencesConcurrentMutate(t, ctx, s)
 			})
 		})
 	}
@@ -187,7 +187,7 @@ func TestCheckIsFencedFalseForUnknownTokenPropagatesBackendErrors(t *testing.T) 
 	s := newReferenceClaim().scenario()
 	s.IsFenced = func(context.Context, string) (bool, error) { return false, errInjected }
 	expectCheckFail(t, "CheckIsFencedFalseForUnknownToken", func(t *testing.T) {
-		durablefence.CheckIsFencedFalseForUnknownToken(t, ctx, s)
+		ledgertest.CheckIsFencedFalseForUnknownToken(t, ctx, s)
 	})
 }
 
@@ -202,12 +202,12 @@ func TestCheckMutateSucceedsForCurrentOwnerPropagatesBackendErrors(t *testing.T)
 	ctx := context.Background()
 	cases := []struct {
 		name   string
-		mutate func(*durablefence.Scenario)
+		mutate func(*ledgertest.Scenario)
 	}{
-		{"claim-error", func(s *durablefence.Scenario) {
+		{"claim-error", func(s *ledgertest.Scenario) {
 			s.Claim = func(context.Context) (string, error) { return "", errInjected }
 		}},
-		{"release-error", func(s *durablefence.Scenario) {
+		{"release-error", func(s *ledgertest.Scenario) {
 			s.Release = func(context.Context, string) error { return errInjected }
 		}},
 	}
@@ -216,7 +216,7 @@ func TestCheckMutateSucceedsForCurrentOwnerPropagatesBackendErrors(t *testing.T)
 			s := newReferenceClaim().scenario()
 			c.mutate(&s)
 			expectCheckFail(t, "CheckMutateSucceedsForCurrentOwner", func(t *testing.T) {
-				durablefence.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
+				ledgertest.CheckMutateSucceedsForCurrentOwner(t, ctx, s)
 			})
 		})
 	}
@@ -227,18 +227,18 @@ func TestCheckMutateSucceedsForCurrentOwnerPropagatesBackendErrors(t *testing.T)
 // Scenario, before it calls any field.
 func TestChecksFailOnIncompleteScenario(t *testing.T) {
 	ctx := context.Background()
-	incomplete := durablefence.Scenario{}
+	incomplete := ledgertest.Scenario{}
 	cases := []struct {
 		name string
-		run  func(testing.TB, context.Context, durablefence.Scenario)
+		run  func(testing.TB, context.Context, ledgertest.Scenario)
 	}{
-		{"CheckClaimGrantsHold", durablefence.CheckClaimGrantsHold},
-		{"CheckClaimRejectsWhileHeld", durablefence.CheckClaimRejectsWhileHeld},
-		{"CheckReleaseClearsHold", durablefence.CheckReleaseClearsHold},
-		{"CheckTakeoverFencesPreviousOwner", durablefence.CheckTakeoverFencesPreviousOwner},
-		{"CheckTakeoverFencesConcurrentMutate", durablefence.CheckTakeoverFencesConcurrentMutate},
-		{"CheckIsFencedFalseForUnknownToken", durablefence.CheckIsFencedFalseForUnknownToken},
-		{"CheckMutateSucceedsForCurrentOwner", durablefence.CheckMutateSucceedsForCurrentOwner},
+		{"CheckClaimGrantsHold", ledgertest.CheckClaimGrantsHold},
+		{"CheckClaimRejectsWhileHeld", ledgertest.CheckClaimRejectsWhileHeld},
+		{"CheckReleaseClearsHold", ledgertest.CheckReleaseClearsHold},
+		{"CheckTakeoverFencesPreviousOwner", ledgertest.CheckTakeoverFencesPreviousOwner},
+		{"CheckTakeoverFencesConcurrentMutate", ledgertest.CheckTakeoverFencesConcurrentMutate},
+		{"CheckIsFencedFalseForUnknownToken", ledgertest.CheckIsFencedFalseForUnknownToken},
+		{"CheckMutateSucceedsForCurrentOwner", ledgertest.CheckMutateSucceedsForCurrentOwner},
 	}
 	for _, c := range cases {
 		c := c

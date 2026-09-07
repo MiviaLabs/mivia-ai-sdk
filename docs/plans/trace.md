@@ -225,3 +225,28 @@ Status: shipped.
 `trace` declares no `var Err...` sentinel anywhere in its `.go`
 files. This addendum confirms the package has no sentinel to
 classify, and adds no `ErrInvalidOptions`.
+
+## Addendum: WriteJSONLines exporter (2026-09-07)
+Status: shipped.
+
+No production file called `Tracer.Spans()`. Three symbols,
+`Attributes`, `EndTime`, and `Spans`, sat in
+`policy/pending_symbols.json` with no caller. AGENTS.md's rule is
+adopt, not prune: add the missing consumer instead of folding the
+package.
+
+`export.go` adds `func WriteJSONLines(w io.Writer, spans []*Span)
+error`. It writes one JSON object per span, one per line: `name`,
+`start`, `end`, `parent`, and `attributes`. This is the pull pattern
+the "no exporter interface" addendum above already described; it was
+missing only the worked, callable form.
+
+`docs/examples/_agentloop_adoption/main.go` calls `WriteJSONLines`
+after `loop.Run` returns, walking `opts.Tracer.Spans()`. This gives
+`Attributes`, `EndTime`, and `Spans` a real, non-test caller, so all
+three pending-symbol entries in `policy/pending_symbols.json` are
+removed.
+
+`api/trace.txt` gains `WriteJSONLines` via `make api-update`.
+`policy/layers.json`'s `trace` row stays `[]`: `encoding/json`, `io`,
+and `time` are standard library, not an internal edge.

@@ -1,7 +1,7 @@
 // Package trace gives a caller a structured trace of a multi-step
 // run: Span records one named operation, Tracer issues spans and
-// links them through ctx. A leaf package: no internal imports, no
-// exporter, no sampling policy.
+// links them through ctx. WriteJSONLines exports a finished span
+// tree. A leaf package: no internal imports, no sampling policy.
 package trace
 
 import (

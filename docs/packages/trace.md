@@ -2,8 +2,9 @@
 
 The trace package gives a caller a structured trace of a multi-step
 run. A `Span` records one named operation; a `Tracer` issues spans
-and links them through `ctx`. `trace` is a leaf package: no internal
-imports, no exporter, no sampling policy. The exported surface below
+and links them through `ctx`. `WriteJSONLines` exports a finished
+span tree as newline-delimited JSON. `trace` is a leaf package: no
+internal imports, no sampling policy. The exported surface below
 mirrors `api/trace.txt`.
 
 ## Types
@@ -38,12 +39,16 @@ mirrors `api/trace.txt`.
 - `Span.Attributes()` — a copy of the attribute map, safe to read
   and mutate without the span's lock. Empty and non-nil when no
   attribute was ever set.
+- `WriteJSONLines(w, spans)` — writes one JSON object per span to
+  `w`, one span per line, in the slice's order. Each line carries
+  `name`, `start`, `end`, `parent`, and `attributes`.
 
 ## Failure modes
 
-`trace` returns no error. `New` and `Start` cannot fail. `SpanFrom`
-reports an absent span through its boolean, not an error. The `Span`
-methods record values; they reject nothing.
+`New` and `Start` cannot fail. `SpanFrom` reports an absent span
+through its boolean, not an error. The `Span` methods record values;
+they reject nothing. `WriteJSONLines` returns the first write error
+from `w`, unwrapped.
 
 ## Invariants
 
@@ -134,11 +139,22 @@ leave every duration non-negative.
 
 ## Exporting spans
 
-`trace` ships no exporter. `Tracer.Spans()` is the export path: it
-returns every started span in start order after a run ends. A caller
-walks that slice and maps each `Span`'s fields onto whatever backend
-they use, the same way a caller maps a `provider.Completer` response
-onto their own request type.
+`WriteJSONLines` is the built-in export path: it writes one JSON
+object per span, one per line, in `Tracer.Spans()`'s start order.
+`docs/examples/_agentloop_adoption/main.go` calls it after
+`loop.Run` returns.
+
+```go
+tr := trace.New()
+// ... spans start and end during the run ...
+if err := trace.WriteJSONLines(os.Stdout, tr.Spans()); err != nil {
+    // handle the write error
+}
+```
+
+A caller who wants a different backend still walks `Tracer.Spans()`
+by hand and maps each `Span`'s fields onto it, the same way a caller
+maps a `provider.Completer` response onto their own request type:
 
 ```go
 for _, s := range tr.Spans() {
@@ -152,5 +168,5 @@ for _, s := range tr.Spans() {
 This pull pattern needs no exporter interface. `Spans()` already
 gives a caller every field an exporter needs; a caller who wants a
 push model wraps the walk in their own function. `trace` stays a
-leaf package with zero internal imports, so it defines no backend
-type to map onto.
+leaf package with zero internal imports, so `WriteJSONLines` defines
+no backend type beyond its own line format.

@@ -3,7 +3,8 @@
 // is expected to adopt, one commented line per row of the adoption
 // table (Usage, Budget, MaxTotalTokens, MaxConsecutiveToolFailures,
 // Tracer, DedupWithinTurn, Audit, Conclude, HeartbeatInterval + Bus,
-// and the Window/Summarizer/Calibrated compaction triple). A canned
+// and the Window/Summarizer/Calibrated compaction triple). It also
+// exports the finished span tree with trace.WriteJSONLines. A canned
 // provider.Completer stands in for a model, so the run is offline and
 // deterministic. verify-fast runs it and asserts its final output.
 package main
@@ -13,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -189,6 +191,11 @@ func main() {
 	})
 	if err != nil {
 		fmt.Println("run:", err)
+		return
+	}
+	// Row: Tracer export. The host walks the finished span tree.
+	if err := trace.WriteJSONLines(os.Stdout, opts.Tracer.Spans()); err != nil {
+		fmt.Println("trace export:", err)
 		return
 	}
 	fmt.Println("final:", res.Final.Content)

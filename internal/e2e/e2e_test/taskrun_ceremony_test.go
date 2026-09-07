@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
-	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
+	"github.com/MiviaLabs/mivia-ai-sdk/internal/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"

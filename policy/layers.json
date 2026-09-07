@@ -59,16 +59,6 @@
       "ledger",
       "room"
     ],
-    "e2e": [
-      "agent",
-      "channel",
-      "envelope",
-      "events",
-      "flow",
-      "ledger",
-      "provider",
-      "tools"
-    ],
     "envelope": [
       "contextref"
     ],
@@ -140,6 +130,16 @@
     "a2aclient/a2atest": [
       "a2a",
       "envelope"
+    ],
+    "internal/e2e": [
+      "agent",
+      "channel",
+      "envelope",
+      "events",
+      "flow",
+      "ledger",
+      "provider",
+      "tools"
     ]
   }
 }

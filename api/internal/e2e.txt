@@ -1,4 +1,4 @@
-package e2e
+package internal/e2e
   func (f *FaultCompleter) Chat(ctx context.Context, req provider.Request) (provider.Response, error)
   func (f *FaultCompleter) ChatStream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error)
   func (f *FaultCompleter) Name() (string)

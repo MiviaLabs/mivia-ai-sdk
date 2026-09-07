@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/e2e"
+	"github.com/MiviaLabs/mivia-ai-sdk/internal/e2e"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"

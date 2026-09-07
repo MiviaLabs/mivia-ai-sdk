@@ -26,14 +26,14 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "e2e": {
-      "reason": "End-to-end scenario harness. Its intended callers are its own e2e_test subdirectory and subagent/subagent_test/helpers_test.go, both test code, by design.",
-      "target": "e2e/e2e_test scenarios and subagent/subagent_test/helpers_test.go",
-      "permanent": true
-    },
     "envfile": {
       "reason": "Dotenv parser leaf. Its consumer is external application code: the sibling consumer repo imports it in internal/miviaauth/serverurl.go, internal/config/bootstrap.go, and internal/config/load.go.",
       "target": "external application code (the sibling consumer repo)",
+      "permanent": true
+    },
+    "internal/e2e": {
+      "reason": "End-to-end scenario harness. Its intended callers are its own e2e_test subdirectory and subagent/subagent_test/helpers_test.go, both test code, by design.",
+      "target": "e2e/e2e_test scenarios and subagent/subagent_test/helpers_test.go",
       "permanent": true
     },
     "ledger/ledgertest": {

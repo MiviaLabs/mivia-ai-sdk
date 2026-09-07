@@ -107,7 +107,7 @@ mutation-gate:
 # the composition layer, not only alone.
 verify-ledger-sqlite:
 	@trap 'rm -f cover_ledger_sqlite.out' EXIT; \
-	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./e2e/...; \
+	go test -tags ledger_sqlite -race -coverprofile=cover_ledger_sqlite.out -coverpkg=./ledger ./ledger/... ./internal/e2e/...; \
 	go tool cover -func=cover_ledger_sqlite.out | awk -v floor="$(COVERAGE_FLOOR)" '/^total:/{pct=$$3; sub(/%/,"",pct); if (pct+0<floor) {printf "ledger (tag ledger_sqlite) coverage %.1f%% below the %d%% floor\n", pct, floor; exit 1}}'
 
 # api-update rewrites every lock under api/ from the tool output. The

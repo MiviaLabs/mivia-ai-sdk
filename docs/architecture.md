@@ -106,14 +106,14 @@ flowchart LR
     runconfig --> subagent
     runconfig --> tools
     runconfig --> trace
-    e2e --> agent
-    e2e --> channel
-    e2e --> envelope
-    e2e --> events
-    e2e --> flow
-    e2e --> ledger
-    e2e --> provider
-    e2e --> tools
+    internal_e2e["internal/e2e"] --> agent
+    internal_e2e["internal/e2e"] --> channel
+    internal_e2e["internal/e2e"] --> envelope
+    internal_e2e["internal/e2e"] --> events
+    internal_e2e["internal/e2e"] --> flow
+    internal_e2e["internal/e2e"] --> ledger
+    internal_e2e["internal/e2e"] --> provider
+    internal_e2e["internal/e2e"] --> tools
     anthropic["provider/anthropic"] --> provider
     contextbudget[contextbudget]
     schema[schema]
@@ -304,7 +304,8 @@ flowchart LR
   a signed-message mailbox carries both directions between
   orchestrators, subagents, and humans. See
   [packages/subagent.md](packages/subagent.md).
-- `e2e/` — the end-to-end scenario harness and suite. Each scenario
+The end-to-end scenario harness and suite live in `internal/e2e`,
+  outside the public package count of the diagram above: each scenario
   wires real high-level blocks together and asserts one full run's
   outputs. See [packages/e2e.md](packages/e2e.md).
 - `agentloop/` — a second composition path beside `flow`: a

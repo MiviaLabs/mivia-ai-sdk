@@ -1,5 +1,9 @@
 # Plan: e2e
 
+Status: superseded. Phase 86 moved this package to
+internal/e2e; see docs/plans/internal/e2e.md and
+docs/plans/agents/phase86_package_consolidation.md.
+
 ## Goal
 
 The e2e package proves the composed SDK works end to end. Each

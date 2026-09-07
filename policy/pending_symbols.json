@@ -6,17 +6,17 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "a2aloopback.Cancel": {
+    "a2aclient/a2atest.Cancel": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "a2aloopback.Execute": {
+    "a2aclient/a2atest.Execute": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "a2aloopback.Loopback": {
+    "a2aclient/a2atest.Loopback": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
@@ -46,64 +46,14 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "contextsession.NewPlanner": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "contextstate.NewCommitRequest": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.NewContentRef": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.Reassemble": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "contextstate.RetentionSession": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextstate.Revoke": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextsummary.ErrSummarySkipped": {
+    "contextplan.ErrSummarySkipped": {
       "reason": "Sentinel an adapter returns to decline summary injection; the concrete Summarizer never returns it. No caller yet: agentloop.compactHistory learns skip-not-fail handling in a follow-up addendum.",
       "target": "agentloop compaction addendum (docs/plans/agentloop.md), next change in this session",
       "permanent": false
     },
-    "contextsummary.TokenEstimate": {
+    "contextplan.TokenEstimate": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "e2e.NewAgent": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "e2e.NewRecorder": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "e2e.NewThreadCapture": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "e2e.Notify": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
     "envelope.ContextRef": {
@@ -131,6 +81,11 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
+    "flow.MissedEvent": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
     "flow.Outcomes": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
@@ -146,9 +101,24 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "heartbeat.MissedEvent": {
+    "internal/e2e.NewAgent": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "internal/e2e.NewRecorder": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "internal/e2e.NewThreadCapture": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "internal/e2e.Notify": {
+      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
+      "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
     "ledger.Blocked": {
@@ -162,36 +132,6 @@
       "permanent": true
     },
     "ledger.Restore": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.CoreEntries": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.CoreFrame": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "longtermmemory.Delete": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.PromoteToCore": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.Save": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "longtermmemory.Search": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
@@ -226,12 +166,52 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
+    "memory.Expire": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.GrantExpiry": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.NewSpool": {
+      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
+      "target": "no in-tree consumer; kept as SDK surface for external application code",
+      "permanent": true
+    },
+    "memory.ReadOutputTool": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.SpoolExpiring": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.SpoolTool": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
+    "memory.WithPrincipal": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
     "provider.CacheStyleImplicit": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "providerregistry.Register": {
+    "provider.Register": {
+      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
+      "target": "no in-tree consumer; kept as SDK surface for external application code",
+      "permanent": true
+    },
+    "provider.WrapCompleter": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
@@ -239,46 +219,6 @@
     "room.Leave": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "secretpath.NewMatcher": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.Expire": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.GrantExpiry": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.NewSpool": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "spool.ReadOutputTool": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.SpoolExpiring": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.SpoolTool": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
-    "spool.WithPrincipal": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "subagent.AsTool": {
@@ -326,36 +266,6 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
-    "toolcallctx.BatchOrderFromContext": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Changed": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Dispatched": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.Settled": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.ToolCallFromContext": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "toolcallctx.UnsettledBefore": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
-      "permanent": true
-    },
     "tools.NewScopeChecked": {
       "reason": "Construction-time-validating pair to NewScope (scope.go:80, added 2026-09-07). No caller yet: an external consumer's own tool-scope type is a separate, unmigrated privilege filter. Target: an external consumer wiring tools.Scope into its own dispatcher and retiring its parallel filter, a larger follow-up, not attempted here.",
       "target": "an external consumer's dispatcher, once it adopts tools.Scope over its own privilege filter",
@@ -376,9 +286,9 @@
       "target": "no in-tree consumer; kept as SDK surface for external application code",
       "permanent": true
     },
-    "usage.WrapCompleter": {
-      "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
-      "target": "no in-tree consumer; kept as SDK surface for external application code",
+    "workspace.NewMatcher": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     }
   }

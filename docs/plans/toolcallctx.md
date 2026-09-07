@@ -27,7 +27,9 @@ TestToolCallContextRoundTrip
 `make verify` runs tests, layers check, and coverage floor.
 
 ## Addendum: per-batch dispatch order ledger
-Status: shipped.
+Status: superseded. Phase 86 folded this package into agentloop;
+the symbols live unexported inside agentloop now. See
+docs/plans/agents/phase86_package_consolidation.md.
 
 
 ### Addendum goal

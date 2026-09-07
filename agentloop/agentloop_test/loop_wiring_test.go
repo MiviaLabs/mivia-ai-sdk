@@ -8,7 +8,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
@@ -88,13 +88,13 @@ func TestRunFiresPointStopOnGracefulStop(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var fired int
-	if err := hreg.Add(hooks.PointStop, "count", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointStop, "count", func(ctx context.Context, payload any) (bool, error) {
 		fired++
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
@@ -128,16 +128,16 @@ func TestRunFiresPointStopOnHardFail(t *testing.T) {
 			provider.ToolCall{ID: "call-2", Name: "echo", Arguments: []byte("{}")},
 		),
 	}}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var fired int
 	var got agentloop.Result
 	var gotOK bool
-	if err := hreg.Add(hooks.PointStop, "veto", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointStop, "veto", func(ctx context.Context, payload any) (bool, error) {
 		fired++
 		got, gotOK = payload.(agentloop.Result)
 		return false, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: reg, Bounds: agentloop.Bounds{MaxIterations: 5, MaxCallsPerTurn: 1}, Hooks: hreg,
@@ -167,14 +167,14 @@ func TestRunFiresPointStopWithResultPayload(t *testing.T) {
 	completer := &scriptedCompleter{responses: []provider.Response{
 		{Message: textMessage(provider.RoleAssistant, "hi")},
 	}}
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	var got agentloop.Result
 	var gotOK bool
-	if err := hreg.Add(hooks.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointStop, "capture", func(ctx context.Context, payload any) (bool, error) {
 		got, gotOK = payload.(agentloop.Result)
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	loop, err := agentloop.New(agentloop.Options{
 		Completer: completer, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Hooks: hreg,
@@ -279,11 +279,11 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 	tool := &schemaEchoTool{name: "echo", schema: []byte(`{}`), result: "x"}
 	reg := tools.New()
 	mustAdd(t, reg, tool)
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPostTool, "boom", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPostTool, "boom", func(ctx context.Context, payload any) (bool, error) {
 		return false, errBoom
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	completer := &scriptedCompleter{responses: []provider.Response{
 		toolCallResponse(provider.ToolCall{ID: "call-1", Name: "echo", Arguments: []byte("{}")}),
@@ -302,24 +302,24 @@ func TestRunPostToolErrorIsIgnored(t *testing.T) {
 	}
 }
 
-// newOrderRecordingHooks returns a *hooks.Registry whose PointPreTool
+// newOrderRecordingHooks returns a *events.Registry whose PointPreTool
 // handler appends "pre" and returns preAllow, and whose PointPostTool
 // handler appends "post", both to the returned slice's backing array.
-func newOrderRecordingHooks(t *testing.T, preAllow bool) (*hooks.Registry, *[]string) {
+func newOrderRecordingHooks(t *testing.T, preAllow bool) (*events.Registry, *[]string) {
 	t.Helper()
 	order := &[]string{}
-	hreg := hooks.New()
-	if err := hreg.Add(hooks.PointPreTool, "record", func(ctx context.Context, payload any) (bool, error) {
+	hreg := events.NewRegistry()
+	if err := hreg.Add(events.PointPreTool, "record", func(ctx context.Context, payload any) (bool, error) {
 		*order = append(*order, "pre")
 		return preAllow, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
-	if err := hreg.Add(hooks.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPostTool, "record", func(ctx context.Context, payload any) (bool, error) {
 		*order = append(*order, "post")
 		return true, nil
 	}); err != nil {
-		t.Fatalf("hooks.Add error = %v, want nil", err)
+		t.Fatalf("events.Add error = %v, want nil", err)
 	}
 	return hreg, order
 }

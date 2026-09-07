@@ -328,7 +328,7 @@ bug fix.
   `events.Bus` sites hold a `*events.Bus` built by `events.New`, or
   they nil-check first. So the change fixes no live defect.
 - The gain is idiom alignment. `events.Bus` now behaves like
-  `trigger.Registry`, whose zero value is usable.
+  `scheduler.Registry`, whose zero value is usable.
 - The user ordered this change and its doc comment update directly.
   That instruction is the authority for the reversal and for the
   `TT01` override trailer. This plan does not self-authorize it.

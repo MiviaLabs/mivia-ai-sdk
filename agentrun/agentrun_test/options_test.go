@@ -3,6 +3,7 @@ package agentrun_test
 import (
 	"context"
 	"errors"
+	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"strings"
 	"testing"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentrun"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -155,7 +155,7 @@ func TestNewRejectionsContent(t *testing.T) {
 		},
 		{
 			name:     "zero-value receiver rejects with ErrReceiverEmpty",
-			mutate:   func(o *agentrun.Options) { o.Receiver = &identity.Identity{} },
+			mutate:   func(o *agentrun.Options) { o.Receiver = &envelope.Identity{} },
 			wantSent: agentrun.ErrReceiverEmpty,
 		},
 	})

@@ -14,7 +14,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -185,7 +184,7 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 	log := &budgetLog{}
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}

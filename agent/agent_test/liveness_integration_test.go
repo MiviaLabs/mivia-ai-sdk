@@ -14,11 +14,8 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 )
 
@@ -28,9 +25,9 @@ import (
 func TestLivenessFullRunLeavesDeadEmpty(t *testing.T) {
 	a, _, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Nanosecond)
+	hb, err := flow.NewMonitor(time.Nanosecond)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	_, _, err = a.Run(context.Background(), "thread-1", m, machine.InOut{}, confirmingWait, bus, hb, "", nil)
 	if err != nil {
@@ -44,14 +41,14 @@ func TestLivenessFullRunLeavesDeadEmpty(t *testing.T) {
 // TestLivenessTwoConcurrentThreadsShareOneMonitor proves the
 // identity-plus-thread beat id avoids the same-id race: two
 // goroutines call Run on the same *Agent, on two different threadID
-// values, sharing one *heartbeat.Monitor. Both must succeed with no
+// values, sharing one *flow.Monitor. Both must succeed with no
 // ErrStaleBeat-derived failure. Run under go test -race.
 func TestLivenessTwoConcurrentThreadsShareOneMonitor(t *testing.T) {
 	a, _, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 
 	var wg sync.WaitGroup
@@ -81,9 +78,9 @@ func TestLivenessTwoConcurrentThreadsShareOneMonitor(t *testing.T) {
 func TestLivenessExternalSweepCancelsStalledWait(t *testing.T) {
 	a, id, m := oneStepFixtureWithIdentity(t)
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Nanosecond)
+	hb, err := flow.NewMonitor(time.Nanosecond)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 
@@ -131,9 +128,9 @@ func TestLivenessExternalSweepCancelsStalledWait(t *testing.T) {
 // hb.Alive reads false for the identity-plus-thread id a gated run
 // would have used.
 func TestLivenessPanelWaveReachesNoBeat(t *testing.T) {
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "p1", To: "panel-done"},
@@ -142,7 +139,7 @@ func TestLivenessPanelWaveReachesNoBeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Panelist", Capabilities: []string{"run"}}
+	card := flow.Card{Name: "Panelist", Capabilities: []string{"run"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
@@ -152,9 +149,9 @@ func TestLivenessPanelWaveReachesNoBeat(t *testing.T) {
 		t.Fatalf("machine.New() unexpected error: %v", err)
 	}
 	bus := newRunBus(t)
-	hb, err := heartbeat.New(time.Minute)
+	hb, err := flow.NewMonitor(time.Minute)
 	if err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	wantID := id.Signer() + ":thread-1"
 

@@ -10,7 +10,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -87,7 +86,7 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: responses}
 	sum := &summaryScript{err: summaryErr}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -105,11 +104,11 @@ func newPlanningFixture(t *testing.T, w contextplan.Window, responses []provider
 	return loop, &planningFixture{completer: sc, summary: sum, window: w}
 }
 
-// summaryNamed counts messages named contextsummary.SummaryMessageName.
+// summaryNamed counts messages named contextplan.SummaryMessageName.
 func summaryNamed(msgs []provider.Message) int {
 	n := 0
 	for _, m := range msgs {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == contextplan.SummaryMessageName {
 			n++
 		}
 	}
@@ -127,7 +126,7 @@ func contentBytes(msgs []provider.Message) int {
 
 func TestOptionsValidateWindowRules(t *testing.T) {
 	validWindow := &contextplan.Window{MaxTokens: 100, Compaction: contextplan.Compaction{TriggerPercent: 50}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -289,7 +288,7 @@ func TestRunOverTriggerCompactsThroughSummarizer(t *testing.T) {
 	if sent[0].Role != provider.RoleSystem {
 		t.Fatalf("system message not first: %+v", sent[0])
 	}
-	if sent[1].Name != contextsummary.SummaryMessageName || sent[1].Role != provider.RoleUser {
+	if sent[1].Name != contextplan.SummaryMessageName || sent[1].Role != provider.RoleUser {
 		t.Fatalf("summary not injected after the system message: %+v", sent[1])
 	}
 	if strings.Contains(sent[3].Content, strings.Repeat("o", 100)) {
@@ -342,7 +341,7 @@ func TestRunSummarizerFailureFailsBeforeRequest(t *testing.T) {
 	if !errors.Is(err, agentloop.ErrCompactionFailed) {
 		t.Fatalf("Run() error = %v, want errors.Is ErrCompactionFailed", err)
 	}
-	if !errors.Is(err, contextsummary.ErrCallFailed) {
+	if !errors.Is(err, contextplan.ErrCallFailed) {
 		t.Fatalf("Run() error = %v, want the contextsummary sentinel wrapped", err)
 	}
 	if got := f.completer.callCount(); got != 0 {
@@ -368,7 +367,7 @@ func TestRunBudgetChecksAfterWindowCompaction(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -423,7 +422,7 @@ func TestRunBudgetTripsAfterCompactionStillOverBudget(t *testing.T) {
 	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{TriggerPercent: 1, TargetTokens: 20}}
 	reg := tools.New()
 	sum := &summaryScript{}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}

@@ -521,7 +521,7 @@ with lease reclamation" for the eviction rule this limit follows.
 `ErrNotClaimed` when a transitive need holds `StatusFailed` or
 `StatusBlocked`. No new sentinel, and no new exported symbol.
 
-`taskrun.Run` returns a different error for the same escapee on two
+`ledger.Run` returns a different error for the same escapee on two
 consecutive calls. Measured: the first call returns
 `ledger.ErrNotClaimed`, and the second returns `ErrTaskBlocked`.
 `taskrun/taskrun.go:79` reads `State` before it claims, so the first
@@ -531,7 +531,7 @@ never runs on either call, so this is a contract break, not a safety
 break.
 
 `taskrun` is not changed here. Re-reading `State` inside
-`taskrun.Run` would edit a second package for a defect that is not
+`ledger.Run` would edit a second package for a defect that is not
 its own. Instead, add one row to
 `taskrun/taskrun_test/blocked_test.go` pinning the escapee's
 first-call error, so the two-call shape is recorded, not discovered.
@@ -765,7 +765,7 @@ cap. `dispatch.Endpoint` serves HTTP. `dispatch/ladder.go:20-22` mints
 one replay key per `(ThreadID, ID)` pair. A remote caller therefore
 controls the key space and grows the map without a bound.
 
-Deleting the map entry alone does not close the path. `taskrun.Run`
+Deleting the map entry alone does not close the path. `ledger.Run`
 calls `Complete` with the request context
 (`dispatch/endpoint.go:47` passes `r.Context()` into `processLine`). A
 client that aborts mid-line cancels that context. `Complete` then fails
@@ -776,7 +776,7 @@ residue. `MemStore` has no lease-expiry reclamation, so a
 request per distinct `(ThreadID, ID)` pair pins one record forever.
 
 An aborted request between `Admit` and `Claim` leaves a `StatusPending`
-record with the same effect. `taskrun.Run` calls `State` between the
+record with the same effect. `ledger.Run` calls `State` between the
 two, and a canceled context fails there.
 
 ### The decision
@@ -968,7 +968,7 @@ Four consequences are real. Document all four; do not soften them.
    new exposure, wider than the old tombstone limit, which kept
    `Status` and so kept blocking. A test pins it.
 3. A `StatusPending` record can be evicted between `Admit` and `Claim`
-   under cap pressure. `taskrun.Run` then returns `ledger.ErrNoKey` and
+   under cap pressure. `ledger.Run` then returns `ledger.ErrNoKey` and
    the work does not run. `dispatch` answers that as an error line, not
    as a replay.
 4. A claimed record whose lease expired can be deleted while its owner
@@ -1069,7 +1069,7 @@ Each site below states the tombstone contract and becomes false.
   `Run`'s outcomes and never names `ledger.ErrNoKey`. A bounded `Store`
   can now evict the key between `Admit` and `Claim`, so add that
   outcome. Name the collision hazard in the same sentence:
-  `taskrun.ErrNoKey` already exists and means an empty `Task.Key`,
+  `ledger.ErrNoKey` already exists and means an empty `Task.Key`,
   which is a caller error, while `ledger.ErrNoKey` means the record
   went away. Do not merge the two sentinels.
 - `docs/packages/taskrun.md:38-53`, the same outcome list, with the
@@ -1296,7 +1296,7 @@ gate.
   `seen` set and the walk's cost bound.
 
 Add one row to `taskrun/taskrun_test/blocked_test.go`: an escapee's
-first `taskrun.Run` call returns `ledger.ErrNotClaimed`, not
+first `ledger.Run` call returns `ledger.ErrNotClaimed`, not
 `ErrTaskBlocked`, and runs no work. A second call returns
 `ErrTaskBlocked`. This is the only file outside `ledger` this change
 touches, and it adds a test only.

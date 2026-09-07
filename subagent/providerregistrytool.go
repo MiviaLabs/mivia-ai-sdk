@@ -6,7 +6,6 @@ import (
 	"context"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
-	"github.com/MiviaLabs/mivia-ai-sdk/providerregistry"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
@@ -14,11 +13,11 @@ import (
 // registry. Each run routes one turn through the caller's order and
 // falls through to the next name only when retryable approves the
 // failure; the result is the answering provider's reply content.
-// Wrap the registered completers with usage.WrapCompleter to gain
+// Wrap the registered completers with provider.WrapCompleter to gain
 // per-session totals under this seam.
 func ProviderRegistryTool(
-	name string, reg *providerregistry.Registry, order []string,
-	retryable providerregistry.Retryable,
+	name string, reg *provider.Registry, order []string,
+	retryable provider.Retryable,
 ) tools.Tool {
 	return &providerRegistryTool{name: name, reg: reg, order: order, retryable: retryable}
 }
@@ -27,9 +26,9 @@ func ProviderRegistryTool(
 // interface.
 type providerRegistryTool struct {
 	name      string
-	reg       *providerregistry.Registry
+	reg       *provider.Registry
 	order     []string
-	retryable providerregistry.Retryable
+	retryable provider.Retryable
 }
 
 // Name returns the registry name.

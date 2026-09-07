@@ -10,7 +10,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -56,7 +55,7 @@ func TestRunRecoveryObservePairsWithRecoveryEstimate(t *testing.T) {
 		Usage:   provider.Usage{TotalTokens: actual},
 	}
 	sc := &scriptedCompleter{responses: []provider.Response{{}, final}, errs: []error{provider.ErrPromptTooLong}}
-	summarizer, err := contextsummary.NewSummarizer(&summaryScript{})
+	summarizer, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}

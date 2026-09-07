@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `contextplan`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: contextsummary
 
 `contextsummary` turns the messages a compaction drops into one
@@ -121,17 +125,17 @@ import (
     "context"
     "fmt"
 
-    "github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+    "github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 )
 
 func main() {
-    s := contextsummary.Summary{
+    s := contextplan.Summary{
         Objective: "Ship the release",
         State:     "Two tests fail",
         Risks:     []string{"Deadline slips"},
     }
     fmt.Print(s.Render())
-    fmt.Println(contextsummary.TokenEstimate(len(s.Render())))
+    fmt.Println(contextplan.TokenEstimate(len(s.Render())))
 }
 ```
 

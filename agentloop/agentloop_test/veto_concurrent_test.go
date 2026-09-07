@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -50,10 +50,10 @@ func TestVetoWhileLaterCallInFlightStillRecordsOutcome(t *testing.T) {
 	mustAdd(t, reg, &schemaEchoTool{name: "gate", schema: []byte(`{}`)})
 	mustAdd(t, reg, slow)
 
-	hreg := hooks.New()
+	hreg := events.NewRegistry()
 	vetoed := make(chan struct{})
 	var vetoOnce sync.Once
-	if err := hreg.Add(hooks.PointPreTool, "veto-gate", func(ctx context.Context, payload any) (bool, error) {
+	if err := hreg.Add(events.PointPreTool, "veto-gate", func(ctx context.Context, payload any) (bool, error) {
 		call, ok := payload.(provider.ToolCall)
 		if !ok || call.Name != "gate" {
 			return true, nil

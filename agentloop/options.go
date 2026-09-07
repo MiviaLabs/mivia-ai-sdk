@@ -10,13 +10,10 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
-	"github.com/MiviaLabs/mivia-ai-sdk/usage"
 )
 
 // Sentinel errors for Options.Validate, Definitions, and Run; test
@@ -203,13 +200,13 @@ type Options struct {
 	OnToolCallError ErrorFunc
 	// Hooks fires PointPreTool and PointPostTool per tool call, and
 	// PointStop once at the end. Optional.
-	Hooks *hooks.Registry
+	Hooks *events.Registry
 	// Tracer opens one span per iteration and one per tool call.
 	// Optional.
 	Tracer *trace.Tracer
 	// Usage records per-iteration provider.Usage under SessionID.
 	// Requires SessionID. Optional.
-	Usage *usage.Accumulator
+	Usage *provider.Accumulator
 	// SessionID keys Usage's running total. Required when Usage is
 	// set.
 	SessionID string
@@ -256,7 +253,7 @@ type Options struct {
 	Window *contextplan.Window
 	// Summarizer runs the LLM summary every compaction requires.
 	// Required when Window is set.
-	Summarizer *contextsummary.Summarizer
+	Summarizer *contextplan.Summarizer
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated

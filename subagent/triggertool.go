@@ -5,8 +5,8 @@ package subagent
 import (
 	"context"
 
+	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // firedText reports one fired trigger.
@@ -14,14 +14,14 @@ const firedText = "fired"
 
 // TriggerTool returns a tool bound to one trigger registry. The
 // input string names the trigger; the registry's own action runs.
-func TriggerTool(name string, reg *trigger.Registry) tools.Tool {
+func TriggerTool(name string, reg *scheduler.Registry) tools.Tool {
 	return &triggerTool{name: name, reg: reg}
 }
 
 // triggerTool adapts one registry to the tools.Tool interface.
 type triggerTool struct {
 	name string
-	reg  *trigger.Registry
+	reg  *scheduler.Registry
 }
 
 // Name returns the registry name.

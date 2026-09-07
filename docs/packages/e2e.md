@@ -89,7 +89,7 @@ behavior:
 - `faults_store_panic_test.go` — a panicking ledger store on a
   one-step, non-panel plan; the panic propagates out of `Run` uncaught
   and the test's own `recover` sees a value matching `ErrFault`.
-- `spool_test.go` — a `spool.SpoolTool` wired around an oversized-
+- `spool_test.go` — a `memory.SpoolTool` wired around an oversized-
   result tool inside an `agentrun` step; the spooled view names a ref
   a follow-up `Spool.Load` call resolves back to the full result.
 

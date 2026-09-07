@@ -1,5 +1,9 @@
 # Plan: taskrun
 
+Status: superseded. Phase 86 folded this package into ledger;
+the symbols live in ledger now. See
+docs/plans/agents/phase86_package_consolidation.md.
+
 ## Goal
 
 The taskrun package runs one task under ledger admission. It wraps the

@@ -10,10 +10,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/hooks"
+	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
-	"github.com/MiviaLabs/mivia-ai-sdk/toolcallctx"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 	"github.com/MiviaLabs/mivia-ai-sdk/trace"
 )
@@ -69,8 +68,8 @@ func (l *Loop) runToolCalls(ctx context.Context, history []provider.Message, cal
 			dispatched = append(dispatched, p.call.Index)
 		}
 	}
-	order := toolcallctx.NewBatchOrder(dispatched)
-	ctx = toolcallctx.WithBatchOrder(ctx, order)
+	order := newBatchOrder(dispatched)
+	ctx = withBatchOrder(ctx, order)
 	results := l.executeCalls(ctx, order, plans, iteration, surface)
 	return l.collectCalls(ctx, history, plans, results, iteration)
 }
@@ -121,14 +120,14 @@ type callOutcome struct {
 // l.bounds.MaxConcurrentTools otherwise. Dispatch overlap is the only difference
 // between the two paths: per-call semantics are runOneToolCall's own.
 //
-// Settlement contract (toolcallctx.BatchOrder): every dispatched index
+// Settlement contract (batchOrder): every dispatched index
 // settles exactly once - when its run returns (success, a reported
 // error, or a pre-tool rejection inside runOneToolCall), or at
 // abandonment when an abort stops the batch before the call runs. A
 // worker that observes the abort AFTER claiming an index settles that
 // index itself, so no dispatched index is ever left permanently
 // unsettled while another worker's tool waits on it.
-func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, plans []callPlan, iteration int, surface runSurface) []callOutcome {
+func (l *Loop) executeCalls(ctx context.Context, order *batchOrder, plans []callPlan, iteration int, surface runSurface) []callOutcome {
 	outcomes := make([]callOutcome, len(plans))
 	idx := make([]int, 0, len(plans))
 	for i, p := range plans {
@@ -138,7 +137,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, 
 	}
 	var aborted atomic.Bool
 	run := func(i int) {
-		defer order.Settle(plans[i].call.Index)
+		defer order.settle(plans[i].call.Index)
 		outcomes[i] = l.oneCallOutcome(ctx, plans[i].call, iteration, surface)
 		if outcomes[i].err != nil || outcomes[i].veto {
 			aborted.Store(true)
@@ -149,7 +148,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, 
 			run(i)
 			if aborted.Load() {
 				for _, rest := range idx[k+1:] {
-					order.Settle(plans[rest].call.Index)
+					order.settle(plans[rest].call.Index)
 				}
 				break
 			}
@@ -168,7 +167,7 @@ func (l *Loop) executeCalls(ctx context.Context, order *toolcallctx.BatchOrder, 
 					return
 				}
 				if aborted.Load() {
-					order.Settle(plans[idx[n]].call.Index)
+					order.settle(plans[idx[n]].call.Index)
 					continue
 				}
 				run(idx[n])
@@ -308,7 +307,7 @@ func (l *Loop) auditToolCall(ctx context.Context, iteration int, call provider.T
 // its blocking segment. A heartbeat ticker for EventToolCallHeartbeat
 // starts only after the veto check passes.
 func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, iteration int, surface runSurface) (msg provider.Message, veto bool, reported error, err error) {
-	callCtx := toolcallctx.WithToolCall(ctx, call)
+	callCtx := withToolCall(ctx, call)
 	label := toolCallLabel(iteration, call)
 	l.emitEvent(callCtx, EventToolCallStart, label)
 	defer func() { l.emitEvent(callCtx, EventToolCallEnd, label) }()
@@ -321,7 +320,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}
 
 	if l.hooksReg != nil {
-		allowed, hookErr := l.fireHook(callCtx, hooks.PointPreTool, call)
+		allowed, hookErr := l.fireHook(callCtx, events.PointPreTool, call)
 		if hookErr != nil {
 			return provider.Message{}, false, nil, fmt.Errorf("agentloop: iteration %d: tool call %s: %w", iteration, call.ID, hookErr)
 		}
@@ -337,7 +336,7 @@ func (l *Loop) runOneToolCall(ctx context.Context, call provider.ToolCall, itera
 	}()
 
 	if l.hooksReg != nil {
-		_, _ = l.fireHook(callCtx, hooks.PointPostTool, call)
+		_, _ = l.fireHook(callCtx, events.PointPostTool, call)
 	}
 
 	if runErr != nil {
@@ -402,14 +401,14 @@ func errorReportContent(err error) string {
 }
 
 // fireHook fires point through l.hooksReg and turns a veto,
-// distinguished by errors.Is against hooks.ErrVetoed, into (false,
+// distinguished by errors.Is against events.ErrVetoed, into (false,
 // nil). Any other handler error passes through unchanged.
-func (l *Loop) fireHook(ctx context.Context, point hooks.Point, call provider.ToolCall) (bool, error) {
+func (l *Loop) fireHook(ctx context.Context, point events.Point, call provider.ToolCall) (bool, error) {
 	err := l.hooksReg.Fire(ctx, point, call)
 	if err == nil {
 		return true, nil
 	}
-	if errors.Is(err, hooks.ErrVetoed) {
+	if errors.Is(err, events.ErrVetoed) {
 		return false, nil
 	}
 	return false, err

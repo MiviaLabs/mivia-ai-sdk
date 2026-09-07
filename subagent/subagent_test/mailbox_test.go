@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/subagent"
 )
 
@@ -41,9 +40,9 @@ func TestMailboxDeliverTakeFull(t *testing.T) {
 func TestSendToolSignsAndDelivers(t *testing.T) {
 	ctx := context.Background()
 	box, _ := subagent.NewMailbox(4)
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	out, err := subagent.SendTool("to-worker", box, id).Run(ctx, inString("hello sub"))
 	if err != nil {
@@ -174,9 +173,9 @@ func TestDeliverKeepsSignedMessage(t *testing.T) {
 // signedMessage builds one valid signed message carrying payload.
 func signedMessage(t *testing.T, payload string) envelope.Message {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New: %v", err)
+		t.Fatalf("envelope.New: %v", err)
 	}
 	signed, err := id.Sign(envelope.Message{
 		Version:   envelope.Version,

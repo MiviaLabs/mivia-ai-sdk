@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
-	"github.com/MiviaLabs/mivia-ai-sdk/taskrun"
 )
 
 // TestReplayKeyDistinguishesThreadBoundary proves the length-prefixed
@@ -23,7 +22,7 @@ func TestReplayKeyDistinguishesThreadBoundary(t *testing.T) {
 	}
 }
 
-// TestIsReplayCoversTaskrunRunOutcomes pins every error taskrun.Run
+// TestIsReplayCoversTaskrunRunOutcomes pins every error ledger.Run
 // can return for a duplicate key, deterministically, rather than
 // relying on goroutine scheduling to reproduce the race. A concurrent
 // duplicate can lose to a winner that both claims and completes
@@ -39,13 +38,13 @@ func TestIsReplayCoversTaskrunRunOutcomes(t *testing.T) {
 		err  error
 		want bool
 	}{
-		{"already completed", taskrun.ErrTaskDone, true},
-		{"already failed", taskrun.ErrTaskFailed, true},
-		{"blocked on a dependency", taskrun.ErrTaskBlocked, true},
+		{"already completed", ledger.ErrTaskDone, true},
+		{"already failed", ledger.ErrTaskFailed, true},
+		{"blocked on a dependency", ledger.ErrTaskBlocked, true},
 		{"lease held by an in-flight duplicate", ledger.ErrLeaseActive, true},
 		{"claim lost the terminal-status race", ledger.ErrNotClaimed, true},
 		{"unrelated ledger error", ledger.ErrNoKey, false},
-		{"unrelated taskrun error", taskrun.ErrNoLedger, false},
+		{"unrelated taskrun error", ledger.ErrNoLedger, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

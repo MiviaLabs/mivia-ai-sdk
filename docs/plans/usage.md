@@ -1,6 +1,8 @@
 # Plan: usage
 
-Status: shipped. New top-level package. Depends on the shipped
+Status: superseded. Phase 86 folded this package into provider;
+the symbols live in provider now. See
+docs/plans/agents/phase86_package_consolidation.md.
 `provider` package for its `Usage` type; `usage` defines no
 token-count type of its own. `usage` imports `provider` only, plus
 stdlib; no third-party import. This plan folded in from

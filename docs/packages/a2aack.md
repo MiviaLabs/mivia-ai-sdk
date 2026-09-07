@@ -1,3 +1,7 @@
+> Status: superseded. Phase 86 folded this package into
+> `a2aclient`. The symbols live there now; this page stays as
+> reference, with names updated to their new homes.
+
 # Package reference: a2aack
 
 The `a2aack` package turns a remote A2A task round trip into the

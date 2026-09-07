@@ -52,7 +52,7 @@ The rest of this walkthrough reuses the same `resolve` variable. It never
 redefines it.
 
 Size `Options.ReplayLease` above `Handler.Handle`'s expected p99
-latency. `taskrun.Run` claims the replay key once, then calls `Handle`
+latency. `ledger.Run` claims the replay key once, then calls `Handle`
 synchronously with no lease renewal. A lease shorter than `Handle`'s
 real latency re-runs `Handle` on an ordinary slow call, not only on a
 crash. An `agentrun`-backed `Handler` can exceed the 30-second

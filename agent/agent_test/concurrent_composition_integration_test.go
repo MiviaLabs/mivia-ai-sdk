@@ -1,6 +1,6 @@
 // Package agent_test also holds the concurrent composition test.
 // Eight agent.Run calls share one memory.Store, one tools.Registry,
-// one ledger.Ledger, one events.Bus, and one heartbeat.Monitor. It
+// one ledger.Ledger, one events.Bus, and one flow.Monitor. It
 // proves the shared blocks stay correct under real contention.
 // See docs/plans/agents/PHASES.md's phase 47 paragraph.
 package agent_test
@@ -14,18 +14,14 @@ import (
 	"time"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/heartbeat"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/memory"
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // concurrentRuns is the number of goroutines that share every block.
@@ -45,7 +41,7 @@ type sharedBlocks struct {
 	tool     *reviewTool
 	l        *ledger.Ledger
 	bus      *events.Bus
-	hb       *heartbeat.Monitor
+	hb       *flow.Monitor
 	approves atomic.Int64
 	counts   map[events.Name]*atomic.Int64
 }
@@ -68,8 +64,8 @@ func newSharedBlocks(t testing.TB) *sharedBlocks {
 	if sb.store, err = memory.New(1 << 20); err != nil {
 		t.Fatalf("memory.New() unexpected error: %v", err)
 	}
-	if sb.hb, err = heartbeat.New(time.Minute); err != nil {
-		t.Fatalf("heartbeat.New() unexpected error: %v", err)
+	if sb.hb, err = flow.NewMonitor(time.Minute); err != nil {
+		t.Fatalf("flow.NewMonitor() unexpected error: %v", err)
 	}
 	sb.l = newSystemLedger(t, sb.bus)
 	for _, name := range []events.Name{
@@ -88,9 +84,9 @@ func newSharedBlocks(t testing.TB) *sharedBlocks {
 // sharedBlocks are shared.
 func concurrentAgent(t testing.TB, index int) (*agent.Agent, *machine.Definition) {
 	t.Helper()
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "draft", To: "drafted", Payload: fmt.Sprintf("draft for run %d", index)},
@@ -99,7 +95,7 @@ func concurrentAgent(t testing.TB, index int) (*agent.Agent, *machine.Definition
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: fmt.Sprintf("Worker %d", index), Capabilities: []string{"draft"}}
+	card := flow.Card{Name: fmt.Sprintf("Worker %d", index), Capabilities: []string{"draft"}}
 	a, err := agent.New(id, card, plan)
 	if err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
@@ -269,7 +265,7 @@ func TestConcurrentAdmitContentionElectsOneWinner(t *testing.T) {
 }
 
 // TestConcurrentWrappersShareOneBus proves a scheduler.Job and a
-// trigger.Action wrapping agent.Run run correctly side by side over
+// scheduler.Action wrapping agent.Run run correctly side by side over
 // one shared bus and one shared ledger.
 func TestConcurrentWrappersShareOneBus(t *testing.T) {
 	fx := newInvokedFixture(t)
@@ -278,9 +274,9 @@ func TestConcurrentWrappersShareOneBus(t *testing.T) {
 
 	scheduled := fx.runTask(t, "wrapped-scheduled", "wrapped-scheduled-thread")
 	triggered := fx.runTask(t, "wrapped-triggered", "wrapped-triggered-thread")
-	reg := trigger.New()
+	reg := scheduler.NewRegistry()
 	if err := reg.Add("wrapped", func(ctx context.Context) (bool, error) { return true, nil }, triggered); err != nil {
-		t.Fatalf("trigger.Add() unexpected error: %v", err)
+		t.Fatalf("scheduler.Add() unexpected error: %v", err)
 	}
 
 	wg.Add(2)

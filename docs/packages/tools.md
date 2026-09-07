@@ -178,7 +178,7 @@ mirrors `room.Room`'s membership shape: `Add` and `Remove` pair the
 same way `Room.Admit` and `Room.Remove` do, so a tool can be
 withdrawn, not only added.
 
-`ExecutionProfile` uses its own name, not `discovery.Card`'s
+`ExecutionProfile` uses its own name, not `flow.Card`'s
 "capability" word: a discovery card lists what an agent can do, while
 an `ExecutionProfile` states one tool call's execution risk. `Scope`
 narrows only, never widens, so a caller cannot accidentally grant a
@@ -271,7 +271,7 @@ all. An unrecognized `Class` must not let a tool skip approval.
   model's offered tool set from `Registry.Tools()` and `SchemaOf`, and
   `agentloop.Loop.Run` decodes model-supplied arguments through
   `SchemaTool.DecodeArguments`.
-- [spool.md](spool.md) — `spool.SpoolTool` forwards `SchemaTool` from
+- [spool.md](spool.md) — `memory.SpoolTool` forwards `SchemaTool` from
   the wrapped tool to the returned `tools.Tool` through
   `tools.SchemaOf`. `SchemaOf` fails closed: a wrapped tool that
   publishes no schema bytes reports `nil, false`, and

@@ -1,5 +1,5 @@
 // Package agent_test also holds the scheduled and triggered
-// invocation test. It proves scheduler.Job and trigger.Action each
+// invocation test. It proves scheduler.Job and scheduler.Action each
 // wrap agent.Run as a plain closure, with ledger admission around the
 // task and a channel.Notifier-shaped stub resolving the gated step.
 package agent_test
@@ -13,15 +13,12 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agent"
 	"github.com/MiviaLabs/mivia-ai-sdk/channel"
-	"github.com/MiviaLabs/mivia-ai-sdk/discovery"
 	"github.com/MiviaLabs/mivia-ai-sdk/envelope"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/flow"
-	"github.com/MiviaLabs/mivia-ai-sdk/identity"
 	"github.com/MiviaLabs/mivia-ai-sdk/ledger"
 	"github.com/MiviaLabs/mivia-ai-sdk/machine"
 	"github.com/MiviaLabs/mivia-ai-sdk/scheduler"
-	"github.com/MiviaLabs/mivia-ai-sdk/trigger"
 )
 
 // invokedFixture is the small fixture the scheduling scenarios share:
@@ -41,9 +38,9 @@ type invokedFixture struct {
 func newInvokedFixture(t testing.TB) *invokedFixture {
 	t.Helper()
 	fx := &invokedFixture{bus: newSystemBus(t)}
-	id, err := identity.New()
+	id, err := envelope.New()
 	if err != nil {
-		t.Fatalf("identity.New() unexpected error: %v", err)
+		t.Fatalf("envelope.New() unexpected error: %v", err)
 	}
 	plan, err := flow.New([]flow.Step{
 		{ID: "sweep", To: "swept", Payload: "sweep the queue"},
@@ -51,7 +48,7 @@ func newInvokedFixture(t testing.TB) *invokedFixture {
 	if err != nil {
 		t.Fatalf("flow.New() unexpected error: %v", err)
 	}
-	card := discovery.Card{Name: "Sweeper", Capabilities: []string{"sweep"}}
+	card := flow.Card{Name: "Sweeper", Capabilities: []string{"sweep"}}
 	if fx.a, err = agent.New(id, card, plan); err != nil {
 		t.Fatalf("agent.New() unexpected error: %v", err)
 	}
@@ -92,7 +89,7 @@ func ackWaitFromNotifier(n channel.Notifier, from string) agent.AckWait {
 }
 
 // runTask is the claim-run-complete closure both scheduler.Job and
-// trigger.Action wrap. It admits and claims key, runs the agent, then
+// scheduler.Action wrap. It admits and claims key, runs the agent, then
 // completes the key with the ledger's own terminal status.
 func (fx *invokedFixture) runTask(t testing.TB, key ledger.IdempotencyKey, threadID string) func(context.Context) error {
 	notifier := channel.Notifier(func(ctx context.Context, q channel.Question) (channel.Answer, error) {
@@ -174,21 +171,21 @@ func TestScheduledInvocationFailureEmitsJobFailedEvent(t *testing.T) {
 	}
 }
 
-// TestTriggeredInvocationCompletesTheLedgerTask proves trigger.Action
+// TestTriggeredInvocationCompletesTheLedgerTask proves scheduler.Action
 // wraps agent.Run the same way scheduler.Job does, and that a false
 // condition blocks the action entirely.
 func TestTriggeredInvocationCompletesTheLedgerTask(t *testing.T) {
 	fx := newInvokedFixture(t)
 	const key = ledger.IdempotencyKey("triggered-sweep-1")
-	reg := trigger.New()
+	reg := scheduler.NewRegistry()
 	if err := reg.Add("on-queue-depth",
 		func(ctx context.Context) (bool, error) { return true, nil },
 		fx.runTask(t, key, "triggered-thread"),
 	); err != nil {
-		t.Fatalf("trigger.Add() unexpected error: %v", err)
+		t.Fatalf("scheduler.Add() unexpected error: %v", err)
 	}
 	if err := reg.Fire(context.Background(), "on-queue-depth"); err != nil {
-		t.Fatalf("trigger.Fire() unexpected error: %v", err)
+		t.Fatalf("scheduler.Fire() unexpected error: %v", err)
 	}
 	if got := ledgerStatus(t, fx.l, key); got != ledger.StatusCompleted {
 		t.Fatalf("ledger.State(%q).Status = %q, want %q", key, got, ledger.StatusCompleted)
@@ -199,10 +196,10 @@ func TestTriggeredInvocationCompletesTheLedgerTask(t *testing.T) {
 		func(ctx context.Context) (bool, error) { return false, nil },
 		func(ctx context.Context) error { ran.Add(1); return nil },
 	); err != nil {
-		t.Fatalf("trigger.Add() unexpected error: %v", err)
+		t.Fatalf("scheduler.Add() unexpected error: %v", err)
 	}
-	if err := reg.Fire(context.Background(), "never"); !errors.Is(err, trigger.ErrConditionNotMet) {
-		t.Fatalf("Fire() error = %v, want errors.Is match for trigger.ErrConditionNotMet", err)
+	if err := reg.Fire(context.Background(), "never"); !errors.Is(err, scheduler.ErrConditionNotMet) {
+		t.Fatalf("Fire() error = %v, want errors.Is match for scheduler.ErrConditionNotMet", err)
 	}
 	if got := ran.Load(); got != 0 {
 		t.Fatalf("action ran %d times behind a false condition, want 0", got)

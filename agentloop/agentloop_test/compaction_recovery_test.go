@@ -9,7 +9,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -56,7 +55,7 @@ func TestRunPreserveNameDuplicateSafe(t *testing.T) {
 		{Role: provider.RoleUser, Content: strings.Repeat("b", 100)},
 		{Role: provider.RoleAssistant, Content: "x"},
 	}
-	names := []string{contextsummary.SummaryMessageName}
+	names := []string{contextplan.SummaryMessageName}
 	w := contextplan.Window{MaxTokens: 400, Compaction: contextplan.Compaction{
 		TriggerPercent: 40, TargetTokens: 20, PreserveNames: names}}
 	loop, f := newPlanningFixture(t, w, []provider.Response{
@@ -72,7 +71,7 @@ func TestRunPreserveNameDuplicateSafe(t *testing.T) {
 	if len(w.Compaction.PreserveNames) != 1 {
 		t.Fatalf("caller PreserveNames mutated: %+v", w.Compaction.PreserveNames)
 	}
-	if w.Compaction.PreserveNames[0] != contextsummary.SummaryMessageName {
+	if w.Compaction.PreserveNames[0] != contextplan.SummaryMessageName {
 		t.Fatalf("caller PreserveNames changed: %+v", w.Compaction.PreserveNames)
 	}
 }
@@ -85,7 +84,7 @@ func newRecoveryFixture(t *testing.T, w contextplan.Window, div int, errs []erro
 	reg.Add(&schemaEchoTool{name: "search", schema: []byte(`{"type":"object"}`)})
 	sc := &scriptedCompleter{responses: responses, errs: errs}
 	sum := &summaryScript{err: summaryErr}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -139,7 +138,7 @@ func TestRunRecoveryRetriesOnceWithNotice(t *testing.T) {
 	}
 	afterSummary := false
 	for i, m := range retried {
-		if m.Name != contextsummary.SummaryMessageName {
+		if m.Name != contextplan.SummaryMessageName {
 			continue
 		}
 		if i+1 >= len(retried) || retried[i+1].Content != agentloop.CompactionNotice {

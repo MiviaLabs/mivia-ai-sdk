@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
@@ -48,7 +47,7 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 		if err != nil {
 			return nil, false, err
 		}
-		rebuilt = injectAfterSystem(rebuilt, contextsummary.SummaryMessage(summary))
+		rebuilt = injectAfterSystem(rebuilt, contextplan.SummaryMessage(summary))
 		injected = true
 	}
 	if notice {
@@ -62,14 +61,14 @@ func (l *Loop) compactHistory(ctx context.Context, history []provider.Message, w
 
 // summarizeDropped prepends the held-aside prior summary, when one
 // exists, to the dropped messages and runs one summarizer call.
-func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextsummary.Summary, error) {
+func (l *Loop) summarizeDropped(ctx context.Context, prior *provider.Message, dropped []provider.Message) (contextplan.Summary, error) {
 	input := dropped
 	if prior != nil {
 		input = append([]provider.Message{*prior}, dropped...)
 	}
 	summary, err := l.summarizer.Summarize(ctx, input)
 	if err != nil {
-		return contextsummary.Summary{}, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
+		return contextplan.Summary{}, fmt.Errorf("agentloop: %w: %w", ErrCompactionFailed, err)
 	}
 	return summary, nil
 }
@@ -102,13 +101,13 @@ func recoveryWindow(w contextplan.Window) contextplan.Window {
 // allocated slice. The caller's backing array never changes.
 func preserveSummaryName(w contextplan.Window) contextplan.Window {
 	for _, name := range w.Compaction.PreserveNames {
-		if name == contextsummary.SummaryMessageName {
+		if name == contextplan.SummaryMessageName {
 			return w
 		}
 	}
 	fresh := make([]string, 0, len(w.Compaction.PreserveNames)+1)
 	fresh = append(fresh, w.Compaction.PreserveNames...)
-	w.Compaction.PreserveNames = append(fresh, contextsummary.SummaryMessageName)
+	w.Compaction.PreserveNames = append(fresh, contextplan.SummaryMessageName)
 	return w
 }
 
@@ -118,7 +117,7 @@ func splitSummary(msgs []provider.Message) (*provider.Message, []provider.Messag
 	var prior *provider.Message
 	rest := make([]provider.Message, 0, len(msgs))
 	for i := range msgs {
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == contextplan.SummaryMessageName {
 			if prior == nil {
 				prior = &msgs[i]
 			}
@@ -153,7 +152,7 @@ func injectNotice(msgs []provider.Message, summaryInjected bool) []provider.Mess
 	out := make([]provider.Message, 0, len(msgs)+1)
 	for i := range msgs {
 		out = append(out, msgs[i])
-		if msgs[i].Name == contextsummary.SummaryMessageName {
+		if msgs[i].Name == contextplan.SummaryMessageName {
 			out = append(out, provider.Message{Role: provider.RoleUser, Content: CompactionNotice})
 		}
 	}
@@ -244,7 +243,7 @@ func EnableCompaction(o *Options, completer provider.Completer, window contextpl
 	if !ok {
 		return ErrNoTokenEstimator
 	}
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := contextplan.NewSummarizer(completer)
 	if err != nil {
 		return err
 	}

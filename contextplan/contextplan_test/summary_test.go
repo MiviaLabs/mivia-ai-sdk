@@ -1,10 +1,10 @@
-package contextsummary_test
+package contextplan_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 )
 
 // repeatItems builds n distinct, valid list items.
@@ -19,7 +19,7 @@ func repeatItems(n int) []string {
 // runValidateCases runs one table of Validate cases.
 func runValidateCases(t *testing.T, cases []struct {
 	name    string
-	sum     contextsummary.Summary
+	sum     contextplan.Summary
 	wantErr bool
 }) {
 	t.Helper()
@@ -39,12 +39,12 @@ func runValidateCases(t *testing.T, cases []struct {
 func TestSummaryValidateValidShapes(t *testing.T) {
 	runValidateCases(t, []struct {
 		name    string
-		sum     contextsummary.Summary
+		sum     contextplan.Summary
 		wantErr bool
 	}{
 		{
 			name: "valid full summary",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "Ship the release",
 				State:     "Two tests fail",
 				Decisions: []string{"Use SQLite"},
@@ -54,21 +54,21 @@ func TestSummaryValidateValidShapes(t *testing.T) {
 		},
 		{
 			name: "valid empty lists",
-			sum:  contextsummary.Summary{Objective: "o", State: "s"},
+			sum:  contextplan.Summary{Objective: "o", State: "s"},
 		},
 		{
 			name: "valid max field bytes",
-			sum: contextsummary.Summary{
-				Objective: strings.Repeat("a", contextsummary.MaxFieldBytes),
-				State:     strings.Repeat("b", contextsummary.MaxFieldBytes),
+			sum: contextplan.Summary{
+				Objective: strings.Repeat("a", contextplan.MaxFieldBytes),
+				State:     strings.Repeat("b", contextplan.MaxFieldBytes),
 			},
 		},
 		{
 			name: "valid decisions list at max items",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
-				Decisions: repeatItems(contextsummary.MaxItems),
+				Decisions: repeatItems(contextplan.MaxItems),
 			},
 		},
 	})
@@ -77,32 +77,32 @@ func TestSummaryValidateValidShapes(t *testing.T) {
 func TestSummaryValidateRequiredFields(t *testing.T) {
 	runValidateCases(t, []struct {
 		name    string
-		sum     contextsummary.Summary
+		sum     contextplan.Summary
 		wantErr bool
 	}{
 		{
 			name:    "invalid empty objective",
-			sum:     contextsummary.Summary{State: "s"},
+			sum:     contextplan.Summary{State: "s"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid whitespace objective",
-			sum:     contextsummary.Summary{Objective: "  ", State: "s"},
+			sum:     contextplan.Summary{Objective: "  ", State: "s"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid empty state",
-			sum:     contextsummary.Summary{Objective: "o"},
+			sum:     contextplan.Summary{Objective: "o"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid control character in objective",
-			sum:     contextsummary.Summary{Objective: "bad\x01", State: "s"},
+			sum:     contextplan.Summary{Objective: "bad\x01", State: "s"},
 			wantErr: true,
 		},
 		{
 			name: "invalid utf8 in state",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     string([]byte{0xff, 0xfe}),
 			},
@@ -112,25 +112,25 @@ func TestSummaryValidateRequiredFields(t *testing.T) {
 }
 
 func TestSummaryValidateFieldBounds(t *testing.T) {
-	overField := strings.Repeat("a", contextsummary.MaxFieldBytes+1)
+	overField := strings.Repeat("a", contextplan.MaxFieldBytes+1)
 	runValidateCases(t, []struct {
 		name    string
-		sum     contextsummary.Summary
+		sum     contextplan.Summary
 		wantErr bool
 	}{
 		{
 			name:    "invalid oversized objective",
-			sum:     contextsummary.Summary{Objective: overField, State: "s"},
+			sum:     contextplan.Summary{Objective: overField, State: "s"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid oversized state",
-			sum:     contextsummary.Summary{Objective: "o", State: overField},
+			sum:     contextplan.Summary{Objective: "o", State: overField},
 			wantErr: true,
 		},
 		{
 			name: "invalid oversized decisions item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Decisions: []string{overField},
@@ -139,7 +139,7 @@ func TestSummaryValidateFieldBounds(t *testing.T) {
 		},
 		{
 			name: "invalid oversized open work item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				OpenWork:  []string{overField},
@@ -148,7 +148,7 @@ func TestSummaryValidateFieldBounds(t *testing.T) {
 		},
 		{
 			name: "invalid oversized risks item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Risks:     []string{overField},
@@ -161,21 +161,21 @@ func TestSummaryValidateFieldBounds(t *testing.T) {
 func TestSummaryValidateListRules(t *testing.T) {
 	runValidateCases(t, []struct {
 		name    string
-		sum     contextsummary.Summary
+		sum     contextplan.Summary
 		wantErr bool
 	}{
 		{
 			name: "invalid over full decisions list",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
-				Decisions: repeatItems(contextsummary.MaxItems + 1),
+				Decisions: repeatItems(contextplan.MaxItems + 1),
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid duplicate decisions",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Decisions: []string{"same", "same"},
@@ -184,7 +184,7 @@ func TestSummaryValidateListRules(t *testing.T) {
 		},
 		{
 			name: "invalid empty decisions item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Decisions: []string{""},
@@ -193,7 +193,7 @@ func TestSummaryValidateListRules(t *testing.T) {
 		},
 		{
 			name: "invalid blank open work item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				OpenWork:  []string{" "},
@@ -202,7 +202,7 @@ func TestSummaryValidateListRules(t *testing.T) {
 		},
 		{
 			name: "invalid blank risks item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Risks:     []string{"\t"},
@@ -211,7 +211,7 @@ func TestSummaryValidateListRules(t *testing.T) {
 		},
 		{
 			name: "invalid control character in a risk item",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o",
 				State:     "s",
 				Risks:     []string{"bad\x02"},
@@ -228,25 +228,25 @@ func TestSummaryValidateListRules(t *testing.T) {
 func TestValidateRejectsDuplicateAfterTrim(t *testing.T) {
 	cases := []struct {
 		name string
-		sum  contextsummary.Summary
+		sum  contextplan.Summary
 	}{
 		{
 			name: "decisions",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o", State: "s",
 				Decisions: []string{"ship it", "ship it "},
 			},
 		},
 		{
 			name: "open work",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o", State: "s",
 				OpenWork: []string{"ship it", "ship it "},
 			},
 		},
 		{
 			name: "risks",
-			sum: contextsummary.Summary{
+			sum: contextplan.Summary{
 				Objective: "o", State: "s",
 				Risks: []string{"ship it", "ship it "},
 			},
@@ -264,7 +264,7 @@ func TestValidateRejectsDuplicateAfterTrim(t *testing.T) {
 // TestValidateAcceptsSharedPrefixItems is a positive control: two
 // items that share a prefix but differ after trim are not duplicates.
 func TestValidateAcceptsSharedPrefixItems(t *testing.T) {
-	sum := contextsummary.Summary{
+	sum := contextplan.Summary{
 		Objective: "o", State: "s",
 		Decisions: []string{"ship it", "ship it now"},
 	}
@@ -278,7 +278,7 @@ func TestValidateAcceptsSharedPrefixItems(t *testing.T) {
 // passes, and the returned Decisions[0] keeps that whitespace
 // unchanged, proving the fix does not rewrite stored data.
 func TestValidateKeepsStoredWhitespace(t *testing.T) {
-	sum := contextsummary.Summary{
+	sum := contextplan.Summary{
 		Objective: "o", State: "s",
 		Decisions: []string{"ship it "},
 	}

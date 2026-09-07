@@ -1,15 +1,15 @@
-package contextsummary_test
+package contextplan_test
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 func TestRenderDeterministic(t *testing.T) {
-	s := contextsummary.Summary{
+	s := contextplan.Summary{
 		Objective: "Ship the release",
 		State:     "Two tests fail",
 		Decisions: []string{"Use SQLite"},
@@ -24,7 +24,7 @@ func TestRenderDeterministic(t *testing.T) {
 }
 
 func TestRenderShowsEveryField(t *testing.T) {
-	s := contextsummary.Summary{
+	s := contextplan.Summary{
 		Objective: "obj-text",
 		State:     "state-text",
 		Decisions: []string{"decision-text"},
@@ -52,21 +52,21 @@ func TestRenderShowsEveryField(t *testing.T) {
 }
 
 func TestRenderEqualSummariesRenderEqualText(t *testing.T) {
-	a := contextsummary.Summary{Objective: "o", State: "s", Risks: []string{"r1", "r2"}}
-	b := contextsummary.Summary{Objective: "o", State: "s", Risks: []string{"r1", "r2"}}
+	a := contextplan.Summary{Objective: "o", State: "s", Risks: []string{"r1", "r2"}}
+	b := contextplan.Summary{Objective: "o", State: "s", Risks: []string{"r1", "r2"}}
 	if a.Render() != b.Render() {
 		t.Fatalf("equal summaries rendered differently:\n%q\n%q", a.Render(), b.Render())
 	}
 }
 
 func TestSummaryMessage(t *testing.T) {
-	s := contextsummary.Summary{Objective: "o", State: "s"}
-	msg := contextsummary.SummaryMessage(s)
+	s := contextplan.Summary{Objective: "o", State: "s"}
+	msg := contextplan.SummaryMessage(s)
 	if msg.Role != provider.RoleUser {
 		t.Fatalf("SummaryMessage role = %q, want %q", msg.Role, provider.RoleUser)
 	}
-	if msg.Name != contextsummary.SummaryMessageName {
-		t.Fatalf("SummaryMessage name = %q, want %q", msg.Name, contextsummary.SummaryMessageName)
+	if msg.Name != contextplan.SummaryMessageName {
+		t.Fatalf("SummaryMessage name = %q, want %q", msg.Name, contextplan.SummaryMessageName)
 	}
 	if msg.Content != s.Render() {
 		t.Fatalf("SummaryMessage content = %q, want Render() = %q", msg.Content, s.Render())

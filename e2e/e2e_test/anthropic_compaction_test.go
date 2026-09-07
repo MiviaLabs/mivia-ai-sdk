@@ -12,7 +12,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider/anthropic"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -108,7 +107,7 @@ func buildControlLoop(t *testing.T, serverURL string, client *http.Client) *agen
 	if err := reg.Add(&echoTool{name: "search", schema: []byte(`{"type":"object"}`), result: strings.Repeat("r", 20)}); err != nil {
 		t.Fatalf("reg.Add: %v", err)
 	}
-	summarizer, err := contextsummary.NewSummarizer(fixedSummaryCompleter{})
+	summarizer, err := contextplan.NewSummarizer(fixedSummaryCompleter{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -159,7 +158,7 @@ func TestAnthropicAgentLoopCompactionControl(t *testing.T) {
 
 	foundSummary := false
 	for _, m := range res.History {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == contextplan.SummaryMessageName {
 			foundSummary = true
 			break
 		}

@@ -11,7 +11,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -183,7 +182,7 @@ func buildHardFailBudgetError(t *testing.T, bus *events.Bus) (*agentloop.Loop, c
 // buildHardFailPlanHistoryError triggers ErrPlanFailed through a
 // Window whose Calibrated estimator always errors.
 func buildHardFailPlanHistoryError(t *testing.T, bus *events.Bus) (*agentloop.Loop, context.Context, []provider.Message) {
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}
@@ -369,7 +368,7 @@ func TestRunCompletionHeartbeatSpansPromptTooLongRecovery(t *testing.T) {
 		{Role: provider.RoleUser, Content: "l"},
 	}
 	w := contextplan.Window{MaxTokens: 4000, Compaction: contextplan.Compaction{TriggerPercent: 90, TargetPercent: 5}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer error = %v, want nil", err)
 	}

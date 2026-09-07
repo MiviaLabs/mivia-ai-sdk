@@ -19,7 +19,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -139,7 +138,7 @@ func buildAdoptionOptions(completer *cannedCompleter, reg *tools.Registry, bus *
 		Compaction: contextplan.Compaction{TriggerPercent: 80, TargetPercent: 50},
 	}
 	opts.Window = &window
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := contextplan.NewSummarizer(completer)
 	if err != nil {
 		return opts, err
 	}

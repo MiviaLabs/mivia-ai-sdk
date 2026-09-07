@@ -46,6 +46,11 @@
       "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
+    "contextplan.TokenEstimate": {
+      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
+      "target": "no consumer today; kept as SDK surface",
+      "permanent": true
+    },
     "contextsession.NewPlanner": {
       "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
       "target": "no consumer today; kept as SDK surface",
@@ -74,11 +79,6 @@
     "contextstate.Revoke": {
       "reason": "Public SDK symbol with no non-test reference in this module. Kept as SDK surface for external application code; this repo does not name a specific consumer here.",
       "target": "no in-tree consumer; kept as SDK surface for external application code",
-      "permanent": true
-    },
-    "contextsummary.TokenEstimate": {
-      "reason": "Public SDK symbol with no non-test reference in this module and no reference in an external consumer checked at gate-writing time. Kept as SDK surface; not yet exercised by the in-repo composition examples.",
-      "target": "no consumer today; kept as SDK surface",
       "permanent": true
     },
     "e2e.NewAgent": {

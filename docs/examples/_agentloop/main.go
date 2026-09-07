@@ -19,7 +19,6 @@ import (
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -167,9 +166,9 @@ func auditPrinter(ctx context.Context, rec agentloop.AuditRecord) error {
 func main() {
 	ctx := context.Background()
 	canned := newCannedCompleter()
-	summarizer, err := contextsummary.NewSummarizer(canned)
+	summarizer, err := contextplan.NewSummarizer(canned)
 	if err != nil {
-		fmt.Println("contextsummary.NewSummarizer:", err)
+		fmt.Println("contextplan.NewSummarizer:", err)
 		return
 	}
 

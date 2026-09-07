@@ -1,6 +1,8 @@
 # Plan: contextsummary
 
-Status: shipped. Ports the summarizer half of the sibling consumer
+Status: superseded. Phase 86 folded this package into
+contextplan; the symbols live in contextplan now. See
+docs/plans/agents/phase86_package_consolidation.md.
 repo's `internal/contextmgr`, simplified to this task's contract.
 Compaction is LLM-only; this package is the only summarizer.
 

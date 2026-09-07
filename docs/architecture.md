@@ -18,7 +18,7 @@ API references.
 
 ## Package map
 
-The diagram shows the forty-six packages and the import edges
+The diagram shows the forty-five packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `contextbudget`, `contextref`,
 `discovery`, `durablefence`, `envfile`, `events`,
@@ -74,9 +74,7 @@ flowchart LR
     agentloop --> contextbudget
     agentloop --> schema
     agentloop --> contextplan
-    agentloop --> contextsummary
     agentloop --> toolcallctx
-    contextsummary --> provider
     toolcallctx --> provider
     usage --> provider
     providerregistry --> provider
@@ -357,7 +355,7 @@ flowchart LR
   records, outside the block, the way `agent.confirmStep` signs `flow`
   steps. A non-nil `Options.Window` plans every iteration against a
   token budget: under the trigger the history passes through; at or
-  above it, `contextplan.Compact` plus one `contextsummary` call
+  above it, one `contextplan.Compact` call plus one `Summarize` call
   rebuild the history around an injected summary message, and one
   `Calibrated.Observe` after every turn keeps the estimate honest. A
   `provider.ErrPromptTooLong` rejection recovers once through a
@@ -379,7 +377,7 @@ flowchart LR
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,
   `trace`, `usage`, `events`, `contextbudget`, `schema`,
-  `contextplan`, `contextsummary`, and `toolcallctx`; it never imports
+  `contextplan`, and `toolcallctx`; it never imports
   `subagent`. See [packages/agentloop.md](packages/agentloop.md).
 - `tools/` — the tool registry. It provides `Tool`, `Registry`,
   `InOut`, `Out`, `New`, `Add`, `Get`, `Remove`, `Run`, and `Tools`. A
@@ -536,7 +534,19 @@ flowchart LR
   `ErrNoObjective`. `Compact` applies the trigger check and a fixed
   retention set over one message list, pure, with no LLM call, and
   mints the `context-compact-v1` idempotency key through
-  `contextref.Mint`. `contextplan` imports `contextref` and
+  `contextref.Mint`. The package also holds the compaction
+  summarizer: `Summary` with `Validate` and `Render`,
+  `SummaryMessage`, `TokenEstimate`, `Summarizer` with
+  `NewSummarizer` and `Summarize`, the bounds `MaxFieldBytes`,
+  `MaxItems`, `MaxExcerptTotalBytes`, and `SummaryTimeout`, the
+  injected message name `SummaryMessageName`, and the sentinels
+  `ErrNilCompleter`, `ErrNoMessagesToSummarize`, `ErrInvalidReply`,
+  and `ErrCallFailed`. One summarizer call is one bounded
+  `provider.Completer` call: excerpts cap the input, a 20 second
+  timeout caps the duration, and strict decoding plus
+  `Summary.Validate` cap the accepted output. A summary failure is a
+  caller-visible error; no structural fallback exists.
+  `contextplan` imports `contextref` and
   `provider`. See [packages/contextplan.md](packages/contextplan.md).
 - `provider/anthropic/` — the Anthropic Messages API adapter. It provides
   `Client`, `New`, `Options`, `Options.Validate`, default constants, and
@@ -558,19 +568,6 @@ flowchart LR
   `Elision`, keyed to the payload's own `SubjectID`. `contextsession`
   imports `contextplan`, `contextstate`, `provider`, and
   `spool`. See [packages/contextsession.md](packages/contextsession.md).
-- `contextsummary/` — the LLM summarizer for compaction. It provides
-  `Summary` with `Validate` and `Render`, `SummaryMessage`,
-  `TokenEstimate`, `Summarizer` with `NewSummarizer` and `Summarize`,
-  the bounds `MaxFieldBytes`, `MaxItems`, `MaxExcerptTotalBytes`, and
-  `SummaryTimeout`, the injected message name `SummaryMessageName`,
-  and the sentinels `ErrNilCompleter`, `ErrNoMessages`,
-  `ErrInvalidReply`, and `ErrCallFailed`. One summarizer call is one
-  bounded `provider.Completer` call: excerpts cap the input, a 20
-  second timeout caps the duration, and strict decoding plus
-  `Summary.Validate` cap the accepted output. A summary failure is a
-  caller-visible error; no structural fallback exists. `contextsummary`
-  imports `provider` only. See
-  [packages/contextsummary.md](packages/contextsummary.md).
 - `longtermmemory/` — the tiered long-term memory store. It
   provides `Entry` with `Validate`, the `Verdict` set, `Result`,
   `Query`, `Store` with `New`, `Save`, `Search`, `Count`,

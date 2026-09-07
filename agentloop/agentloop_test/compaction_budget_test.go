@@ -10,7 +10,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -46,7 +45,7 @@ var errEstimateBoom = errors.New("agentloop_test: estimate boom")
 
 // failOnSummaryEstimator prices one token per content byte, like
 // scaleEstimator, except it fails with err whenever req carries a
-// message named contextsummary.SummaryMessageName. Only
+// message named contextplan.SummaryMessageName. Only
 // checkCompactedBudget's post-injection re-check ever estimates a
 // history carrying that message: contextplan.Compact's own internal
 // estimates (before, mandatory, tail-fill, after) all run over the
@@ -59,7 +58,7 @@ type failOnSummaryEstimator struct{ err error }
 func (e failOnSummaryEstimator) EstimateTokens(req provider.Request) (int, error) {
 	total := 0
 	for _, m := range req.Messages {
-		if m.Name == contextsummary.SummaryMessageName {
+		if m.Name == contextplan.SummaryMessageName {
 			return 0, e.err
 		}
 		total += len(m.Content)
@@ -76,7 +75,7 @@ func (e failOnSummaryEstimator) EstimateTokens(req provider.Request) (int, error
 // TestRunPlanHistoryFailureLaterIterationPreservesPartialResult for
 // the case where a completed prior iteration's state survives.
 func TestRunPlanEstimateFailureFailsBeforeRequest(t *testing.T) {
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -155,7 +154,7 @@ func TestRunCompactedBudgetEstimateFailure(t *testing.T) {
 		{Role: provider.RoleUser, Content: "final"},
 	}
 	w := contextplan.Window{MaxTokens: 200, Compaction: contextplan.Compaction{TriggerPercent: 10, TargetTokens: 5}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -225,7 +224,7 @@ func TestRunCompactedHistoryStillOverBudgetFailsClosed(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	sum := &summaryScript{reply: hugeReply}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -278,7 +277,7 @@ func TestRunCompactedHistoryExactlyAtBudgetPasses(t *testing.T) {
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
 	sum := &summaryScript{reply: `{"Objective":"o","State":"s","Decisions":[],"OpenWork":[],"Risks":[]}`}
-	summarizer, err := contextsummary.NewSummarizer(sum)
+	summarizer, err := contextplan.NewSummarizer(sum)
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}
@@ -326,7 +325,7 @@ func TestRunCheckCompactedBudgetEstimatorErrorFailsClosed(t *testing.T) {
 	sc := &scriptedCompleter{responses: []provider.Response{
 		{Message: provider.Message{Role: provider.RoleAssistant, Content: "done"}},
 	}}
-	sum, err := contextsummary.NewSummarizer(&summaryScript{})
+	sum, err := contextplan.NewSummarizer(&summaryScript{})
 	if err != nil {
 		t.Fatalf("NewSummarizer: %v", err)
 	}

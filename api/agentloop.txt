@@ -89,7 +89,7 @@ package agentloop
   StreamingWriter io.Writer
   Audit AuditFunc
   Window *contextplan.Window
-  Summarizer *contextsummary.Summarizer
+  Summarizer *contextplan.Summarizer
   Calibrated *contextplan.Calibrated
   Conclude Conclude
   StartTime time.Time

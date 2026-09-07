@@ -9,7 +9,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/schema"
@@ -61,7 +60,7 @@ type Loop struct {
 	schemas         map[string]*schema.Compiled
 	audit           AuditFunc
 	window          *contextplan.Window
-	summarizer      *contextsummary.Summarizer
+	summarizer      *contextplan.Summarizer
 	calibrated      *contextplan.Calibrated
 	// defaultEffort is the completer's ReasoningPolicy default, read
 	// once at New; empty when the completer has no policy. Each

@@ -1,4 +1,4 @@
-package contextsummary
+package contextplan
 
 import (
 	"bytes"
@@ -20,8 +20,8 @@ const SummaryTimeout = 20 * time.Second
 var (
 	// ErrNilCompleter is NewSummarizer's error for a nil Completer.
 	ErrNilCompleter = errors.New("contextsummary: completer is required")
-	// ErrNoMessages is Summarize's error for an empty message list.
-	ErrNoMessages = errors.New("contextsummary: no messages to summarize")
+	// ErrNoMessagesToSummarize is Summarize's error for an empty message list.
+	ErrNoMessagesToSummarize = errors.New("contextsummary: no messages to summarize")
 	// ErrInvalidReply is Summarize's error when the reply fails
 	// strict parsing or Summary.Validate.
 	ErrInvalidReply = errors.New("contextsummary: reply failed strict parsing or validation")
@@ -61,7 +61,7 @@ func NewSummarizer(c provider.Completer) (*Summarizer, error) {
 // validated Summary. Never retries. Any failure is caller-visible.
 func (s *Summarizer) Summarize(ctx context.Context, msgs []provider.Message) (Summary, error) {
 	if len(msgs) == 0 {
-		return Summary{}, ErrNoMessages
+		return Summary{}, ErrNoMessagesToSummarize
 	}
 	req := provider.Request{
 		Messages: []provider.Message{

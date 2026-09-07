@@ -1,4 +1,4 @@
-package contextsummary
+package contextplan
 
 import (
 	"fmt"

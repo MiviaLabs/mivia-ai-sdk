@@ -10,7 +10,6 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextbudget"
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/events"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
@@ -255,7 +254,7 @@ type Options struct {
 	Window *contextplan.Window
 	// Summarizer runs the LLM summary every compaction requires.
 	// Required when Window is set.
-	Summarizer *contextsummary.Summarizer
+	Summarizer *contextplan.Summarizer
 	// Calibrated estimates tokens for planning and receives one Observe
 	// call after every Chat. Required when Window is set.
 	Calibrated *contextplan.Calibrated

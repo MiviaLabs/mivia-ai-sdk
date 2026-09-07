@@ -1,4 +1,4 @@
-package contextsummary_test
+package contextplan_test
 
 import (
 	"context"
@@ -7,23 +7,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 )
 
 func TestNewSummarizerNilCompleter(t *testing.T) {
-	s, err := contextsummary.NewSummarizer(nil)
+	s, err := contextplan.NewSummarizer(nil)
 	if s != nil {
 		t.Fatal("NewSummarizer(nil) returned a Summarizer, want nil")
 	}
-	if !errors.Is(err, contextsummary.ErrNilCompleter) {
+	if !errors.Is(err, contextplan.ErrNilCompleter) {
 		t.Fatalf("NewSummarizer(nil) error = %v, want errors.Is ErrNilCompleter", err)
 	}
 }
 
 func TestSummarizeHappyPath(t *testing.T) {
 	f := &scriptCompleter{replies: []string{validReply}}
-	s, err := contextsummary.NewSummarizer(f)
+	s, err := contextplan.NewSummarizer(f)
 	if err != nil {
 		t.Fatalf("NewSummarizer() = %v, want nil", err)
 	}
@@ -68,10 +68,10 @@ func TestSummarizeHappyPath(t *testing.T) {
 
 func TestSummarizeNoMessages(t *testing.T) {
 	f := &scriptCompleter{replies: []string{validReply}}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	_, err := s.Summarize(context.Background(), nil)
-	if !errors.Is(err, contextsummary.ErrNoMessages) {
-		t.Fatalf("Summarize(nil) error = %v, want errors.Is ErrNoMessages", err)
+	if !errors.Is(err, contextplan.ErrNoMessagesToSummarize) {
+		t.Fatalf("Summarize(nil) error = %v, want errors.Is ErrNoMessagesToSummarize", err)
 	}
 	calls, _ := f.stats()
 	if calls != 0 {
@@ -82,10 +82,10 @@ func TestSummarizeNoMessages(t *testing.T) {
 func TestSummarizeCallErrorWrapsErrCallFailed(t *testing.T) {
 	boom := errors.New("boom")
 	f := &scriptCompleter{err: boom}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	_, err := s.Summarize(context.Background(), msgs)
-	if !errors.Is(err, contextsummary.ErrCallFailed) {
+	if !errors.Is(err, contextplan.ErrCallFailed) {
 		t.Fatalf("Summarize() error = %v, want errors.Is ErrCallFailed", err)
 	}
 	if !errors.Is(err, boom) {
@@ -121,10 +121,10 @@ func TestSummarizeInvalidReplies(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f := &scriptCompleter{replies: []string{c.reply}}
-			s, _ := contextsummary.NewSummarizer(f)
+			s, _ := contextplan.NewSummarizer(f)
 			msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 			_, err := s.Summarize(context.Background(), msgs)
-			if !errors.Is(err, contextsummary.ErrInvalidReply) {
+			if !errors.Is(err, contextplan.ErrInvalidReply) {
 				t.Fatalf("Summarize() error = %v, want errors.Is ErrInvalidReply", err)
 			}
 		})
@@ -134,7 +134,7 @@ func TestSummarizeInvalidReplies(t *testing.T) {
 func TestSummarizeFencedReplyAccepted(t *testing.T) {
 	fenced := "```json\n" + validReply + "\n```"
 	f := &scriptCompleter{replies: []string{fenced}}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	sum, err := s.Summarize(context.Background(), msgs)
 	if err != nil {
@@ -147,12 +147,12 @@ func TestSummarizeFencedReplyAccepted(t *testing.T) {
 
 func TestSummarizeCanceledContext(t *testing.T) {
 	f := &scriptCompleter{waitCtx: true}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	_, err := s.Summarize(ctx, msgs)
-	if !errors.Is(err, contextsummary.ErrCallFailed) {
+	if !errors.Is(err, contextplan.ErrCallFailed) {
 		t.Fatalf("Summarize() error = %v, want errors.Is ErrCallFailed", err)
 	}
 	if !errors.Is(err, context.Canceled) {
@@ -162,7 +162,7 @@ func TestSummarizeCanceledContext(t *testing.T) {
 
 func TestSummarizeAppliesTimeoutWithoutDeadline(t *testing.T) {
 	f := &scriptCompleter{replies: []string{validReply}}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	before := time.Now()
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	if _, err := s.Summarize(context.Background(), msgs); err != nil {
@@ -175,14 +175,14 @@ func TestSummarizeAppliesTimeoutWithoutDeadline(t *testing.T) {
 		t.Fatal("completer ctx carried no deadline, want the SummaryTimeout cap")
 	}
 	slack := time.Second
-	if dl.After(before.Add(contextsummary.SummaryTimeout + slack)) {
-		t.Fatalf("deadline %v exceeds the %v cap from %v", dl, contextsummary.SummaryTimeout, before)
+	if dl.After(before.Add(contextplan.SummaryTimeout + slack)) {
+		t.Fatalf("deadline %v exceeds the %v cap from %v", dl, contextplan.SummaryTimeout, before)
 	}
 }
 
 func TestSummarizeNoRetry(t *testing.T) {
 	f := &scriptCompleter{err: errors.New("once is enough")}
-	s, _ := contextsummary.NewSummarizer(f)
+	s, _ := contextplan.NewSummarizer(f)
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: "hi"}}
 	_, err := s.Summarize(context.Background(), msgs)
 	if err == nil {

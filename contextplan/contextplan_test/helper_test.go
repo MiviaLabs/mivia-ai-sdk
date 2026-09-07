@@ -1,4 +1,4 @@
-package contextsummary_test
+package contextplan_test
 
 import (
 	"context"

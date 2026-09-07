@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
 	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
@@ -88,7 +87,7 @@ func TestNewAdoptsDerivedWindow(t *testing.T) {
 	if err := reg.Add(&capabilityTool{}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	summarizer, err := contextsummary.NewSummarizer(completer)
+	summarizer, err := contextplan.NewSummarizer(completer)
 	if err != nil {
 		t.Fatalf("summarizer: %v", err)
 	}

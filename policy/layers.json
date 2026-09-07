@@ -30,7 +30,6 @@
       "contextbudget",
       "schema",
       "contextplan",
-      "contextsummary",
       "toolcallctx"
     ],
     "agentrun": [
@@ -61,9 +60,6 @@
     ],
     "contextstate": [
       "contextref"
-    ],
-    "contextsummary": [
-      "provider"
     ],
     "discovery": [],
     "dispatch": [

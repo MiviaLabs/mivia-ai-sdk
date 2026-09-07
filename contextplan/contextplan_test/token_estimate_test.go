@@ -1,9 +1,9 @@
-package contextsummary_test
+package contextplan_test
 
 import (
 	"testing"
 
-	"github.com/MiviaLabs/mivia-ai-sdk/contextsummary"
+	"github.com/MiviaLabs/mivia-ai-sdk/contextplan"
 )
 
 func TestTokenEstimate(t *testing.T) {
@@ -24,7 +24,7 @@ func TestTokenEstimate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := contextsummary.TokenEstimate(c.in); got != c.want {
+			if got := contextplan.TokenEstimate(c.in); got != c.want {
 				t.Fatalf("TokenEstimate(%d) = %d, want %d", c.in, got, c.want)
 			}
 		})

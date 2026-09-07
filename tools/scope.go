@@ -51,9 +51,11 @@ func (o ScopeOptions) Validate() error {
 // non-denied, non-privileged tool is allowed. ExtraDenylist always
 // removes a name from the allowed set, even when Allowlist also names
 // it. Approve and ApprovalThreshold carry through unchanged for
-// RunScoped's approval check. An unknown ApprovalThreshold ranks as
-// External there, the highest class, so approve never fires: call
-// Validate first to reject it at construction time.
+// RunScoped's approval check. NewScope does not reject an unknown
+// ApprovalThreshold; it ranks as External there, the highest class,
+// so approve fires only for External-class tools. Call
+// NewScopeChecked, or opts.Validate directly, for construction-time
+// rejection of an unknown ApprovalThreshold.
 func NewScope(opts ScopeOptions) *Scope {
 	s := &Scope{
 		allow:             make(map[string]struct{}, len(opts.Allowlist)),
@@ -68,6 +70,18 @@ func NewScope(opts ScopeOptions) *Scope {
 		s.deny[name] = struct{}{}
 	}
 	return s
+}
+
+// NewScopeChecked builds a Scope like NewScope, but first calls
+// opts.Validate and returns its error instead of silently accepting
+// an unknown ApprovalThreshold. Prefer this constructor when
+// construction-time enforcement matters more than NewScope's
+// zero-config convenience.
+func NewScopeChecked(opts ScopeOptions) (*Scope, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	return NewScope(opts), nil
 }
 
 // Allowed reports whether name passes the denylist, the privileged

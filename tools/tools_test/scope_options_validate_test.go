@@ -27,3 +27,25 @@ func TestScopeOptionsValidate(t *testing.T) {
 		t.Fatalf("Validate(admin) = %v, want ErrUnknownApprovalThreshold", err)
 	}
 }
+
+// TestNewScopeCheckedGatesOnValidate proves NewScopeChecked wires
+// ScopeOptions.Validate into construction: an unknown
+// ApprovalThreshold is rejected instead of silently accepted, unlike
+// NewScope which builds a Scope regardless.
+func TestNewScopeCheckedGatesOnValidate(t *testing.T) {
+	opts := tools.ScopeOptions{ApprovalThreshold: tools.ExecutionClass("admin")}
+	scope, err := tools.NewScopeChecked(opts)
+	if !errors.Is(err, tools.ErrUnknownApprovalThreshold) {
+		t.Fatalf("NewScopeChecked(admin) error = %v, want ErrUnknownApprovalThreshold", err)
+	}
+	if scope != nil {
+		t.Fatalf("NewScopeChecked(admin) scope = %+v, want nil on Validate failure", scope)
+	}
+	scope, err = tools.NewScopeChecked(tools.ScopeOptions{ApprovalThreshold: tools.ExecutionClassRead})
+	if err != nil {
+		t.Fatalf("NewScopeChecked(Read) error = %v, want nil", err)
+	}
+	if scope == nil {
+		t.Fatalf("NewScopeChecked(Read) scope = nil, want a built Scope")
+	}
+}

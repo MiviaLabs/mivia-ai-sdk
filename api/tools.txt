@@ -18,6 +18,7 @@ package tools
   func IsPrivileged(t Tool) (bool)
   func New() (*Registry)
   func NewScope(opts ScopeOptions) (*Scope)
+  func NewScopeChecked(opts ScopeOptions) (*Scope, error)
   func ResultBudgetOf(t Tool) (int, bool)
   func SchemaOf(t Tool) ([]byte, bool)
   type ExecutionClass string

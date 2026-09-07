@@ -30,6 +30,66 @@
       "permanent": false,
       "reason": "Construction-time-validating pair to NewScope (scope.go:80, added 2026-09-07). No caller yet: an external consumer's own tool-scope type is a separate, unmigrated privilege filter. Target: an external consumer wiring tools.Scope into its own dispatcher and retiring its parallel filter, a larger follow-up, not attempted here.",
       "target": "an external consumer's dispatcher, once it adopts tools.Scope over its own privilege filter"
+    },
+    "contextsession.NewPlanner": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); the symbol-wiring gate did not cover x/ under the quarantine, so this was already unwired. contextsession/contextsession_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "contextstate.RetentionSession": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. contextstate/contextstate_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "contextstate.Revoke": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. contextstate/contextstate_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "contextstate.NewCommitRequest": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. contextstate/contextstate_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "contextstate.NewContentRef": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. contextstate/contextstate_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "contextstate.Reassemble": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. contextstate/contextstate_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.CoreEntries": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.CoreFrame": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.Delete": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.PromoteToCore": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.Save": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
+    },
+    "longtermmemory.Search": {
+      "permanent": true,
+      "reason": "Folded back from the x/ sub-module (Phase 87); previously unchecked by this gate. longtermmemory/longtermmemory_test exercises it directly.",
+      "target": "application code that imports this module"
     }
   }
 }

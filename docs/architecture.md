@@ -17,7 +17,7 @@ API references.
 
 ## Package map
 
-The diagram shows the twenty-nine packages and the import edges
+The diagram shows the thirty-five packages and the import edges
 between them. An arrow points from an importer to the package it
 imports. `channel`, `context/budget`, `context/ref`,
 `events`,
@@ -29,9 +29,11 @@ The spool half of `memory` imports `tools` alone.
 The `a2a/a2atest` fixture imports `a2a` and `envelope`. `a2a` itself
 imports `envelope` alone. `workspace` imports no other package in this
 module.
-Six orphaned packages — `contextstate`, `contextsession`,
-`longtermmemory`, `skills`, `envfile`, and `runconfig` — live in the
-`x/` sub-module and are outside the package count and diagram above.
+`contextstate`, `contextsession`, `longtermmemory`, `skills`,
+`envfile`, and `runconfig` were quarantined in a separate `x/`
+sub-module and folded back into the root module once a real
+external consumer depended on several of them; they are
+ordinary packages in the count and diagram above.
 
 ```mermaid
 flowchart LR

@@ -28,7 +28,12 @@ The SDK is composed of single-concern packages. See [docs/README.md](docs/README
 - `context/plan/` / `context/ref/` — context window management, compaction, the summarizer (Summarize), and content references.
 - `scheduler/` — due-job firing plus the trigger registry (Condition, Action, Registry).
 - `channel/` / `trace/` — supporting primitives.
-- `x/` — nested sub-module of quarantined orphaned packages (`contextstate`, `contextsession`, `longtermmemory`, `skills`, `envfile`, `runconfig`); the core module does not advertise them. Promote one into core when a second consumer appears.
+- `contextstate/` — durable session commit contracts and their store; consumed by `contextsession/` and an external consumer.
+- `contextsession/` — session planning/elision over `contextstate/`.
+- `longtermmemory/` — consolidated long-term memory store, search, tokenize.
+- `skills/` — skill registry and matching, consumed by an external consumer.
+- `envfile/` — env-file load/compose, consumed by an external consumer.
+- `runconfig/` — run-config loader/runner over `workflow/run`, `subagent`, and `tools`.
 - `internal/e2e/` — end-to-end scenario harness and suite; test-only.
 - `policy/` — `layers.json` allowed imports; `pending_wiring.json`;
   `pending_symbols.json`.

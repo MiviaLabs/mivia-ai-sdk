@@ -1,0 +1,21 @@
+package skills
+  func (r *Registry) Add(s Skill) (error)
+  func (r *Registry) Get(name string) (Skill, bool)
+  func (r *Registry) Match(query string) ([]Skill)
+  func (r *Registry) Names() ([]string)
+  func (r *Registry) Remove(name string) (bool)
+  func (s Skill) Validate() (error)
+  func New() (*Registry)
+  type Registry struct {
+}
+  type Skill struct {
+  Name string
+  Instructions string
+  Triggers []string
+  RequiredTools []string
+}
+  var ErrBlankInstructions
+  var ErrBlankName
+  var ErrBlankTrigger
+  var ErrDuplicateName
+  var ErrDuplicateTrigger

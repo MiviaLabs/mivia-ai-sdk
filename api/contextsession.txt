@@ -1,0 +1,26 @@
+package contextsession
+  const ElisionReasonReasoningRedacted = "reasoning_redacted"
+  const ElisionReasonRetentionExpired = "retention_expired"
+  const ElisionReasonRevoked = "revoked"
+  const ElisionReasonWindowOverflow = "window_overflow"
+  const StubContentBytes = 256
+  func (p *Planner) Plan(ctx context.Context, sess *contextstate.Session, w plan.Window, e provider.TokenEstimator) (PlanResult, error)
+  func IsReasoningEvent(e contextstate.SourceEvent) (bool)
+  func NewPlanner(store *contextstate.MemStore, spooler *memory.Spool) (*Planner, error)
+  func StubContent(content []byte) ([]byte)
+  type Elision struct {
+  Ref contextstate.ContentRef
+  Reason ElisionReason
+  Kept int
+  SpoolRef string
+}
+  type ElisionReason string
+  type PlanResult struct {
+  Request provider.Request
+  Elisions []Elision
+  EstimatedTokens int
+}
+  type Planner struct {
+}
+  var ErrNilSession
+  var ErrNilStore

@@ -16,6 +16,16 @@
       "target": "application code that imports this module",
       "permanent": true
     },
+    "contextsession": {
+      "reason": "Session planning/elision built on contextstate. No non-test file in this module imports it; contextsession/contextsession_test exercises it. Consumed externally by an application layer over contextstate. Kept as SDK surface.",
+      "target": "application code that imports this module",
+      "permanent": true
+    },
+    "envfile": {
+      "reason": "Env-file load/compose leaf. No non-test file in this module imports it; envfile/envfile_test exercises it. Consumed externally by application-side config/auth code. Kept as SDK surface.",
+      "target": "application code that imports this module",
+      "permanent": true
+    },
     "internal/e2e": {
       "reason": "End-to-end scenario harness. Its intended callers are its own e2e_test subdirectory and subagent/subagent_test/helpers_test.go, both test code, by design.",
       "target": "e2e/e2e_test scenarios and subagent/subagent_test/helpers_test.go",
@@ -24,6 +34,11 @@
     "ledger/ledgertest": {
       "reason": "Test-only conformance kit, formerly the top-level durablefence package. It is imported only from other packages' _test subdirectories.",
       "target": "ledger/ledger_test and other packages' _test subdirectories only",
+      "permanent": true
+    },
+    "longtermmemory": {
+      "reason": "Consolidated long-term memory store, search, and tokenize. No non-test file in this module imports it; longtermmemory/longtermmemory_test exercises it. Kept as SDK surface for a future consumer.",
+      "target": "application code that imports this module",
       "permanent": true
     },
     "mcp": {
@@ -36,8 +51,13 @@
       "target": "application code that imports this module",
       "permanent": true
     },
-    "subagent": {
-      "reason": "Blocks-as-tools composition: spawnable subagents, concurrent RunAll, and mailboxes. No non-test file in this module imports it; internal/e2e/e2e_test exercises it. Kept as SDK surface.",
+    "runconfig": {
+      "reason": "Run-config loader/runner over workflow/run, subagent, and tools. No non-test file in this module imports it; runconfig/runconfig_test exercises it. Kept as SDK surface.",
+      "target": "application code that imports this module",
+      "permanent": true
+    },
+    "skills": {
+      "reason": "Skill registry and matching leaf. No non-test file in this module imports it; skills/skills_test exercises it. Consumed externally by an application-side skill adapter. Kept as SDK surface.",
       "target": "application code that imports this module",
       "permanent": true
     },

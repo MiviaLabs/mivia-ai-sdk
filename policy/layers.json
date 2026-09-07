@@ -32,6 +32,7 @@
       "tools",
       "trace"
     ],
+    "skills": [],
     "channel": [],
     "context/budget": [],
     "context/plan": [
@@ -39,6 +40,31 @@
       "provider"
     ],
     "context/ref": [],
+    "contextstate": [
+      "context/ref"
+    ],
+    "contextsession": [
+      "context/plan",
+      "contextstate",
+      "memory",
+      "provider"
+    ],
+    "envfile": [
+      "workspace"
+    ],
+    "longtermmemory": [],
+    "runconfig": [
+      "context/budget",
+      "flow",
+      "ledger",
+      "machine",
+      "memory",
+      "room",
+      "subagent",
+      "tools",
+      "trace",
+      "workflow/run"
+    ],
     "dispatch": [
       "workflow",
       "envelope",

@@ -8,8 +8,7 @@
 // Layering: context holds three public packages. plan consumes ref
 // and provider; agentloop wires plan above it. budget states byte
 // caps beside it. The durable session contract and its store live in
-// the x/ sub-module (github.com/MiviaLabs/mivia-ai-sdk/x), private to
-// that module.
+// contextstate (github.com/MiviaLabs/mivia-ai-sdk/contextstate).
 //
 // See docs/history/context/plan.md.
 package plan

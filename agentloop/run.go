@@ -392,7 +392,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if oerr := l.observeRequest(ctx, req, iterations+1); oerr != nil {
 		// Reserve had succeeded and the call never ran; give the
 		// reservation back before the attempt error returns.
-		l.refundWork(ctx, req)
+		l.refundWork(ctx, req, oerr)
 		return chatAttempt{err: oerr, iterCtx: ctx}
 	}
 	resp, err := l.steerableChat(ctx, req, steer)
@@ -404,7 +404,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
 			estimatedTokens: estimated}
 	}
-	l.refundWork(ctx, req)
+	l.refundWork(ctx, req, err)
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
 		return chatAttempt{err: err, iterCtx: ctx}
 	}
@@ -412,7 +412,6 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if rerr != nil {
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
-	l.settleWork(ctx, retryReq, recovered.Usage)
 	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
 		estimatedTokens: l.estimateTokens(retryReq)}
 }

@@ -148,7 +148,7 @@ package agentloop
 }
   type WorkBudget struct {
   Reserve func(ctx context.Context, req provider.Request) error
-  Refund func(ctx context.Context, req provider.Request, used provider.Usage)
+  Refund func(ctx context.Context, req provider.Request, used provider.Usage, err error)
 }
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded

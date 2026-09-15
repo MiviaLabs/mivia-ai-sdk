@@ -216,7 +216,7 @@ func main() {
 			Conclude:        agentloop.Conclude{Margin: 1, Deadline: time.Minute, Notice: "Wrap up with your best answer now."},
 			WorkBudget: &agentloop.WorkBudget{
 				Reserve: func(ctx context.Context, req provider.Request) error { return nil },
-				Refund:  func(ctx context.Context, req provider.Request, used provider.Usage) {},
+				Refund:  func(ctx context.Context, req provider.Request, used provider.Usage, err error) {},
 			},
 			ToolBudget: &agentloop.ToolBudget{
 				Reserve: func(ctx context.Context, calls int) error { return nil },

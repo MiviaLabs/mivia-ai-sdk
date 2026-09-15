@@ -27,8 +27,8 @@ type Steer struct {
 	ackedGen uint
 	cancel   context.CancelFunc
 	// injector is the caller-supplied pull-based message source the
-	// loop consults at every iteration boundary and at every steered
-	// stop decision. A nil injector means no injection (the default);
+	// loop consults at every iteration boundary (the iteration top in
+	// run). A nil injector means no injection (the default);
 	// a non-nil injector returning an empty slice at a particular
 	// boundary means "no messages this time". The injector runs on
 	// the loop goroutine: the caller must not assume concurrency,
@@ -65,13 +65,13 @@ func (s *Steer) Trigger() {
 }
 
 // SetInjector installs f as the pull-based message source the loop
-// consults at every iteration boundary and at every steered-stop
-// decision. A non-nil return appends those messages to the run
-// history and the run CONTINUES (a pending StopSteered is downgraded
-// in that case). An empty return continues the run too: with an
-// injector installed, every steered stop soft-continues and the
-// return value never gates the stop. Stop the run by removing the
-// injector or canceling ctx. Passing nil removes the injector.
+// consults at the top of every iteration. A non-nil return appends
+// those messages to the run history and the run continues. Whether a
+// steered stop ends the run is decided solely by
+// Options.Extensions.ContinueOnStop: a non-empty return continues
+// the turn, a nil hook or an empty return ends the run with
+// StopSteered - with or without an injector installed. Passing nil
+// removes the injector.
 //
 // SetInjector is meant to be called BEFORE RunSteerable starts.
 // Once the run is in flight, SetInjector's effect on the next
@@ -97,9 +97,8 @@ func (s *Steer) SetInjector(f func() []provider.Message) {
 // drainInjected returns the injector's current messages, or nil when
 // no injector is installed. Each call invokes the injector once.
 // The loop calls drainInjected exactly once per iteration, at the
-// iteration top in run. The steered-stop branch calls hasInjector,
-// never this method. The caller appends a non-empty return to
-// history. Emptiness gates nothing.
+// iteration top in run. The caller appends a non-empty return to
+// history; an empty return contributes nothing.
 func (s *Steer) drainInjected() []provider.Message {
 	s.mu.Lock()
 	f := s.injector
@@ -108,17 +107,6 @@ func (s *Steer) drainInjected() []provider.Message {
 		return nil
 	}
 	return f()
-}
-
-// hasInjector reports whether an injector has been installed via
-// SetInjector. The steered-stop branch uses this to decide between
-// the soft-continue path (an injector is installed) and the
-// existing single-shot StopSteered path (no injector; pre-injector
-// SDK contract).
-func (s *Steer) hasInjector() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.injector != nil
 }
 
 // HasActiveCall reports whether a Completer.Chat call is currently
@@ -139,8 +127,8 @@ func (s *Steer) HasActiveCall() bool {
 }
 
 // ackTriggered clears the triggered flag. Used by the steered-stop
-// branch when an injector is installed, before the next iteration's
-// drainInjected call. The next Chat call must not arm a
+// branch when ContinueOnStop continues the run, before the next arm.
+// The next Chat call must not arm a
 // still-triggered Steer. An armed trigger cancels that Chat
 // instantly and wastes one iteration. reset() clears the flag only
 // at the start of the next RunSteerable call, which is too late.

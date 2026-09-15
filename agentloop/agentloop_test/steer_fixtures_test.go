@@ -71,6 +71,18 @@ func newSteerLoop(t *testing.T, completer provider.Completer, maxIterations int)
 	return loop
 }
 
+// continueOnSteered returns a ContinueOnStop hook that continues
+// exactly the steered stops and stops everything else: the minimal
+// gate a host installs when queued messages must survive a steer.
+func continueOnSteered() func(context.Context, agentloop.StopDecision) []provider.Message {
+	return func(_ context.Context, d agentloop.StopDecision) []provider.Message {
+		if d.Stop == agentloop.StopSteered {
+			return []provider.Message{continuationMessage()}
+		}
+		return nil
+	}
+}
+
 // gateTool records each call's argument string and, on the call whose
 // zero-based index equals gateIndex, closes entered and blocks on
 // release before returning: a test uses this to fire Trigger while

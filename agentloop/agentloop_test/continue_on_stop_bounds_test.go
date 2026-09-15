@@ -19,6 +19,17 @@ func alwaysContinue() func(int, agentloop.StopDecision) []provider.Message {
 	}
 }
 
+// continueSteeredOnly returns a decide function that continues
+// exactly the steered stops and stops everything else.
+func continueSteeredOnly() func(int, agentloop.StopDecision) []provider.Message {
+	return func(_ int, d agentloop.StopDecision) []provider.Message {
+		if d.Stop == agentloop.StopSteered {
+			return []provider.Message{continuationMessage()}
+		}
+		return nil
+	}
+}
+
 // TestContinueOnStopBoundedByMaxIterations proves an always-continue
 // hook ends with StopMaxIterations, not a hang.
 func TestContinueOnStopBoundedByMaxIterations(t *testing.T) {
@@ -214,10 +225,60 @@ func TestContinueOnStopCancelledContextEndsRun(t *testing.T) {
 	}
 }
 
-// TestContinueOnStopSkippedOnSteered proves StopSteered never consults
-// the hook.
-func TestContinueOnStopSkippedOnSteered(t *testing.T) {
-	rec := &stopHookRecorder{decide: alwaysContinue()}
+// TestContinueOnStopGatesSteeredStop proves a steered stop consults
+// the hook: a non-empty return continues the run, the decision the
+// hook saw carries Stop == StopSteered, and the continued run reaches
+// the next scripted response.
+func TestContinueOnStopGatesSteeredStop(t *testing.T) {
+	rec := &stopHookRecorder{decide: continueSteeredOnly()}
+	c := newInjectorGateCompleter(
+		[]provider.Response{
+			{Message: textMessage(provider.RoleAssistant, "final")},
+		},
+		0,
+	)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer: c, Tools: tools.New(), Bounds: agentloop.Bounds{MaxIterations: 5}, Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v, want nil", err)
+	}
+	steer := agentloop.NewSteer()
+	resCh := make(chan agentloop.Result, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		res, rerr := loop.RunSteerable(context.Background(), []provider.Message{textMessage(provider.RoleUser, "hi")}, steer)
+		resCh <- res
+		errCh <- rerr
+	}()
+	<-c.entered
+	steer.Trigger()
+	res, rerr := <-resCh, <-errCh
+	if rerr != nil {
+		t.Fatalf("RunSteerable() error = %v, want nil", rerr)
+	}
+	if res.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("Stop = %q, want StopNoToolCalls: the non-empty hook return must continue the run", res.Stop)
+	}
+	if rec.count() != 2 {
+		t.Fatalf("hook invocations = %d, want 2 (steered stop + final stop)", rec.count())
+	}
+	if d := rec.at(t, 0); d.Stop != agentloop.StopSteered {
+		t.Fatalf("hook decision Stop = %q, want StopSteered", d.Stop)
+	}
+	if d := rec.at(t, 1); d.Stop != agentloop.StopNoToolCalls {
+		t.Fatalf("final hook decision Stop = %q, want StopNoToolCalls", d.Stop)
+	}
+	if c.callCount() != 2 {
+		t.Fatalf("completer calls = %d, want 2: the continued run must reach the next scripted response", c.callCount())
+	}
+}
+
+// TestContinueOnStopGateNilSteeredStopsSteered proves an empty hook
+// return ends the run at a steered stop even though the hook ran -
+// with or without an injector installed.
+func TestContinueOnStopGateNilSteeredStopsSteered(t *testing.T) {
+	rec := &stopHookRecorder{} // nil decide always stops
 	entered := make(chan struct{})
 	c := &blockingCompleter{entered: entered}
 	loop, err := agentloop.New(agentloop.Options{
@@ -241,10 +302,13 @@ func TestContinueOnStopSkippedOnSteered(t *testing.T) {
 		t.Fatalf("RunSteerable() error = %v, want nil", rerr)
 	}
 	if res.Stop != agentloop.StopSteered {
-		t.Fatalf("Stop = %q, want StopSteered", res.Stop)
+		t.Fatalf("Stop = %q, want StopSteered: an empty hook return must stop the run", res.Stop)
 	}
-	if rec.count() != 0 {
-		t.Fatalf("hook invocations = %d, want 0 on StopSteered", rec.count())
+	if rec.count() != 1 {
+		t.Fatalf("hook invocations = %d, want 1 on the steered stop", rec.count())
+	}
+	if d := rec.at(t, 0); d.Stop != agentloop.StopSteered {
+		t.Fatalf("hook decision Stop = %q, want StopSteered", d.Stop)
 	}
 }
 

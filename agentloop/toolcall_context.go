@@ -8,6 +8,17 @@ import (
 
 type toolCallKey struct{}
 
+// ToolCallKey returns the canonical lookup key for one tool call: its
+// ID, or its Name when ID is empty. It is the canonical key for per-call
+// outcome recording and correlation across providers, including streams
+// that deliver the tool-call name delta before or without an ID delta.
+func ToolCallKey(call provider.ToolCall) string {
+	if call.ID != "" {
+		return call.ID
+	}
+	return call.Name
+}
+
 // WithToolCall attaches a provider.ToolCall to ctx. Exported so a Tool
 // wrapped by an external caller's own tools.Tool implementation can
 // recover the in-flight call's identity from the ctx this package

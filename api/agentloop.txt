@@ -49,6 +49,7 @@ package agentloop
   func NewBatchOrder(dispatched []int) (*BatchOrder)
   func NewSteer() (*Steer)
   func ToolCallFromContext(ctx context.Context) (provider.ToolCall, bool)
+  func ToolCallKey(call provider.ToolCall) (string)
   func WithBatchOrder(ctx context.Context, order *BatchOrder) (context.Context)
   func WithToolCall(ctx context.Context, call provider.ToolCall) (context.Context)
   type AuditFunc func(ctx context.Context, rec AuditRecord) error

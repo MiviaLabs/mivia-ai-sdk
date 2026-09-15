@@ -6929,3 +6929,57 @@ inner sentinel. All four cases fail before the fix.
 - No `api/agentloop.txt` diff. `recoverPromptTooLong` is unexported and
   the four wrapped errors keep their exported sentinel.
 - No `policy/layers.json` row changes. No new import edge.
+
+## Addendum: steered stops gated by ContinueOnStop
+Status: shipped (361af35, release/v0.7.0).
+
+
+### Goal
+
+Remove the injector auto-continue. Before this change, a steered stop
+with an installed injector soft-continued unconditionally: the steered
+branch never consulted `Extensions.ContinueOnStop`, so a caller could
+not take control at a steered stop short of removing the injector
+mid-run, which `SetInjector`'s own doc declared racy. The continuation
+policy was hard-wired to injector presence.
+
+### Change
+
+The steered branch now routes through `gracefulSteeredStop`, which
+consults `ContinueOnStop` with `StopDecision{Stop: StopSteered}`. A
+non-empty return appends the gate messages to history and continues
+the turn; `ackTriggered` runs before the next arm, so the trigger
+does not spin the run on empty drains. A nil hook or an empty return
+stops with `StopSteered` exactly as the pre-injector single-shot path
+did. A gate panic fails the run closed via `safeContinue`. Context
+cancellation still hard-fails and is never a steer stop. The injector
+is a message source drained once per iteration top; the steered
+branch never calls `drainInjected`. `Steer.hasInjector` is retired as
+dead code. No exported surface changes; `api/agentloop.txt` is
+byte-identical.
+
+### Tests
+
+- `TestContinueOnStopGatesSteeredStop`: gate-continue reaches the next
+  scripted response; the hook saw `Stop == StopSteered`.
+- `TestContinueOnStopGateNilSteeredStopsSteered`: gate-nil stops with
+  `StopSteered` and the hook still ran exactly once.
+- `TestInjectorTriggeredGateNilStopsSteered`: an installed injector no
+  longer forces a continuation.
+- `TestInjectorTriggeredGateContinueContinues`: gate messages land in
+  history, the ack precedes the next arm, the injector still drains
+  once per iteration top.
+- `TestGatePanicOnSteeredStopFailsClosed`: a panicking hook fails the
+  run with the panic value.
+- `TestInjectorStickyTriggerClearedAtDowngrade` and
+  `TestInjectorAckSparesTriggerBeforeNextArm` keep the ack regression
+  rows under the gate semantics.
+- Two tests pinning the removed rule were removed with
+  `Allow-Test-Change` trailers naming their replacements.
+
+### Addendum verification
+
+- `go test -count=1 ./...` passes; `go vet ./...` is clean.
+- `make api-update` leaves `api/` clean.
+- `make verify-fast` passes; the two TT01 findings are waived by the
+  commit trailers.

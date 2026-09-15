@@ -319,11 +319,14 @@ The end-to-end scenario harness and suite live in `internal/e2e`,
   `Steer` handle's `Trigger`, ending gracefully at the next iteration
   boundary with `StopSteered`; `Run` stays `RunSteerable(ctx, msgs,
   nil)`. A `Steer.SetInjector` installs a pull-based message source
-  the loop drains at the iteration-top boundary, and a `Steer` with
-  an installed injector soft-continues every steer (a pending
-  `StopSteered` is downgraded) so a bridge that polls across
-  iterations can deliver repeated steers within one `RunSteerable`
-  call. `Steer.HasActiveCall` lets such a bridge guard each `Trigger`
+  the loop drains at the iteration-top boundary. Whether a steered
+  stop ends the run is decided solely by
+  `Options.Extensions.ContinueOnStop`: a non-empty return appends the
+  gate messages to history and the run continues - so a bridge that
+  polls across iterations can deliver repeated steers within one
+  `RunSteerable` call - while a nil hook or an empty return ends the
+  run with `StopSteered`, with or without an injector installed.
+  `Steer.HasActiveCall` lets such a bridge guard each `Trigger`
   on whether a `Completer.Chat` is currently in flight, closing the
   no-op-trigger loop a continuous bridge would otherwise create.
   `agentloop` imports `provider`, `tools`,

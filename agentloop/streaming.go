@@ -32,9 +32,9 @@ func streamMirror(sink io.Writer, buf *bytes.Buffer) io.Writer {
 	return io.MultiWriter(sink, buf)
 }
 
-// steeredStopResult builds the Result for the non-injector
-// Steered-stop path. The capture buffer becomes Final.Content when
-// populated, so a partial reply survives the cancel.
+// steeredStopResult builds the Result for a steered stop. The capture
+// buffer becomes Final.Content when populated, so a partial reply
+// survives the cancel.
 func steeredStopResult(history []provider.Message, iterations int, totalUsage provider.Usage, buf *bytes.Buffer) Result {
 	res := Result{History: history, Iterations: iterations, Usage: totalUsage, Stop: StopSteered}
 	if buf != nil && buf.Len() > 0 {

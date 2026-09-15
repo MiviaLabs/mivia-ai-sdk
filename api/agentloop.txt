@@ -49,6 +49,7 @@ package agentloop
   func NewBatchOrder(dispatched []int) (*BatchOrder)
   func NewSteer() (*Steer)
   func ToolCallFromContext(ctx context.Context) (provider.ToolCall, bool)
+  func ToolCallKey(call provider.ToolCall) (string)
   func WithBatchOrder(ctx context.Context, order *BatchOrder) (context.Context)
   func WithToolCall(ctx context.Context, call provider.ToolCall) (context.Context)
   type AuditFunc func(ctx context.Context, rec AuditRecord) error
@@ -147,7 +148,7 @@ package agentloop
 }
   type WorkBudget struct {
   Reserve func(ctx context.Context, req provider.Request) error
-  Refund func(ctx context.Context, req provider.Request, used provider.Usage)
+  Refund func(ctx context.Context, req provider.Request, used provider.Usage, err error)
 }
   var ErrArgumentValidation
   var ErrCallsPerTurnExceeded

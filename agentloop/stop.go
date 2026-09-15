@@ -1,6 +1,7 @@
 package agentloop
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
@@ -75,6 +76,29 @@ func (l *Loop) gracefulStop(ctx context.Context, history []provider.Message, res
 		}
 	}
 	return Result{Final: resp.Message, History: history, Iterations: iterations, Usage: totalUsage, Stop: stop}, true, nil
+}
+
+// gracefulSteeredStop consults l.continueOnStop on a steered stop.
+// A non-empty hook return continues the loop with the grown history;
+// a nil hook or empty return stops with StopSteered and the partial
+// stream buffer; a panic in the hook fails the run closed.
+func (l *Loop) gracefulSteeredStop(ctx context.Context, history []provider.Message, iterations int, totalUsage provider.Usage, stream *bytes.Buffer) (Result, bool, error) {
+	stopRes := steeredStopResult(history, iterations, totalUsage, stream)
+	if l.continueOnStop != nil {
+		msgs, err := safeContinue(ctx, l.continueOnStop, StopDecision{
+			Stop:       StopSteered,
+			Message:    stopRes.Final,
+			Iterations: iterations,
+			History:    history,
+		})
+		if err != nil {
+			return l.hardFail(history, iterations, totalUsage), true, err
+		}
+		if len(msgs) > 0 {
+			return Result{History: append(history, msgs...)}, false, nil
+		}
+	}
+	return stopRes, true, nil
 }
 
 // safeContinue invokes fn, converting a panic into a plain error so a

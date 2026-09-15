@@ -27,10 +27,10 @@ func (l *Loop) Run(ctx context.Context, msgs []provider.Message) (Result, error)
 // caller request a soft-cancel of the current iteration's in-flight
 // Completer.Chat call from another goroutine, through steer.Trigger.
 // ctx cancellation still ends the run as a hard failure, unchanged
-// from Run. Without an injector, a triggered steer ends the run
-// gracefully at the next iteration boundary with Stop == StopSteered.
-// With an injector installed, the run soft-continues and StopSteered
-// never fires. See SetInjector. Final holds the
+// from Run. A triggered steer ends the run gracefully at the next
+// iteration boundary with Stop == StopSteered, unless
+// Options.Extensions.ContinueOnStop returns non-empty messages to
+// continue the turn. Final holds the
 // zero value, except when Options.Extensions.StreamingWriter is set:
 // then Final carries the bytes the Completer wrote before the steer,
 // the same rule every other pre-response graceful stop already
@@ -208,21 +208,13 @@ func (l *Loop) runIteration(ctx context.Context, st *runState, steer *Steer, str
 	}()
 	if at.err != nil {
 		if isSteerStop(at.err, ctx, steer, at.fromRecovery) {
-			// Steered-stop branch. With an injector installed
-			// (SetInjector was called), ackTriggered runs and the
-			// loop continues: it does not call drainInjected here,
-			// since the iteration-top boundary above drains the
-			// injector on the next loop iteration, so a payload is
-			// delivered exactly once. ackTriggered must run before
-			// the next iteration's Chat call arms, or arm sees
-			// triggered=true and cancels instantly, leaving the run
-			// spinning between empty drains. With no injector
-			// installed, the run stops with StopSteered instead.
-			if steer.hasInjector() {
+			res, done, serr := l.gracefulSteeredStop(ctx, *st.history, *st.iterations, *st.totalUsage, stream)
+			if !done {
 				steer.ackTriggered()
+				*st.history = res.History
 				return Result{}, nil, false
 			}
-			return steeredStopResult(*st.history, *st.iterations, *st.totalUsage, stream), nil, true
+			return res, serr, true
 		}
 		if at.fromRecovery {
 			return Result{History: *st.history, Iterations: *st.iterations, Usage: *st.totalUsage}, at.err, true
@@ -392,7 +384,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if oerr := l.observeRequest(ctx, req, iterations+1); oerr != nil {
 		// Reserve had succeeded and the call never ran; give the
 		// reservation back before the attempt error returns.
-		l.refundWork(ctx, req)
+		l.refundWork(ctx, req, oerr)
 		return chatAttempt{err: oerr, iterCtx: ctx}
 	}
 	resp, err := l.steerableChat(ctx, req, steer)
@@ -404,7 +396,7 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 		return chatAttempt{resp: resp, req: req, history: history, iterCtx: ctx,
 			estimatedTokens: estimated}
 	}
-	l.refundWork(ctx, req)
+	l.refundWork(ctx, req, err)
 	if l.window == nil || !errors.Is(err, provider.ErrPromptTooLong) {
 		return chatAttempt{err: err, iterCtx: ctx}
 	}
@@ -412,7 +404,6 @@ func (l *Loop) runChat(ctx context.Context, history []provider.Message, iteratio
 	if rerr != nil {
 		return chatAttempt{err: rerr, fromRecovery: true, iterCtx: ctx}
 	}
-	l.settleWork(ctx, retryReq, recovered.Usage)
 	return chatAttempt{resp: recovered, req: retryReq, history: rebuilt, iterCtx: ctx,
 		estimatedTokens: l.estimateTokens(retryReq)}
 }

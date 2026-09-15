@@ -2,9 +2,9 @@ package agentloop_test
 
 // WorkBudget hook tests: reserve-before-call and refund-after-usage on
 // a successful turn, no hook calls when Options.WorkBudget is nil,
-// hard-fail before the Completer call when Reserve errors, full refund
-// on a zero-usage error path, and Validate rejecting a half-wired
-// WorkBudget.
+// hard-fail before the Completer call when Reserve errors, refund on
+// a failed Completer call with the error cause and zero Usage, and Validate
+// rejecting a half-wired WorkBudget.
 
 import (
 	"context"
@@ -19,10 +19,11 @@ import (
 )
 
 // budgetLog records every WorkBudget hook call in order, with the
-// usage each Refund carried.
+// usage and error each Refund carried.
 type budgetLog struct {
 	events []string
 	usages []provider.Usage
+	errs   []error
 }
 
 func (b *budgetLog) hook() *agentloop.WorkBudget {
@@ -31,9 +32,10 @@ func (b *budgetLog) hook() *agentloop.WorkBudget {
 			b.events = append(b.events, "reserve")
 			return nil
 		},
-		Refund: func(ctx context.Context, req provider.Request, used provider.Usage) {
+		Refund: func(ctx context.Context, req provider.Request, used provider.Usage, err error) {
 			b.events = append(b.events, "refund")
 			b.usages = append(b.usages, used)
+			b.errs = append(b.errs, err)
 		},
 	}
 }
@@ -41,7 +43,7 @@ func (b *budgetLog) hook() *agentloop.WorkBudget {
 // TestWorkBudgetReserveThenRefundOnSuccessfulTurn proves one iteration
 // of a successful, no-tool-call run fires Reserve exactly once before
 // the Completer call and Refund exactly once after it, with the
-// response's real Usage.
+// response's real Usage and a nil error.
 func TestWorkBudgetReserveThenRefundOnSuccessfulTurn(t *testing.T) {
 	usage := provider.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15}
 	completer := &scriptedCompleter{responses: []provider.Response{
@@ -72,6 +74,9 @@ func TestWorkBudgetReserveThenRefundOnSuccessfulTurn(t *testing.T) {
 	}
 	if len(log.usages) != 1 || log.usages[0] != usage {
 		t.Fatalf("refund usage = %+v, want %+v", log.usages, usage)
+	}
+	if len(log.errs) != 1 || log.errs[0] != nil {
+		t.Fatalf("refund err = %v, want nil", log.errs)
 	}
 }
 
@@ -124,7 +129,7 @@ func TestWorkBudgetReserveErrorFailsClosed(t *testing.T) {
 }
 
 // TestWorkBudgetRefundsZeroUsageOnChatError proves a failed Completer
-// call refunds the never-consumed reservation with the zero Usage.
+// call refunds the never-consumed reservation with zero Usage and the actual error.
 func TestWorkBudgetRefundsZeroUsageOnChatError(t *testing.T) {
 	completer := &scriptedCompleter{errs: []error{errBoom}}
 	reg := tools.New()
@@ -146,6 +151,9 @@ func TestWorkBudgetRefundsZeroUsageOnChatError(t *testing.T) {
 	if len(log.usages) != 1 || log.usages[0] != (provider.Usage{}) {
 		t.Fatalf("refund usage = %+v, want zero Usage", log.usages)
 	}
+	if len(log.errs) != 1 || !errors.Is(log.errs[0], errBoom) {
+		t.Fatalf("refund err = %v, want errBoom", log.errs)
+	}
 }
 
 // TestWorkBudgetValidateRequiresBothFuncs proves Options.Validate
@@ -156,7 +164,7 @@ func TestWorkBudgetValidateRequiresBothFuncs(t *testing.T) {
 	completer := &scriptedCompleter{}
 	base := agentloop.Options{Completer: completer, Tools: reg}
 	noReserve := base
-	noReserve.Extensions = &agentloop.Extensions{WorkBudget: &agentloop.WorkBudget{Refund: func(context.Context, provider.Request, provider.Usage) {}}}
+	noReserve.Extensions = &agentloop.Extensions{WorkBudget: &agentloop.WorkBudget{Refund: func(context.Context, provider.Request, provider.Usage, error) {}}}
 	if err := noReserve.Validate(); !errors.Is(err, agentloop.ErrIncompleteWorkBudget) {
 		t.Fatalf("err = %v, want ErrIncompleteWorkBudget", err)
 	}
@@ -168,7 +176,7 @@ func TestWorkBudgetValidateRequiresBothFuncs(t *testing.T) {
 	complete := base
 	complete.Extensions = &agentloop.Extensions{WorkBudget: &agentloop.WorkBudget{
 		Reserve: func(context.Context, provider.Request) error { return nil },
-		Refund:  func(context.Context, provider.Request, provider.Usage) {},
+		Refund:  func(context.Context, provider.Request, provider.Usage, error) {},
 	}}
 	if err := complete.Validate(); err != nil {
 		t.Fatalf("Validate with both funcs = %v, want nil", err)
@@ -176,8 +184,8 @@ func TestWorkBudgetValidateRequiresBothFuncs(t *testing.T) {
 }
 
 // TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery proves that
-// PromptTooLong recovery refunds the initial failed request and reserves
-// for the retry request.
+// PromptTooLong recovery refunds the initial failed request with ErrPromptTooLong,
+// reserves for the retry request, and settles the successful retry with its real Usage.
 func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 	usage := provider.Usage{PromptTokens: 8, CompletionTokens: 4, TotalTokens: 12}
 	completer := &scriptedCompleter{
@@ -229,6 +237,9 @@ func TestWorkBudgetReserveAndRefundOnPromptTooLongRecovery(t *testing.T) {
 	if len(log.usages) != 2 || log.usages[0] != (provider.Usage{}) || log.usages[1] != usage {
 		t.Fatalf("usages = %+v, want [zero %+v]", log.usages, usage)
 	}
+	if len(log.errs) != 2 || !errors.Is(log.errs[0], provider.ErrPromptTooLong) || log.errs[1] != nil {
+		t.Fatalf("refund errs = %v, want [ErrPromptTooLong nil]", log.errs)
+	}
 }
 
 // TestWorkBudgetSettleSkipsZeroUsageRefund proves a successful completion with
@@ -266,7 +277,7 @@ func TestWorkBudgetSettleSkipsZeroUsageRefund(t *testing.T) {
 }
 
 // TestWorkBudgetSettleUsageTable tests that any non-zero token field triggers Refund
-// while all-zero token fields skip Refund.
+// with nil err, while all-zero token fields skip Refund.
 func TestWorkBudgetSettleUsageTable(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -327,6 +338,9 @@ func TestWorkBudgetSettleUsageTable(t *testing.T) {
 				}
 				if len(log.usages) != 1 || log.usages[0] != tt.usage {
 					t.Fatalf("refund usage = %+v, want %+v", log.usages, tt.usage)
+				}
+				if len(log.errs) != 1 || log.errs[0] != nil {
+					t.Fatalf("refund err = %v, want nil", log.errs)
 				}
 			} else {
 				if len(log.events) != 1 || log.events[0] != "reserve" {

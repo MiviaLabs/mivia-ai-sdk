@@ -12,6 +12,12 @@ import (
 // wrapper sees: the per-turn dispatch ledger, the steering handle, the
 // context probes, and the explicit zero-value error policy.
 func agentloopSurface() error {
+	if key := agentloop.ToolCallKey(provider.ToolCall{ID: "call_1", Name: "tool_1"}); key != "call_1" {
+		return fmt.Errorf("ToolCallKey = %q, want call_1", key)
+	}
+	if key := agentloop.ToolCallKey(provider.ToolCall{Name: "tool_1"}); key != "tool_1" {
+		return fmt.Errorf("ToolCallKey = %q, want tool_1", key)
+	}
 	order := agentloop.NewBatchOrder([]int{0, 1})
 	if got := order.Dispatched(); len(got) != 2 {
 		return fmt.Errorf("Dispatched = %v, want two indices", got)

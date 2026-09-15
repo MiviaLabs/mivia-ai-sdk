@@ -89,8 +89,9 @@ func TestSteerHasActiveCallTrueDuringChat(t *testing.T) {
 // midpoint (the bridge has a stable mid-Chat window to observe
 // HasActiveCall == true), call 1 returns the scripted "ok"
 // response. The bridge fires Trigger exactly once when HasActiveCall
-// returns true; the run then cancels call 0, soft-continues
-// (injector installed), and call 1 returns the final.
+// returns true; the run then cancels call 0, ContinueOnStop returns
+// a continuation message so the run resumes, and call 1 returns the
+// final.
 func TestHasActiveCallGuardsNoopBridgeTrigger(t *testing.T) {
 	// call 0: blocking midpoint (bridge polls mid-Chat here)
 	// call 1: scripted "ok" (final, run completes here)
@@ -100,13 +101,17 @@ func TestHasActiveCallGuardsNoopBridgeTrigger(t *testing.T) {
 		},
 		0,
 	)
-	loop := newInjectorLoop(t, c, 5)
-
-	inj := &injectorFixture{}
-	inj.setNoOp()
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  c,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: continueOnSteered()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	steer := agentloop.NewSteer()
-	steer.SetInjector(inj.drain)
 
 	bridge := newGuardBridge(steer)
 
@@ -283,7 +288,7 @@ func TestRoleToolMessageCarriesToolName_Dedup(t *testing.T) {
 //   - iter-1 steered-stop downgrade: case (a) returns immediately
 //     after ackTriggered; the drain does NOT run here;
 //   - iter-2 top: payload1;
-//   - iter-2 steered-stop downgrade: same path returns immediately;
+//   - iter-2 steered-stop gate: the hook continues, no drain there;
 //   - iter-3 top: payload2.
 //
 // The case asserts:
@@ -300,12 +305,20 @@ func TestInjectorDeliversOncePerIteration(t *testing.T) {
 	// call 1: blocking midpoint (Trigger fires here)
 	// call 2: scripted "ok" (final)
 	)
-	loop := newInjectorLoop(t, gated, 5)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  gated,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: continueOnSteered()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	inj := &injectorFixture{}
 	// Queue holds three drain slots, one per iter top. Iter-1 top
 	// is empty (no pre-loop frame); iter-2 top is payload1; iter-3
-	// top is payload2. The downgrade path does NOT drain.
+	// top is payload2. The steered-stop gate does NOT drain.
 	inj.setQueue([][]provider.Message{
 		nil,
 		{{Role: provider.RoleUser, Content: "payload1"}},
@@ -349,9 +362,9 @@ func TestInjectorDeliversOncePerIteration(t *testing.T) {
 		t.Fatalf("payload2 occurrences = %d, want 1 (deliver once after second steered iteration top): %+v", count2, res.History)
 	}
 	// (c) injector call count is exactly 3 (one per iter top). The
-	// downgrade path does not re-call drainInjected.
+	// steered-stop gate must not re-call drainInjected.
 	if got := inj.callCount(); got != 3 {
-		t.Fatalf("injector call count = %d, want 3 (top of iter 1, top of iter 2, top of iter 3): the downgrade path must NOT re-call drainInjected", got)
+		t.Fatalf("injector call count = %d, want 3 (top of iter 1, top of iter 2, top of iter 3): the steered-stop gate must NOT re-call drainInjected", got)
 	}
 }
 

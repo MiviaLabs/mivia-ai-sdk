@@ -232,14 +232,15 @@ func (l *Loop) recoverPromptTooLong(ctx context.Context, orig error, history []p
 		return provider.Response{}, nil, provider.Request{}, rerr
 	}
 	if oerr := l.observeRequest(ctx, req, iteration+1); oerr != nil {
-		l.refundWork(ctx, req)
+		l.refundWork(ctx, req, oerr)
 		return provider.Response{}, nil, provider.Request{}, oerr
 	}
 	resp, err := l.completer.Chat(ctx, req)
 	if err != nil {
-		l.refundWork(ctx, req)
+		l.refundWork(ctx, req, err)
 		return provider.Response{}, nil, provider.Request{}, err
 	}
+	l.settleWork(ctx, req, resp.Usage)
 	return resp, rebuilt, req, nil
 }
 

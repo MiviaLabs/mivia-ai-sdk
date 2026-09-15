@@ -493,7 +493,7 @@ caller's unrelated run. See
 [../plans/agentloop.md](../plans/agentloop.md)'s "Addendum: steering
 and interruption" for the full mechanics.
 
-## Steer injector and soft-continue
+## Steer injector and steered stops
 
 `Steer.SetInjector(f func() []provider.Message)` installs a pull-based
 message source the loop drains at the iteration-top boundary. A
@@ -505,14 +505,17 @@ before the first `RunSteerable` and `reset()` preserves the
 injector across calls, so a caller can reuse one `Steer` across
 multiple `RunSteerable` calls.
 
-A `Steer` with an installed injector soft-continues every steer. A
-`Trigger` fired mid-`Completer.Chat` cancels only that one call; the
-run continues, the iteration-top boundary drains the next payload,
-and the next iteration's `Chat` call arms un-triggered. The split
-on `hasInjector()` is load-bearing: a host that installs an injector
-opts into the soft-continue shape; a host that does not keeps the
-original single-shot `StopSteered` shape every pre-injector `Steer`
-test pins.
+Whether a steered stop ends the run is decided solely by
+`Options.Extensions.ContinueOnStop`: a non-empty return appends the
+gate messages to history and the run continues; a nil hook or an
+empty return ends the run with `StopSteered`, with or without an
+injector installed. A `Trigger` fired mid-`Completer.Chat` cancels
+only that one call; when the gate continues, the trigger is acked
+before the next arm, the iteration-top boundary drains the next
+payload, and the next iteration's `Chat` call arms un-triggered.
+The injector is a message source, not a continuation policy: a host
+that needs queued messages to survive a steer installs a
+`ContinueOnStop` that continues steered stops.
 
 `Steer.HasActiveCall() bool` reports whether a `Completer.Chat` is
 currently in flight. Continuous-bridge triggers fire on every poll

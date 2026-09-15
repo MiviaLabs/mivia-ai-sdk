@@ -37,7 +37,11 @@ type Extensions struct {
 	// ToolBudget, when non-nil, is the cumulative tool-call budget
 	// invoked once per turn before dispatch.
 	ToolBudget *ToolBudget
-	// ContinueOnStop is consulted on every graceful stop; a non-empty
-	// return continues the loop. See StopDecision.
+	// ContinueOnStop is consulted on every graceful stop, steered
+	// stops included: a non-empty return continues the loop with the
+	// returned messages, an empty return or a nil hook stops. A
+	// steered stop with an empty return ends the run with
+	// StopSteered even when an injector is installed. See
+	// StopDecision.
 	ContinueOnStop func(ctx context.Context, d StopDecision) []provider.Message
 }

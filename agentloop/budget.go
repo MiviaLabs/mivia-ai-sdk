@@ -24,13 +24,17 @@ var ErrIncompleteWorkBudget = errors.New("agentloop: WorkBudget requires both Re
 // A non-nil Reserve return hard-fails the run before the call, wrapped
 // with the iteration count.
 //
-// The loop calls Refund after the call's outcome is known, with the
-// same request: once with the zero provider.Usage when the call failed
-// (the reservation was never consumed), or once with the response's
-// real Usage when the call succeeded and reported a non-zero Usage. A
-// successful call that reports the zero Usage gets NO Refund: the host
-// keeps the reservation consumed, matching the legacy loop's
-// consume-on-completion rule.
+// Refund settles each Completer attempt exactly once per Reserve —
+// failure carries zero Usage plus the failure cause err
+// (errors.Is(err, context.Canceled) identifies cancellation); success
+// with observed usage carries the real Usage and a nil err; success
+// reporting zero Usage gets no call (consume-on-completion). A
+// prompt-too-long recovery can refund the failed attempt and later
+// reserve again for the retry. A hook that panics forfeits the
+// refund; panics propagate.
+//
+// Breaking change in v0.7.0: Refund now receives the call outcome error
+// (func(ctx context.Context, req provider.Request, used provider.Usage, err error)).
 //
 // Both functions must be safe for concurrent use when callers share
 // one Loop across concurrent Run calls.
@@ -38,10 +42,10 @@ type WorkBudget struct {
 	// Reserve runs before each Completer call with the exact request
 	// about to be sent. A non-nil return fails the run.
 	Reserve func(ctx context.Context, req provider.Request) error
-	// Refund runs after the call outcome is known: zero Usage means
-	// the call never consumed its reservation; non-zero Usage carries
-	// the response's real billed usage.
-	Refund func(ctx context.Context, req provider.Request, used provider.Usage)
+	// Refund settles each Completer attempt after the call outcome is
+	// known: failure carries zero Usage and the error cause; success with
+	// real Usage carries the response's billed tokens and a nil error.
+	Refund func(ctx context.Context, req provider.Request, used provider.Usage, err error)
 }
 
 // validate reports whether a WorkBudget is either nil (disabled) or
@@ -70,13 +74,14 @@ func (l *Loop) reserveWork(ctx context.Context, req provider.Request, iteration 
 }
 
 // refundWork runs the WorkBudget's Refund for a reservation the call
-// never consumed: the Completer call failed, so the refund carries the
-// zero Usage. A nil l.workBudget is a no-op.
-func (l *Loop) refundWork(ctx context.Context, req provider.Request) {
+// never consumed: the Completer or observer call failed, so the refund
+// carries the zero Usage and the call's actual error. A nil
+// l.workBudget is a no-op.
+func (l *Loop) refundWork(ctx context.Context, req provider.Request, err error) {
 	if l.workBudget == nil {
 		return
 	}
-	l.workBudget.Refund(ctx, req, provider.Usage{})
+	l.workBudget.Refund(ctx, req, provider.Usage{}, err)
 }
 
 // observeRequest runs the caller's Options.ObserveRequest hook for one
@@ -106,7 +111,7 @@ func (l *Loop) settleWork(ctx context.Context, req provider.Request, used provid
 	if used.PromptTokens == 0 && used.CompletionTokens == 0 && used.TotalTokens == 0 {
 		return
 	}
-	l.workBudget.Refund(ctx, req, used)
+	l.workBudget.Refund(ctx, req, used, nil)
 }
 
 // ErrIncompleteToolBudget is Options.Validate's error when ToolBudget

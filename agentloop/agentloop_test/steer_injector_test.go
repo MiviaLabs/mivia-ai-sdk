@@ -3,19 +3,19 @@ package agentloop_test
 // Pull-based steer injector tests (a caller's blocker 2). The Steer
 // injector is the SDK-side carrier of a caller's legacy BeforeStep
 // hook: a host installs a func that returns messages, the loop drains
-// the injector at the top of every iteration and at every steered-
-// stop decision point, and a non-empty return appends those messages
-// to history while the run CONTINUES (a pending StopSteered is
-// downgraded in that case).
+// the injector at the top of every iteration, and a non-empty return
+// appends those messages to history while the run CONTINUES. Whether
+// a steered stop ends the run is decided solely by
+// Options.Extensions.ContinueOnStop: a non-empty return appends the
+// gate messages and continues; an empty return or a nil hook ends the
+// run with StopSteered, injector or not.
 //
 // The cases here pin the contract end to end: ordering (injected
 // messages land AFTER the prior iteration's tool results, not
-// interleaved with them), downgrade semantics (mid-Chat Trigger +
-// non-empty injector continues the run; Trigger + empty injector
-// still stops with StopSteered), the sticky-trigger fix (the
-// triggered flag MUST be cleared at the downgrade point, otherwise
-// the post-injection Chat call cancels instantly and the run
-// silently dies), the nil/no-op injector (behavior identical to
+// interleaved with them), the sticky-trigger fix (the
+// triggered flag MUST be cleared when a steered stop continues,
+// otherwise the post-injection Chat call cancels instantly and the
+// run silently dies), the nil/no-op injector (behavior identical to
 // no injector), and MaxIterations accounting (an injection does not
 // consume an iteration).
 //
@@ -147,30 +147,38 @@ func TestInjectorLandsAfterToolResults(t *testing.T) {
 }
 
 // TestInjectorTriggeredAndNonEmptyContinuesRun is the load-bearing
-// mid-Chat downgrade case: Trigger fires during a blocking Chat
-// call, the run reaches the steered-stop branch, the injector
-// returns non-empty, the messages are appended, the sticky
+// mid-Chat continuation case: Trigger fires during a blocking Chat
+// call, the run reaches the steered-stop branch, ContinueOnStop
+// returns non-empty, the gate messages are appended, the sticky
 // triggered flag is cleared, and the run CONTINUES with Stop
-// != StopSteered and Iterations counting the post-injection
-// completion.
+// != StopSteered and Iterations counting the post-continuation
+// completion. The injector delivers only at the next iteration top.
 func TestInjectorTriggeredAndNonEmptyContinuesRun(t *testing.T) {
 	// call 0: blocking midpoint (Trigger fires mid-call)
-	// call 1: scripted "ok" (post-injection completion)
+	// call 1: scripted "ok" (post-continuation completion)
 	c := newInjectorGateCompleter(
 		[]provider.Response{
 			{Message: textMessage(provider.RoleAssistant, "ok")},
 		},
 		0,
 	)
-	loop := newInjectorLoop(t, c, 5)
+	rec := &stopHookRecorder{decide: continueSteeredOnly()}
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  c,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: rec.hook},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	inj := &injectorFixture{}
 	// Drain sequence: iter-1 top = empty (no pre-loop frame),
-	// iter-1 steered-stop downgrade = deliver payload,
-	// iter-2 top = empty (fixture exhausted).
+	// iter-2 top = deliver payload.
 	inj.setQueue([][]provider.Message{
 		nil,
-		{{Role: provider.RoleUser, Content: "downgrade payload"}},
+		{{Role: provider.RoleUser, Content: "iteration-2 payload"}},
 	})
 	steer := agentloop.NewSteer()
 	steer.SetInjector(inj.drain)
@@ -193,50 +201,63 @@ func TestInjectorTriggeredAndNonEmptyContinuesRun(t *testing.T) {
 		t.Fatalf("RunSteerable error: %v", err)
 	}
 	if res.Stop == agentloop.StopSteered {
-		t.Fatalf("Stop = StopSteered, want a graceful completion: the injector delivered a non-empty payload, so the steered stop must downgrade to continue")
+		t.Fatalf("Stop = StopSteered, want a graceful completion: the gate returned messages, so the run must continue")
 	}
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)
 	}
-	if !injectorMessagesContain(res.History, "downgrade payload") {
-		t.Fatalf("downgrade payload not present in history: %+v", res.History)
+	if !injectorMessagesContain(res.History, "keep going") {
+		t.Fatalf("gate continuation message not present in history: %+v", res.History)
+	}
+	if !injectorMessagesContain(res.History, "iteration-2 payload") {
+		t.Fatalf("iteration-2 payload not present in history: %+v", res.History)
 	}
 	if res.Iterations < 1 {
-		t.Fatalf("Iterations = %d, want >=1 (post-injection completion counts as an iteration; the blocked midpoint does not)", res.Iterations)
+		t.Fatalf("Iterations = %d, want >=1 (post-continuation completion counts as an iteration; the blocked midpoint does not)", res.Iterations)
+	}
+	if inj.callCount() != 2 {
+		t.Fatalf("injector calls = %d, want 2 (iteration tops 1 and 2): the gate path must not re-drain", inj.callCount())
 	}
 }
 
 // TestInjectorStickyTriggerClearedAtDowngrade is the regression test
 // for Part A.4's sticky-trigger fix. The exact sequence:
 //  1. Trigger fires during a blocking Chat call (iteration 1).
-//  2. Iteration 1's steered-stop downgrade path calls drainInjected;
-//     injector returns a non-empty payload; ackTriggered runs.
+//  2. Iteration 1's steered-stop gate (ContinueOnStop) returns a
+//     non-empty payload; the messages are appended; ackTriggered runs.
 //  3. Iteration 2 begins. Its top-of-iteration drainInjected returns
-//     empty.
+//     the queued payload.
 //  4. Iteration 2's Chat call arms; without ackTriggered, the
 //     triggered flag is still true, the arm immediately cancels the
 //     derived context, the Completer returns ctx.Err() with the
-//     steer triggered, the steered-stop downgrade path runs again,
-//     the injector now returns empty, and the run stops with
-//     StopSteered and zero Final.
+//     steer triggered, the steered-stop gate runs again, and the
+//     run loops until MaxIterations instead of completing.
 //
 // With the fix, step 2's ackTriggered clears the sticky flag, step 4
 // arms un-triggered, Chat completes normally, and the run finishes
-// gracefully with the post-injection assistant text as the final.
+// gracefully with the post-continuation assistant text as the final.
 func TestInjectorStickyTriggerClearedAtDowngrade(t *testing.T) {
 	// call 0: blocking midpoint (Trigger fires here)
-	// call 1: scripted "post-injection final" (must complete, NOT cancel)
+	// call 1: scripted "post-continuation final" (must complete, NOT cancel)
 	c := newInjectorGateCompleter(
 		[]provider.Response{
 			{Message: textMessage(provider.RoleAssistant, "first")},
 		},
 		0,
 	)
-	loop := newInjectorLoop(t, c, 5)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  c,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: continueOnSteered()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	inj := &injectorFixture{}
 	// Same drain sequence as the continues-run test: empty at iter-1
-	// top, deliver at iter-1 downgrade, empty at iter-2 top.
+	// top, deliver at iter-2 top.
 	inj.setQueue([][]provider.Message{
 		nil,
 		{{Role: provider.RoleUser, Content: "deliver once"}},
@@ -262,7 +283,7 @@ func TestInjectorStickyTriggerClearedAtDowngrade(t *testing.T) {
 		t.Fatalf("RunSteerable error: %v", err)
 	}
 	if res.Stop == agentloop.StopSteered {
-		t.Fatalf("Stop = StopSteered: sticky-trigger fix failed; the post-injection Chat call was cancelled because the triggered flag was never cleared at the downgrade point")
+		t.Fatalf("Stop = StopSteered: sticky-trigger fix failed; the post-continuation Chat call was cancelled because the triggered flag was never cleared at the gate")
 	}
 	if res.Stop != agentloop.StopNoToolCalls {
 		t.Fatalf("Stop = %q, want StopNoToolCalls", res.Stop)

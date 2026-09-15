@@ -13,6 +13,7 @@ import (
 
 	"github.com/MiviaLabs/mivia-ai-sdk/agentloop"
 	"github.com/MiviaLabs/mivia-ai-sdk/provider"
+	"github.com/MiviaLabs/mivia-ai-sdk/tools"
 )
 
 // gateDrainInjector blocks the Nth drain call on a channel, then
@@ -126,7 +127,15 @@ func TestInjectorAckSparesTriggerBeforeNextArm(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "skipped")},
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	})
-	loop := newInjectorLoop(t, c, 5)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  c,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: continueOnSteered()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	// The injector gates on its second drain call: the iteration-top
 	// drain of the continuation after the first steered-stop ack.
@@ -174,7 +183,15 @@ func TestInjectorTriggerDuringDrainIsHonored(t *testing.T) {
 		{Message: textMessage(provider.RoleAssistant, "skipped")},
 		{Message: textMessage(provider.RoleAssistant, "done")},
 	})
-	loop := newInjectorLoop(t, c, 5)
+	loop, err := agentloop.New(agentloop.Options{
+		Completer:  c,
+		Tools:      tools.New(),
+		Bounds:     agentloop.Bounds{MaxIterations: 5},
+		Extensions: &agentloop.Extensions{ContinueOnStop: continueOnSteered()},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 
 	inj := newGateDrainInjector(1)
 	inj.setPayload([]provider.Message{textMessage(provider.RoleUser, "injected")})

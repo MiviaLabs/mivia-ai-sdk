@@ -57,13 +57,14 @@ func (c Card) Validate() error {
 	if len(c.Capabilities) == 0 {
 		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: must not be empty")
 	}
-	seen := make([]string, 0, len(c.Capabilities))
+	seen := make(map[string][]string, len(c.Capabilities))
 	for _, capability := range c.Capabilities {
 		trimmed := strings.TrimSpace(capability)
 		if trimmed == "" {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not be blank")
 		}
-		for _, prior := range seen {
+		key := strings.ToUpper(trimmed)
+		for _, prior := range seen[key] {
 			if strings.EqualFold(trimmed, prior) {
 				return fmt.Errorf("%w: %s", ErrInvalidOptions, fmt.Sprintf("Capabilities: duplicate entry %q", trimmed))
 			}
@@ -71,7 +72,7 @@ func (c Card) Validate() error {
 		if trimmed != capability {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not carry padding")
 		}
-		seen = append(seen, trimmed)
+		seen[key] = append(seen[key], trimmed)
 	}
 	return nil
 }

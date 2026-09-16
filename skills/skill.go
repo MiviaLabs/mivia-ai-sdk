@@ -59,18 +59,17 @@ func (s Skill) Validate() error {
 	if strings.TrimSpace(s.Instructions) == "" {
 		return ErrBlankInstructions
 	}
-	seen := make([]string, 0, len(s.Triggers))
+	seen := make(map[string]struct{}, len(s.Triggers))
 	for _, trigger := range s.Triggers {
 		trimmed := strings.TrimSpace(trigger)
 		if trimmed == "" {
 			return ErrBlankTrigger
 		}
-		for _, prior := range seen {
-			if strings.EqualFold(trimmed, prior) {
-				return ErrDuplicateTrigger
-			}
+		lower := strings.ToLower(trimmed)
+		if _, ok := seen[lower]; ok {
+			return ErrDuplicateTrigger
 		}
-		seen = append(seen, trimmed)
+		seen[lower] = struct{}{}
 	}
 	return nil
 }

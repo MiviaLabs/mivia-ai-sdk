@@ -92,6 +92,44 @@ func TestValidate(t *testing.T) {
 	})
 }
 
+// TestValidateFoldEquivalence pins the duplicate-trigger rule to
+// strings.EqualFold, not strings.ToLower: "ſ" (U+017F LATIN SMALL
+// LETTER LONG S) and "K" (U+212A KELVIN SIGN) fold with "s" and "k"
+// while ToLower leaves both alone, and "İ" versus "i" stays distinct
+// where ToLower would collapse it. Mirrors flow.Card's pinned case
+// for fold-equivalent Capabilities.
+func TestValidateFoldEquivalence(t *testing.T) {
+	runValidateCases(t, []validateCase{
+		{
+			name: "duplicate trigger entry, fold-equivalent under EqualFold but not ToLower",
+			skill: skills.Skill{
+				Name:         "deploy",
+				Instructions: "do the thing",
+				Triggers:     []string{"s", "ſ"},
+			},
+			wantErr: skills.ErrDuplicateTrigger,
+		},
+		{
+			name: "duplicate trigger entry, Kelvin sign folds with k under EqualFold but not ToLower",
+			skill: skills.Skill{
+				Name:         "deploy",
+				Instructions: "do the thing",
+				Triggers:     []string{"\u212A", "k"},
+			},
+			wantErr: skills.ErrDuplicateTrigger,
+		},
+		{
+			name: "distinct triggers that ToLower would collapse pass",
+			skill: skills.Skill{
+				Name:         "deploy",
+				Instructions: "do the thing",
+				Triggers:     []string{"İ", "i"},
+			},
+			wantErr: nil,
+		},
+	})
+}
+
 // TestValidateCheckOrder pins the fixed priority Validate checks in:
 // Name, then Instructions, then Triggers. Each case makes two fields
 // invalid at once, so a check-order mutation would return the wrong

@@ -142,3 +142,17 @@ func TestClaimRejectsAfterSnapshotWindow(t *testing.T) {
 	}
 	assertRecord(t, l, ctx, "C", ledger.StatusBlocked, "B")
 }
+
+func (h *twoStageHoldStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := h.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

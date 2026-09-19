@@ -413,3 +413,45 @@ func TestClaimWalkLoadCount(t *testing.T) {
 		t.Fatalf("Load calls = %d, want 6", got)
 	}
 }
+
+func (a ancestorLoadFaultStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := a.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}
+
+func (a ancestorCtxStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := a.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}
+
+func (c *loadCountStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := c.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

@@ -107,3 +107,17 @@ func TestAdmitCompleteRaceDependentStillBlocks(t *testing.T) {
 		t.Fatalf("Claim on blocked B = %v, want ErrNotClaimed", err)
 	}
 }
+
+func (h *loadHoldStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := h.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

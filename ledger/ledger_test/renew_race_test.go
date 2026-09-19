@@ -107,3 +107,17 @@ func TestRenewRaceBothSucceedWithRetry(t *testing.T) {
 		t.Fatalf("CompareAndSwap called %d times during the race, want more than 2", raceCalls)
 	}
 }
+
+func (b *barrierStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := b.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

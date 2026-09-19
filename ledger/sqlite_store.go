@@ -302,6 +302,47 @@ func (s *SQLiteStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, 
 	return ts, true, nil
 }
 
+// LoadBatch returns multiple records for keys.
+func (s *SQLiteStore) LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+
+	// Create ?,?,... for IN clause
+	placeholders := ""
+	args := make([]any, len(keys))
+	for i, k := range keys {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = string(k)
+	}
+
+	query := "SELECT " + selectLedgerTaskColumns + " FROM ledger_tasks WHERE key IN (" + placeholders + ")"
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ledger: sqlite load batch: %w", err)
+	}
+	defer rows.Close()
+
+	var res []TaskState
+	for rows.Next() {
+		ts, err := scanTaskState(rows)
+		if err != nil {
+			return nil, fmt.Errorf("ledger: sqlite load batch scan: %w", err)
+		}
+		res = append(res, ts)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ledger: sqlite load batch row error: %w", err)
+	}
+	return res, nil
+}
+
 // CompareAndSwap compares old against the stored record's (Sequence,
 // Status, Fence, Rev) tuple and, on a match, stores new with Rev set
 // to one more than the prior stored Rev. A zero-value old against an

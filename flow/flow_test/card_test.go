@@ -122,6 +122,8 @@ func TestCardValidate(t *testing.T) {
 		{name: "duplicate capability differing only in case is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", "READ"}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
 		{name: "duplicate capability differing only in padding is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"read", " read "}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
 		{name: "duplicate capability fold-equivalent under EqualFold but not ToLower is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"s", "ſ"}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "duplicate capability Kelvin sign folds with k under EqualFold but not ToUpper is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{"\u212A", "k"}}, wantErr: true, errSubstr: "Capabilities: duplicate entry"},
+		{name: "distinct capabilities that case mapping would collapse pass", card: flow.Card{Name: "Agent A", Capabilities: []string{"İ", "i"}}, wantErr: false},
 		{name: "padded capability entry is rejected", card: flow.Card{Name: "Agent A", Capabilities: []string{" deploy"}}, wantErr: true, errSubstr: "Capabilities: entry must not carry padding"},
 	}
 	for _, tt := range tests {

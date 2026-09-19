@@ -33,6 +33,7 @@ import (
 // against it. fn returns false to stop the iteration early.
 type Store interface {
 	Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+	LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error)
 	CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
 	Range(ctx context.Context, fn func(TaskState) bool) error
 }
@@ -123,6 +124,22 @@ func (m *MemStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, boo
 	defer m.mu.Unlock()
 	v, ok := m.tasks[key]
 	return v, ok, nil
+}
+
+// LoadBatch returns multiple records for keys.
+func (m *MemStore) LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var res []TaskState
+	for _, key := range keys {
+		if v, ok := m.tasks[key]; ok {
+			res = append(res, v)
+		}
+	}
+	return res, nil
 }
 
 // CompareAndSwap compares old against the stored record's (Sequence,

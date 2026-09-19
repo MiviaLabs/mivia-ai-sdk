@@ -23,10 +23,12 @@ package ledger
   func (l *Ledger) Takeover(ctx context.Context, actor Actor, key IdempotencyKey, owner OwnerID, lease time.Duration, now time.Time) (FenceToken, error)
   func (m *MemStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
   func (m *MemStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+  func (m *MemStore) LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error)
   func (m *MemStore) Range(ctx context.Context, fn func(TaskState) bool) (error)
   func (s *SQLiteStore) Close() (error)
   func (s *SQLiteStore) CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
   func (s *SQLiteStore) Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+  func (s *SQLiteStore) LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error)
   func (s *SQLiteStore) Range(ctx context.Context, fn func(TaskState) bool) (error)
   func (s Snapshot) Encode() ([]byte, error)
   func (s Snapshot) Validate() (error)
@@ -64,6 +66,7 @@ package ledger
 }
   type Store interface {
 	Load(ctx context.Context, key IdempotencyKey) (TaskState, bool, error)
+	LoadBatch(ctx context.Context, keys []IdempotencyKey) ([]TaskState, error)
 	CompareAndSwap(ctx context.Context, key IdempotencyKey, old TaskState, new TaskState) (bool, error)
 	Range(ctx context.Context, fn func(TaskState) bool) error
 }

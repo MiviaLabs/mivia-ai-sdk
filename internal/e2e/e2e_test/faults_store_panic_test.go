@@ -95,3 +95,7 @@ func TestFaultStorePanicFailsClosed(t *testing.T) {
 		t.Fatalf("error = %v, want e2e.ErrFault", err)
 	}
 }
+
+func (panicStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	panic("panicStore LoadBatch")
+}

@@ -186,3 +186,18 @@ func (h *HangCompleter) ChatStream(ctx context.Context, _ provider.Request) (<-c
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
+
+// LoadBatch returns multiple records for keys.
+func (f *FaultStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := f.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

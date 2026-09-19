@@ -140,13 +140,24 @@ func (l *Ledger) Admit(ctx context.Context, actor Actor, key IdempotencyKey, seq
 // nothing. A Store fault while reading a need returns that error, so
 // Admit never guesses between pending and blocked.
 func (l *Ledger) blockingNeed(ctx context.Context, needs []IdempotencyKey) (IdempotencyKey, bool, error) {
+	if len(needs) == 0 {
+		return "", false, nil
+	}
+	tasks, err := l.store.LoadBatch(ctx, needs)
+	if err != nil {
+		return "", false, err
+	}
+
+	taskMap := make(map[IdempotencyKey]TaskState, len(tasks))
+	for _, t := range tasks {
+		taskMap[t.Key] = t
+	}
+
 	for _, n := range needs {
-		st, found, err := l.store.Load(ctx, n)
-		if err != nil {
-			return "", false, err
-		}
-		if found && (st.Status == StatusFailed || st.Status == StatusBlocked) {
-			return n, true, nil
+		if st, found := taskMap[n]; found {
+			if st.Status == StatusFailed || st.Status == StatusBlocked {
+				return n, true, nil
+			}
 		}
 	}
 	return "", false, nil

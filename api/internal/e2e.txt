@@ -5,6 +5,7 @@ package internal/e2e
   func (f *FaultNotifier) Notify(ctx context.Context, q channel.Question) (channel.Answer, error)
   func (f *FaultStore) CompareAndSwap(ctx context.Context, key ledger.IdempotencyKey, old, new ledger.TaskState) (bool, error)
   func (f *FaultStore) Load(ctx context.Context, key ledger.IdempotencyKey) (ledger.TaskState, bool, error)
+  func (f *FaultStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error)
   func (f *FaultStore) Range(ctx context.Context, fn func(ledger.TaskState) bool) (error)
   func (f *FaultWait) Wait(ctx context.Context, msg envelope.Message) (envelope.Ack, error)
   func (h *HangCompleter) Chat(ctx context.Context, _ provider.Request) (provider.Response, error)

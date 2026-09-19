@@ -410,3 +410,31 @@ func TestRangeErrorPropagatesThroughSnapshotAndBlockDependents(t *testing.T) {
 		t.Fatalf("Complete: got %v, want errStoreBoom", err)
 	}
 }
+
+func (d dependentCasBlockStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := d.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}
+
+func (s *secondLoadFaultStore) LoadBatch(ctx context.Context, keys []ledger.IdempotencyKey) ([]ledger.TaskState, error) {
+	var res []ledger.TaskState
+	for _, k := range keys {
+		v, found, err := s.Load(ctx, k)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			res = append(res, v)
+		}
+	}
+	return res, nil
+}

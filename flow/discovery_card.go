@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 // ErrInvalidOptions is the sentinel for a Validate or constructor
@@ -57,24 +58,50 @@ func (c Card) Validate() error {
 	if len(c.Capabilities) == 0 {
 		return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: must not be empty")
 	}
-	seen := make(map[string][]string, len(c.Capabilities))
+	seen := make(map[string]struct{}, len(c.Capabilities))
 	for _, capability := range c.Capabilities {
 		trimmed := strings.TrimSpace(capability)
 		if trimmed == "" {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not be blank")
 		}
-		key := strings.ToUpper(trimmed)
-		for _, prior := range seen[key] {
-			if strings.EqualFold(trimmed, prior) {
-				return fmt.Errorf("%w: %s", ErrInvalidOptions, fmt.Sprintf("Capabilities: duplicate entry %q", trimmed))
-			}
+		key := foldKey(trimmed)
+		if _, ok := seen[key]; ok {
+			return fmt.Errorf("%w: %s", ErrInvalidOptions, fmt.Sprintf("Capabilities: duplicate entry %q", trimmed))
 		}
 		if trimmed != capability {
 			return fmt.Errorf("%w: %s", ErrInvalidOptions, "Capabilities: entry must not carry padding")
 		}
-		seen[key] = append(seen[key], trimmed)
+		seen[key] = struct{}{}
 	}
 	return nil
+}
+
+// foldKey maps s to a key equal exactly where strings.EqualFold calls
+// the operands equal: every rune is replaced by the largest rune in
+// its unicode.SimpleFold orbit, so fold-equivalent runes collide and
+// unrelated runes never do. Case-mapping helpers are not
+// fold-faithful: strings.ToUpper leaves the Kelvin sign (U+212A)
+// unchanged while folding "k" to "K", so one EqualFold-equal pair
+// lands in two different buckets and the duplicate check misses it.
+// strings.Map returns s unchanged when every rune is already
+// canonical, which keeps typical lowercase entries allocation-free.
+// Mirrors the fold key behind skills.Skill.Validate's duplicate
+// check.
+func foldKey(s string) string {
+	return strings.Map(foldRune, s)
+}
+
+// foldRune returns the largest rune in r's unicode.SimpleFold orbit,
+// or r itself when r folds to nothing but itself. The walk terminates
+// because SimpleFold always cycles back to r.
+func foldRune(r rune) rune {
+	large := r
+	for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+		if f > large {
+			large = f
+		}
+	}
+	return large
 }
 
 // Match compares need against each capability with strings.EqualFold.

@@ -31,14 +31,29 @@ func ValidateMatrix(plan *flow.Definition, m *machine.Definition) error {
 	if m == nil {
 		return fmt.Errorf("run: machine must not be nil")
 	}
-	w := &walker{m: m}
+
+	rowCounts := make(map[transitionPair]int)
+	for _, t := range m.Transitions() {
+		rowCounts[transitionPair{from: t.From, to: t.To}]++
+	}
+
+	w := &walker{
+		m:         m,
+		rowCounts: rowCounts,
+	}
 	return w.walk(plan.Steps(), plan.Panels())
 }
 
 // walker holds one machine and computes predecessor status sets for
 // one plan during a ValidateMatrix call.
 type walker struct {
-	m *machine.Definition
+	m         *machine.Definition
+	rowCounts map[transitionPair]int
+}
+
+type transitionPair struct {
+	from machine.Status
+	to   machine.Status
 }
 
 // walk validates one definition by simulating the runner's
@@ -321,12 +336,7 @@ func (w *walker) checkUnit(label string, preds, targets []machine.Status) error 
 // checkRow verifies exactly one machine row runs from to from. Zero
 // rows and two rows both fail and changed nothing.
 func (w *walker) checkRow(from, to machine.Status) error {
-	count := 0
-	for _, t := range w.m.Transitions() {
-		if t.From == from && t.To == to {
-			count++
-		}
-	}
+	count := w.rowCounts[transitionPair{from: from, to: to}]
 	switch count {
 	case 0:
 		return fmt.Errorf("no transition from %q to %q", from, to)
